@@ -461,3 +461,18 @@
 - Confidence protocol: documented DEC-036 in `.ralph/agent/decisions.md` (confidence 76) for the value-level Result propagation strategy.
 - Tooling memory capture: recorded `mem-1771640031-3c96` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/runtime.rs`; resolved via `cargo fmt --all` then re-ran checks.
 - Verification (green): `cargo test --test run_result_propagation`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T02:19:05Z — Builder Step 9.5 (REFACTOR)
+- Handled pending `task.complete` event for `task-1771639802-66fb` by confirming the task was already closed (`ralph tools task show task-1771639802-66fb`); no duplicate close action required.
+- Runtime queue had no ready tasks, so I created and executed `task-1771640332-8c57` for Step 9.5 allocation-churn refactoring.
+- RED: added runtime unit test `evaluate_builtin_ok_moves_nested_payload_without_cloning` in `src/runtime.rs` to lock move-semantic behavior for builtin `ok` wrapping; initial `cargo test evaluate_builtin_ok_moves_nested_payload_without_cloning` failed (type mismatch) because `evaluate_builtin_call` still borrowed args and forced cloning.
+- GREEN/REFACTOR:
+  - `src/runtime.rs`: refactored `IrOp::Call` execution to dispatch via stack-tail slices for function calls, removing per-function-call temporary arg-vector allocation (`pop_args` removed).
+  - `src/runtime.rs`: changed builtin call path to accept owned `Vec<RuntimeValue>` args and move payloads directly into `ResultOk`/`ResultErr` wrappers (no `RuntimeValue` cloning in builtin constructors).
+  - `src/runtime.rs`: preserved existing runtime diagnostics/CLI-visible behavior while keeping call underflow and builtin arity checks deterministic.
+- Confidence protocol: documented DEC-037 in `.ralph/agent/decisions.md` (confidence 74) for the stack-tail dispatch + owned builtin args approach.
+- Tooling memory capture:
+  - `mem-1771640285-3849` after RED compile failure showed builtin call still borrowed args.
+  - `mem-1771640324-e751` after combined verification command reported rustfmt diff; resolved with `cargo fmt --all`.
+- Verification (green): `cargo test evaluate_builtin_ok_moves_nested_payload_without_cloning`, `cargo test --test run_result_propagation`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771640332-8c57` after verification.

@@ -421,3 +421,15 @@ Template:
 - **Reasoning:** The RED contract is CLI-visible and specifically exercises `err` propagation through `?`. Modeling Result as runtime values keeps call/stack behavior local to the evaluator, requires minimal surface change, and avoids conflating expected control flow with runtime faults.
 - **Reversibility:** High — value representation can later move to a richer tagged value model or explicit control-flow enum with localized evaluator updates.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:14:07Z
+
+## DEC-037
+- **Decision:** How to refactor Step 9.5 runtime call/value internals to reduce allocation churn without changing public CLI behavior.
+- **Chosen Option:** Route IR `call` execution through the operand stack (borrow tail slice for function calls, split stack once for builtin calls), change builtin argument handling to owned values, and remove `RuntimeValue` cloning in `ok/err` construction.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Keep existing `pop_args` buffer allocation + clone behavior and defer optimization to later runtime milestones.
+  - Introduce a broader call-frame object with explicit locals/slots in this slice.
+  - Add allocator instrumentation/bench harness before making any refactor changes.
+- **Reasoning:** This is the narrowest reversible refactor that directly targets allocation churn now: function calls no longer allocate transient arg vectors, builtin calls consume moved values, and runtime semantics remain unchanged under existing integration tests.
+- **Reversibility:** High — call dispatch remains localized to `src/runtime.rs`, so the evaluator can later migrate to richer frame layouts without touching CLI contracts.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:19:05Z

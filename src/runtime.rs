@@ -94,8 +94,7 @@ fn evaluate_function(
                 argc,
                 offset,
             } => {
-                let call_args = pop_args(&mut stack, *argc, *offset)?;
-                let value = evaluate_call(program, callee, &call_args, *offset)?;
+                let value = evaluate_call(program, callee, &mut stack, *argc, *offset)?;
                 stack.push(value);
             }
             IrOp::AddInt { offset } => {
@@ -142,28 +141,43 @@ fn evaluate_function(
 fn evaluate_call(
     program: &IrProgram,
     callee: &IrCallTarget,
-    args: &[RuntimeValue],
+    stack: &mut Vec<RuntimeValue>,
+    argc: usize,
     offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
+    let args_start = stack.len().checked_sub(argc).ok_or_else(|| {
+        RuntimeError::at_offset(
+            format!("runtime stack underflow for call with {argc} args"),
+            offset,
+        )
+    })?;
+
     match callee {
-        IrCallTarget::Builtin { name } => evaluate_builtin_call(name, args, offset),
-        IrCallTarget::Function { name } => evaluate_function(program, name, args),
+        IrCallTarget::Builtin { name } => {
+            let args = stack.split_off(args_start);
+            evaluate_builtin_call(name, args, offset)
+        }
+        IrCallTarget::Function { name } => {
+            let value = evaluate_function(program, name, &stack[args_start..])?;
+            stack.truncate(args_start);
+            Ok(value)
+        }
     }
 }
 
 fn evaluate_builtin_call(
     name: &str,
-    args: &[RuntimeValue],
+    args: Vec<RuntimeValue>,
     offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
     match name {
         "ok" => {
             let arg = expect_single_builtin_arg(name, args, offset)?;
-            Ok(RuntimeValue::ResultOk(Box::new(arg.clone())))
+            Ok(RuntimeValue::ResultOk(Box::new(arg)))
         }
         "err" => {
             let arg = expect_single_builtin_arg(name, args, offset)?;
-            Ok(RuntimeValue::ResultErr(Box::new(arg.clone())))
+            Ok(RuntimeValue::ResultErr(Box::new(arg)))
         }
         _ => Err(RuntimeError::at_offset(
             format!("unsupported builtin call in runtime evaluator: {name}"),
@@ -172,11 +186,11 @@ fn evaluate_builtin_call(
     }
 }
 
-fn expect_single_builtin_arg<'a>(
+fn expect_single_builtin_arg(
     name: &str,
-    args: &'a [RuntimeValue],
+    mut args: Vec<RuntimeValue>,
     offset: usize,
-) -> Result<&'a RuntimeValue, RuntimeError> {
+) -> Result<RuntimeValue, RuntimeError> {
     if args.len() != 1 {
         return Err(RuntimeError::at_offset(
             format!(
@@ -187,32 +201,9 @@ fn expect_single_builtin_arg<'a>(
         ));
     }
 
-    Ok(&args[0])
-}
-
-fn pop_args(
-    stack: &mut Vec<RuntimeValue>,
-    argc: usize,
-    offset: usize,
-) -> Result<Vec<RuntimeValue>, RuntimeError> {
-    if stack.len() < argc {
-        return Err(RuntimeError::at_offset(
-            format!("runtime stack underflow for call with {argc} args"),
-            offset,
-        ));
-    }
-
-    let mut args = Vec::with_capacity(argc);
-    for _ in 0..argc {
-        args.push(
-            stack
-                .pop()
-                .expect("stack length should be validated before popping call args"),
-        );
-    }
-
-    args.reverse();
-    Ok(args)
+    Ok(args
+        .pop()
+        .expect("arity check should guarantee one builtin argument"))
 }
 
 fn pop_value(
@@ -239,7 +230,7 @@ fn pop_int(stack: &mut Vec<RuntimeValue>, offset: usize) -> Result<i64, RuntimeE
 
 #[cfg(test)]
 mod tests {
-    use super::{evaluate_entrypoint, RuntimeError, RuntimeValue};
+    use super::{evaluate_builtin_call, evaluate_entrypoint, RuntimeError, RuntimeValue};
     use crate::ir::lower_ast_to_ir;
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
@@ -288,5 +279,27 @@ mod tests {
             value,
             RuntimeValue::ResultErr(Box::new(RuntimeValue::Int(7)))
         );
+    }
+
+    #[test]
+    fn evaluate_builtin_ok_moves_nested_payload_without_cloning() {
+        let nested = RuntimeValue::ResultOk(Box::new(RuntimeValue::Int(5)));
+        let original_inner_ptr = match &nested {
+            RuntimeValue::ResultOk(inner) => inner.as_ref() as *const RuntimeValue as usize,
+            _ => unreachable!("fixture should be nested result"),
+        };
+
+        let value =
+            evaluate_builtin_call("ok", vec![nested], 0).expect("builtin ok should return result");
+
+        let moved_inner_ptr = match value {
+            RuntimeValue::ResultOk(outer) => match *outer {
+                RuntimeValue::ResultOk(inner) => inner.as_ref() as *const RuntimeValue as usize,
+                other => panic!("expected nested result payload, found {other:?}"),
+            },
+            other => panic!("expected ok result wrapper, found {other:?}"),
+        };
+
+        assert_eq!(moved_inner_ptr, original_inner_ptr);
     }
 }
