@@ -441,3 +441,23 @@
 - Confidence protocol: documented DEC-034 in `.ralph/agent/decisions.md` (confidence 77) for choosing minimal IR execution over AST-direct evaluation or broader runtime semantics.
 - Tooling memory capture: recorded `mem-1771639609-837d` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/runtime.rs`; resolved via `cargo fmt --all` and re-ran checks.
 - Verification (green): `cargo test --test run_arithmetic_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T02:10:55Z — Builder Step 9.3 (RED)
+- Handled pending `task.complete` event for `task-1771639332-0772` by confirming it was already closed (`ralph tools task show task-1771639332-0772`).
+- Runtime queue had no ready tasks, so I created Step 9 follow-up tasks: `task-1771639800-2606` (RED Result propagation contract) and blocked `task-1771639802-66fb` (GREEN runtime err propagation + CLI mapping).
+- Added integration test `tests/run_result_propagation.rs` asserting `tonic run examples/run_result_err.tn` exits with code `1`, emits no stdout, and reports deterministic stderr `error: runtime returned err(7)` when `Demo.run` evaluates `fail()?` and `fail` returns `err(7)`.
+- Verification (red): `cargo test --test run_result_propagation` fails as expected with stderr mismatch (`error: unsupported builtin call in runtime evaluator: err at offset 38`), confirming runtime `ok/err/question` execution and CLI Result mapping are still missing.
+- Confidence protocol: documented DEC-035 in `.ralph/agent/decisions.md` (confidence 70) for the Step 9.3 runtime failure contract.
+- Tooling memory capture: recorded `mem-1771639822-c192` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771639800-2606`; `task-1771639802-66fb` is now the next ready GREEN task.
+
+## 2026-02-21T02:14:07Z — Builder Step 9.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771639800-2606` by confirming it remained closed (`ralph tools task show task-1771639800-2606`), then executed ready task `task-1771639802-66fb`.
+- Implemented runtime Result propagation + CLI exit mapping:
+  - `src/runtime.rs`: extended `RuntimeValue` with `ResultOk`/`ResultErr`, added builtin runtime call support for `ok` and `err`, implemented `question` execution semantics (unwrap `ok`, early-propagate `err`), and tightened stack/type runtime diagnostics for `question`/`add_int`.
+  - `src/main.rs`: updated `tonic run` handling to map propagated `ResultErr` returns to deterministic failure output `error: runtime returned err(<reason>)` with exit code `1`; successful paths still print evaluated values.
+  - `src/runtime.rs` tests: added `evaluate_entrypoint_propagates_err_results_through_question` to lock evaluator-level propagation behavior.
+- Confidence protocol: documented DEC-036 in `.ralph/agent/decisions.md` (confidence 76) for the value-level Result propagation strategy.
+- Tooling memory capture: recorded `mem-1771640031-3c96` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/runtime.rs`; resolved via `cargo fmt --all` then re-ran checks.
+- Verification (green): `cargo test --test run_result_propagation`, `cargo test`, and `cargo fmt --all -- --check` all pass.

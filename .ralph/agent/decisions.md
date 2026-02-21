@@ -397,3 +397,27 @@ Template:
 - **Reasoning:** Step 9.2 asks for a minimal evaluator loop and `tonic run` wiring. Evaluating existing IR keeps the architecture aligned with Step 8, satisfies the arithmetic smoke contract, and avoids overbuilding before Step 9.3 Result-propagation tests are locked.
 - **Reversibility:** High — evaluator op coverage can be extended incrementally, and entrypoint selection can move to CLI flags/manifest later without rewriting the pipeline.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:07:10Z
+
+## DEC-035
+- **Decision:** What deterministic runtime failure contract to lock for Step 9.3 Result propagation RED coverage.
+- **Chosen Option:** Add an end-to-end `tonic run` integration test where `Demo.run` evaluates `fail()?` and `fail` returns `err(7)`, asserting exit code `1`, empty stdout, and stderr `error: runtime returned err(7)`.
+- **Confidence (0-100):** 70
+- **Alternatives Considered:**
+  - Assert only non-zero exit status without pinning stderr.
+  - Use a runtime unit test instead of CLI integration.
+  - Model propagation through `case` branches in the first Result runtime test.
+- **Reasoning:** Step 9.3 explicitly asks for runtime Result propagation behavior and Step 9.4 will wire CLI exit mapping. A narrow CLI contract gives direct backpressure for both propagation and user-visible failure formatting without pulling in additional unsupported control-flow semantics.
+- **Reversibility:** High — error message text can be revised later with coordinated fixture updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:10:35Z
+
+## DEC-036
+- **Decision:** How to implement Step 9.4 Result propagation semantics in runtime without overbuilding the evaluator.
+- **Chosen Option:** Extend `RuntimeValue` with `ResultOk`/`ResultErr`, implement `ok`/`err` builtin calls, execute `question` as runtime short-circuit (`ok(v)` unwraps, `err(e)` returns early), and map top-level `ResultErr` in `tonic run` to `error: runtime returned err(<value>)` with exit code 1.
+- **Confidence (0-100):** 76
+- **Alternatives Considered:**
+  - Represent propagated `err` as a dedicated `RuntimeError` variant instead of a runtime value.
+  - Keep runtime values integer-only and special-case `ok/err/?` behavior directly in CLI handling.
+  - Defer propagation support until `case` execution is implemented.
+- **Reasoning:** The RED contract is CLI-visible and specifically exercises `err` propagation through `?`. Modeling Result as runtime values keeps call/stack behavior local to the evaluator, requires minimal surface change, and avoids conflating expected control flow with runtime faults.
+- **Reversibility:** High — value representation can later move to a richer tagged value model or explicit control-flow enum with localized evaluator updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:14:07Z

@@ -14,7 +14,7 @@ use ir::lower_ast_to_ir;
 use lexer::scan_tokens;
 use parser::parse_ast;
 use resolver::resolve_ast;
-use runtime::evaluate_entrypoint;
+use runtime::{evaluate_entrypoint, RuntimeValue};
 use typing::infer_types;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,8 +130,15 @@ fn handle_run(args: Vec<String>) -> i32 {
         Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
     };
 
-    println!("{}", value.render());
-    EXIT_OK
+    match value {
+        RuntimeValue::ResultErr(reason) => {
+            CliDiagnostic::failure(format!("runtime returned err({})", reason.render())).emit()
+        }
+        other => {
+            println!("{}", other.render());
+            EXIT_OK
+        }
+    }
 }
 
 fn run_placeholder(command: &str) -> i32 {
