@@ -1,4 +1,4 @@
-use crate::parser::{Ast, Expr, ParameterAnnotation};
+use crate::parser::{Ast, Expr, ParameterAnnotation, Pattern};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
@@ -17,6 +17,7 @@ impl TypeSummary {
 enum TypingDiagnosticCode {
     TypeMismatch,
     QuestionRequiresResult,
+    NonExhaustiveCase,
 }
 
 impl TypingDiagnosticCode {
@@ -24,6 +25,7 @@ impl TypingDiagnosticCode {
         match self {
             Self::TypeMismatch => "E2001",
             Self::QuestionRequiresResult => "E3001",
+            Self::NonExhaustiveCase => "E3002",
         }
     }
 }
@@ -63,6 +65,14 @@ impl TypingError {
                 "? operator requires Result value, found {}",
                 found.label_for_question_requirement()
             ),
+            offset,
+        }
+    }
+
+    fn non_exhaustive_case(offset: Option<usize>) -> Self {
+        Self {
+            code: Some(TypingDiagnosticCode::NonExhaustiveCase),
+            message: "non-exhaustive case expression: missing wildcard branch".to_string(),
             offset,
         }
     }
@@ -331,9 +341,19 @@ fn infer_expression_type(
             infer_expression_type(right, current_module, signatures, solver)
         }
         Expr::Case {
-            subject, branches, ..
+            subject,
+            branches,
+            offset,
+            ..
         } => {
             infer_expression_type(subject, current_module, signatures, solver)?;
+
+            if !branches
+                .iter()
+                .any(|branch| matches!(branch.head(), Pattern::Wildcard))
+            {
+                return Err(TypingError::non_exhaustive_case(Some(*offset)));
+            }
 
             let mut inferred_case_type = None;
 
@@ -412,80 +432,4 @@ fn format_signature(params: &[Type], return_type: &Type) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::infer_types;
-    use crate::lexer::scan_tokens;
-    use crate::parser::parse_ast;
-
-    #[test]
-    fn infer_types_supports_polymorphic_like_helper_with_concrete_call_sites() {
-        let source = "defmodule Demo do\n  def helper(value) do\n    1\n  end\n\n  def one() do\n    1\n  end\n\n  def run() do\n    helper(1) + helper(one())\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize typing fixture");
-        let ast = parse_ast(&tokens).expect("parser should build typing fixture ast");
-
-        let summary = infer_types(&ast)
-            .expect("type inference should succeed for helper reuse across call sites");
-
-        assert_eq!(summary.signature("Demo.helper"), Some("fn(dynamic) -> int"));
-        assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
-    }
-
-    #[test]
-    fn infer_types_reports_type_mismatch_with_span_offset() {
-        let source = "defmodule Demo do\n  def unknown() do\n    case source() do\n    end\n  end\n\n  def source() do\n    1\n  end\n\n  def run() do\n    unknown() + 1\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize mismatch fixture");
-        let ast = parse_ast(&tokens).expect("parser should build mismatch fixture ast");
-
-        let error = infer_types(&ast)
-            .expect_err("type inference should reject implicit dynamic-to-int coercion");
-
-        assert_eq!(
-            error.to_string(),
-            "[E2001] type mismatch: expected int, found dynamic at offset 123"
-        );
-    }
-
-    #[test]
-    fn infer_types_supports_question_operator_for_result_values() {
-        let source = "defmodule Demo do\n  def run() do\n    ok(1)?\n  end\nend\n";
-        let tokens =
-            scan_tokens(source).expect("scanner should tokenize question-operator typing fixture");
-        let ast =
-            parse_ast(&tokens).expect("parser should build question-operator typing fixture ast");
-
-        let summary = infer_types(&ast)
-            .expect("type inference should accept ? when operand is a Result value");
-
-        assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
-    }
-
-    #[test]
-    fn infer_types_accepts_explicit_dynamic_parameter_annotation() {
-        let source = "defmodule Demo do\n  def helper(dynamic value) do\n    1\n  end\n\n  def run() do\n    helper(1)\n  end\nend\n";
-        let tokens = scan_tokens(source)
-            .expect("scanner should tokenize explicit dynamic parameter fixture");
-        let ast = parse_ast(&tokens)
-            .expect("parser should accept explicit dynamic parameter annotations");
-
-        let summary = infer_types(&ast)
-            .expect("type inference should accept explicit dynamic parameter annotations");
-
-        assert_eq!(summary.signature("Demo.helper"), Some("fn(dynamic) -> int"));
-        assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
-    }
-
-    #[test]
-    fn parse_ast_rejects_dynamic_annotation_outside_parameter_positions() {
-        let source = "defmodule Demo do\n  def run() -> dynamic do\n    1\n  end\nend\n";
-        let tokens = scan_tokens(source)
-            .expect("scanner should tokenize invalid dynamic annotation fixture");
-
-        let error = parse_ast(&tokens)
-            .expect_err("parser should reject dynamic annotations outside parameter positions");
-
-        assert_eq!(
-            error.to_string(),
-            "dynamic annotation is only allowed on parameters at offset 30"
-        );
-    }
-}
+mod tests;
