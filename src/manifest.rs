@@ -1,3 +1,5 @@
+use crate::lexer::scan_tokens;
+use crate::parser::{parse_ast, Ast, Expr};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -16,6 +18,9 @@ struct RawProject {
     entry: Option<String>,
 }
 
+const OPTIONAL_STDLIB_ENUM_SOURCE: &str =
+    "defmodule Enum do\n  def identity() do\n    1\n  end\nend\n";
+
 pub(crate) fn load_run_source(requested_path: &str) -> Result<String, String> {
     let path = Path::new(requested_path);
 
@@ -31,13 +36,115 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
     let manifest = load_project_manifest(project_root)?;
     let entry_path = project_root.join(&manifest.entry);
 
-    let mut sources = vec![read_source_file(&entry_path)?];
+    let mut project_sources = vec![read_source_file(&entry_path)?];
 
     for module_path in collect_project_module_paths(project_root, &entry_path)? {
-        sources.push(read_source_file(&module_path)?);
+        project_sources.push(read_source_file(&module_path)?);
     }
 
-    Ok(sources.join("\n\n"))
+    let mut source = project_sources.join("\n\n");
+    let analysis = analyze_project_source(&source);
+
+    if should_trace_module_loads() {
+        for module_name in &analysis.module_names {
+            trace_module_load("project", module_name);
+        }
+    }
+
+    if should_lazy_load_enum_stdlib(&analysis) {
+        if !source.is_empty() {
+            source.push_str("\n\n");
+        }
+
+        source.push_str(OPTIONAL_STDLIB_ENUM_SOURCE);
+
+        if should_trace_module_loads() {
+            trace_module_load("stdlib", "Enum");
+        }
+    }
+
+    Ok(source)
+}
+
+#[derive(Debug, Default)]
+struct ProjectSourceAnalysis {
+    module_names: Vec<String>,
+    references_enum: bool,
+}
+
+fn analyze_project_source(source: &str) -> ProjectSourceAnalysis {
+    let Some(ast) = parse_project_ast(source) else {
+        return ProjectSourceAnalysis {
+            module_names: Vec::new(),
+            references_enum: source.contains("Enum."),
+        };
+    };
+
+    ProjectSourceAnalysis {
+        module_names: collect_module_names(&ast),
+        references_enum: ast_references_module(&ast, "Enum"),
+    }
+}
+
+fn parse_project_ast(source: &str) -> Option<Ast> {
+    let tokens = scan_tokens(source).ok()?;
+    parse_ast(&tokens).ok()
+}
+
+fn collect_module_names(ast: &Ast) -> Vec<String> {
+    ast.modules
+        .iter()
+        .map(|module| module.name.clone())
+        .collect()
+}
+
+fn ast_references_module(ast: &Ast, module_name: &str) -> bool {
+    ast.modules.iter().any(|module| {
+        module
+            .functions
+            .iter()
+            .any(|function| expr_references_module(&function.body, module_name))
+    })
+}
+
+fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
+    match expr {
+        Expr::Int { .. } => false,
+        Expr::Call { callee, args, .. } => {
+            let calls_module = callee
+                .split_once('.')
+                .is_some_and(|(prefix, _)| prefix == module_name);
+
+            calls_module
+                || args
+                    .iter()
+                    .any(|arg| expr_references_module(arg, module_name))
+        }
+        Expr::Question { value, .. } => expr_references_module(value, module_name),
+        Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
+            expr_references_module(left, module_name) || expr_references_module(right, module_name)
+        }
+        Expr::Case {
+            subject, branches, ..
+        } => {
+            expr_references_module(subject, module_name)
+                || branches
+                    .iter()
+                    .any(|branch| expr_references_module(branch.body(), module_name))
+        }
+    }
+}
+
+fn should_lazy_load_enum_stdlib(analysis: &ProjectSourceAnalysis) -> bool {
+    analysis.references_enum && !analysis.module_names.iter().any(|module| module == "Enum")
+}
+
+fn should_trace_module_loads() -> bool {
+    std::env::var_os("TONIC_DEBUG_MODULE_LOADS").is_some()
+}
+
+fn trace_module_load(scope: &str, module_name: &str) {
+    eprintln!("module-load {scope}:{module_name}");
 }
 
 fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest, String> {

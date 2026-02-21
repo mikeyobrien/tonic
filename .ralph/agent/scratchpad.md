@@ -589,3 +589,28 @@
 - Confidence protocol: documented DEC-047 in `.ralph/agent/decisions.md` (confidence 76) for the entry-dir recursive module loader strategy.
 - Verification (green): `cargo test --test run_project_multimodule_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771642177-fe17` after verification.
+
+## 2026-02-21T02:58:33Z — Builder Step 11.5 (RED)
+- Handled pending `task.complete` event for `task-1771642177-fe17` by confirming it remains closed (`ralph tools task show task-1771642177-fe17`); no duplicate close action required.
+- Runtime queue had no ready tasks, so I created Step 11.5/11.6 follow-up tasks: `task-1771642625-4b40` (RED lazy stdlib load tracing contract) and blocked `task-1771642627-581b` (GREEN lazy stdlib module loading implementation).
+- Added integration test suite `tests/run_lazy_stdlib_loading_smoke.rs` with two contracts under `TONIC_DEBUG_MODULE_LOADS=1`:
+  - unreferenced project run should include `module-load project:Demo` trace and exclude `module-load stdlib:Enum`.
+  - referenced `Enum.identity()` run should succeed and include `module-load stdlib:Enum` trace.
+- Verification (red): `cargo test --test run_lazy_stdlib_loading_smoke` fails as expected:
+  - resolver reports `error: [E1001] undefined symbol 'Enum.identity' in Demo.run` for referenced fixture (optional stdlib not lazy-loaded yet), and
+  - unreferenced fixture gets empty stderr (module-load tracing not implemented yet).
+- Confidence protocol: documented DEC-048 in `.ralph/agent/decisions.md` (confidence 73) for the dual-path lazy-loading trace contract.
+- Tooling memory capture: recorded `mem-1771642685-433a` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771642625-4b40`; `task-1771642627-581b` is now the next ready GREEN task.
+
+## 2026-02-21T03:02:11Z — Builder Step 11.6 (GREEN)
+- Handled pending `task.complete` event for `task-1771642625-4b40` by confirming it remained closed (`ralph tools task show task-1771642625-4b40`).
+- Executed ready task `task-1771642627-581b` and implemented lazy stdlib loading + debug module-load tracing for project-root runs:
+  - `src/manifest.rs`: added project-source analysis helpers that parse run source AST to collect module names and detect qualified `Enum.*` references.
+  - `src/manifest.rs`: lazy-loads optional stdlib module source `Enum.identity/0` only when referenced and not already defined by project modules.
+  - `src/manifest.rs`: emits `module-load project:<Module>` and `module-load stdlib:Enum` trace lines when `TONIC_DEBUG_MODULE_LOADS` is set.
+- Confidence protocol: documented DEC-049 in `.ralph/agent/decisions.md` (confidence 79) for preserving loader API while adding AST-based lazy stdlib detection.
+- Tooling memory capture: recorded `mem-1771642893-58e9` after `cargo fmt --all -- --check` reported rustfmt diff in `src/manifest.rs`; resolved via `cargo fmt --all` and re-ran verification.
+- Verification (green): `cargo test --test run_lazy_stdlib_loading_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771642627-581b` after verification.

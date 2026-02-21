@@ -553,3 +553,27 @@ Template:
 - **Reasoning:** The active RED contract only requires sibling module visibility for `tonic run .`. Entry-dir recursive discovery is the narrowest reversible change that unblocks multi-module execution while preserving deterministic ordering and keeping scope aligned with Step 11.
 - **Reversibility:** High — module discovery is isolated to `src/manifest.rs` and can be replaced later by explicit dependency graph loading.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:54:37Z
+
+## DEC-048
+- **Decision:** What RED contract should lock Step 11.5 lazy stdlib loading behavior without overreaching into cache or CLI flag work.
+- **Chosen Option:** Add an integration suite `tests/run_lazy_stdlib_loading_smoke.rs` with module-load tracing expectations under `TONIC_DEBUG_MODULE_LOADS=1`, covering both (a) unreferenced `Enum` should not appear in load trace and (b) `Enum.identity()` should succeed only when optional stdlib module is lazy-loaded.
+- **Confidence (0-100):** 73
+- **Alternatives Considered:**
+  - Add only a unit test in `manifest.rs` that inspects file lists without executing `tonic run`.
+  - Lock only the positive path (`Enum` referenced) and skip the unreferenced trace assertion.
+  - Defer trace assertions and assert resolver success/failure only.
+- **Reasoning:** Step 11.5 explicitly calls for lazy-loading behavior tests with module-load tracing. A dual-path integration contract is the narrowest way to force both halves of the requirement (load on first use, do not pre-load when unused) while staying inside existing `tonic run` flow.
+- **Reversibility:** High — trace token strings and optional module names can evolve with minimal test updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:58:33Z
+
+## DEC-049
+- **Decision:** How to implement Step 11.6 lazy optional stdlib loading and debug module-load tracing without widening the CLI/source-loading API.
+- **Chosen Option:** Keep `manifest::load_run_source(...) -> Result<String, String>` unchanged, analyze project source AST to detect `Enum.*` call references, append a built-in optional `Enum.identity/0` module only when referenced and not already defined by the project, and emit `module-load project:<Module>` / `module-load stdlib:Enum` trace lines when `TONIC_DEBUG_MODULE_LOADS` is set.
+- **Confidence (0-100):** 79
+- **Alternatives Considered:**
+  - Change loader API to return structured module metadata and move all tracing into `main.rs`.
+  - Treat `Enum.identity` as a resolver/runtime builtin instead of a lazily loaded module.
+  - Always preload optional stdlib modules for project-root runs.
+- **Reasoning:** This is the narrowest additive change that satisfies both RED contracts (no eager stdlib load when unreferenced + successful referenced load with trace output) while preserving existing call paths and avoiding broader API churn.
+- **Reversibility:** High — optional-module detection and trace emission remain localized to `src/manifest.rs` and can migrate to richer module-loader metadata later.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:01:57Z
