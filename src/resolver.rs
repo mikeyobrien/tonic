@@ -1,31 +1,6 @@
 use crate::parser::{Ast, Expr};
+use crate::resolver_diag::ResolverError;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
-
-const E1001_UNDEFINED_SYMBOL: &str = "E1001";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolverError {
-    code: &'static str,
-    message: String,
-}
-
-impl ResolverError {
-    fn undefined_symbol(symbol: &str, module: &str, function: &str) -> Self {
-        Self {
-            code: E1001_UNDEFINED_SYMBOL,
-            message: format!("undefined symbol '{symbol}' in {module}.{function}"),
-        }
-    }
-}
-
-impl fmt::Display for ResolverError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for ResolverError {}
 
 pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
     let module_graph = ModuleGraph::from_ast(ast);
@@ -69,6 +44,10 @@ impl ModuleGraph {
     }
 
     fn contains_call_target(&self, current_module: &str, callee: &str) -> bool {
+        if matches!(callee, "ok" | "err") {
+            return true;
+        }
+
         if let Some((module_name, function_name)) = callee.split_once('.') {
             return self
                 .modules
@@ -109,6 +88,7 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
 
             Ok(())
         }
+        Expr::Question { value, .. } => resolve_expr(value, context),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
             resolve_expr(left, context)?;
             resolve_expr(right, context)
@@ -132,6 +112,7 @@ mod tests {
     use super::resolve_ast;
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
+    use crate::resolver_diag::ResolverDiagnosticCode;
 
     #[test]
     fn resolve_ast_accepts_module_local_function_calls() {
@@ -152,6 +133,15 @@ mod tests {
     }
 
     #[test]
+    fn resolve_ast_accepts_builtin_result_constructors() {
+        let source = "defmodule Demo do\n  def run() do\n    ok(1)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
+        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept result constructor builtins");
+    }
+
+    #[test]
     fn resolve_ast_reports_undefined_symbol_with_code() {
         let source = "defmodule Demo do\n  def run() do\n    missing()\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
@@ -159,6 +149,7 @@ mod tests {
 
         let error = resolve_ast(&ast).expect_err("resolver should reject undefined calls");
 
+        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedSymbol);
         assert_eq!(
             error.to_string(),
             "[E1001] undefined symbol 'missing' in Demo.run"

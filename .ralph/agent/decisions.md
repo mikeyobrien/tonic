@@ -232,3 +232,26 @@ Template:
 - **Reasoning:** Hidden parameter metadata gives us real explicit-boundary semantics for typing while preserving every existing `--dump-ast` contract. Parser-side rejection of `-> dynamic` enforces the policy at the right phase with deterministic offsets.
 - **Reversibility:** High — parameter metadata can be surfaced or refactored later without changing current JSON output.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T01:13:10Z
+
+## DEC-021
+- **Decision:** What deterministic RED diagnostic contract to lock for Step 7.1 before `?` parsing and Result typing exist.
+- **Chosen Option:** Add a failing CLI integration test that expects `tonic check` to report `error: [E3001] ? operator requires Result value, found int at offset 74` for `value()?` when `value/0` returns `int`.
+- **Confidence (0-100):** 67
+- **Alternatives Considered:**
+  - Write a unit test against `typing::infer_types` first (requires AST support for `?` that does not exist yet).
+  - Assert only generic check failure without pinning a code/message.
+- **Reasoning:** An integration contract keeps the scope narrow while forcing the next GREEN slice to wire lexer/parser/type-checking for `?` end-to-end. Pinning code/message now prevents ambiguous failure behavior during implementation.
+- **Reversibility:** High — the exact code/message can be revised later with coordinated test updates once a broader diagnostics catalog is finalized.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:18:00Z
+
+## DEC-022
+- **Decision:** How to implement Step 7.2 `?` support while keeping existing parser and AST dump contracts stable.
+- **Chosen Option:** Add `?` as a postfix expression (`Expr::Question`) with hidden offset metadata, enforce `Result` requirement in typing (`[E3001]` on non-Result), and introduce minimal `ok/err` builtin Result constructors for positive-path inference coverage.
+- **Confidence (0-100):** 72
+- **Alternatives Considered:**
+  - Keep `?` as syntax sugar rejected everywhere until a fuller Result type system lands.
+  - Parse `?` but defer all checks to runtime.
+  - Add an explicit serialized AST schema change for try-propagation nodes immediately.
+- **Reasoning:** This is the narrowest end-to-end implementation that satisfies the locked RED integration contract, preserves current JSON output fixtures, and leaves room for richer Result semantics in later steps.
+- **Reversibility:** High — builtin handling and `Expr::Question` lowering behavior can be refined later without changing current CLI diagnostic contracts.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:22:32Z

@@ -282,3 +282,25 @@
 - Verification (green): `cargo test infer_types_accepts_explicit_dynamic_parameter_annotation`, `cargo test parse_ast_rejects_dynamic_annotation_outside_parameter_positions`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771636123-bdd0` after verification.
 - Committed changes with message `feat: enforce explicit dynamic annotation boundaries`.
+
+## 2026-02-21T01:18:00Z — Builder Step 7.1 (RED)
+- Handled pending `task.complete` event for `task-1771636123-bdd0` by confirming it is already closed (`ralph tools task show task-1771636123-bdd0`).
+- Runtime queue was empty, so I created Step 7 follow-up tasks: `task-1771636525-263d` (RED `?` on non-Result contract) and blocked `task-1771636528-f144` (GREEN Result-aware `?` typing rule).
+- Added integration test `tests/check_result_propagation_requires_result.rs` asserting `tonic check examples/result_non_result_question.tn` fails deterministically with `error: [E3001] ? operator requires Result value, found int at offset 74`.
+- Verification (red): `cargo test --test check_result_propagation_requires_result` fails as expected with current lexer diagnostic `error: invalid token '?' at offset 74`, proving `?` parsing/typing is still unimplemented.
+- Confidence protocol: documented DEC-021 in `.ralph/agent/decisions.md` (confidence 67) for the initial Step 7.1 diagnostic contract.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771636525-263d`; `task-1771636528-f144` is now the next ready GREEN task.
+
+## 2026-02-21T01:22:54Z — Builder Step 7.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771636525-263d` by confirming the RED task was already closed (`ralph tools task show task-1771636525-263d`), then executed ready task `task-1771636528-f144`.
+- Implemented Result-aware `?` handling end-to-end:
+  - `src/lexer.rs`: added `QUESTION` token scanning/dump-label support plus lexer coverage (`scan_tokens_supports_question_operator`).
+  - `src/parser.rs`: added postfix `Expr::Question` parsing (`value()?`) with hidden offset metadata, while preserving existing AST dump contracts; added parser coverage (`parse_ast_supports_postfix_question_operator`).
+  - `src/resolver.rs`: taught resolver traversal to recurse through `Expr::Question` and allow minimal Result constructor builtins (`ok/err`) as valid call targets.
+  - `src/typing.rs`: introduced `Type::Result`, added `[E3001]` diagnostics for non-Result `?` usage, enforced `?` typing constraints, and added minimal `ok/err` builtin inference for positive-path Result propagation; added typing coverage (`infer_types_supports_question_operator_for_result_values`).
+  - `src/main.rs`: wired default `tonic check` path to run typing inference after resolver checks so `?` diagnostics surface via CLI.
+- Confidence protocol: documented DEC-022 in `.ralph/agent/decisions.md` (confidence 72) for the postfix `Expr::Question` + minimal builtin Result strategy.
+- Tooling memory capture: recorded `mem-1771636926-665e` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/typing.rs`; resolved via `cargo fmt --all` then re-ran `cargo fmt --all -- --check`.
+- Verification (green): `cargo test --test check_result_propagation_requires_result`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771636528-f144` after verification.

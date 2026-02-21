@@ -47,6 +47,7 @@ pub enum TokenKind {
     Comma,
     Dot,
     Plus,
+    Question,
     PipeGt,
     Arrow,
     Eof,
@@ -105,6 +106,7 @@ impl Token {
             TokenKind::Comma => "COMMA".to_string(),
             TokenKind::Dot => "DOT".to_string(),
             TokenKind::Plus => "PLUS".to_string(),
+            TokenKind::Question => "QUESTION".to_string(),
             TokenKind::PipeGt => "PIPE_GT".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
             TokenKind::Eof => "EOF".to_string(),
@@ -227,6 +229,11 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 let start = idx;
                 idx += 1;
                 tokens.push(Token::simple(TokenKind::Plus, Span::new(start, idx)));
+            }
+            '?' => {
+                let start = idx;
+                idx += 1;
+                tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
             }
             '|' => {
                 let start = idx;
@@ -475,6 +482,16 @@ mod tests {
                 "RPAREN",
                 "EOF",
             ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_question_operator() {
+        let labels = dump_labels("value()?");
+
+        assert_eq!(
+            labels,
+            ["IDENT(value)", "LPAREN", "RPAREN", "QUESTION", "EOF",]
         );
     }
 

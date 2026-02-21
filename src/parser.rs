@@ -137,6 +137,13 @@ pub enum Expr {
         callee: String,
         args: Vec<Expr>,
     },
+    Question {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        value: Box<Expr>,
+    },
     Binary {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -248,6 +255,14 @@ impl Expr {
         }
     }
 
+    fn question(id: NodeId, offset: usize, value: Expr) -> Self {
+        Self::Question {
+            id,
+            offset,
+            value: Box::new(value),
+        }
+    }
+
     fn binary(id: NodeId, op: BinaryOp, left: Expr, right: Expr) -> Self {
         let offset = left.offset();
 
@@ -284,6 +299,7 @@ impl Expr {
         match self {
             Self::Int { offset, .. }
             | Self::Call { offset, .. }
+            | Self::Question { offset, .. }
             | Self::Binary { offset, .. }
             | Self::Pipe { offset, .. }
             | Self::Case { offset, .. } => *offset,
@@ -449,7 +465,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_binary_expression(&mut self, min_precedence: u8) -> Result<Expr, ParserError> {
-        let mut left = self.parse_primary_expression()?;
+        let mut left = self.parse_postfix_expression()?;
 
         while let Some((precedence, op)) = self.current_binary_operator() {
             if precedence < min_precedence {
@@ -464,7 +480,22 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_primary_expression(&mut self) -> Result<Expr, ParserError> {
+    fn parse_postfix_expression(&mut self) -> Result<Expr, ParserError> {
+        let mut expression = self.parse_atomic_expression()?;
+
+        while self.check(TokenKind::Question) {
+            let offset = self
+                .advance()
+                .expect("question token should be available")
+                .span()
+                .start();
+            expression = Expr::question(self.node_ids.next_expr(), offset, expression);
+        }
+
+        Ok(expression)
+    }
+
+    fn parse_atomic_expression(&mut self) -> Result<Expr, ParserError> {
         if self.check(TokenKind::Case) {
             return self.parse_case_expression();
         }
@@ -826,6 +857,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_postfix_question_operator() {
+        let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    value()?\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"question",
+                "value":{"kind":"call","callee":"value","args":[]}
+            })
+        );
+    }
+
+    #[test]
     fn parse_ast_supports_case_patterns() {
         let tokens = scan_tokens(
             "defmodule PatternDemo do\n  def run() do\n    case input() do\n      {:ok, value} -> 1\n      [head, tail] -> 2\n      %{} -> 3\n      _ -> 4\n    end\n  end\nend\n",
@@ -975,6 +1023,10 @@ mod tests {
                 for arg in args {
                     collect_expr_ids(arg, ids);
                 }
+            }
+            Expr::Question { id, value, .. } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(value, ids);
             }
             Expr::Binary {
                 id, left, right, ..

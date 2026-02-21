@@ -16,12 +16,14 @@ impl TypeSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TypingDiagnosticCode {
     TypeMismatch,
+    QuestionRequiresResult,
 }
 
 impl TypingDiagnosticCode {
     fn as_str(self) -> &'static str {
         match self {
             Self::TypeMismatch => "E2001",
+            Self::QuestionRequiresResult => "E3001",
         }
     }
 }
@@ -53,6 +55,17 @@ impl TypingError {
             offset,
         }
     }
+
+    fn question_requires_result(found: Type, offset: Option<usize>) -> Self {
+        Self {
+            code: Some(TypingDiagnosticCode::QuestionRequiresResult),
+            message: format!(
+                "? operator requires Result value, found {}",
+                found.label_for_question_requirement()
+            ),
+            offset,
+        }
+    }
 }
 
 impl fmt::Display for TypingError {
@@ -73,14 +86,30 @@ impl std::error::Error for TypingError {}
 enum Type {
     Int,
     Dynamic,
+    Result { ok: Box<Type>, err: Box<Type> },
     Var(TypeVarId),
 }
 
 impl Type {
+    fn result(ok: Type, err: Type) -> Self {
+        Self::Result {
+            ok: Box::new(ok),
+            err: Box::new(err),
+        }
+    }
+
     fn label(&self) -> &'static str {
         match self {
             Type::Int => "int",
             Type::Dynamic | Type::Var(_) => "dynamic",
+            Type::Result { .. } => "result",
+        }
+    }
+
+    fn label_for_question_requirement(&self) -> &'static str {
+        match self {
+            Type::Result { .. } => "Result",
+            other => other.label(),
         }
     }
 }
@@ -125,6 +154,19 @@ impl ConstraintSolver {
                 self.substitutions.insert(id, expected_ty);
                 Ok(())
             }
+            (
+                Type::Result {
+                    ok: expected_ok,
+                    err: expected_err,
+                },
+                Type::Result {
+                    ok: found_ok,
+                    err: found_err,
+                },
+            ) => {
+                self.unify(*expected_ok, *found_ok, offset)?;
+                self.unify(*expected_err, *found_err, offset)
+            }
             (Type::Int, Type::Int) | (Type::Dynamic, Type::Dynamic) => Ok(()),
             (expected_ty, found_ty) => {
                 Err(TypingError::type_mismatch(expected_ty, found_ty, offset))
@@ -143,6 +185,7 @@ impl ConstraintSolver {
                     Type::Var(id)
                 }
             }
+            Type::Result { ok, err } => Type::result(self.resolve(*ok), self.resolve(*err)),
             other => other,
         }
     }
@@ -150,6 +193,7 @@ impl ConstraintSolver {
     fn finalize(&mut self, ty: Type) -> Type {
         match self.resolve(ty) {
             Type::Var(_) => Type::Dynamic,
+            Type::Result { ok, err } => Type::result(self.finalize(*ok), self.finalize(*err)),
             concrete => concrete,
         }
     }
@@ -227,6 +271,12 @@ fn infer_expression_type(
     match expr {
         Expr::Int { .. } => Ok(Type::Int),
         Expr::Call { callee, args, .. } => {
+            if let Some(result_type) =
+                infer_builtin_result_call_type(callee, args, current_module, signatures, solver)?
+            {
+                return Ok(result_type);
+            }
+
             for arg in args {
                 infer_expression_type(arg, current_module, signatures, solver)?;
             }
@@ -247,6 +297,25 @@ fn infer_expression_type(
             }
 
             Ok(signature.return_type.clone())
+        }
+        Expr::Question { value, offset, .. } => {
+            let value_type = infer_expression_type(value, current_module, signatures, solver)?;
+            let resolved_value_type = solver.resolve(value_type);
+
+            match resolved_value_type {
+                Type::Result { ok, .. } => Ok(*ok),
+                Type::Var(var_id) => {
+                    let ok_type = solver.fresh_var();
+                    let err_type = solver.fresh_var();
+                    solver.unify(
+                        Type::Var(var_id),
+                        Type::result(ok_type.clone(), err_type),
+                        Some(*offset),
+                    )?;
+                    Ok(ok_type)
+                }
+                other => Err(TypingError::question_requires_result(other, Some(*offset))),
+            }
         }
         Expr::Binary { left, right, .. } => {
             let left_type = infer_expression_type(left, current_module, signatures, solver)?;
@@ -281,6 +350,42 @@ fn infer_expression_type(
 
             Ok(inferred_case_type.unwrap_or(Type::Dynamic))
         }
+    }
+}
+
+fn infer_builtin_result_call_type(
+    callee: &str,
+    args: &[Expr],
+    current_module: &str,
+    signatures: &BTreeMap<String, FunctionSignature>,
+    solver: &mut ConstraintSolver,
+) -> Result<Option<Type>, TypingError> {
+    match callee {
+        "ok" => {
+            if args.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for ok: expected 1 args, found {}",
+                    args.len()
+                )));
+            }
+
+            let ok_type = infer_expression_type(&args[0], current_module, signatures, solver)?;
+            let err_type = solver.fresh_var();
+            Ok(Some(Type::result(ok_type, err_type)))
+        }
+        "err" => {
+            if args.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for err: expected 1 args, found {}",
+                    args.len()
+                )));
+            }
+
+            let ok_type = solver.fresh_var();
+            let err_type = infer_expression_type(&args[0], current_module, signatures, solver)?;
+            Ok(Some(Type::result(ok_type, err_type)))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -338,6 +443,20 @@ mod tests {
             error.to_string(),
             "[E2001] type mismatch: expected int, found dynamic at offset 123"
         );
+    }
+
+    #[test]
+    fn infer_types_supports_question_operator_for_result_values() {
+        let source = "defmodule Demo do\n  def run() do\n    ok(1)?\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize question-operator typing fixture");
+        let ast =
+            parse_ast(&tokens).expect("parser should build question-operator typing fixture ast");
+
+        let summary = infer_types(&ast)
+            .expect("type inference should accept ? when operand is a Result value");
+
+        assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
     }
 
     #[test]
