@@ -7,3 +7,6 @@
 devenv.local.nix
 devenv.local.yaml
 .direnv/
+
+# tonic local runtime artifacts
+.tonic/

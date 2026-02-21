@@ -12,6 +12,7 @@ fn tonic_help_lists_v0_commands() {
             .and(contains("test"))
             .and(contains("fmt"))
             .and(contains("cache"))
-            .and(contains("verify")),
+            .and(contains("verify"))
+            .and(contains("deps")),
     );
 }

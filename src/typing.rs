@@ -394,6 +394,16 @@ fn infer_builtin_call_type(
 
             Ok(Some(Type::Dynamic))
         }
+        "host_call" => {
+            // host_call requires at least 1 arg (the host key atom)
+            // Returns dynamic since host functions can return any type
+            if arg_types.is_empty() {
+                return Err(TypingError::new(
+                    "host_call requires at least 1 argument (host function key)",
+                ));
+            }
+            Ok(Some(Type::Dynamic))
+        }
         _ => Ok(None),
     }
 }

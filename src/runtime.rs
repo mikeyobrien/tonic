@@ -1,3 +1,4 @@
+use crate::interop::{HostError, HOST_REGISTRY};
 use crate::ir::{IrCallTarget, IrOp, IrProgram, IrPattern};
 use std::collections::HashMap;
 use std::fmt;
@@ -292,6 +293,9 @@ fn evaluate_builtin_call(
             let value = expect_single_builtin_arg(name, args, offset)?;
             evaluate_protocol_dispatch(value, offset)
         }
+        "host_call" => {
+            evaluate_host_call(args, offset)
+        }
         _ => Err(RuntimeError::at_offset(
             format!("unsupported builtin call in runtime evaluator: {name}"),
             offset,
@@ -319,6 +323,38 @@ fn evaluate_protocol_dispatch(
         })?;
 
     Ok(RuntimeValue::Int(implementation))
+}
+
+fn evaluate_host_call(
+    mut args: Vec<RuntimeValue>,
+    offset: usize,
+) -> Result<RuntimeValue, RuntimeError> {
+    if args.is_empty() {
+        return Err(RuntimeError::at_offset(
+            "host_call requires at least 1 argument (host function key)",
+            offset,
+        ));
+    }
+
+    // First argument must be the host function key (atom)
+    let key = args.remove(0);
+    let key_str = match key {
+        RuntimeValue::Atom(s) => s,
+        other => {
+            return Err(RuntimeError::at_offset(
+                format!(
+                    "host_call first argument must be an atom (host key), found {}",
+                    other.kind_label()
+                ),
+                offset,
+            ));
+        }
+    };
+
+    // Call the host function via registry
+    HOST_REGISTRY
+        .call(&key_str, &args)
+        .map_err(|e: HostError| RuntimeError::at_offset(e.to_string(), offset))
 }
 
 fn expect_single_builtin_arg(
@@ -496,5 +532,64 @@ mod tests {
         };
 
         assert_eq!(moved_inner_ptr, original_inner_ptr);
+    }
+
+    #[test]
+    fn evaluate_builtin_host_call_identity() {
+        // Test calling the identity host function
+        let result = evaluate_builtin_call(
+            "host_call",
+            vec![
+                RuntimeValue::Atom("identity".to_string()),
+                RuntimeValue::Int(42),
+            ],
+            0,
+        );
+        assert_eq!(result, Ok(RuntimeValue::Int(42)));
+    }
+
+    #[test]
+    fn evaluate_builtin_host_call_sum_ints() {
+        // Test calling the sum_ints host function
+        let result = evaluate_builtin_call(
+            "host_call",
+            vec![
+                RuntimeValue::Atom("sum_ints".to_string()),
+                RuntimeValue::Int(1),
+                RuntimeValue::Int(2),
+                RuntimeValue::Int(3),
+            ],
+            0,
+        );
+        assert_eq!(result, Ok(RuntimeValue::Int(6)));
+    }
+
+    #[test]
+    fn evaluate_builtin_host_call_unknown_function() {
+        // Test calling an unknown host function
+        let result = evaluate_builtin_call(
+            "host_call",
+            vec![RuntimeValue::Atom("nonexistent".to_string())],
+            0,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn evaluate_builtin_host_call_requires_atom_key() {
+        // Test that first argument must be an atom
+        let result = evaluate_builtin_call(
+            "host_call",
+            vec![RuntimeValue::Int(42), RuntimeValue::Int(1)],
+            0,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn evaluate_builtin_host_call_requires_at_least_one_arg() {
+        // Test that host_call requires at least the key argument
+        let result = evaluate_builtin_call("host_call", vec![], 0);
+        assert!(result.is_err());
     }
 }

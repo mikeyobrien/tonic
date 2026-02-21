@@ -1,7 +1,9 @@
 mod acceptance;
 mod cache;
 mod cli_diag;
+mod deps;
 mod ir;
+mod interop;
 mod lexer;
 mod manifest;
 mod parser;
@@ -80,6 +82,7 @@ fn run(args: Vec<String>) -> i32 {
         Some("fmt") => handle_fmt(iter.collect()),
         Some("cache") => run_placeholder("cache"),
         Some("verify") => handle_verify(iter.collect()),
+        Some("deps") => handle_deps(iter.collect()),
         Some(other) => CliDiagnostic::usage_with_hint(
             format!("unknown command '{other}'"),
             "run `tonic --help` to see available commands",
@@ -488,6 +491,105 @@ fn manual_evidence_gate_report(required_paths: &[std::path::PathBuf]) -> (bool, 
     )
 }
 
+fn handle_deps(args: Vec<String>) -> i32 {
+    if matches!(
+        args.first().map(String::as_str),
+        None | Some("-h" | "--help" | "help")
+    ) {
+        print_deps_help();
+        return EXIT_OK;
+    }
+
+    let subcommand = match args.first().map(String::as_str) {
+        Some("sync") | Some("fetch") | Some("lock") => args[0].clone(),
+        Some(other) => {
+            return CliDiagnostic::usage_with_hint(
+                format!("unknown deps subcommand '{other}'"),
+                "run `tonic deps --help` for available subcommands",
+            )
+            .emit();
+        }
+        None => {
+            return CliDiagnostic::usage_with_hint(
+                "missing deps subcommand",
+                "run `tonic deps --help` for available subcommands",
+            )
+            .emit();
+        }
+    };
+
+    // Find project root by looking for tonic.toml
+    let project_root = find_project_root();
+    if project_root.is_none() {
+        return CliDiagnostic::failure("no tonic.toml found in current directory or parents").emit();
+    }
+    let project_root = project_root.unwrap();
+
+    // Load manifest
+    let manifest = match manifest::load_project_manifest(&project_root) {
+        Ok(m) => m,
+        Err(msg) => return CliDiagnostic::failure(msg).emit(),
+    };
+
+    if manifest.dependencies.path.is_empty() && manifest.dependencies.git.is_empty() {
+        println!("No dependencies defined in tonic.toml");
+        return EXIT_OK;
+    }
+
+    match subcommand.as_str() {
+        "sync" | "fetch" => {
+            println!("Syncing dependencies...");
+            match deps::DependencyResolver::sync(&manifest.dependencies, &project_root) {
+                Ok(lockfile) => {
+                    println!("Dependencies synced successfully.");
+                    println!("Lockfile saved to tonic.lock");
+                    println!("  - path dependencies: {}", lockfile.path_deps.len());
+                    println!("  - git dependencies: {}", lockfile.git_deps.len());
+                    EXIT_OK
+                }
+                Err(msg) => CliDiagnostic::failure(format!("failed to sync dependencies: {}", msg)).emit(),
+            }
+        }
+        "lock" => {
+            println!("Generating lockfile...");
+            match deps::Lockfile::generate(&manifest.dependencies, &project_root) {
+                Ok(lockfile) => {
+                    match lockfile.save(&project_root) {
+                        Ok(()) => {
+                            println!("Lockfile generated: tonic.lock");
+                            EXIT_OK
+                        }
+                        Err(msg) => CliDiagnostic::failure(format!("failed to save lockfile: {}", msg)).emit(),
+                    }
+                }
+                Err(msg) => CliDiagnostic::failure(format!("failed to generate lockfile: {}", msg)).emit(),
+            }
+        }
+        _ => EXIT_OK,
+    }
+}
+
+fn find_project_root() -> Option<std::path::PathBuf> {
+    let mut current = std::env::current_dir().ok()?;
+    loop {
+        if current.join("tonic.toml").exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+fn print_deps_help() {
+    println!(
+        "tonic deps - Manage project dependencies\n\n\
+         Usage:\n  tonic deps <SUBCOMMAND>\n\n\
+         Subcommands:\n  sync    Fetch all dependencies and generate lockfile\n  fetch   Alias for sync\n  lock    Generate lockfile without fetching\n\n\
+         Examples:\n  tonic deps sync    # Fetch dependencies and create tonic.lock\n  tonic deps lock    # Just create/update tonic.lock\n"
+    );
+}
+
 fn benchmark_thresholds_report() -> serde_json::Value {
     serde_json::json!({
         "cold_start_p50_ms": BENCHMARK_THRESHOLD_COLD_START_P50_MS,
@@ -498,7 +600,7 @@ fn benchmark_thresholds_report() -> serde_json::Value {
 
 fn print_help() {
     println!(
-        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n"
+        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n"
     );
 }
 
@@ -533,7 +635,7 @@ mod tests {
 
     #[test]
     fn known_commands_exit_success() {
-        for command in ["run", "check", "test", "fmt", "cache"] {
+        for command in ["run", "check", "test", "fmt", "cache", "deps"] {
             assert_eq!(run(vec![command.to_string()]), EXIT_OK);
         }
     }

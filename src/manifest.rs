@@ -1,21 +1,24 @@
 use crate::lexer::scan_tokens;
 use crate::parser::{parse_ast, Ast, Expr};
-use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProjectManifest {
     pub(crate) entry: PathBuf,
+    pub(crate) dependencies: Dependencies,
 }
 
-#[derive(Debug, Deserialize)]
-struct RawManifest {
-    project: Option<RawProject>,
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Dependencies {
+    pub(crate) path: HashMap<String, PathBuf>,
+    pub(crate) git: HashMap<String, GitDep>,
 }
 
-#[derive(Debug, Deserialize)]
-struct RawProject {
-    entry: Option<String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GitDep {
+    pub(crate) url: String,
+    pub(crate) rev: String,
 }
 
 const OPTIONAL_STDLIB_ENUM_SOURCE: &str =
@@ -148,7 +151,7 @@ fn trace_module_load(scope: &str, module_name: &str) {
     eprintln!("module-load {scope}:{module_name}");
 }
 
-fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest, String> {
+pub(crate) fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest, String> {
     let manifest_path = project_root.join("tonic.toml");
     let source = std::fs::read_to_string(&manifest_path)
         .map_err(|error| format!("failed to read tonic.toml: {error}"))?;
@@ -157,19 +160,90 @@ fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest, String>
 }
 
 fn parse_manifest(source: &str) -> Result<ProjectManifest, String> {
-    let manifest: RawManifest =
-        toml::from_str(source).map_err(|error| format!("invalid tonic.toml: {error}"))?;
+    // Parse into Value to handle inline tables correctly
+    let value: toml::Value = toml::from_str(source)
+        .map_err(|error| format!("invalid tonic.toml: {}", error))?;
 
-    let entry = manifest
-        .project
-        .and_then(|project| project.entry)
-        .map(|entry| entry.trim().to_string())
-        .filter(|entry| !entry.is_empty())
+    let entry = value
+        .get("project")
+        .and_then(|p| p.get("entry"))
+        .and_then(|e| e.as_str())
+        .map(|e| e.trim().to_string())
+        .filter(|e| !e.is_empty())
         .ok_or_else(|| "invalid tonic.toml: missing required key project.entry".to_string())?;
+
+    let dependencies = value
+        .get("dependencies")
+        .map(parse_dependencies_from_value)
+        .unwrap_or_else(|| Ok(Dependencies::default()))?;
 
     Ok(ProjectManifest {
         entry: PathBuf::from(entry),
+        dependencies,
     })
+}
+
+fn parse_dependencies_from_value(deps_value: &toml::Value) -> Result<Dependencies, String> {
+    let mut deps = Dependencies::default();
+
+    let deps_table = match deps_value {
+        toml::Value::Table(t) => t,
+        _ => return Ok(Dependencies::default()),
+    };
+
+    // Each key in the table is a dependency name
+    for (name, value) in deps_table {
+        let table = match value {
+            toml::Value::Table(t) => t,
+            _ => continue,
+        };
+
+        // Check if it's a path dependency
+        if let Some(path_val) = table.get("path") {
+            if let Some(path_str) = path_val.as_str() {
+                let resolved = PathBuf::from(path_str);
+                if !resolved.exists() {
+                    return Err(format!(
+                        "invalid tonic.toml: path dependency '{}' points to non-existent path: {}",
+                        name, path_str
+                    ));
+                }
+                deps.path.insert(name.clone(), resolved);
+                continue;
+            }
+        }
+
+        // Check if it's a git dependency
+        if let Some(git_val) = table.get("git") {
+            let Some(url) = git_val.as_str() else {
+                return Err(format!(
+                    "invalid tonic.toml: git dependency '{}' has non-string 'git' value",
+                    name
+                ));
+            };
+            let Some(rev_val) = table.get("rev") else {
+                return Err(format!(
+                    "invalid tonic.toml: git dependency '{}' missing 'rev'",
+                    name
+                ));
+            };
+            let Some(rev) = rev_val.as_str() else {
+                return Err(format!(
+                    "invalid tonic.toml: git dependency '{}' has non-string 'rev' value",
+                    name
+                ));
+            };
+            deps.git.insert(
+                name.clone(),
+                GitDep {
+                    url: url.to_string(),
+                    rev: rev.to_string(),
+                },
+            );
+        }
+    }
+
+    Ok(deps)
 }
 
 fn read_source_file(path: &Path) -> Result<String, String> {
@@ -229,7 +303,7 @@ fn collect_tonic_source_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_run_source, parse_manifest, ProjectManifest};
+    use super::{load_run_source, parse_manifest, Dependencies, ProjectManifest};
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
     use std::path::PathBuf;
@@ -247,7 +321,8 @@ mod tests {
         assert_eq!(
             parse_manifest("[project]\nname = \"demo\"\nentry = \"main.tn\"\n"),
             Ok(ProjectManifest {
-                entry: PathBuf::from("main.tn")
+                entry: PathBuf::from("main.tn"),
+                dependencies: Dependencies::default(),
             })
         );
     }

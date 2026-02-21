@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    host_call(:identity, 42)
+  end
+end

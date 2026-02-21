@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    host_call(:sum_ints, 1, 2, 3)
+  end
+end

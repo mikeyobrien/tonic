@@ -330,7 +330,7 @@ fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
 fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
-        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch"
+        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch" | "host_call"
     )
 }
 
@@ -421,6 +421,28 @@ mod tests {
                 {"op":"return","offset":37}
             ])
         );
+    }
+
+    #[test]
+    fn lower_ast_marks_host_call_as_builtin_call_target() {
+        let source = "defmodule Demo do\n  def run() do\n    host_call(:identity, 42)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should classify host_call as builtin");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        // Find the host_call operation
+        let ops = &json["functions"][0]["ops"];
+        let host_call_op = ops
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|op| op["op"] == "call" && op["callee"]["name"] == "host_call")
+            .expect("lowered ir should include host_call as builtin");
+
+        assert_eq!(host_call_op["callee"]["kind"], "builtin");
+        assert_eq!(host_call_op["callee"]["name"], "host_call");
     }
 
     #[test]

@@ -64,7 +64,7 @@ impl ModuleGraph {
 fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
-        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch"
+        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch" | "host_call"
     )
 }
 
