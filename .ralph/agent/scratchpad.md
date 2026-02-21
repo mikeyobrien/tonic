@@ -523,3 +523,25 @@
 - Tooling memory capture: recorded `mem-1771641227-1581` after `cargo fmt --all -- --check` failed with rustfmt diffs; resolved via `cargo fmt --all` then re-ran checks.
 - Verification (green): `cargo test --test run_protocol_dispatch_smoke`, `cargo test`, `cargo fmt --all`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771640925-3f67` after verification.
+
+## 2026-02-21T02:37:54Z — Builder Step 10.5 (RED)
+- Handled pending `task.complete` event for `task-1771640925-3f67` by confirming the task is already closed (`ralph tools task show task-1771640925-3f67`).
+- Runtime queue had no ready tasks, so I created Step 10.5 follow-up tasks: `task-1771641355-5a0e` (RED pipe + Enum run contract) and blocked `task-1771641358-f88c` (GREEN pipe execution implementation).
+- Added integration test `tests/run_pipe_enum_smoke.rs` asserting `tonic run examples/run_pipe_enum.tn` succeeds and prints `2` for a chained pipeline `tuple(1, 2) |> Enum.stage_one() |> Enum.stage_two()`.
+- Verification (red): `cargo test --test run_pipe_enum_smoke` fails as expected with typing diagnostic `error: arity mismatch for Enum.stage_one: expected 1 args, found 0`, confirming pipe argument threading is not implemented yet.
+- Confidence protocol: documented DEC-042 in `.ralph/agent/decisions.md` (confidence 73) for using unary Enum-style stage functions to isolate the pipe contract from unrelated parser/stdlib gaps.
+- Tooling memory capture: recorded `mem-1771641419-aaa4` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771641355-5a0e`; `task-1771641358-f88c` is now the next ready GREEN task.
+
+## 2026-02-21T02:42:34Z — Builder Step 10.6 (GREEN)
+- Handled pending `task.complete` event for `task-1771641355-5a0e` by confirming it remains closed (`ralph tools task show task-1771641355-5a0e`).
+- Executed ready task `task-1771641358-f88c` and implemented pipe execution by threading lhs values into rhs call arguments:
+  - `src/typing.rs`: refactored call inference through `infer_call_type(...)` and updated `Expr::Pipe` inference so `left |> callee(args...)` is typed as `callee(left, args...)`.
+  - `src/ir.rs`: replaced pipe lowering error path with call-desugaring logic that lowers lhs first, then rhs explicit args, then emits a `call` op with `argc = rhs_args + 1`.
+  - `src/typing/tests.rs`: added `infer_types_threads_pipe_input_into_enum_style_calls` to lock arity threading and return type expectations.
+  - `src/ir.rs` tests: added `lower_ast_threads_pipe_input_into_rhs_call_arguments` to lock IR call-arg threading for pipe chains.
+- Confidence protocol: documented DEC-043 in `.ralph/agent/decisions.md` (confidence 76) for pipe desugaring via existing call paths.
+- Tooling memory capture: recorded `mem-1771641699-3106` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/typing.rs` + `src/typing/tests.rs`; resolved via `cargo fmt --all`.
+- Verification (green): `cargo test --test run_pipe_enum_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771641358-f88c` after verification.

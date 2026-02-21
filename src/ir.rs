@@ -157,7 +157,12 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ops.push(IrOp::Question { offset: *offset });
             Ok(())
         }
-        Expr::Pipe { offset, .. } => Err(LoweringError::unsupported("pipe", *offset)),
+        Expr::Pipe {
+            left,
+            right,
+            offset,
+            ..
+        } => lower_pipe_expr(left, right, *offset, current_module, ops),
         Expr::Case {
             subject,
             branches,
@@ -186,6 +191,38 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             Ok(())
         }
     }
+}
+
+fn lower_pipe_expr(
+    left: &Expr,
+    right: &Expr,
+    pipe_offset: usize,
+    current_module: &str,
+    ops: &mut Vec<IrOp>,
+) -> Result<(), LoweringError> {
+    lower_expr(left, current_module, ops)?;
+
+    let Expr::Call {
+        callee,
+        args,
+        offset,
+        ..
+    } = right
+    else {
+        return Err(LoweringError::unsupported("pipe target", pipe_offset));
+    };
+
+    for arg in args {
+        lower_expr(arg, current_module, ops)?;
+    }
+
+    ops.push(IrOp::Call {
+        callee: qualify_call_target(current_module, callee),
+        argc: args.len() + 1,
+        offset: *offset,
+    });
+
+    Ok(())
 }
 
 fn lower_pattern(pattern: &Pattern, case_offset: usize) -> Result<IrPattern, LoweringError> {
@@ -329,6 +366,38 @@ mod tests {
                 {"op":"return","offset":37}
             ])
         );
+    }
+
+    #[test]
+    fn lower_ast_threads_pipe_input_into_rhs_call_arguments() {
+        let source = "defmodule Enum do\n  def stage_one(_value) do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    tuple(1, 2) |> Enum.stage_one()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support pipe expressions");
+        let run_function = ir
+            .functions
+            .iter()
+            .find(|function| function.name == "Demo.run")
+            .expect("lowered ir should include Demo.run");
+
+        assert!(matches!(
+            &run_function.ops[2],
+            super::IrOp::Call {
+                callee: super::IrCallTarget::Builtin { name },
+                argc: 2,
+                ..
+            } if name == "tuple"
+        ));
+
+        assert!(matches!(
+            &run_function.ops[3],
+            super::IrOp::Call {
+                callee: super::IrCallTarget::Function { name },
+                argc: 1,
+                ..
+            } if name == "Enum.stage_one"
+        ));
     }
 
     #[test]

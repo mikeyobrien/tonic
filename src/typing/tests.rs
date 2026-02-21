@@ -70,6 +70,26 @@ fn infer_types_accepts_protocol_dispatch_builtin_calls() {
 }
 
 #[test]
+fn infer_types_threads_pipe_input_into_enum_style_calls() {
+    let source = "defmodule Enum do\n  def stage_one(_value) do\n    1\n  end\n\n  def stage_two(_value) do\n    2\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    tuple(1, 2) |> Enum.stage_one() |> Enum.stage_two()\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize pipe fixture");
+    let ast = parse_ast(&tokens).expect("parser should build pipe fixture ast");
+
+    let summary =
+        infer_types(&ast).expect("type inference should treat pipe rhs call as receiving lhs");
+
+    assert_eq!(
+        summary.signature("Enum.stage_one"),
+        Some("fn(dynamic) -> int")
+    );
+    assert_eq!(
+        summary.signature("Enum.stage_two"),
+        Some("fn(dynamic) -> int")
+    );
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
+}
+
+#[test]
 fn infer_types_accepts_explicit_dynamic_parameter_annotation() {
     let source = "defmodule Demo do\n  def helper(dynamic value) do\n    1\n  end\n\n  def run() do\n    helper(1)\n  end\nend\n";
     let tokens =

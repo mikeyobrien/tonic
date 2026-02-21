@@ -481,3 +481,27 @@ Template:
 - **Reasoning:** The RED contract only requires protocol-style dispatch behavior for two concrete runtime values with deterministic output. A builtin + runtime table is the narrowest reversible GREEN slice that keeps end-to-end plumbing aligned with existing builtin call flow.
 - **Reversibility:** High — dispatch tables can later be sourced from real protocol declarations without changing call sites.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:33:33Z
+
+## DEC-042
+- **Decision:** Which Step 10.5 RED fixture shape should lock pipe + Enum-style chaining without expanding parser/runtime scope.
+- **Chosen Option:** Add `tonic run` integration coverage for `tuple(1, 2) |> Enum.stage_one() |> Enum.stage_two()` using local `Enum` module unary functions that ignore their input and return deterministic ints, expecting stdout `2`.
+- **Confidence (0-100):** 73
+- **Alternatives Considered:**
+  - Use parameter-referencing function bodies (`protocol_dispatch(value)`) in the fixture.
+  - Depend on an external stdlib `Enum` module before Step 11 loader work.
+  - Use a non-pipeline fixture and defer pipe contract to a later step.
+- **Reasoning:** Current parser/runtime slices do not support variable expression references or stdlib loading. This fixture still pressures the intended behavior (pipe should inject lhs into rhs call arity) while avoiding unrelated parse/module-loader blockers.
+- **Reversibility:** High — fixture function bodies can later evolve to real value-transforming Enum operations once variable semantics and stdlib loading land.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:37:00Z
+
+## DEC-043
+- **Decision:** How to implement Step 10.6 pipe execution semantics for Enum-style call chains without expanding the parser/runtime value model.
+- **Chosen Option:** Desugar `left |> rhs_call(...)` during typing and IR lowering by threading the left expression as the first argument to the rhs call target, while keeping rhs support scoped to call expressions only.
+- **Confidence (0-100):** 76
+- **Alternatives Considered:**
+  - Introduce a dedicated `PipeCall` AST form in the parser and thread it through resolver/typing/lowering.
+  - Execute pipe directly in runtime with a new IR `pipe` opcode instead of lowering to `call`.
+  - Delay pipe execution until variable references/stdlib modules are richer.
+- **Reasoning:** Threading lhs into existing call inference/lowering is the narrowest reversible change that unblocks the failing integration contract (`Enum.stage_one/0` becomes arity-1 at call-site) without introducing new runtime opcodes or parser surface area.
+- **Reversibility:** High — this is localized to typing/lowering call handling and can later be replaced by richer pipe desugaring or dedicated IR.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:42:34Z

@@ -206,32 +206,7 @@ fn infer_expression_type(
     match expr {
         Expr::Int { .. } => Ok(Type::Int),
         Expr::Call { callee, args, .. } => {
-            if let Some(result_type) =
-                infer_builtin_call_type(callee, args, current_module, signatures, solver)?
-            {
-                return Ok(result_type);
-            }
-
-            for arg in args {
-                infer_expression_type(arg, current_module, signatures, solver)?;
-            }
-
-            let target_name = qualify_call_target(current_module, callee);
-            let signature = signatures.get(&target_name).ok_or_else(|| {
-                TypingError::new(format!(
-                    "unknown call target during inference: {target_name}"
-                ))
-            })?;
-
-            if signature.params.len() != args.len() {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {target_name}: expected {} args, found {}",
-                    signature.params.len(),
-                    args.len()
-                )));
-            }
-
-            Ok(signature.return_type.clone())
+            infer_call_type(callee, args, None, current_module, signatures, solver)
         }
         Expr::Question { value, offset, .. } => {
             let value_type = infer_expression_type(value, current_module, signatures, solver)?;
@@ -265,7 +240,19 @@ fn infer_expression_type(
             Ok(Type::Int)
         }
         Expr::Pipe { left, right, .. } => {
-            infer_expression_type(left, current_module, signatures, solver)?;
+            let piped_value_type = infer_expression_type(left, current_module, signatures, solver)?;
+
+            if let Expr::Call { callee, args, .. } = right.as_ref() {
+                return infer_call_type(
+                    callee,
+                    args,
+                    Some(piped_value_type),
+                    current_module,
+                    signatures,
+                    solver,
+                );
+            }
+
             infer_expression_type(right, current_module, signatures, solver)
         }
         Expr::Case {
@@ -301,60 +288,98 @@ fn infer_expression_type(
     }
 }
 
-fn infer_builtin_call_type(
+fn infer_call_type(
     callee: &str,
     args: &[Expr],
+    piped_value_type: Option<Type>,
     current_module: &str,
     signatures: &BTreeMap<String, FunctionSignature>,
+    solver: &mut ConstraintSolver,
+) -> Result<Type, TypingError> {
+    let mut arg_types = Vec::with_capacity(args.len() + usize::from(piped_value_type.is_some()));
+
+    if let Some(piped_value_type) = piped_value_type {
+        arg_types.push(piped_value_type);
+    }
+
+    for arg in args {
+        arg_types.push(infer_expression_type(
+            arg,
+            current_module,
+            signatures,
+            solver,
+        )?);
+    }
+
+    if let Some(result_type) = infer_builtin_call_type(callee, &arg_types, solver)? {
+        return Ok(result_type);
+    }
+
+    let target_name = qualify_call_target(current_module, callee);
+    let signature = signatures.get(&target_name).ok_or_else(|| {
+        TypingError::new(format!(
+            "unknown call target during inference: {target_name}"
+        ))
+    })?;
+
+    if signature.params.len() != arg_types.len() {
+        return Err(TypingError::new(format!(
+            "arity mismatch for {target_name}: expected {} args, found {}",
+            signature.params.len(),
+            arg_types.len()
+        )));
+    }
+
+    Ok(signature.return_type.clone())
+}
+
+fn infer_builtin_call_type(
+    callee: &str,
+    arg_types: &[Type],
     solver: &mut ConstraintSolver,
 ) -> Result<Option<Type>, TypingError> {
     match callee {
         "ok" => {
-            if args.len() != 1 {
+            if arg_types.len() != 1 {
                 return Err(TypingError::new(format!(
                     "arity mismatch for ok: expected 1 args, found {}",
-                    args.len()
+                    arg_types.len()
                 )));
             }
 
-            let ok_type = infer_expression_type(&args[0], current_module, signatures, solver)?;
+            let ok_type = arg_types[0].clone();
             let err_type = solver.fresh_var();
             Ok(Some(Type::result(ok_type, err_type)))
         }
         "err" => {
-            if args.len() != 1 {
+            if arg_types.len() != 1 {
                 return Err(TypingError::new(format!(
                     "arity mismatch for err: expected 1 args, found {}",
-                    args.len()
+                    arg_types.len()
                 )));
             }
 
             let ok_type = solver.fresh_var();
-            let err_type = infer_expression_type(&args[0], current_module, signatures, solver)?;
+            let err_type = arg_types[0].clone();
             Ok(Some(Type::result(ok_type, err_type)))
         }
         "tuple" | "map" | "keyword" => {
-            if args.len() != 2 {
+            if arg_types.len() != 2 {
                 return Err(TypingError::new(format!(
                     "arity mismatch for {callee}: expected 2 args, found {}",
-                    args.len()
+                    arg_types.len()
                 )));
             }
-
-            infer_expression_type(&args[0], current_module, signatures, solver)?;
-            infer_expression_type(&args[1], current_module, signatures, solver)?;
 
             Ok(Some(Type::Dynamic))
         }
         "protocol_dispatch" => {
-            if args.len() != 1 {
+            if arg_types.len() != 1 {
                 return Err(TypingError::new(format!(
                     "arity mismatch for protocol_dispatch: expected 1 args, found {}",
-                    args.len()
+                    arg_types.len()
                 )));
             }
-
-            infer_expression_type(&args[0], current_module, signatures, solver)?;
 
             Ok(Some(Type::Dynamic))
         }
