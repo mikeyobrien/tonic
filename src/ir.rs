@@ -4,19 +4,19 @@ use std::fmt;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct IrProgram {
-    functions: Vec<IrFunction>,
+    pub(crate) functions: Vec<IrFunction>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
-struct IrFunction {
-    name: String,
-    params: Vec<String>,
-    ops: Vec<IrOp>,
+pub(crate) struct IrFunction {
+    pub(crate) name: String,
+    pub(crate) params: Vec<String>,
+    pub(crate) ops: Vec<IrOp>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "op", rename_all = "snake_case")]
-enum IrOp {
+pub(crate) enum IrOp {
     ConstInt {
         value: i64,
         offset: usize,
@@ -43,20 +43,20 @@ enum IrOp {
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum IrCallTarget {
+pub(crate) enum IrCallTarget {
     Builtin { name: String },
     Function { name: String },
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
-struct IrCaseBranch {
-    pattern: IrPattern,
-    ops: Vec<IrOp>,
+pub(crate) struct IrCaseBranch {
+    pub(crate) pattern: IrPattern,
+    pub(crate) ops: Vec<IrOp>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-enum IrPattern {
+pub(crate) enum IrPattern {
     Atom { value: String },
     Bind { name: String },
     Wildcard,

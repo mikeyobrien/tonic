@@ -5,6 +5,7 @@ mod lexer;
 mod parser;
 mod resolver;
 mod resolver_diag;
+mod runtime;
 mod typing;
 
 use acceptance::{load_acceptance_yaml, load_feature_scenarios};
@@ -13,6 +14,7 @@ use ir::lower_ast_to_ir;
 use lexer::scan_tokens;
 use parser::parse_ast;
 use resolver::resolve_ast;
+use runtime::evaluate_entrypoint;
 use typing::infer_types;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,7 +63,7 @@ fn run(args: Vec<String>) -> i32 {
             print_help();
             EXIT_OK
         }
-        Some("run") => run_placeholder("run"),
+        Some("run") => handle_run(iter.collect()),
         Some("check") => handle_check(iter.collect()),
         Some("test") => run_placeholder("test"),
         Some("fmt") => run_placeholder("fmt"),
@@ -73,6 +75,63 @@ fn run(args: Vec<String>) -> i32 {
         )
         .emit(),
     }
+}
+
+fn handle_run(args: Vec<String>) -> i32 {
+    if matches!(
+        args.first().map(String::as_str),
+        None | Some("-h" | "--help")
+    ) {
+        print_run_help();
+        return EXIT_OK;
+    }
+
+    let source_path = args[0].clone();
+
+    for argument in args.iter().skip(1) {
+        return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
+    }
+
+    let source = match std::fs::read_to_string(&source_path) {
+        Ok(contents) => contents,
+        Err(error) => {
+            return CliDiagnostic::failure(format!(
+                "failed to read source file {source_path}: {error}"
+            ))
+            .emit();
+        }
+    };
+
+    let tokens = match scan_tokens(&source) {
+        Ok(tokens) => tokens,
+        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+    };
+
+    let ast = match parse_ast(&tokens) {
+        Ok(ast) => ast,
+        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+    };
+
+    if let Err(error) = resolve_ast(&ast) {
+        return CliDiagnostic::failure(error.to_string()).emit();
+    }
+
+    if let Err(error) = infer_types(&ast) {
+        return CliDiagnostic::failure(error.to_string()).emit();
+    }
+
+    let ir = match lower_ast_to_ir(&ast) {
+        Ok(ir) => ir,
+        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+    };
+
+    let value = match evaluate_entrypoint(&ir) {
+        Ok(value) => value,
+        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+    };
+
+    println!("{}", value.render());
+    EXIT_OK
 }
 
 fn run_placeholder(command: &str) -> i32 {
@@ -273,6 +332,10 @@ fn print_help() {
     println!(
         "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n"
     );
+}
+
+fn print_run_help() {
+    println!("Usage:\n  tonic run <path>\n");
 }
 
 fn print_check_help() {

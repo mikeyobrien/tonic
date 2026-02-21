@@ -373,3 +373,27 @@ Template:
 - **Reasoning:** Although the RED contract only pins `const_int`/`return`, op-local offsets on all instructions keep IR diagnostics uniform and avoid a follow-up schema migration as soon as runtime error mapping expands beyond literals.
 - **Reversibility:** High — offsets can later move to richer span structs or a dedicated source-map section with coordinated snapshot updates.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:00:30Z
+
+## DEC-033
+- **Decision:** What initial runtime entrypoint/output contract to lock in Step 9.1 RED.
+- **Chosen Option:** Add an integration test expecting `tonic run <path>` to execute a `run()` function from the script module and print the evaluated arithmetic result (`3\n`) to stdout.
+- **Confidence (0-100):** 72
+- **Alternatives Considered:**
+  - Require an explicit entrypoint argument (`Module.function`) before implementing `run` semantics.
+  - Execute the first declared function implicitly without naming convention.
+  - Delay output assertions and only check that `run` no longer prints the skeleton placeholder.
+- **Reasoning:** The plan calls for an end-to-end arithmetic/script output test first. A `run()` convention is the narrowest deterministic contract compatible with the current module/function-only parser and gives the GREEN step a clear target.
+- **Reversibility:** High — CLI entrypoint selection can be expanded later (explicit flags, manifest defaults) with coordinated test updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:02:48Z
+
+## DEC-034
+- **Decision:** How to implement Step 9.2 runtime execution while minimizing scope.
+- **Chosen Option:** Add a small stack-based IR evaluator in a dedicated `runtime` module, wire `tonic run <path>` through scan/parse/resolve/type/lower/evaluate, and execute a fixed `Demo.run` entrypoint with integer output rendering.
+- **Confidence (0-100):** 77
+- **Alternatives Considered:**
+  - Evaluate AST directly and bypass IR.
+  - Keep `run` as a placeholder and only satisfy the test with hardcoded output.
+  - Add full `question`/`case` runtime semantics in this slice.
+- **Reasoning:** Step 9.2 asks for a minimal evaluator loop and `tonic run` wiring. Evaluating existing IR keeps the architecture aligned with Step 8, satisfies the arithmetic smoke contract, and avoids overbuilding before Step 9.3 Result-propagation tests are locked.
+- **Reversibility:** High — evaluator op coverage can be extended incrementally, and entrypoint selection can move to CLI flags/manifest later without rewriting the pipeline.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:07:10Z

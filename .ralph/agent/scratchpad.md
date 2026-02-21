@@ -420,3 +420,24 @@
 - Tooling memory capture: recorded `mem-1771639186-44d8` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/ir.rs`; resolved via `cargo fmt --all` then re-ran checks.
 - Verification (green): `cargo test --test check_dump_ir_source_map`, `cargo test --test check_dump_ir_result_case`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771638965-c280` after verification.
+
+## 2026-02-21T02:02:48Z — Builder Step 9.1 (RED)
+- Handled pending `task.complete` event for `task-1771638965-c280` by confirming it was already closed (`ralph tools task show task-1771638965-c280`).
+- Runtime queue had no ready tasks, so I created Step 9 follow-up tasks: `task-1771639329-f99d` (RED tonic run arithmetic contract) and blocked `task-1771639332-0772` (GREEN runtime evaluator + run wiring).
+- Added integration test `tests/run_arithmetic_smoke.rs` asserting `tonic run examples/run_smoke.tn` succeeds and prints `3` for a minimal `Demo.run` arithmetic script.
+- Verification (red): `cargo test --test run_arithmetic_smoke` fails as expected with stdout mismatch (`"tonic run command skeleton\n"` vs `"3\n"`), confirming runtime execution is not implemented yet.
+- Confidence protocol: documented DEC-033 in `.ralph/agent/decisions.md` (confidence 72) for locking the initial Step 9 entrypoint/output contract.
+- Tooling memory capture: recorded `mem-1771639357-e969` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771639329-f99d`; `task-1771639332-0772` is now the next ready GREEN task.
+
+## 2026-02-21T02:07:23Z — Builder Step 9.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771639329-f99d` by confirming it was already closed (`ralph tools task show task-1771639329-f99d`), then executed ready task `task-1771639332-0772`.
+- Implemented a minimal IR runtime evaluator and wired `tonic run` through the full frontend pipeline:
+  - `src/runtime.rs` (new): added a stack-based evaluator for `const_int`, `add_int`, `call`, and `return`, with deterministic runtime diagnostics and a fixed `Demo.run` entrypoint.
+  - `src/main.rs`: replaced `run` placeholder routing with `handle_run`, including source loading, scan/parse/resolve/type/lower/evaluate flow and integer result printing.
+  - `src/ir.rs`: exposed IR internals at `pub(crate)` visibility so the runtime evaluator can execute lowered ops without changing `--dump-ir` contracts.
+- Added runtime unit coverage in `src/runtime.rs` (`evaluate_entrypoint_executes_integer_addition`, `evaluate_entrypoint_errors_when_demo_run_missing`) and satisfied the Step 9.1 integration contract in `tests/run_arithmetic_smoke.rs`.
+- Confidence protocol: documented DEC-034 in `.ralph/agent/decisions.md` (confidence 77) for choosing minimal IR execution over AST-direct evaluation or broader runtime semantics.
+- Tooling memory capture: recorded `mem-1771639609-837d` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/runtime.rs`; resolved via `cargo fmt --all` and re-ran checks.
+- Verification (green): `cargo test --test run_arithmetic_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
