@@ -304,3 +304,47 @@
 - Tooling memory capture: recorded `mem-1771636926-665e` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/typing.rs`; resolved via `cargo fmt --all` then re-ran `cargo fmt --all -- --check`.
 - Verification (green): `cargo test --test check_result_propagation_requires_result`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771636528-f144` after verification.
+
+## 2026-02-21T01:26:57Z — Builder Step 7.3 (RED)
+- Handled pending `task.complete` event for `task-1771636528-f144` by confirming it was already closed (`ralph tools task show task-1771636528-f144`).
+- Runtime queue was empty, so I created Step 7 follow-up tasks: `task-1771637173-e227` (RED non-exhaustive case diagnostic contract) and blocked `task-1771637175-8208` (GREEN case exhaustiveness diagnostics).
+- Added integration test `tests/check_non_exhaustive_case.rs` asserting `tonic check examples/non_exhaustive_case.tn` fails deterministically with `error: [E3002] non-exhaustive case expression: missing wildcard branch at offset 37` when no `_` branch is present.
+- Verification (red): `cargo test --test check_non_exhaustive_case` fails as expected with current behavior (status 0 / success), confirming exhaustiveness checks are not implemented yet.
+- Confidence protocol: documented DEC-023 in `.ralph/agent/decisions.md` (confidence 64) for locking wildcard-missing as the initial exhaustiveness contract.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771637173-e227`; `task-1771637175-8208` is now the next ready GREEN task.
+
+## 2026-02-21T01:31:43Z — Builder Step 7.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771637173-e227` by confirming it was already closed (`ralph tools task show task-1771637173-e227`), then executed ready task `task-1771637175-8208`.
+- Implemented baseline `case` exhaustiveness diagnostics in typing:
+  - `src/typing.rs`: added typed diagnostic code `[E3002]` and rejects `Expr::Case` nodes that omit a top-level wildcard (`_`) branch, reporting `non-exhaustive case expression: missing wildcard branch` at the case expression offset.
+  - `src/typing.rs`: extracted unit tests into `src/typing/tests.rs` to keep implementation file size under the 500-line cap while preserving existing coverage.
+  - `src/typing/tests.rs`: added `infer_types_reports_non_exhaustive_case_without_wildcard_branch` and updated the mismatch fixture contract to remain valid under new exhaustiveness enforcement (`[E2001] ... found result at offset 73`).
+- Confidence protocol: documented DEC-024 in `.ralph/agent/decisions.md` (confidence 76) for wildcard-branch baseline exhaustiveness scope.
+- Tooling memory capture: recorded `mem-1771637473-53d8` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/typing/tests.rs`; resolved with `cargo fmt --all` and reran checks.
+- Verification (green): `cargo test --test check_non_exhaustive_case`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Ready to close task `task-1771637175-8208`.
+
+## 2026-02-21T01:37:17Z — Builder Step 7.5 (REFACTOR)
+- Handled pending `task.complete` event for `task-1771637175-8208` by confirming it was already closed (`ralph tools task show task-1771637175-8208`), then created and executed `task-1771637637-afb8` for Step 7.5 diagnostic harmonization.
+- RED: added typing unit contract `infer_types_harmonizes_result_and_match_diagnostics` in `src/typing/tests.rs` requiring inference errors to expose structured diagnostics (`code()` + `message()`) for both `?` non-Result (`E3001`) and non-exhaustive `case` (`E3002`); initial `cargo test infer_types_harmonizes_result_and_match_diagnostics` failed at compile time because `TypingError` lacked accessor methods.
+- GREEN/REFACTOR:
+  - `src/typing_diag.rs` (new): extracted typing diagnostics (`TypingDiagnosticCode`, `TypingError`, stable constructors, display contract) and centralized Result/match-specific constructors through shared helper wiring.
+  - `src/typing.rs`: wired inference to the new diagnostics module (`typing::diag` via `#[path = "typing_diag.rs"]`), preserving existing CLI text contracts while removing inline diagnostic definitions.
+  - `src/typing/tests.rs`: kept new harmonization assertions and updated imports to consume `TypingDiagnosticCode` from the extracted diagnostics module.
+- Confidence protocol: documented DEC-025 in `.ralph/agent/decisions.md` (confidence 74) for choosing the focused `typing::diag` extraction over a compiler-wide diagnostics framework.
+- Tooling memory capture:
+  - `mem-1771637663-8285` for the expected RED compile failure (`TypingError` missing `code()/message()` accessors).
+  - `mem-1771637775-4448` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/typing/tests.rs` and `src/typing_diag.rs`; resolved via `cargo fmt --all`.
+- Verification (green): `cargo test infer_types_harmonizes_result_and_match_diagnostics`, `cargo test --test check_result_propagation_requires_result`, `cargo test --test check_non_exhaustive_case`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771637637-afb8` after verification.
+
+## 2026-02-21T01:39:40Z — Builder Step 8.1 (RED)
+- Handled pending `task.complete` event for `task-1771637637-afb8` by confirming it was already closed via `ralph tools task show task-1771637637-afb8`.
+- Runtime queue was empty, so I created Step 8 follow-up tasks: `task-1771637942-a5e3` (RED lowering snapshot contract) and blocked `task-1771637944-b628` (GREEN minimal IR lowering + `--dump-ir` wiring).
+- Added integration test `tests/check_dump_ir_smoke.rs` asserting `tonic check examples/ir_smoke.tn --dump-ir` succeeds and emits deterministic IR JSON for `Demo.run` with linear ops (`const_int`, `return`).
+- Verification (red): `cargo test --test check_dump_ir_smoke` fails as expected because `tonic check` currently rejects `--dump-ir` with usage error `error: unexpected argument '--dump-ir'`.
+- Confidence protocol: documented DEC-026 in `.ralph/agent/decisions.md` (confidence 66) for choosing a compact ops-based IR snapshot contract.
+- Tooling memory capture: recorded `mem-1771637977-6064` for the expected RED failure (`--dump-ir` unsupported); this now points the GREEN slice to add CLI flag + lowering pipeline.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771637942-a5e3`; `task-1771637944-b628` is now the next ready GREEN task.

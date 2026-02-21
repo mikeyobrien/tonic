@@ -255,3 +255,62 @@ Template:
 - **Reasoning:** This is the narrowest end-to-end implementation that satisfies the locked RED integration contract, preserves current JSON output fixtures, and leaves room for richer Result semantics in later steps.
 - **Reversibility:** High — builtin handling and `Expr::Question` lowering behavior can be refined later without changing current CLI diagnostic contracts.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T01:22:32Z
+
+## DEC-023
+- **Decision:** What initial non-exhaustive `case` contract to lock for Step 7.3 RED before exhaustiveness checking exists.
+- **Chosen Option:** Add a failing CLI integration test that expects `tonic check` to reject a `case` expression lacking `_` with `error: [E3002] non-exhaustive case expression: missing wildcard branch at offset 37`.
+- **Confidence (0-100):** 64
+- **Alternatives Considered:**
+  - Start with unit tests in `typing.rs` only and defer CLI contract.
+  - Require full pattern-coverage analysis (atom/tuple/list/map combinations) in the first RED contract.
+  - Assert only generic failure without pinning a code/message.
+- **Reasoning:** The plan calls for a non-exhaustive `case` failure, but full v0 coverage analysis is broader than one RED slice. Requiring a wildcard fallback is the narrowest deterministic contract that drives Step 7.4 implementation while preserving current parser/type-check architecture.
+- **Reversibility:** High — this baseline contract can expand to richer coverage analysis once additional pattern semantics are implemented.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:27:00Z
+
+## DEC-024
+- **Decision:** How to scope Step 7.4 exhaustiveness checking for `case` without overbuilding pattern-coverage analysis.
+- **Chosen Option:** Enforce a v0 baseline rule in typing: every `case` must include at least one top-level wildcard (`_`) branch; otherwise emit `[E3002] non-exhaustive case expression: missing wildcard branch` at the `case` expression offset.
+- **Confidence (0-100):** 76
+- **Alternatives Considered:**
+  - Implement full structural pattern coverage (atom/tuple/list/map space) in this slice.
+  - Add parser-time rejection instead of typing-time diagnostics.
+  - Only fail empty branch lists and allow non-wildcard-only cases.
+- **Reasoning:** The locked RED contract is explicitly about missing wildcard coverage. A wildcard-presence rule is deterministic, minimal, and reversible while still enforcing concrete exhaustiveness backpressure in `tonic check`.
+- **Reversibility:** High — richer coverage analysis can replace/extend this guard in follow-up slices without breaking current diagnostic plumbing.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:31:25Z
+
+## DEC-025
+- **Decision:** How to refactor Step 7.5 Result/match diagnostics without introducing a broad compiler-wide diagnostics framework.
+- **Chosen Option:** Extract typing diagnostics into a dedicated `typing::diag` module and route both `[E3001]` (`?` requires Result) and `[E3002]` (non-exhaustive case) through shared constructors, while exposing test-only `code()`/`message()` accessors.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Keep diagnostic code/message constructors inline in `typing.rs` and only add test assertions on rendered strings.
+  - Introduce a global diagnostics abstraction spanning lexer/parser/resolver/typing in this slice.
+- **Reasoning:** A focused extraction harmonizes Result+match error handling in one place, matches the prior resolver-diagnostics refactor pattern, and preserves existing CLI contracts without over-scoping the iteration.
+- **Reversibility:** High — the module can be folded into a future shared diagnostics layer or expanded with richer metadata later.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:37:17Z
+
+## DEC-026
+- **Decision:** What initial IR JSON contract to lock for Step 8.1 RED before lowering exists.
+- **Chosen Option:** Add a failing integration test for `tonic check <file> --dump-ir` that expects a compact function-level IR snapshot with linear ops (`const_int`, `return`) for `Demo.run/0`.
+- **Confidence (0-100):** 66
+- **Alternatives Considered:**
+  - Assert only that `--dump-ir` succeeds without pinning output schema.
+  - Reuse AST JSON shape for `--dump-ir` to minimize implementation effort.
+  - Start with unit-only lowering tests before exposing any CLI contract.
+- **Reasoning:** Step 8.1 requires a lowering snapshot contract. Locking a minimal but distinct ops-based JSON shape creates clear backpressure for Step 8.2 while avoiding over-scoping into source maps and control-flow structure.
+- **Reversibility:** High — the IR schema is still early and can evolve with coordinated snapshot updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:39:00Z
+
+## DEC-027
+- **Decision:** How to scope the first Step 8.2 GREEN IR lowering implementation while keeping the path ready for later Result/case lowering.
+- **Chosen Option:** Introduce a dedicated `ir` module with a compact op stream (`const_int`, `call`, `add_int`, `return`), wire `tonic check --dump-ir` through resolver+typing before lowering, and fail fast on unsupported expression forms (`question`, `pipe`, `case`) for now.
+- **Confidence (0-100):** 77
+- **Alternatives Considered:**
+  - Lower every current AST variant immediately (including `?` and `case`) before any Step 8.3 RED contract exists.
+  - Emit IR directly from parser output without running typing first.
+  - Reuse AST JSON output for `--dump-ir` to avoid introducing a new lowering layer.
+- **Reasoning:** The active GREEN contract only requires deterministic IR output for a simple typed function and explicitly names literals/calls. A focused lowering module plus CLI wiring keeps the slice minimal, preserves test determinism, and avoids overbuilding ahead of the next RED steps.
+- **Reversibility:** High — op names and unsupported-form handling are localized to `src/ir.rs` and can be extended once Step 8.3 contracts are locked.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:42:51Z

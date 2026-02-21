@@ -105,6 +105,10 @@ impl Parameter {
         }
     }
 
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn annotation(&self) -> ParameterAnnotation {
         self.annotation
     }
