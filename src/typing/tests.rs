@@ -1,3 +1,4 @@
+use super::diag::TypingDiagnosticCode;
 use super::infer_types;
 use crate::lexer::scan_tokens;
 use crate::parser::parse_ast;
@@ -85,5 +86,45 @@ fn infer_types_reports_non_exhaustive_case_without_wildcard_branch() {
     assert_eq!(
         error.to_string(),
         "[E3002] non-exhaustive case expression: missing wildcard branch at offset 37"
+    );
+}
+
+#[test]
+fn infer_types_harmonizes_result_and_match_diagnostics() {
+    let question_source =
+        "defmodule Demo do\n  def value() do\n    1\n  end\n\n  def run() do\n    value()?\n  end\nend\n";
+    let question_tokens =
+        scan_tokens(question_source).expect("scanner should tokenize question mismatch fixture");
+    let question_ast =
+        parse_ast(&question_tokens).expect("parser should build question mismatch fixture ast");
+
+    let question_error =
+        infer_types(&question_ast).expect_err("type inference should reject question on int");
+
+    assert_eq!(
+        question_error.code(),
+        Some(TypingDiagnosticCode::QuestionRequiresResult)
+    );
+    assert_eq!(
+        question_error.message(),
+        "? operator requires Result value, found int"
+    );
+
+    let case_source = "defmodule Demo do\n  def run() do\n    case value() do\n      :ok -> 1\n    end\n  end\n\n  def value() do\n    1\n  end\nend\n";
+    let case_tokens =
+        scan_tokens(case_source).expect("scanner should tokenize non-exhaustive case fixture");
+    let case_ast =
+        parse_ast(&case_tokens).expect("parser should build non-exhaustive case fixture ast");
+
+    let case_error =
+        infer_types(&case_ast).expect_err("type inference should reject non-exhaustive case");
+
+    assert_eq!(
+        case_error.code(),
+        Some(TypingDiagnosticCode::NonExhaustiveCase)
+    );
+    assert_eq!(
+        case_error.message(),
+        "non-exhaustive case expression: missing wildcard branch"
     );
 }

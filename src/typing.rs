@@ -1,6 +1,8 @@
 use crate::parser::{Ast, Expr, ParameterAnnotation, Pattern};
+#[path = "typing_diag.rs"]
+mod diag;
+use diag::TypingError;
 use std::collections::{BTreeMap, HashMap};
-use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeSummary {
@@ -12,85 +14,6 @@ impl TypeSummary {
         self.signatures.get(name).map(String::as_str)
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TypingDiagnosticCode {
-    TypeMismatch,
-    QuestionRequiresResult,
-    NonExhaustiveCase,
-}
-
-impl TypingDiagnosticCode {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::TypeMismatch => "E2001",
-            Self::QuestionRequiresResult => "E3001",
-            Self::NonExhaustiveCase => "E3002",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypingError {
-    code: Option<TypingDiagnosticCode>,
-    message: String,
-    offset: Option<usize>,
-}
-
-impl TypingError {
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            code: None,
-            message: message.into(),
-            offset: None,
-        }
-    }
-
-    fn type_mismatch(expected: Type, found: Type, offset: Option<usize>) -> Self {
-        Self {
-            code: Some(TypingDiagnosticCode::TypeMismatch),
-            message: format!(
-                "type mismatch: expected {}, found {}",
-                expected.label(),
-                found.label()
-            ),
-            offset,
-        }
-    }
-
-    fn question_requires_result(found: Type, offset: Option<usize>) -> Self {
-        Self {
-            code: Some(TypingDiagnosticCode::QuestionRequiresResult),
-            message: format!(
-                "? operator requires Result value, found {}",
-                found.label_for_question_requirement()
-            ),
-            offset,
-        }
-    }
-
-    fn non_exhaustive_case(offset: Option<usize>) -> Self {
-        Self {
-            code: Some(TypingDiagnosticCode::NonExhaustiveCase),
-            message: "non-exhaustive case expression: missing wildcard branch".to_string(),
-            offset,
-        }
-    }
-}
-
-impl fmt::Display for TypingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (self.code, self.offset) {
-            (Some(code), Some(offset)) => {
-                write!(f, "[{}] {} at offset {offset}", code.as_str(), self.message)
-            }
-            (Some(code), None) => write!(f, "[{}] {}", code.as_str(), self.message),
-            (None, _) => write!(f, "{}", self.message),
-        }
-    }
-}
-
-impl std::error::Error for TypingError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Type {
@@ -178,9 +101,11 @@ impl ConstraintSolver {
                 self.unify(*expected_err, *found_err, offset)
             }
             (Type::Int, Type::Int) | (Type::Dynamic, Type::Dynamic) => Ok(()),
-            (expected_ty, found_ty) => {
-                Err(TypingError::type_mismatch(expected_ty, found_ty, offset))
-            }
+            (expected_ty, found_ty) => Err(TypingError::type_mismatch(
+                expected_ty.label(),
+                found_ty.label(),
+                offset,
+            )),
         }
     }
 
@@ -324,7 +249,10 @@ fn infer_expression_type(
                     )?;
                     Ok(ok_type)
                 }
-                other => Err(TypingError::question_requires_result(other, Some(*offset))),
+                other => Err(TypingError::question_requires_result(
+                    other.label_for_question_requirement(),
+                    Some(*offset),
+                )),
             }
         }
         Expr::Binary { left, right, .. } => {
