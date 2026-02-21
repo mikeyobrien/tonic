@@ -123,7 +123,7 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                     .iter()
                     .any(|arg| expr_references_module(arg, module_name))
         }
-        Expr::Question { value, .. } => expr_references_module(value, module_name),
+        Expr::Question { value, .. } | Expr::Unary { value, .. } => expr_references_module(value, module_name),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
             expr_references_module(left, module_name) || expr_references_module(right, module_name)
         }
@@ -135,6 +135,7 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                     .iter()
                     .any(|branch| expr_references_module(branch.body(), module_name))
         }
+        Expr::Group { inner, .. } => expr_references_module(inner, module_name),
         Expr::Variable { .. } | Expr::Atom { .. } => false,
     }
 }

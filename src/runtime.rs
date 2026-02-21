@@ -17,6 +17,8 @@ pub enum RuntimeValue {
     Tuple(Box<RuntimeValue>, Box<RuntimeValue>),
     Map(Box<RuntimeValue>, Box<RuntimeValue>),
     Keyword(Box<RuntimeValue>, Box<RuntimeValue>),
+    List(Vec<RuntimeValue>),
+    Range(i64, i64),
 }
 
 impl RuntimeValue {
@@ -32,6 +34,11 @@ impl RuntimeValue {
             Self::Tuple(left, right) => format!("{{{}, {}}}", left.render(), right.render()),
             Self::Map(key, value) => format!("%{{{} => {}}}", key.render(), value.render()),
             Self::Keyword(key, value) => format!("[{}: {}]", key.render(), value.render()),
+            Self::List(items) => {
+                let items: Vec<String> = items.iter().map(|item| item.render()).collect();
+                format!("[{}]", items.join(", "))
+            }
+            Self::Range(start, end) => format!("{}..{}", start, end),
         }
     }
 
@@ -46,6 +53,8 @@ impl RuntimeValue {
             Self::Tuple(_, _) => "tuple",
             Self::Map(_, _) => "map",
             Self::Keyword(_, _) => "keyword",
+            Self::List(_) => "list",
+            Self::Range(_, _) => "range",
         }
     }
 }
@@ -149,6 +158,117 @@ fn evaluate_ops(
             } => {
                 let value = evaluate_call(program, callee, stack, *argc, *offset)?;
                 stack.push(value);
+            }
+            IrOp::Not { offset } => {
+                let value = pop_value(stack, *offset, "not")?;
+                let truthy = !matches!(value, RuntimeValue::Nil | RuntimeValue::Bool(false));
+                stack.push(RuntimeValue::Bool(!truthy));
+            }
+            IrOp::AndAnd { right_ops, offset } => {
+                let value = pop_value(stack, *offset, "&&")?;
+                let truthy = !matches!(value, RuntimeValue::Nil | RuntimeValue::Bool(false));
+                if truthy {
+                    let mut child_stack = Vec::new();
+                    evaluate_ops(program, right_ops, env, &mut child_stack)?;
+                    stack.push(pop_value(&mut child_stack, *offset, "&&")?);
+                } else {
+                    stack.push(value);
+                }
+            }
+            IrOp::OrOr { right_ops, offset } => {
+                let value = pop_value(stack, *offset, "||")?;
+                let truthy = !matches!(value, RuntimeValue::Nil | RuntimeValue::Bool(false));
+                if truthy {
+                    stack.push(value);
+                } else {
+                    let mut child_stack = Vec::new();
+                    evaluate_ops(program, right_ops, env, &mut child_stack)?;
+                    stack.push(pop_value(&mut child_stack, *offset, "||")?);
+                }
+            }
+            IrOp::And { right_ops, offset } => {
+                let left = pop_value(stack, *offset, "and")?;
+                match left {
+                    RuntimeValue::Bool(true) => {
+                        let mut child_stack = Vec::new();
+                        evaluate_ops(program, right_ops, env, &mut child_stack)?;
+                        stack.push(pop_value(&mut child_stack, *offset, "and")?);
+                    }
+                    RuntimeValue::Bool(false) => {
+                        stack.push(RuntimeValue::Bool(false));
+                    }
+                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
+                }
+            }
+            IrOp::Or { right_ops, offset } => {
+                let left = pop_value(stack, *offset, "or")?;
+                match left {
+                    RuntimeValue::Bool(false) => {
+                        let mut child_stack = Vec::new();
+                        evaluate_ops(program, right_ops, env, &mut child_stack)?;
+                        stack.push(pop_value(&mut child_stack, *offset, "or")?);
+                    }
+                    RuntimeValue::Bool(true) => {
+                        stack.push(RuntimeValue::Bool(true));
+                    }
+                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
+                }
+            }
+            IrOp::Concat { offset } => {
+                let right = pop_value(stack, *offset, "<>")?;
+                let left = pop_value(stack, *offset, "<>")?;
+                match (left, right) {
+                    (RuntimeValue::String(l), RuntimeValue::String(r)) => stack.push(RuntimeValue::String(l + &r)),
+                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
+                }
+            }
+            IrOp::In { offset } => {
+                let right = pop_value(stack, *offset, "in")?;
+                let left = pop_value(stack, *offset, "in")?;
+                
+                let found = match right {
+                    RuntimeValue::List(items) => items.contains(&left),
+                    RuntimeValue::Range(start, end) => {
+                        if let RuntimeValue::Int(val) = left {
+                            val >= start && val <= end
+                        } else {
+                            false
+                        }
+                    }
+                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
+                };
+                stack.push(RuntimeValue::Bool(found));
+            }
+            IrOp::PlusPlus { offset } => {
+                let right = pop_value(stack, *offset, "++")?;
+                let left = pop_value(stack, *offset, "++")?;
+                match (left, right) {
+                    (RuntimeValue::List(mut l), RuntimeValue::List(mut r)) => {
+                        l.append(&mut r);
+                        stack.push(RuntimeValue::List(l));
+                    }
+                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
+                }
+            }
+            IrOp::MinusMinus { offset } => {
+                let right = pop_value(stack, *offset, "--")?;
+                let left = pop_value(stack, *offset, "--")?;
+                match (left, right) {
+                    (RuntimeValue::List(mut l), RuntimeValue::List(r)) => {
+                        for item in r {
+                            if let Some(pos) = l.iter().position(|x| x == &item) {
+                                l.remove(pos);
+                            }
+                        }
+                        stack.push(RuntimeValue::List(l));
+                    }
+                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
+                }
+            }
+            IrOp::Range { offset } => {
+                let right = pop_int(stack, *offset)?;
+                let left = pop_int(stack, *offset)?;
+                stack.push(RuntimeValue::Range(left, right));
             }
             IrOp::AddInt { offset } => {
                 let right = pop_int(stack, *offset)?;

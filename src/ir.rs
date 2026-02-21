@@ -68,6 +68,16 @@ pub(crate) enum IrOp {
         kind: CmpKind,
         offset: usize,
     },
+    Not { offset: usize },
+    AndAnd { right_ops: Vec<IrOp>, offset: usize },
+    OrOr { right_ops: Vec<IrOp>, offset: usize },
+    And { right_ops: Vec<IrOp>, offset: usize },
+    Or { right_ops: Vec<IrOp>, offset: usize },
+    Concat { offset: usize },
+    In { offset: usize },
+    PlusPlus { offset: usize },
+    MinusMinus { offset: usize },
+    Range { offset: usize },
     Return {
         offset: usize,
     },
@@ -204,6 +214,21 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
 
             Ok(())
         }
+        Expr::Unary {
+            op,
+            value,
+            offset,
+            ..
+        } => {
+            lower_expr(value, current_module, ops)?;
+            let ir_op = match op {
+                crate::parser::UnaryOp::Not | crate::parser::UnaryOp::Bang => {
+                    IrOp::Not { offset: *offset }
+                }
+            };
+            ops.push(ir_op);
+            Ok(())
+        }
         Expr::Binary {
             op,
             left,
@@ -212,6 +237,35 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ..
         } => {
             lower_expr(left, current_module, ops)?;
+            
+            match op {
+                BinaryOp::AndAnd => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, &mut right_ops)?;
+                    ops.push(IrOp::AndAnd { right_ops, offset: *offset });
+                    return Ok(());
+                }
+                BinaryOp::OrOr => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, &mut right_ops)?;
+                    ops.push(IrOp::OrOr { right_ops, offset: *offset });
+                    return Ok(());
+                }
+                BinaryOp::And => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, &mut right_ops)?;
+                    ops.push(IrOp::And { right_ops, offset: *offset });
+                    return Ok(());
+                }
+                BinaryOp::Or => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, &mut right_ops)?;
+                    ops.push(IrOp::Or { right_ops, offset: *offset });
+                    return Ok(());
+                }
+                _ => {}
+            }
+
             lower_expr(right, current_module, ops)?;
             let ir_op = match op {
                 BinaryOp::Plus => IrOp::AddInt { offset: *offset },
@@ -224,6 +278,12 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 BinaryOp::Lte => IrOp::CmpInt { kind: CmpKind::Lte, offset: *offset },
                 BinaryOp::Gt => IrOp::CmpInt { kind: CmpKind::Gt, offset: *offset },
                 BinaryOp::Gte => IrOp::CmpInt { kind: CmpKind::Gte, offset: *offset },
+                BinaryOp::Concat => IrOp::Concat { offset: *offset },
+                BinaryOp::In => IrOp::In { offset: *offset },
+                BinaryOp::PlusPlus => IrOp::PlusPlus { offset: *offset },
+                BinaryOp::MinusMinus => IrOp::MinusMinus { offset: *offset },
+                BinaryOp::Range => IrOp::Range { offset: *offset },
+                _ => unreachable!(),
             };
             ops.push(ir_op);
             Ok(())
@@ -266,6 +326,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             });
             Ok(())
         }
+        Expr::Group { inner, .. } => lower_expr(inner, current_module, ops),
         Expr::Variable { name, offset, .. } => {
             ops.push(IrOp::LoadVariable {
                 name: name.clone(),

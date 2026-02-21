@@ -239,21 +239,47 @@ fn infer_expression_type(
                 )),
             }
         }
+        Expr::Unary { op, value, .. } => {
+            let value_type = infer_expression_type(value, current_module, signatures, solver)?;
+            match op {
+                crate::parser::UnaryOp::Not | crate::parser::UnaryOp::Bang => {
+                    solver.unify(Type::Bool, value_type, Some(value.offset()))?;
+                    Ok(Type::Bool)
+                }
+            }
+        }
         Expr::Binary { op, left, right, .. } => {
             let left_type = infer_expression_type(left, current_module, signatures, solver)?;
             let right_type = infer_expression_type(right, current_module, signatures, solver)?;
 
-            solver.unify(Type::Int, left_type, Some(left.offset()))?;
-            solver.unify(Type::Int, right_type, Some(right.offset()))?;
-
             match op {
-                BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => Ok(Type::Int),
-                BinaryOp::Eq
-                | BinaryOp::NotEq
-                | BinaryOp::Lt
-                | BinaryOp::Lte
-                | BinaryOp::Gt
-                | BinaryOp::Gte => Ok(Type::Bool),
+                BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => {
+                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
+                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
+                    Ok(Type::Int)
+                }
+                BinaryOp::Eq | BinaryOp::NotEq | BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte => {
+                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
+                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
+                    Ok(Type::Bool)
+                }
+                BinaryOp::AndAnd | BinaryOp::OrOr => Ok(Type::Dynamic),
+                BinaryOp::And | BinaryOp::Or => {
+                    solver.unify(Type::Bool, left_type, Some(left.offset()))?;
+                    Ok(Type::Dynamic)
+                }
+                BinaryOp::Concat => {
+                    solver.unify(Type::String, left_type, Some(left.offset()))?;
+                    solver.unify(Type::String, right_type, Some(right.offset()))?;
+                    Ok(Type::String)
+                }
+                BinaryOp::In => Ok(Type::Bool),
+                BinaryOp::PlusPlus | BinaryOp::MinusMinus => Ok(Type::Dynamic),
+                BinaryOp::Range => {
+                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
+                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
+                    Ok(Type::Dynamic)
+                }
             }
         }
         Expr::Pipe { left, right, .. } => {
@@ -302,6 +328,7 @@ fn infer_expression_type(
 
             Ok(inferred_case_type.unwrap_or(Type::Dynamic))
         }
+        Expr::Group { inner, .. } => infer_expression_type(inner, current_module, signatures, solver),
         Expr::Variable { .. } => Ok(solver.fresh_var()),
         Expr::Atom { .. } => Ok(Type::Dynamic),
     }

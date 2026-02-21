@@ -95,7 +95,7 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
 
             Ok(())
         }
-        Expr::Question { value, .. } => resolve_expr(value, context),
+        Expr::Question { value, .. } | Expr::Unary { value, .. } => resolve_expr(value, context),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
             resolve_expr(left, context)?;
             resolve_expr(right, context)
@@ -111,6 +111,7 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
 
             Ok(())
         }
+        Expr::Group { inner, .. } => resolve_expr(inner, context),
         Expr::Variable { .. } | Expr::Atom { .. } => Ok(()),
     }
 }

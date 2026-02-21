@@ -36,6 +36,10 @@ pub enum TokenKind {
     True,
     False,
     Nil,
+    And,
+    Or,
+    Not,
+    In,
     Ident,
     Atom,
     Integer,
@@ -49,19 +53,26 @@ pub enum TokenKind {
     Percent,
     Comma,
     Dot,
+    DotDot,
     Plus,
+    PlusPlus,
     Minus,
+    MinusMinus,
     Star,
     Slash,
     EqEq,
     BangEq,
+    Bang,
     Lt,
     LtEq,
     Gt,
     GtEq,
+    LessGreater,
     Question,
     PipeGt,
     Arrow,
+    AndAnd,
+    OrOr,
     Eof,
 }
 
@@ -107,6 +118,10 @@ impl Token {
             TokenKind::True => format!("TRUE({})", self.lexeme),
             TokenKind::False => format!("FALSE({})", self.lexeme),
             TokenKind::Nil => format!("NIL({})", self.lexeme),
+            TokenKind::And => format!("AND({})", self.lexeme),
+            TokenKind::Or => format!("OR({})", self.lexeme),
+            TokenKind::Not => format!("NOT({})", self.lexeme),
+            TokenKind::In => format!("IN({})", self.lexeme),
             TokenKind::Ident => format!("IDENT({})", self.lexeme),
             TokenKind::Atom => format!("ATOM({})", self.lexeme),
             TokenKind::Integer => format!("INT({})", self.lexeme),
@@ -120,19 +135,26 @@ impl Token {
             TokenKind::Percent => "PERCENT".to_string(),
             TokenKind::Comma => "COMMA".to_string(),
             TokenKind::Dot => "DOT".to_string(),
+            TokenKind::DotDot => "DOT_DOT".to_string(),
             TokenKind::Plus => "PLUS".to_string(),
+            TokenKind::PlusPlus => "PLUS_PLUS".to_string(),
             TokenKind::Minus => "MINUS".to_string(),
+            TokenKind::MinusMinus => "MINUS_MINUS".to_string(),
             TokenKind::Star => "STAR".to_string(),
             TokenKind::Slash => "SLASH".to_string(),
             TokenKind::EqEq => "EQ_EQ".to_string(),
             TokenKind::BangEq => "BANG_EQ".to_string(),
+            TokenKind::Bang => "BANG".to_string(),
             TokenKind::Lt => "LT".to_string(),
             TokenKind::LtEq => "LT_EQ".to_string(),
             TokenKind::Gt => "GT".to_string(),
             TokenKind::GtEq => "GT_EQ".to_string(),
+            TokenKind::LessGreater => "LESS_GREATER".to_string(),
             TokenKind::Question => "QUESTION".to_string(),
             TokenKind::PipeGt => "PIPE_GT".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
+            TokenKind::AndAnd => "AND_AND".to_string(),
+            TokenKind::OrOr => "OR_OR".to_string(),
             TokenKind::Eof => "EOF".to_string(),
         }
     }
@@ -246,19 +268,32 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
             }
             '.' => {
                 let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Dot, Span::new(start, idx)));
+                if chars.get(idx + 1) == Some(&'.') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::DotDot, Span::new(start, idx)));
+                } else {
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Dot, Span::new(start, idx)));
+                }
             }
             '+' => {
                 let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Plus, Span::new(start, idx)));
+                if chars.get(idx + 1) == Some(&'+') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::PlusPlus, Span::new(start, idx)));
+                } else {
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Plus, Span::new(start, idx)));
+                }
             }
             '-' => {
                 let start = idx;
                 if chars.get(idx + 1) == Some(&'>') {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::Arrow, Span::new(start, idx)));
+                } else if chars.get(idx + 1) == Some(&'-') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::MinusMinus, Span::new(start, idx)));
                 } else {
                     idx += 1;
                     tokens.push(Token::simple(TokenKind::Minus, Span::new(start, idx)));
@@ -289,7 +324,8 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::BangEq, Span::new(start, idx)));
                 } else {
-                    return Err(LexerError::invalid_token('!', Span::new(start, start + 1)));
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Bang, Span::new(start, idx)));
                 }
             }
             '<' => {
@@ -297,6 +333,9 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 if chars.get(idx + 1) == Some(&'=') {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::LtEq, Span::new(start, idx)));
+                } else if chars.get(idx + 1) == Some(&'>') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::LessGreater, Span::new(start, idx)));
                 } else {
                     idx += 1;
                     tokens.push(Token::simple(TokenKind::Lt, Span::new(start, idx)));
@@ -322,8 +361,20 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 if chars.get(idx + 1) == Some(&'>') {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::PipeGt, Span::new(start, idx)));
+                } else if chars.get(idx + 1) == Some(&'|') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::OrOr, Span::new(start, idx)));
                 } else {
                     return Err(LexerError::invalid_token('|', Span::new(start, start + 1)));
+                }
+            }
+            '&' => {
+                let start = idx;
+                if chars.get(idx + 1) == Some(&'&') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::AndAnd, Span::new(start, idx)));
+                } else {
+                    return Err(LexerError::invalid_token('&', Span::new(start, start + 1)));
                 }
             }
             ':' => {
@@ -436,6 +487,10 @@ fn keyword_kind(lexeme: &str) -> Option<TokenKind> {
         "true" => Some(TokenKind::True),
         "false" => Some(TokenKind::False),
         "nil" => Some(TokenKind::Nil),
+        "and" => Some(TokenKind::And),
+        "or" => Some(TokenKind::Or),
+        "not" => Some(TokenKind::Not),
+        "in" => Some(TokenKind::In),
         _ => None,
     }
 }

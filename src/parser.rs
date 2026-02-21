@@ -168,6 +168,13 @@ pub enum Expr {
         offset: usize,
         value: Box<Expr>,
     },
+    Group {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        inner: Box<Expr>,
+    },
     Binary {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -176,6 +183,14 @@ pub enum Expr {
         op: BinaryOp,
         left: Box<Expr>,
         right: Box<Expr>,
+    },
+    Unary {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        op: UnaryOp,
+        value: Box<Expr>,
     },
     Pipe {
         #[serde(skip_serializing)]
@@ -314,6 +329,23 @@ impl Expr {
         }
     }
 
+    fn group(id: NodeId, offset: usize, inner: Expr) -> Self {
+        Self::Group {
+            id,
+            offset,
+            inner: Box::new(inner),
+        }
+    }
+
+    fn unary(id: NodeId, offset: usize, op: UnaryOp, value: Expr) -> Self {
+        Self::Unary {
+            id,
+            offset,
+            op,
+            value: Box::new(value),
+        }
+    }
+
     fn binary(id: NodeId, op: BinaryOp, left: Expr, right: Expr) -> Self {
         let offset = left.offset();
 
@@ -362,13 +394,22 @@ impl Expr {
             | Self::String { offset, .. }
             | Self::Call { offset, .. }
             | Self::Question { offset, .. }
+            | Self::Group { offset, .. }
             | Self::Binary { offset, .. }
+            | Self::Unary { offset, .. }
             | Self::Pipe { offset, .. }
             | Self::Variable { offset, .. }
             | Self::Atom { offset, .. }
             | Self::Case { offset, .. } => *offset,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UnaryOp {
+    Not,
+    Bang,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -384,6 +425,15 @@ pub enum BinaryOp {
     Lte,
     Gt,
     Gte,
+    And,
+    Or,
+    AndAnd,
+    OrOr,
+    Concat,
+    PlusPlus,
+    MinusMinus,
+    In,
+    Range,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -538,19 +588,37 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_binary_expression(&mut self, min_precedence: u8) -> Result<Expr, ParserError> {
-        let mut left = self.parse_postfix_expression()?;
+        let mut left = self.parse_unary_expression()?;
 
-        while let Some((precedence, op)) = self.current_binary_operator() {
+        while let Some((precedence, next_precedence, op)) = self.current_binary_operator() {
             if precedence < min_precedence {
                 break;
             }
 
             self.advance();
-            let right = self.parse_binary_expression(precedence + 1)?;
+            let right = self.parse_binary_expression(next_precedence)?;
             left = Expr::binary(self.node_ids.next_expr(), op, left, right);
         }
 
         Ok(left)
+    }
+
+    fn parse_unary_expression(&mut self) -> Result<Expr, ParserError> {
+        if let Some(token) = self.current() {
+            let (is_unary, op, rbp) = match token.kind() {
+                TokenKind::Not => (true, UnaryOp::Not, 110),
+                TokenKind::Bang => (true, UnaryOp::Bang, 110),
+                _ => (false, UnaryOp::Not, 0), // Default not used
+            };
+
+            if is_unary {
+                let offset = self.advance().unwrap().span().start();
+                let expr = self.parse_binary_expression(rbp)?;
+                return Ok(Expr::unary(self.node_ids.next_expr(), offset, op, expr));
+            }
+        }
+        
+        self.parse_postfix_expression()
     }
 
     fn parse_postfix_expression(&mut self) -> Result<Expr, ParserError> {
@@ -641,6 +709,14 @@ impl<'a> Parser<'a> {
             }
 
             return Ok(Expr::variable(self.node_ids.next_expr(), offset, callee));
+        }
+
+        // Handle parenthesized expressions: (expr)
+        if self.check(TokenKind::LParen) {
+            let offset = self.advance().expect("lparen token should be available").span().start();
+            let inner = self.parse_expression()?;
+            self.expect(TokenKind::RParen, ")")?;
+            return Ok(Expr::group(self.node_ids.next_expr(), offset, inner));
         }
 
         Err(self.expected("expression"))
@@ -776,18 +852,27 @@ impl<'a> Parser<'a> {
         Ok(Pattern::Map { entries })
     }
 
-    fn current_binary_operator(&self) -> Option<(u8, BinaryOp)> {
+    fn current_binary_operator(&self) -> Option<(u8, u8, BinaryOp)> {
         self.current().and_then(|token| match token.kind() {
-            TokenKind::Star => Some((20, BinaryOp::Mul)),
-            TokenKind::Slash => Some((20, BinaryOp::Div)),
-            TokenKind::Plus => Some((10, BinaryOp::Plus)),
-            TokenKind::Minus => Some((10, BinaryOp::Minus)),
-            TokenKind::EqEq => Some((5, BinaryOp::Eq)),
-            TokenKind::BangEq => Some((5, BinaryOp::NotEq)),
-            TokenKind::Lt => Some((5, BinaryOp::Lt)),
-            TokenKind::LtEq => Some((5, BinaryOp::Lte)),
-            TokenKind::Gt => Some((5, BinaryOp::Gt)),
-            TokenKind::GtEq => Some((5, BinaryOp::Gte)),
+            TokenKind::Star => Some((100, 101, BinaryOp::Mul)),
+            TokenKind::Slash => Some((100, 101, BinaryOp::Div)),
+            TokenKind::Plus => Some((90, 91, BinaryOp::Plus)),
+            TokenKind::Minus => Some((90, 91, BinaryOp::Minus)),
+            TokenKind::LessGreater => Some((80, 80, BinaryOp::Concat)),
+            TokenKind::PlusPlus => Some((80, 80, BinaryOp::PlusPlus)),
+            TokenKind::MinusMinus => Some((80, 80, BinaryOp::MinusMinus)),
+            TokenKind::DotDot => Some((80, 80, BinaryOp::Range)),
+            TokenKind::In => Some((70, 71, BinaryOp::In)),
+            TokenKind::EqEq => Some((60, 61, BinaryOp::Eq)),
+            TokenKind::BangEq => Some((60, 61, BinaryOp::NotEq)),
+            TokenKind::Lt => Some((60, 61, BinaryOp::Lt)),
+            TokenKind::LtEq => Some((60, 61, BinaryOp::Lte)),
+            TokenKind::Gt => Some((60, 61, BinaryOp::Gt)),
+            TokenKind::GtEq => Some((60, 61, BinaryOp::Gte)),
+            TokenKind::AndAnd => Some((50, 51, BinaryOp::AndAnd)),
+            TokenKind::And => Some((50, 51, BinaryOp::And)),
+            TokenKind::OrOr => Some((40, 41, BinaryOp::OrOr)),
+            TokenKind::Or => Some((40, 41, BinaryOp::Or)),
             _ => None,
         })
     }
@@ -1166,6 +1251,12 @@ mod tests {
                 collect_expr_ids(left, ids);
                 collect_expr_ids(right, ids);
             }
+            Expr::Unary {
+                id, value, ..
+            } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(value, ids);
+            }
             Expr::Pipe {
                 id, left, right, ..
             } => {
@@ -1185,6 +1276,10 @@ mod tests {
                 for branch in branches {
                     collect_expr_ids(branch.body(), ids);
                 }
+            }
+            Expr::Group { id, inner, .. } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(inner, ids);
             }
             Expr::Variable { id, .. } | Expr::Atom { id, .. } => {
                 ids.push(id.0.clone());
