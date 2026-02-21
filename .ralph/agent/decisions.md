@@ -350,3 +350,26 @@ Template:
 - **Reasoning:** Step 8.5 asks for canonical IR forms that simplify interpreter work. Explicit call-target kinds remove string parsing heuristics in runtime dispatch while staying narrowly scoped to one op payload and preserving current lowering behavior.
 - **Reversibility:** High — the enum can be extended (for extern/intrinsic targets) or flattened later with coordinated snapshot updates.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T01:54:12Z
+
+## DEC-031
+- **Decision:** What source-map contract to lock for Step 8 after canonical IR call-target refactoring.
+- **Chosen Option:** Add a RED integration test requiring `tonic check ... --dump-ir` to include per-op `offset` fields (at least for `const_int` and `return`) so IR snapshots carry source mapping metadata.
+- **Confidence (0-100):** 71
+- **Alternatives Considered:**
+  - Defer source-map requirements to Step 9 runtime diagnostics.
+  - Add unit-only lowering assertions without pinning CLI JSON output.
+  - Introduce a separate `source_map` section instead of op-local offsets.
+- **Reasoning:** Step 8 explicitly calls for source-map integrity tests. Locking op-local offsets in the dump snapshot is the narrowest deterministic contract that pressures lowering changes while keeping IR shape simple.
+- **Reversibility:** High — offsets can later move into richer span metadata or a side-table with coordinated snapshot updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:56:30Z
+
+## DEC-032
+- **Decision:** How broadly to apply source offsets while implementing Step 8.7 IR source-map metadata.
+- **Chosen Option:** Add an `offset` field to every `IrOp` variant and emit the originating AST expression offset for each lowered op (including branch-local ops and synthetic `return` using the function body offset), then update existing IR snapshots to the new schema.
+- **Confidence (0-100):** 78
+- **Alternatives Considered:**
+  - Add offsets only to `const_int` and `return` to satisfy the minimal new integration test.
+  - Emit a separate top-level source-map table instead of op-local metadata.
+- **Reasoning:** Although the RED contract only pins `const_int`/`return`, op-local offsets on all instructions keep IR diagnostics uniform and avoid a follow-up schema migration as soon as runtime error mapping expands beyond literals.
+- **Reversibility:** High — offsets can later move to richer span structs or a dedicated source-map section with coordinated snapshot updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:00:30Z

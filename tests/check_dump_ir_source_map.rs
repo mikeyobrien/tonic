@@ -2,20 +2,20 @@ use std::fs;
 use std::path::PathBuf;
 
 #[test]
-fn check_dump_ir_matches_simple_typed_function_snapshot() {
-    let fixture_root = unique_fixture_root("check-dump-ir-smoke");
+fn check_dump_ir_includes_source_offsets_for_ops() {
+    let fixture_root = unique_fixture_root("check-dump-ir-source-map");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("ir_smoke.tn"),
+        examples_dir.join("ir_source_map.tn"),
         "defmodule Demo do\n  def run() do\n    1\n  end\nend\n",
     )
-    .expect("fixture setup should write ir smoke source file");
+    .expect("fixture setup should write ir source map source file");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["check", "examples/ir_smoke.tn", "--dump-ir"])
+        .args(["check", "examples/ir_source_map.tn", "--dump-ir"])
         .output()
         .expect("check command should run");
 

@@ -17,12 +17,28 @@ struct IrFunction {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum IrOp {
-    ConstInt { value: i64 },
-    Call { callee: IrCallTarget, argc: usize },
-    Question,
-    Case { branches: Vec<IrCaseBranch> },
-    AddInt,
-    Return,
+    ConstInt {
+        value: i64,
+        offset: usize,
+    },
+    Call {
+        callee: IrCallTarget,
+        argc: usize,
+        offset: usize,
+    },
+    Question {
+        offset: usize,
+    },
+    Case {
+        branches: Vec<IrCaseBranch>,
+        offset: usize,
+    },
+    AddInt {
+        offset: usize,
+    },
+    Return {
+        offset: usize,
+    },
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -78,7 +94,9 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
         for function in &module.functions {
             let mut ops = Vec::new();
             lower_expr(&function.body, &module.name, &mut ops)?;
-            ops.push(IrOp::Return);
+            ops.push(IrOp::Return {
+                offset: function.body.offset(),
+            });
 
             functions.push(IrFunction {
                 name: qualify_function_name(&module.name, &function.name),
@@ -97,11 +115,19 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
 
 fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<(), LoweringError> {
     match expr {
-        Expr::Int { value, .. } => {
-            ops.push(IrOp::ConstInt { value: *value });
+        Expr::Int { value, offset, .. } => {
+            ops.push(IrOp::ConstInt {
+                value: *value,
+                offset: *offset,
+            });
             Ok(())
         }
-        Expr::Call { callee, args, .. } => {
+        Expr::Call {
+            callee,
+            args,
+            offset,
+            ..
+        } => {
             for arg in args {
                 lower_expr(arg, current_module, ops)?;
             }
@@ -109,6 +135,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ops.push(IrOp::Call {
                 callee: qualify_call_target(current_module, callee),
                 argc: args.len(),
+                offset: *offset,
             });
 
             Ok(())
@@ -117,16 +144,17 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             op: BinaryOp::Plus,
             left,
             right,
+            offset,
             ..
         } => {
             lower_expr(left, current_module, ops)?;
             lower_expr(right, current_module, ops)?;
-            ops.push(IrOp::AddInt);
+            ops.push(IrOp::AddInt { offset: *offset });
             Ok(())
         }
-        Expr::Question { value, .. } => {
+        Expr::Question { value, offset, .. } => {
             lower_expr(value, current_module, ops)?;
-            ops.push(IrOp::Question);
+            ops.push(IrOp::Question { offset: *offset });
             Ok(())
         }
         Expr::Pipe { offset, .. } => Err(LoweringError::unsupported("pipe", *offset)),
@@ -153,6 +181,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
 
             ops.push(IrOp::Case {
                 branches: lowered_branches,
+                offset: *offset,
             });
             Ok(())
         }
@@ -229,8 +258,8 @@ mod tests {
             concat!(
                 "{\"functions\":[",
                 "{\"name\":\"Demo.run\",\"params\":[],\"ops\":[",
-                "{\"op\":\"const_int\",\"value\":1},",
-                "{\"op\":\"return\"}",
+                "{\"op\":\"const_int\",\"value\":1,\"offset\":37},",
+                "{\"op\":\"return\",\"offset\":37}",
                 "]}",
                 "]}"
             )
@@ -249,9 +278,9 @@ mod tests {
         assert_eq!(
             json["functions"][0]["ops"],
             serde_json::json!([
-                {"op":"const_int","value":1},
-                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1},
-                {"op":"return"}
+                {"op":"const_int","value":1,"offset":44},
+                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1,"offset":37},
+                {"op":"return","offset":37}
             ])
         );
     }
@@ -268,10 +297,10 @@ mod tests {
         assert_eq!(
             json["functions"][0]["ops"],
             serde_json::json!([
-                {"op":"const_int","value":1},
-                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1},
-                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1},
-                {"op":"return"}
+                {"op":"const_int","value":1,"offset":47},
+                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1,"offset":40},
+                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1,"offset":37},
+                {"op":"return","offset":37}
             ])
         );
     }
@@ -288,23 +317,24 @@ mod tests {
         assert_eq!(
             json["functions"][0]["ops"],
             serde_json::json!([
-                {"op":"const_int","value":1},
-                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1},
-                {"op":"question"},
+                {"op":"const_int","value":1,"offset":45},
+                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1,"offset":42},
+                {"op":"question","offset":47},
                 {
                     "op":"case",
                     "branches":[
                         {
                             "pattern":{"kind":"atom","value":"ok"},
-                            "ops":[{"op":"const_int","value":2}]
+                            "ops":[{"op":"const_int","value":2,"offset":65}]
                         },
                         {
                             "pattern":{"kind":"wildcard"},
-                            "ops":[{"op":"const_int","value":3}]
+                            "ops":[{"op":"const_int","value":3,"offset":78}]
                         }
-                    ]
+                    ],
+                    "offset":37
                 },
-                {"op":"return"}
+                {"op":"return","offset":37}
             ])
         );
     }

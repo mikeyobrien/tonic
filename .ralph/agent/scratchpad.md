@@ -396,3 +396,27 @@
 - Tooling memory capture: recorded `mem-1771638860-fef2` after RED setup failed early due unsupported bare identifier fixture (`value`); resolved by using `value()` call-form fixture before asserting call-target shape.
 - Verification (green): `cargo test lower_ast_canonicalizes_call_target_kinds`, `cargo test --test check_dump_ir_result_case`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771638746-37f5` after verification.
+
+## 2026-02-21T01:56:44Z — Builder Step 8.6 (RED)
+- Handled pending `task.complete` event for `task-1771638746-37f5` by confirming it remains closed (`ralph tools task show task-1771638746-37f5`).
+- Runtime queue was empty, so I created Step 8 source-map follow-up tasks: `task-1771638962-98c9` (RED dump-ir source offsets contract) and blocked `task-1771638965-c280` (GREEN IR op offset implementation).
+- Added integration test `tests/check_dump_ir_source_map.rs` asserting `tonic check examples/ir_source_map.tn --dump-ir` succeeds and emits deterministic IR JSON with per-op `offset` metadata (`const_int` + `return` at offset 37).
+- Verification (red): `cargo test --test check_dump_ir_source_map` fails as expected with current snapshot mismatch (IR output omits `offset` fields), confirming source-map metadata is not implemented yet.
+- Confidence protocol: documented DEC-031 in `.ralph/agent/decisions.md` (confidence 71) for locking op-local offset source maps as the minimal Step 8 contract.
+- Tooling memory capture:
+  - `mem-1771638936-2cb7` after an exploratory `ls -la examples` failed because the repo has no root `examples/` directory; continue using per-test temp fixtures.
+  - `mem-1771638988-3c74` for the expected RED failure (`--dump-ir` missing op offsets) and next GREEN action.
+- Hygiene: no formatting changes required for the added test.
+- Closed RED task `task-1771638962-98c9`; `task-1771638965-c280` is now the next ready GREEN task.
+
+## 2026-02-21T02:00:30Z — Builder Step 8.7 (GREEN)
+- Handled pending `task.complete` event for `task-1771638962-98c9` by confirming it was already closed (`ralph tools task show task-1771638962-98c9`), then executed ready task `task-1771638965-c280`.
+- Implemented per-op IR source offsets in lowering:
+  - `src/ir.rs`: added `offset` metadata to all `IrOp` variants (`const_int`, `call`, `question`, `case`, `add_int`, `return`).
+  - `src/ir.rs`: threaded AST expression offsets through lowering so each emitted op carries source position metadata; `return` now uses function-body offset.
+  - `src/ir.rs`: updated lowering unit snapshots (`lower_ast_emits_const_int_and_return_for_literal_function`, `lower_ast_qualifies_local_call_targets`, `lower_ast_canonicalizes_call_target_kinds`, `lower_ast_supports_question_and_case_ops`) to lock offset-aware contracts.
+  - `tests/check_dump_ir_smoke.rs` and `tests/check_dump_ir_result_case.rs`: refreshed `--dump-ir` integration snapshots to include op offsets under the new schema while preserving canonical call-target structure.
+- Confidence protocol: documented DEC-032 in `.ralph/agent/decisions.md` (confidence 78) for applying offsets uniformly across all IR ops rather than only the minimal RED subset.
+- Tooling memory capture: recorded `mem-1771639186-44d8` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/ir.rs`; resolved via `cargo fmt --all` then re-ran checks.
+- Verification (green): `cargo test --test check_dump_ir_source_map`, `cargo test --test check_dump_ir_result_case`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771638965-c280` after verification.
