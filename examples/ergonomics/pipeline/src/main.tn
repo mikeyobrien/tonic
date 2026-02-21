@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    Transform.extract() |> Transform.clean() |> Load.save()
+  end
+end

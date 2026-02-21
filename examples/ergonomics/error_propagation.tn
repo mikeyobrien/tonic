@@ -1,0 +1,13 @@
+defmodule Demo do
+  def fetch_data() do
+    err(404)
+  end
+
+  def process() do
+    fetch_data()? + 100
+  end
+
+  def run() do
+    process()
+  end
+end

@@ -1,0 +1,17 @@
+defmodule Demo do
+  def get_data() do
+    tuple(100, 200)
+  end
+
+  def route() do
+    case get_data() do
+      {:ok, value} -> 1
+      [head, tail] -> 2
+      _ -> 4
+    end
+  end
+
+  def run() do
+    route()
+  end
+end

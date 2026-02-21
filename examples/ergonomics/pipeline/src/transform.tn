@@ -1,0 +1,9 @@
+defmodule Transform do
+  def extract() do
+    tuple(100, 200)
+  end
+
+  def clean(_data) do
+    tuple(100, 200)
+  end
+end

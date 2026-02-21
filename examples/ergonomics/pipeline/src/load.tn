@@ -1,0 +1,5 @@
+defmodule Load do
+  def save(_data) do
+    1
+  end
+end
