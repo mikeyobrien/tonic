@@ -33,6 +33,14 @@ pub(crate) enum IrOp {
         branches: Vec<IrCaseBranch>,
         offset: usize,
     },
+    LoadVariable {
+        name: String,
+        offset: usize,
+    },
+    ConstAtom {
+        value: String,
+        offset: usize,
+    },
     AddInt {
         offset: usize,
     },
@@ -60,6 +68,7 @@ pub(crate) enum IrPattern {
     Atom { value: String },
     Bind { name: String },
     Wildcard,
+    Integer { value: i64 },
     Tuple { items: Vec<IrPattern> },
     List { items: Vec<IrPattern> },
 }
@@ -190,6 +199,20 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             });
             Ok(())
         }
+        Expr::Variable { name, offset, .. } => {
+            ops.push(IrOp::LoadVariable {
+                name: name.clone(),
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Atom { value, offset, .. } => {
+            ops.push(IrOp::ConstAtom {
+                value: value.clone(),
+                offset: *offset,
+            });
+            Ok(())
+        }
     }
 }
 
@@ -232,6 +255,7 @@ fn lower_pattern(pattern: &Pattern, case_offset: usize) -> Result<IrPattern, Low
         }),
         Pattern::Bind { name } => Ok(IrPattern::Bind { name: name.clone() }),
         Pattern::Wildcard => Ok(IrPattern::Wildcard),
+        Pattern::Integer { value } => Ok(IrPattern::Integer { value: *value }),
         Pattern::Tuple { items } => {
             let items = items
                 .iter()

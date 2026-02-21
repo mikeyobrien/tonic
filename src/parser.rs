@@ -173,6 +173,20 @@ pub enum Expr {
         subject: Box<Expr>,
         branches: Vec<CaseBranch>,
     },
+    Variable {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        name: String,
+    },
+    Atom {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        value: String,
+    },
 }
 
 pub type CaseBranch = Branch<Pattern>;
@@ -230,6 +244,7 @@ pub enum Pattern {
     Atom { value: String },
     Bind { name: String },
     Wildcard,
+    Integer { value: i64 },
     Tuple { items: Vec<Pattern> },
     List { items: Vec<Pattern> },
     Map { entries: Vec<MapPatternEntry> },
@@ -299,6 +314,14 @@ impl Expr {
         }
     }
 
+    fn variable(id: NodeId, offset: usize, name: String) -> Self {
+        Self::Variable { id, offset, name }
+    }
+
+    fn atom(id: NodeId, offset: usize, value: String) -> Self {
+        Self::Atom { id, offset, value }
+    }
+
     pub fn offset(&self) -> usize {
         match self {
             Self::Int { offset, .. }
@@ -306,6 +329,8 @@ impl Expr {
             | Self::Question { offset, .. }
             | Self::Binary { offset, .. }
             | Self::Pipe { offset, .. }
+            | Self::Variable { offset, .. }
+            | Self::Atom { offset, .. }
             | Self::Case { offset, .. } => *offset,
         }
     }
@@ -517,6 +542,13 @@ impl<'a> Parser<'a> {
             return Ok(Expr::int(self.node_ids.next_expr(), offset, value));
         }
 
+        if self.check(TokenKind::Atom) {
+            let token = self.advance().expect("atom token should be available");
+            let offset = token.span().start();
+            let value = token.lexeme().to_string();
+            return Ok(Expr::atom(self.node_ids.next_expr(), offset, value));
+        }
+
         if self.check(TokenKind::Ident) {
             let callee_token = self
                 .advance()
@@ -529,11 +561,20 @@ impl<'a> Parser<'a> {
                 callee = format!("{callee}.{function_name}");
             }
 
-            self.expect(TokenKind::LParen, "(")?;
-            let args = self.parse_call_args()?;
-            self.expect(TokenKind::RParen, ")")?;
+            if self.match_kind(TokenKind::LParen) {
+                let args = self.parse_call_args()?;
+                self.expect(TokenKind::RParen, ")")?;
+                return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
+            }
 
-            return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
+            if callee.contains('.') {
+                return Err(ParserError::at_current(
+                    format!("qualified names without arguments are not supported: {}", callee),
+                    Some(callee_token),
+                ));
+            }
+
+            return Ok(Expr::variable(self.node_ids.next_expr(), offset, callee));
         }
 
         Err(self.expected("expression"))
@@ -572,6 +613,17 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParserError> {
+        if self.check(TokenKind::Integer) {
+            let token = self.advance().expect("integer token should be available");
+            let value = token.lexeme().parse::<i64>().map_err(|_| {
+                ParserError::at_current(
+                    format!("invalid integer literal '{}'", token.lexeme()),
+                    Some(token),
+                )
+            })?;
+            return Ok(Pattern::Integer { value });
+        }
+
         if self.match_kind(TokenKind::LBrace) {
             let items = self.parse_pattern_items(TokenKind::RBrace)?;
             return Ok(Pattern::Tuple { items });
@@ -1058,6 +1110,9 @@ mod tests {
                 for branch in branches {
                     collect_expr_ids(branch.body(), ids);
                 }
+            }
+            Expr::Variable { id, .. } | Expr::Atom { id, .. } => {
+                ids.push(id.0.clone());
             }
         }
     }

@@ -285,6 +285,8 @@ fn infer_expression_type(
 
             Ok(inferred_case_type.unwrap_or(Type::Dynamic))
         }
+        Expr::Variable { .. } => Ok(solver.fresh_var()),
+        Expr::Atom { .. } => Ok(Type::Dynamic),
     }
 }
 

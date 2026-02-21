@@ -132,6 +132,7 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                     .iter()
                     .any(|branch| expr_references_module(branch.body(), module_name))
         }
+        Expr::Variable { .. } | Expr::Atom { .. } => false,
     }
 }
 

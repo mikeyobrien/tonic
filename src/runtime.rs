@@ -1,4 +1,5 @@
-use crate::ir::{IrCallTarget, IrOp, IrProgram};
+use crate::ir::{IrCallTarget, IrOp, IrProgram, IrPattern};
+use std::collections::HashMap;
 use std::fmt;
 
 const ENTRYPOINT: &str = "Demo.run";
@@ -6,6 +7,7 @@ const ENTRYPOINT: &str = "Demo.run";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeValue {
     Int(i64),
+    Atom(String),
     ResultOk(Box<RuntimeValue>),
     ResultErr(Box<RuntimeValue>),
     Tuple(Box<RuntimeValue>, Box<RuntimeValue>),
@@ -17,6 +19,7 @@ impl RuntimeValue {
     pub fn render(&self) -> String {
         match self {
             Self::Int(value) => value.to_string(),
+            Self::Atom(value) => format!(":{value}"),
             Self::ResultOk(value) => format!("ok({})", value.render()),
             Self::ResultErr(value) => format!("err({})", value.render()),
             Self::Tuple(left, right) => format!("{{{}, {}}}", left.render(), right.render()),
@@ -28,6 +31,7 @@ impl RuntimeValue {
     fn kind_label(&self) -> &'static str {
         match self {
             Self::Int(_) => "int",
+            Self::Atom(_) => "atom",
             Self::ResultOk(_) | Self::ResultErr(_) => "result",
             Self::Tuple(_, _) => "tuple",
             Self::Map(_, _) => "map",
@@ -93,34 +97,61 @@ fn evaluate_function(
         )));
     }
 
+    let mut env = HashMap::new();
+    for (param, arg) in function.params.iter().zip(args.iter()) {
+        env.insert(param.clone(), arg.clone());
+    }
+
     let mut stack: Vec<RuntimeValue> = Vec::new();
 
-    for op in &function.ops {
+    if let Some(ret) = evaluate_ops(program, &function.ops, &mut env, &mut stack)? {
+        return Ok(ret);
+    }
+
+    Err(RuntimeError::new(format!(
+        "runtime function ended without return: {function_name}"
+    )))
+}
+
+fn evaluate_ops(
+    program: &IrProgram,
+    ops: &[IrOp],
+    env: &mut HashMap<String, RuntimeValue>,
+    stack: &mut Vec<RuntimeValue>,
+) -> Result<Option<RuntimeValue>, RuntimeError> {
+    for op in ops {
         match op {
             IrOp::ConstInt { value, .. } => stack.push(RuntimeValue::Int(*value)),
+            IrOp::ConstAtom { value, .. } => stack.push(RuntimeValue::Atom(value.clone())),
+            IrOp::LoadVariable { name, offset } => {
+                let value = env.get(name).ok_or_else(|| {
+                    RuntimeError::at_offset(format!("undefined variable: {name}"), *offset)
+                })?;
+                stack.push(value.clone());
+            }
             IrOp::Call {
                 callee,
                 argc,
                 offset,
             } => {
-                let value = evaluate_call(program, callee, &mut stack, *argc, *offset)?;
+                let value = evaluate_call(program, callee, stack, *argc, *offset)?;
                 stack.push(value);
             }
             IrOp::AddInt { offset } => {
-                let right = pop_int(&mut stack, *offset)?;
-                let left = pop_int(&mut stack, *offset)?;
+                let right = pop_int(stack, *offset)?;
+                let left = pop_int(stack, *offset)?;
                 stack.push(RuntimeValue::Int(left + right));
             }
             IrOp::Return { offset } => {
-                return pop_value(&mut stack, *offset, "return");
+                return Ok(Some(pop_value(stack, *offset, "return")?));
             }
             IrOp::Question { offset } => {
-                let value = pop_value(&mut stack, *offset, "question")?;
+                let value = pop_value(stack, *offset, "question")?;
 
                 match value {
                     RuntimeValue::ResultOk(inner) => stack.push(*inner),
                     RuntimeValue::ResultErr(inner) => {
-                        return Ok(RuntimeValue::ResultErr(inner));
+                        return Ok(Some(RuntimeValue::ResultErr(inner)));
                     }
                     other => {
                         return Err(RuntimeError::at_offset(
@@ -133,18 +164,63 @@ fn evaluate_function(
                     }
                 }
             }
-            IrOp::Case { offset, .. } => {
-                return Err(RuntimeError::at_offset(
-                    "unsupported ir op in runtime evaluator: case",
-                    *offset,
-                ));
+            IrOp::Case { branches, offset } => {
+                let subject = pop_value(stack, *offset, "case subject")?;
+                let mut matched = false;
+
+                for branch in branches {
+                    let mut bindings = HashMap::new();
+                    if match_pattern(&subject, &branch.pattern, &mut bindings) {
+                        matched = true;
+                        let mut branch_env = env.clone();
+                        for (k, v) in bindings {
+                            branch_env.insert(k, v);
+                        }
+
+                        if let Some(ret) = evaluate_ops(program, &branch.ops, &mut branch_env, stack)? {
+                            return Ok(Some(ret));
+                        }
+                        break;
+                    }
+                }
+
+                if !matched {
+                    return Err(RuntimeError::at_offset("no case clause matching", *offset));
+                }
             }
         }
     }
 
-    Err(RuntimeError::new(format!(
-        "runtime function ended without return: {function_name}"
-    )))
+    Ok(None)
+}
+
+fn match_pattern(
+    value: &RuntimeValue,
+    pattern: &IrPattern,
+    bindings: &mut HashMap<String, RuntimeValue>,
+) -> bool {
+    match pattern {
+        IrPattern::Wildcard => true,
+        IrPattern::Bind { name } => {
+            bindings.insert(name.clone(), value.clone());
+            true
+        }
+        IrPattern::Integer { value: p_val } => match value {
+            RuntimeValue::Int(v) => v == p_val,
+            _ => false,
+        },
+        IrPattern::Atom { value: p_val } => match value {
+            RuntimeValue::Atom(v) => v == p_val,
+            _ => false,
+        },
+        IrPattern::Tuple { items } => match value {
+            RuntimeValue::Tuple(left, right) if items.len() == 2 => {
+                match_pattern(left, &items[0], bindings) && match_pattern(right, &items[1], bindings)
+            }
+            _ => false,
+        },
+        IrPattern::List { .. } => false,
+    }
 }
 
 fn evaluate_call(
