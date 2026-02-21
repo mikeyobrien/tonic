@@ -18,6 +18,9 @@ impl TypeSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Type {
     Int,
+    Bool,
+    Nil,
+    String,
     Dynamic,
     Result { ok: Box<Type>, err: Box<Type> },
     Var(TypeVarId),
@@ -34,6 +37,9 @@ impl Type {
     fn label(&self) -> &'static str {
         match self {
             Type::Int => "int",
+            Type::Bool => "bool",
+            Type::Nil => "nil",
+            Type::String => "string",
             Type::Dynamic | Type::Var(_) => "dynamic",
             Type::Result { .. } => "result",
         }
@@ -100,7 +106,7 @@ impl ConstraintSolver {
                 self.unify(*expected_ok, *found_ok, offset)?;
                 self.unify(*expected_err, *found_err, offset)
             }
-            (Type::Int, Type::Int) | (Type::Dynamic, Type::Dynamic) => Ok(()),
+            (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Nil, Type::Nil) | (Type::String, Type::String) | (Type::Dynamic, Type::Dynamic) => Ok(()),
             (expected_ty, found_ty) => Err(TypingError::type_mismatch(
                 expected_ty.label(),
                 found_ty.label(),
@@ -205,6 +211,9 @@ fn infer_expression_type(
 ) -> Result<Type, TypingError> {
     match expr {
         Expr::Int { .. } => Ok(Type::Int),
+        Expr::Bool { .. } => Ok(Type::Bool),
+        Expr::Nil { .. } => Ok(Type::Nil),
+        Expr::String { .. } => Ok(Type::String),
         Expr::Call { callee, args, .. } => {
             infer_call_type(callee, args, None, current_module, signatures, solver)
         }

@@ -21,6 +21,17 @@ pub(crate) enum IrOp {
         value: i64,
         offset: usize,
     },
+    ConstBool {
+        value: bool,
+        offset: usize,
+    },
+    ConstNil {
+        offset: usize,
+    },
+    ConstString {
+        value: String,
+        offset: usize,
+    },
     Call {
         callee: IrCallTarget,
         argc: usize,
@@ -127,6 +138,26 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         Expr::Int { value, offset, .. } => {
             ops.push(IrOp::ConstInt {
                 value: *value,
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Bool { value, offset, .. } => {
+            ops.push(IrOp::ConstBool {
+                value: *value,
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Nil { offset, .. } => {
+            ops.push(IrOp::ConstNil {
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::String { value, offset, .. } => {
+            ops.push(IrOp::ConstString {
+                value: value.clone(),
                 offset: *offset,
             });
             Ok(())

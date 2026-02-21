@@ -76,7 +76,7 @@ struct ResolveContext<'a> {
 
 fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
     match expr {
-        Expr::Int { .. } => Ok(()),
+        Expr::Int { .. } | Expr::Bool { .. } | Expr::Nil { .. } | Expr::String { .. } => Ok(()),
         Expr::Call { callee, args, .. } => {
             if !context
                 .module_graph

@@ -133,6 +133,26 @@ pub enum Expr {
         offset: usize,
         value: i64,
     },
+    Bool {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        value: bool,
+    },
+    Nil {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+    },
+    String {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        value: String,
+    },
     Call {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -265,6 +285,18 @@ impl Expr {
         Self::Int { id, offset, value }
     }
 
+    fn bool(id: NodeId, offset: usize, value: bool) -> Self {
+        Self::Bool { id, offset, value }
+    }
+
+    fn nil(id: NodeId, offset: usize) -> Self {
+        Self::Nil { id, offset }
+    }
+
+    fn string(id: NodeId, offset: usize, value: String) -> Self {
+        Self::String { id, offset, value }
+    }
+
     fn call(id: NodeId, offset: usize, callee: String, args: Vec<Expr>) -> Self {
         Self::Call {
             id,
@@ -325,6 +357,9 @@ impl Expr {
     pub fn offset(&self) -> usize {
         match self {
             Self::Int { offset, .. }
+            | Self::Bool { offset, .. }
+            | Self::Nil { offset, .. }
+            | Self::String { offset, .. }
             | Self::Call { offset, .. }
             | Self::Question { offset, .. }
             | Self::Binary { offset, .. }
@@ -527,6 +562,28 @@ impl<'a> Parser<'a> {
     fn parse_atomic_expression(&mut self) -> Result<Expr, ParserError> {
         if self.check(TokenKind::Case) {
             return self.parse_case_expression();
+        }
+
+        if self.check(TokenKind::True) {
+            let token = self.advance().expect("true token should be available");
+            return Ok(Expr::bool(self.node_ids.next_expr(), token.span().start(), true));
+        }
+
+        if self.check(TokenKind::False) {
+            let token = self.advance().expect("false token should be available");
+            return Ok(Expr::bool(self.node_ids.next_expr(), token.span().start(), false));
+        }
+
+        if self.check(TokenKind::Nil) {
+            let token = self.advance().expect("nil token should be available");
+            return Ok(Expr::nil(self.node_ids.next_expr(), token.span().start()));
+        }
+
+        if self.check(TokenKind::String) {
+            let token = self.advance().expect("string token should be available");
+            let offset = token.span().start();
+            let value = token.lexeme().to_string();
+            return Ok(Expr::string(self.node_ids.next_expr(), offset, value));
         }
 
         if self.check(TokenKind::Integer) {
@@ -1072,7 +1129,7 @@ mod tests {
 
     fn collect_expr_ids(expr: &Expr, ids: &mut Vec<String>) {
         match expr {
-            Expr::Int { id, .. } => ids.push(id.0.clone()),
+            Expr::Int { id, .. } | Expr::Bool { id, .. } | Expr::Nil { id, .. } | Expr::String { id, .. } => ids.push(id.0.clone()),
             Expr::Call { id, args, .. } => {
                 ids.push(id.0.clone());
 

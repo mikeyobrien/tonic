@@ -109,7 +109,7 @@ fn ast_references_module(ast: &Ast, module_name: &str) -> bool {
 
 fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
     match expr {
-        Expr::Int { .. } => false,
+        Expr::Int { .. } | Expr::Bool { .. } | Expr::Nil { .. } | Expr::String { .. } => false,
         Expr::Call { callee, args, .. } => {
             let calls_module = callee
                 .split_once('.')
