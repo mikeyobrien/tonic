@@ -1,0 +1,2 @@
+- Smaller implementation files are better with a short, contextual name.
+- Commit when tests pass

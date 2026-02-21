@@ -1,0 +1,6 @@
+2026-02-20T21:17:25.887960Z  INFO ralph: Creating scratchpad directory: /home/mobrienv/projects/tonic/.ralph/agent
+2026-02-20T21:17:25.995578Z  INFO ralph_core::event_loop: Memory injection check: enabled=true, inject=Auto, workspace_root="/home/mobrienv/projects/tonic"
+2026-02-20T21:17:25.995598Z  INFO ralph_core::event_loop: Looking for memories at: "/home/mobrienv/projects/tonic/.ralph/agent/memories.md" (exists: false)
+2026-02-20T21:17:25.995603Z  INFO ralph_core::event_loop: Successfully loaded 0 memories from store
+2026-02-20T21:17:25.995605Z  INFO ralph_core::event_loop: Memory store is empty - no memories to inject
+2026-02-20T21:17:32.539018Z  INFO ralph_tui::app: Ctrl+C detected, signaling main loop
