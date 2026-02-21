@@ -383,3 +383,16 @@
 - Confidence protocol: documented DEC-029 in `.ralph/agent/decisions.md` (confidence 75) for the structured case-op + builtin call-target strategy.
 - Verification (green): `cargo test --test check_dump_ir_result_case`, `cargo test lower_ast_supports_question_and_case_ops`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771638361-2033` after verification.
+
+## 2026-02-21T01:54:32Z — Builder Step 8.5 (REFACTOR)
+- Handled pending `task.complete` event for `task-1771638361-2033` by confirming it was already closed (`ralph tools task show task-1771638361-2033`).
+- Runtime queue had no ready work, so I created and executed `task-1771638746-37f5` for Step 8.5 IR canonicalization.
+- RED: added `lower_ast_canonicalizes_call_target_kinds` in `src/ir.rs` to require `call` ops to emit structured callee targets by kind (`function` vs `builtin`); initial `cargo test lower_ast_canonicalizes_call_target_kinds` failed as expected on old string callee shape.
+- GREEN/REFACTOR:
+  - `src/ir.rs`: refactored `IrOp::Call` to use `IrCallTarget` enum (`Builtin`/`Function`) and updated call-target qualification to canonicalize builtin and function dispatch forms without changing op ordering.
+  - `src/ir.rs`: updated lowering unit snapshots (`lower_ast_qualifies_local_call_targets`, `lower_ast_supports_question_and_case_ops`) to the canonical call-target schema.
+  - `tests/check_dump_ir_result_case.rs` (workspace fixture): updated `--dump-ir` snapshot expectation for structured builtin call target payload.
+- Confidence protocol: documented DEC-030 in `.ralph/agent/decisions.md` (confidence 74) for the focused call-target canonicalization strategy.
+- Tooling memory capture: recorded `mem-1771638860-fef2` after RED setup failed early due unsupported bare identifier fixture (`value`); resolved by using `value()` call-form fixture before asserting call-target shape.
+- Verification (green): `cargo test lower_ast_canonicalizes_call_target_kinds`, `cargo test --test check_dump_ir_result_case`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771638746-37f5` after verification.

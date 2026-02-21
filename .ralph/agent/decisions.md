@@ -338,3 +338,15 @@ Template:
 - **Reasoning:** The Step 8.3 RED test already locked an explicit JSON shape. Emitting focused `question` + structured `case` ops is the narrowest GREEN implementation that satisfies the contract and keeps future interpreter work straightforward.
 - **Reversibility:** High — op/pattern schema is localized to `src/ir.rs` and can be canonicalized in Step 8.5 with coordinated snapshot updates.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T01:49:52Z
+
+## DEC-030
+- **Decision:** How to canonicalize IR call forms in Step 8.5 without overhauling the whole lowering schema.
+- **Chosen Option:** Refactor `IrOp::Call` to carry a structured `callee` target (`{"kind":"function","name":...}` or `{"kind":"builtin","name":...}`) and keep existing linear op ordering unchanged.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Keep string callees and defer canonicalization to the Step 9 interpreter.
+  - Introduce a larger control-flow IR redesign (basic blocks/jumps) in this slice.
+  - Flatten builtin/function differences into naming conventions only.
+- **Reasoning:** Step 8.5 asks for canonical IR forms that simplify interpreter work. Explicit call-target kinds remove string parsing heuristics in runtime dispatch while staying narrowly scoped to one op payload and preserving current lowering behavior.
+- **Reversibility:** High — the enum can be extended (for extern/intrinsic targets) or flattened later with coordinated snapshot updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:54:12Z

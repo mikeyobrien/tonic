@@ -18,11 +18,18 @@ struct IrFunction {
 #[serde(tag = "op", rename_all = "snake_case")]
 enum IrOp {
     ConstInt { value: i64 },
-    Call { callee: String, argc: usize },
+    Call { callee: IrCallTarget, argc: usize },
     Question,
     Case { branches: Vec<IrCaseBranch> },
     AddInt,
     Return,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum IrCallTarget {
+    Builtin { name: String },
+    Function { name: String },
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -183,11 +190,19 @@ fn qualify_function_name(module_name: &str, function_name: &str) -> String {
     format!("{module_name}.{function_name}")
 }
 
-fn qualify_call_target(current_module: &str, callee: &str) -> String {
-    if is_result_constructor_builtin(callee) || callee.contains('.') {
-        callee.to_string()
+fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
+    if is_result_constructor_builtin(callee) {
+        IrCallTarget::Builtin {
+            name: callee.to_string(),
+        }
+    } else if callee.contains('.') {
+        IrCallTarget::Function {
+            name: callee.to_string(),
+        }
     } else {
-        qualify_function_name(current_module, callee)
+        IrCallTarget::Function {
+            name: qualify_function_name(current_module, callee),
+        }
     }
 }
 
@@ -235,7 +250,27 @@ mod tests {
             json["functions"][0]["ops"],
             serde_json::json!([
                 {"op":"const_int","value":1},
-                {"op":"call","callee":"Demo.helper","argc":1},
+                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1},
+                {"op":"return"}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_canonicalizes_call_target_kinds() {
+        let source = "defmodule Demo do\n  def run() do\n    ok(helper(1))\n  end\n\n  def helper(value) do\n    value()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should succeed for call body");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_int","value":1},
+                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1},
+                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1},
                 {"op":"return"}
             ])
         );
@@ -254,7 +289,7 @@ mod tests {
             json["functions"][0]["ops"],
             serde_json::json!([
                 {"op":"const_int","value":1},
-                {"op":"call","callee":"ok","argc":1},
+                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1},
                 {"op":"question"},
                 {
                     "op":"case",
