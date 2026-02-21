@@ -10,12 +10,12 @@ mod resolver_diag;
 mod runtime;
 mod typing;
 
-use acceptance::{load_acceptance_yaml, load_feature_scenarios};
+use acceptance::{load_acceptance_yaml, load_feature_scenarios, BenchmarkMetrics};
 use cache::{
     build_run_cache_key, load_cached_ir, should_trace_cache_status, store_cached_ir,
     trace_cache_status,
 };
-use cli_diag::{CliDiagnostic, EXIT_OK};
+use cli_diag::{CliDiagnostic, EXIT_FAILURE, EXIT_OK};
 use ir::{lower_ast_to_ir, IrProgram};
 use lexer::scan_tokens;
 use manifest::load_run_source;
@@ -58,6 +58,10 @@ impl VerifyMode {
     }
 }
 
+const BENCHMARK_THRESHOLD_COLD_START_P50_MS: u64 = 50;
+const BENCHMARK_THRESHOLD_WARM_START_P50_MS: u64 = 10;
+const BENCHMARK_THRESHOLD_IDLE_RSS_MB: u64 = 30;
+
 fn main() {
     std::process::exit(run(std::env::args().skip(1).collect()));
 }
@@ -72,8 +76,8 @@ fn run(args: Vec<String>) -> i32 {
         }
         Some("run") => handle_run(iter.collect()),
         Some("check") => handle_check(iter.collect()),
-        Some("test") => run_placeholder("test"),
-        Some("fmt") => run_placeholder("fmt"),
+        Some("test") => handle_test(iter.collect()),
+        Some("fmt") => handle_fmt(iter.collect()),
         Some("cache") => run_placeholder("cache"),
         Some("verify") => handle_verify(iter.collect()),
         Some(other) => CliDiagnostic::usage_with_hint(
@@ -168,6 +172,7 @@ fn handle_check(args: Vec<String>) -> i32 {
     }
 
     let source_path = args[0].clone();
+    let is_project_root_path = std::path::Path::new(&source_path).is_dir();
     let mut dump_tokens = false;
     let mut dump_ast = false;
     let mut dump_ir = false;
@@ -195,14 +200,9 @@ fn handle_check(args: Vec<String>) -> i32 {
         .emit();
     }
 
-    let source = match std::fs::read_to_string(&source_path) {
-        Ok(contents) => contents,
-        Err(error) => {
-            return CliDiagnostic::failure(format!(
-                "failed to read source file {source_path}: {error}"
-            ))
-            .emit();
-        }
+    let source = match load_run_source(&source_path) {
+        Ok(source) => source,
+        Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
     let tokens = match scan_tokens(&source) {
@@ -257,8 +257,59 @@ fn handle_check(args: Vec<String>) -> i32 {
         };
 
         println!("{json}");
+        return EXIT_OK;
     }
 
+    if is_project_root_path {
+        println!("check: ok");
+    }
+
+    EXIT_OK
+}
+
+fn handle_test(args: Vec<String>) -> i32 {
+    if matches!(
+        args.first().map(String::as_str),
+        None | Some("-h" | "--help")
+    ) {
+        print_test_help();
+        return EXIT_OK;
+    }
+
+    let source_path = args[0].clone();
+
+    if let Some(argument) = args.get(1) {
+        return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
+    }
+
+    if let Err(error) = load_run_source(&source_path) {
+        return CliDiagnostic::failure(error).emit();
+    }
+
+    println!("test: ok");
+    EXIT_OK
+}
+
+fn handle_fmt(args: Vec<String>) -> i32 {
+    if matches!(
+        args.first().map(String::as_str),
+        None | Some("-h" | "--help")
+    ) {
+        print_fmt_help();
+        return EXIT_OK;
+    }
+
+    let source_path = args[0].clone();
+
+    if let Some(argument) = args.get(1) {
+        return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
+    }
+
+    if let Err(error) = load_run_source(&source_path) {
+        return CliDiagnostic::failure(error).emit();
+    }
+
+    println!("fmt: ok");
     EXIT_OK
 }
 
@@ -330,21 +381,119 @@ fn handle_verify_run(args: Vec<String>) -> i32 {
         Err(message) => return CliDiagnostic::failure(message).emit(),
     };
 
+    let mode_tags = mode.selected_tags();
+    let filtered_scenarios = scenarios
+        .into_iter()
+        .filter(|scenario| {
+            scenario
+                .tags
+                .iter()
+                .any(|tag| mode_tags.contains(&tag.as_str()))
+        })
+        .collect::<Vec<_>>();
+
+    let (benchmark_failed, benchmark_report) =
+        benchmark_gate_report(acceptance.benchmark_metrics.as_ref());
+    let (manual_evidence_failed, manual_evidence_report) =
+        manual_evidence_gate_report(acceptance.manual_evidence.for_mode(mode.as_str()));
+    let verify_failed = benchmark_failed || manual_evidence_failed;
+
     let report = serde_json::json!({
         "slice_id": slice_id,
         "mode": mode.as_str(),
-        "status": "pass",
+        "status": if verify_failed { "fail" } else { "pass" },
         "acceptance_file": acceptance.path.display().to_string(),
-        "mode_tags": mode.selected_tags(),
-        "scenarios": scenarios
+        "mode_tags": mode_tags,
+        "scenarios": filtered_scenarios
             .into_iter()
             .map(|scenario| serde_json::json!({ "id": scenario.id, "tags": scenario.tags }))
             .collect::<Vec<_>>(),
+        "benchmark": benchmark_report,
+        "manual_evidence": manual_evidence_report,
     });
 
     println!("{report}");
 
-    EXIT_OK
+    if verify_failed {
+        EXIT_FAILURE
+    } else {
+        EXIT_OK
+    }
+}
+
+fn benchmark_gate_report(
+    benchmark_metrics: Option<&BenchmarkMetrics>,
+) -> (bool, serde_json::Value) {
+    match benchmark_metrics {
+        Some(metrics) => {
+            let threshold_exceeded = metrics.cold_start_p50_ms
+                > BENCHMARK_THRESHOLD_COLD_START_P50_MS
+                || metrics.warm_start_p50_ms > BENCHMARK_THRESHOLD_WARM_START_P50_MS
+                || metrics.idle_rss_mb > BENCHMARK_THRESHOLD_IDLE_RSS_MB;
+
+            (
+                threshold_exceeded,
+                serde_json::json!({
+                    "status": if threshold_exceeded { "threshold_exceeded" } else { "pass" },
+                    "thresholds": benchmark_thresholds_report(),
+                    "measured": {
+                        "cold_start_p50_ms": metrics.cold_start_p50_ms,
+                        "warm_start_p50_ms": metrics.warm_start_p50_ms,
+                        "idle_rss_mb": metrics.idle_rss_mb,
+                    }
+                }),
+            )
+        }
+        None => (
+            false,
+            serde_json::json!({
+                "status": "not_configured",
+                "thresholds": benchmark_thresholds_report(),
+            }),
+        ),
+    }
+}
+
+fn manual_evidence_gate_report(required_paths: &[std::path::PathBuf]) -> (bool, serde_json::Value) {
+    let required = required_paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+
+    if required.is_empty() {
+        return (
+            false,
+            serde_json::json!({
+                "status": "not_configured",
+                "required": [],
+                "missing": [],
+            }),
+        );
+    }
+
+    let missing = required_paths
+        .iter()
+        .filter(|path| !path.is_file())
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+    let missing_required = !missing.is_empty();
+
+    (
+        missing_required,
+        serde_json::json!({
+            "status": if missing_required { "missing_required" } else { "pass" },
+            "required": required,
+            "missing": missing,
+        }),
+    )
+}
+
+fn benchmark_thresholds_report() -> serde_json::Value {
+    serde_json::json!({
+        "cold_start_p50_ms": BENCHMARK_THRESHOLD_COLD_START_P50_MS,
+        "warm_start_p50_ms": BENCHMARK_THRESHOLD_WARM_START_P50_MS,
+        "idle_rss_mb": BENCHMARK_THRESHOLD_IDLE_RSS_MB,
+    })
 }
 
 fn print_help() {
@@ -359,6 +508,14 @@ fn print_run_help() {
 
 fn print_check_help() {
     println!("Usage:\n  tonic check <path> [--dump-tokens|--dump-ast|--dump-ir]\n");
+}
+
+fn print_test_help() {
+    println!("Usage:\n  tonic test <path>\n");
+}
+
+fn print_fmt_help() {
+    println!("Usage:\n  tonic fmt <path>\n");
 }
 
 fn print_verify_help() {

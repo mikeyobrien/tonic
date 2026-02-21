@@ -637,3 +637,63 @@ Template:
 - **Reasoning:** Step 12 requires corruption recovery behavior, and current implementation already handles invalid JSON misses. Directory-path corruption exposes a real gap: fallback succeeds but cache never recovers to hits because write failures are ignored. This red contract gives precise pressure for the next GREEN slice.
 - **Reversibility:** High — corruption fixture shape and trace strings are localized to one integration test and can evolve with cache policy updates.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T03:22:30Z
+
+## DEC-055
+- **Decision:** What Step 13.1 RED integration contract should lock `tonic check/test/fmt` command-path behavior without overreaching into formatter/test-runner internals.
+- **Chosen Option:** Add a new integration suite that executes `tonic check/test/fmt .` against a manifest-backed project root, asserting project-root path acceptance and deterministic success outputs (`check: ok`, `test: ok`, `fmt: ok`).
+- **Confidence (0-100):** 71
+- **Alternatives Considered:**
+  - Lock only missing-argument usage errors for `test`/`fmt` and defer success-path contracts.
+  - Assert permissive substring output (for example, just “contains ok”) instead of exact stdout lines.
+  - Keep `check` file-only and avoid project-root path coverage in this slice.
+- **Reasoning:** Step 13.1 explicitly targets command integration contracts for path + output/exit behavior. A shared project-root fixture keeps the RED scope narrow but still pressures the real missing behavior: `check` directory-path support and replacement of `test`/`fmt` skeleton outputs.
+- **Reversibility:** High — output strings and path policy are localized to this integration suite and can be revised in later slices with coordinated fixture updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:40:15Z
+
+## DEC-056
+- **Decision:** How to satisfy Step 13.2 GREEN output contracts without breaking existing file-path `tonic check` success assertions.
+- **Chosen Option:** Route `tonic check` source loading through `manifest::load_run_source` for directory support, but emit `check: ok` only for project-root directory invocations (no dump flags); keep file-path success output unchanged while adding real path validation + deterministic `test: ok` / `fmt: ok` outputs.
+- **Confidence (0-100):** 76
+- **Alternatives Considered:**
+  - Emit `check: ok` for every successful `tonic check` invocation and update older success-output tests.
+  - Keep `test`/`fmt` as skeleton output and only fix `check` directory loading.
+  - Fully implement formatter/test-runner internals in this slice.
+- **Reasoning:** The locked RED contract is specifically project-root command-path behavior. This option is the narrowest additive GREEN change that unblocks the new integration suite while avoiding broad output contract churn across earlier resolver/type-check tests.
+- **Reversibility:** High — check-output policy is localized to `handle_check` and can be unified later when broader Step 13 command semantics are finalized.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:44:12Z
+
+## DEC-057
+- **Decision:** What Step 13.3 RED contract should lock `tonic verify run` mode-tag filtering behavior across auto/mixed/manual execution modes.
+- **Chosen Option:** Add a new integration suite asserting scenario ID filtering by mode on a shared feature fixture: `auto` returns only `@auto`, `mixed` returns `@auto` + `@agent-manual`, and `manual` returns all tagged scenarios.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Assert only `mode_tags` metadata values and ignore filtered scenario results.
+  - Use unit tests in `acceptance.rs` only (no CLI verify contract pressure).
+  - Lock a single-mode contract (`auto` only) and defer mixed/manual expectations.
+- **Reasoning:** Step 13.3 explicitly requires BDD mode tests for all three modes. A single integration fixture keeps scope narrow while creating deterministic backpressure on the real gap (verify currently emits unfiltered scenarios regardless of mode).
+- **Reversibility:** High — filtering policy and fixture scenario IDs are localized to the verify path/tests and can evolve with coordinated contract updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:47:00Z
+
+## DEC-058
+- **Decision:** What Step 13.5 RED benchmark-gate contract should require from `tonic verify run` when measured performance exceeds v0 thresholds.
+- **Chosen Option:** Add a CLI integration test that writes `benchmark_metrics` into `acceptance/step-13.yaml` with intentionally failing values (cold 74ms, warm 15ms, RSS 42MB) and asserts verify exits non-zero with structured JSON (`status: fail`, `benchmark.status: threshold_exceeded`, explicit threshold + measured fields).
+- **Confidence (0-100):** 73
+- **Alternatives Considered:**
+  - Assert only non-zero exit status and stderr diagnostics without JSON structure.
+  - Use a unit test in `acceptance.rs` for benchmark parsing and defer verify runner behavior.
+  - Add a passing benchmark test first and defer failing-threshold contract to a later slice.
+- **Reasoning:** Step 13.5 specifically requires a threshold-exceeded failure gate. Locking both exit behavior and minimal report schema prevents a superficial failure implementation and sets precise pressure for Step 13.6 to wire benchmark parsing + enforcement through the verify pipeline.
+- **Reversibility:** High — fixture keys and benchmark report fields are localized to the new integration test and verify JSON assembly path.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:51:05Z
+
+## DEC-059
+- **Decision:** What Step 13.7 RED contract should define required manual-evidence behavior for `tonic verify run` in mixed mode.
+- **Chosen Option:** Add an integration test that declares `manual_evidence.mixed` JSON file requirements in `acceptance/step-13.yaml` and asserts `tonic verify run step-13 --mode mixed` fails with structured report fields when the required evidence file is missing.
+- **Confidence (0-100):** 72
+- **Alternatives Considered:**
+  - Assert failure only via stderr text and skip JSON report structure.
+  - Gate evidence for all modes with one flat `manual_evidence_files` list.
+  - Delay evidence requirements until after full verify workflow wiring.
+- **Reasoning:** The objective explicitly calls out required manual evidence and mixed-mode failure behavior. A mode-scoped contract keeps the slice narrow while forcing real verify-run enforcement, not just metadata parsing.
+- **Reversibility:** High — acceptance key shape and report fields are localized to verify contracts and can be adjusted with coordinated fixture updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:59:17Z

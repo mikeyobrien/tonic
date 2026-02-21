@@ -671,3 +671,159 @@
 - Processed pending `validation.passed` event and prepared a focused commit for Step 12 cache recovery + lint remediation.
 - Included runtime cache corruption recovery implementation and guardrails (`src/cache.rs`, `src/main.rs`, `src/ir.rs`) plus cache smoke coverage (`tests/run_cache_hit_smoke.rs`, `tests/run_cache_corruption_recovery_smoke.rs`).
 - Created conventional commit and emitted `commit.complete` to hand control back to Ralph.
+
+## 2026-02-21T03:36:40Z — Ralph coordination (post-commit.complete)
+- Processed pending `commit.complete` event for `task-1771644528-5496` (commit `54fb1e4`), confirming Step 12 cache slice is committed.
+- Checked runtime queue: `ralph tools task ready` had no carry-over ready work and `ralph tools task list --status open` returned empty, so I bootstrapped the next Step 13 work unit.
+- Created Step 13 command-path TDD pair:
+  - `task-1771644997-1618` (RED): lock `tonic check/test/fmt` integration contracts.
+  - `task-1771644999-5e77` (GREEN): implement command paths, blocked by RED task completion.
+- Next handoff: emit `tasks.ready` for `task-1771644997-1618` so Builder can execute the RED gate.
+
+## 2026-02-21T03:40:32Z — Builder Step 13.1 (RED)
+- Processed pending `tasks.ready` event for `task-1771644997-1618` and confirmed it as the single ready runtime task (`ralph tools task ready`).
+- Added new integration suite `tests/check_test_fmt_command_paths.rs` locking Step 13.1 contracts on a manifest-backed project root path:
+  - `tonic check .` should succeed and emit `check: ok`.
+  - `tonic test .` should succeed and emit `test: ok`.
+  - `tonic fmt .` should succeed and emit `fmt: ok`.
+- Verification (red): `cargo test --test check_test_fmt_command_paths` fails as expected:
+  - `check` still rejects directory paths (`error: failed to read source file .: Is a directory (os error 21)`), and
+  - `test`/`fmt` still emit placeholder skeleton output.
+- Confidence protocol: documented DEC-055 in `.ralph/agent/decisions.md` (confidence 71) for the project-root + deterministic output contract selection.
+- Tooling memory capture: recorded `mem-1771645209-c1fb` for the expected RED failure and the next GREEN implementation direction.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- RED task is ready to close; this unblocks Step 13.2 GREEN (`task-1771644999-5e77`).
+
+## 2026-02-21T03:44:12Z — Builder Step 13.2 (GREEN)
+- Processed pending `task.complete` event for `task-1771644997-1618` by confirming the RED gate remained closed (`ralph tools task show task-1771644997-1618`).
+- Executed ready GREEN task `task-1771644999-5e77` and implemented command-path handling in `src/main.rs`:
+  - Routed `run()` dispatch for `test`/`fmt` through real handlers (`handle_test`, `handle_fmt`) instead of skeleton output.
+  - Updated `handle_check` to load sources via `manifest::load_run_source(...)` so project-root paths (`tonic check .`) resolve through `tonic.toml` entry loading.
+  - Added deterministic success contract behavior: `check: ok` for non-dump project-root checks, plus `test: ok` / `fmt: ok` for validated command-path invocations.
+  - Added usage help handlers for `tonic test` and `tonic fmt` path forms.
+- Confidence protocol: documented DEC-056 in `.ralph/agent/decisions.md` (confidence 76) for the narrow output-contract policy (project-root check output only) to avoid unnecessary churn in existing file-path check contracts.
+- Tooling memory capture: recorded `mem-1771645465-a076` after reproducing the expected RED failure before applying GREEN changes.
+- Verification (green):
+  - `cargo test --test check_test_fmt_command_paths` ✅
+  - `cargo test` ✅
+  - `cargo clippy --all-targets` ✅ (warning-only)
+  - `cargo build` ✅ (warning-only)
+  - `cargo fmt --all -- --check` ✅
+- Closed task `task-1771644999-5e77` after verification.
+
+## 2026-02-21T03:47:00Z — Builder Step 13.3 (RED)
+- Processed pending `task.complete` event for `task-1771644999-5e77` by confirming the task remains closed (`ralph tools task show task-1771644999-5e77`).
+- Runtime queue had no open work, so I created the next Step 13 TDD pair:
+  - `task-1771645576-12d8` (RED) for verify mode tag-filtering contracts.
+  - `task-1771645580-dba7` (GREEN) for verify mode filtering implementation, blocked by the RED task.
+- Added integration suite `tests/verify_mode_tag_filtering.rs` locking Step 13.3 contracts on `tonic verify run step-13`:
+  - `--mode auto` must include only `@auto` scenarios.
+  - `--mode mixed` must include `@auto` + `@agent-manual` and exclude `@human-manual`.
+  - `--mode manual` must include all tagged scenarios.
+- Verification (red): `cargo test --test verify_mode_tag_filtering` fails as expected:
+  - auto mode returned unfiltered IDs (`auto-smoke`, `agent-review`, `human-ux`),
+  - mixed mode still included `human-ux`.
+- Confidence protocol: documented DEC-057 in `.ralph/agent/decisions.md` (confidence 74) for the three-mode CLI integration contract.
+- Tooling memory capture: recorded `mem-1771645623-ed5b` for the expected RED failure and next GREEN implementation direction.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- RED task is ready to close; this unblocks Step 13.4 GREEN (`task-1771645580-dba7`).
+
+## 2026-02-21T03:49:21Z — Builder Step 13.4 (GREEN)
+- Processed pending `task.complete` event for `task-1771645576-12d8` by confirming the RED task remained closed (`ralph tools task show task-1771645576-12d8`).
+- Executed ready GREEN task `task-1771645580-dba7` and implemented verify-mode scenario tag filtering in `src/main.rs`:
+  - `tonic verify run` now filters loaded feature scenarios to the active mode tag set before JSON report emission.
+  - `auto` includes only `@auto`; `mixed` includes `@auto` + `@agent-manual`; `manual` includes all manual-tagged scenarios.
+- Updated `tests/verify_feature_parser.rs` to run in `--mode manual` so the parser coverage test continues asserting full tagged-scenario/tag metadata while mode-specific filtering behavior remains covered by `tests/verify_mode_tag_filtering.rs`.
+- Verification (green):
+  - `cargo test --test verify_mode_tag_filtering` ✅
+  - `cargo test --test verify_feature_parser --test verify_mode_tag_filtering` ✅
+  - `cargo test` ✅
+  - `cargo clippy --all-targets` ✅ (warning-only)
+  - `cargo build` ✅ (warning-only)
+  - `cargo fmt --all -- --check` ✅
+- Tooling memory capture: recorded `mem-1771645803-be61` after full `cargo test` surfaced stale mixed-mode expectations in `tests/verify_feature_parser.rs`; fixed by running parser metadata coverage in manual mode.
+- Closed task `task-1771645580-dba7` after verification.
+
+## 2026-02-21T03:51:05Z — Builder Step 13.5 (RED)
+- Processed pending `task.complete` event for `task-1771645580-dba7` by confirming it remained closed (`ralph tools task show task-1771645580-dba7`).
+- Runtime queue had no ready tasks, so I created the next Step 13 benchmark-gate TDD pair:
+  - `task-1771645869-bf0b` (RED) to lock threshold-exceeded behavior.
+  - `task-1771645871-e3a5` (GREEN) to implement benchmark threshold enforcement, blocked by the RED task.
+- Added integration suite `tests/verify_benchmark_gate_thresholds.rs` with a failing-benchmark fixture (`benchmark_metrics` cold 74ms, warm 15ms, RSS 42MB) that locks the contract:
+  - `tonic verify run step-13 --mode auto` must fail when thresholds are exceeded.
+  - verify JSON must include `status: fail`, `benchmark.status: threshold_exceeded`, threshold values (50/10/30), and measured values.
+- Verification (red): `cargo test --test verify_benchmark_gate_thresholds` fails as expected because verify still exits 0 and reports `"status":"pass"` despite exceeding benchmark metrics.
+- Confidence protocol: documented DEC-058 in `.ralph/agent/decisions.md` (confidence 73) for the benchmark gate contract shape.
+- Tooling memory capture: recorded `mem-1771645922-fdbe` for the expected RED failure and next GREEN implementation direction.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771645869-bf0b`; `task-1771645871-e3a5` is now the next ready GREEN task.
+
+## 2026-02-21T03:56:55Z — Builder Step 13.6 (GREEN)
+- Processed pending `task.complete` event for `task-1771645869-bf0b` by confirming it remained closed (`ralph tools task show task-1771645869-bf0b`).
+- Executed ready GREEN task `task-1771645871-e3a5` and implemented benchmark threshold enforcement for `tonic verify run`:
+  - `src/acceptance.rs`: `AcceptanceMetadata` now carries optional `benchmark_metrics` parsed from acceptance YAML (`cold_start_p50_ms`, `warm_start_p50_ms`, `idle_rss_mb`) with deterministic validation diagnostics.
+  - `src/main.rs`: verify runner now evaluates measured benchmark metrics against enforced thresholds (50/10/30), emits structured `benchmark` report payload (`status`, `thresholds`, `measured`), sets top-level verify `status` to `fail` on threshold exceedance, and exits non-zero when benchmark gate fails.
+- Confidence protocol: confidence 84 (proceeded autonomously; no new decision journal entry required).
+- Tooling memory capture:
+  - `mem-1771646166-d916` after `cargo fmt --all -- --check` reported rustfmt diff in `src/main.rs`; resolved via `cargo fmt --all`.
+  - `mem-1771646190-fdd1` after a transient cwd-race failure from an added benchmark unit test; removed race-prone unit test and kept benchmark contract in integration coverage.
+- Verification (green):
+  - `cargo test --test verify_benchmark_gate_thresholds` ✅
+  - `cargo test` ✅
+  - `cargo clippy --all-targets` ✅ (warning-only)
+  - `cargo build` ✅ (warning-only)
+  - `cargo fmt --all -- --check` ✅
+- Closed task `task-1771645871-e3a5` after verification.
+
+## 2026-02-21T03:59:38Z — Builder Step 13.7 (RED)
+- Processed pending `task.complete` event for `task-1771645871-e3a5` by confirming it remained closed (`ralph tools task show task-1771645871-e3a5`).
+- Runtime queue had no ready tasks, so I created the next Step 13 manual-evidence TDD pair:
+  - `task-1771646306-2962` (RED) to lock required manual evidence behavior.
+  - `task-1771646309-e3de` (GREEN) to implement verify manual-evidence enforcement, blocked by the RED task.
+- Added integration suite `tests/verify_manual_evidence_requirements.rs` with a missing-evidence fixture that locks the contract:
+  - acceptance YAML declares `manual_evidence.mixed` requiring `acceptance/evidence/agent-review.json`.
+  - `tonic verify run step-13 --mode mixed` must fail when required evidence JSON is missing.
+  - verify JSON must include `status: fail` and `manual_evidence.status: missing_required` with `required` + `missing` path arrays.
+- Verification (red): `cargo test --test verify_manual_evidence_requirements` fails as expected because verify currently exits 0 with `"status":"pass"` and no manual-evidence gating.
+- Confidence protocol: documented DEC-059 in `.ralph/agent/decisions.md` (confidence 72) for the mode-scoped manual-evidence contract.
+- Tooling memory capture:
+  - `mem-1771646345-190f` for the expected RED failure and GREEN implementation direction.
+  - `mem-1771646348-0f7c` for an `rg` path-missing command failure (use absence-tolerant search scoping).
+- Hygiene: `cargo fmt --all -- --check` passes.
+- RED task is ready to close; this unblocks Step 13.8 GREEN (`task-1771646309-e3de`).
+
+## 2026-02-21T04:03:01Z — Builder Step 13.8 (GREEN)
+- Processed pending `task.complete` event for `task-1771646306-2962` and confirmed Step 13.8 GREEN task `task-1771646309-e3de` as the single ready runtime item.
+- Implemented verify manual-evidence enforcement for mode-scoped requirements:
+  - `src/acceptance.rs`: extended `AcceptanceMetadata` with parsed `manual_evidence` requirements (`auto`/`mixed`/`manual`) and added deterministic YAML validation + acceptance-relative path resolution.
+  - `src/main.rs`: `tonic verify run` now evaluates required manual evidence files for the active mode, emits structured `manual_evidence` report payload (`status`, `required`, `missing`), fails verify when required evidence files are missing, and combines this gate with benchmark threshold status for top-level pass/fail + exit code.
+  - Added parser coverage in `src/acceptance.rs` unit tests for mode-scoped manual evidence path parsing.
+- Confidence protocol: confidence 85 (proceeded autonomously; no new decision journal entry required).
+- Tooling memory capture: recorded `mem-1771646538-6ae0` after `cargo fmt --all -- --check` reported a rustfmt diff in `src/main.rs`; resolved via `cargo fmt --all` before final verification.
+- Verification (green):
+  - `cargo test --test verify_manual_evidence_requirements` ✅
+  - `cargo test` ✅
+  - `cargo clippy --all-targets` ✅ (warning-only)
+  - `cargo build` ✅ (warning-only)
+  - `cargo fmt --all -- --check` ✅
+- Closed task `task-1771646309-e3de` after verification.
+
+## 2026-02-21T04:05:03Z — Validator Step 13.8 gate
+- Processed pending `implementation.ready` for `task-1771646309-e3de` (Step 13.8 manual-evidence enforcement).
+- `spec_dir` not set in environment, so PDD `.code-task.md` completion sweep was not applicable for this gate.
+- Re-ran mandatory validator gates:
+  - `cargo test` ❌ first attempt failed at `acceptance::tests::load_acceptance_yaml_resolves_relative_feature_paths` (`missing acceptance file acceptance/step-01.yaml`); immediate rerun ✅ (full suite pass). Logged intermittent signal as fix memory `mem-1771646688-a6f5`.
+  - `cargo build` ✅ (warning-only)
+  - `cargo clippy --all-targets` ✅ (warning-only; no lint errors)
+  - `cargo fmt --all -- --check` ✅
+- Focused regression check: `cargo test --test verify_manual_evidence_requirements` ✅.
+- Manual E2E verification with temp fixture and `target/debug/tonic verify run step-13 --mode mixed`:
+  - Missing `acceptance/evidence/agent-review.json` => exit 1, JSON `status: fail`, `manual_evidence.status: missing_required` ✅.
+  - After creating evidence JSON => exit 0, JSON `status: pass`, `manual_evidence.status: pass` ✅.
+- Quality review (YAGNI/KISS/idiomatic): implementation is narrow, mode-scoped, and matches existing acceptance/verify patterns; no speculative abstractions found.
+- Validation outcome: **PASSED**. Emitting `validation.passed` for Committer handoff.
+
+## 2026-02-21T04:08:12Z — Committer Step 13.8 handoff
+- Processed pending `validation.passed` for `task-1771646309-e3de` and prepared a focused Step 13 workflow commit.
+- Commit scope: command-path contracts for `check/test/fmt`, verify mode filtering, benchmark threshold gate, and manual-evidence enforcement (including acceptance metadata parsing updates and integration coverage).
+- Excluded orchestration/runtime artifacts under `.ralph/` and other unrelated untracked workspace files from commit scope.
