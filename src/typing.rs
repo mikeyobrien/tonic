@@ -1,4 +1,4 @@
-use crate::parser::{Ast, Expr};
+use crate::parser::{Ast, Expr, ParameterAnnotation};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
@@ -161,7 +161,14 @@ pub fn infer_types(ast: &Ast) -> Result<TypeSummary, TypingError> {
 
     for module in &ast.modules {
         for function in &module.functions {
-            let params = function.params.iter().map(|_| solver.fresh_var()).collect();
+            let params = function
+                .params
+                .iter()
+                .map(|param| match param.annotation() {
+                    ParameterAnnotation::Inferred => solver.fresh_var(),
+                    ParameterAnnotation::Dynamic => Type::Dynamic,
+                })
+                .collect();
             let return_type = solver.fresh_var();
             signatures.insert(
                 qualify_function_name(&module.name, &function.name),
@@ -330,6 +337,36 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E2001] type mismatch: expected int, found dynamic at offset 123"
+        );
+    }
+
+    #[test]
+    fn infer_types_accepts_explicit_dynamic_parameter_annotation() {
+        let source = "defmodule Demo do\n  def helper(dynamic value) do\n    1\n  end\n\n  def run() do\n    helper(1)\n  end\nend\n";
+        let tokens = scan_tokens(source)
+            .expect("scanner should tokenize explicit dynamic parameter fixture");
+        let ast = parse_ast(&tokens)
+            .expect("parser should accept explicit dynamic parameter annotations");
+
+        let summary = infer_types(&ast)
+            .expect("type inference should accept explicit dynamic parameter annotations");
+
+        assert_eq!(summary.signature("Demo.helper"), Some("fn(dynamic) -> int"));
+        assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
+    }
+
+    #[test]
+    fn parse_ast_rejects_dynamic_annotation_outside_parameter_positions() {
+        let source = "defmodule Demo do\n  def run() -> dynamic do\n    1\n  end\nend\n";
+        let tokens = scan_tokens(source)
+            .expect("scanner should tokenize invalid dynamic annotation fixture");
+
+        let error = parse_ast(&tokens)
+            .expect_err("parser should reject dynamic annotations outside parameter positions");
+
+        assert_eq!(
+            error.to_string(),
+            "dynamic annotation is only allowed on parameters at offset 30"
         );
     }
 }

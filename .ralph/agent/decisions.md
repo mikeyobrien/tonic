@@ -208,3 +208,27 @@ Template:
 - **Reasoning:** Hidden per-expression offsets give deterministic span-aware diagnostics with minimal blast radius. This preserves all existing `--dump-ast` goldens and avoids brittle special-casing in the type checker.
 - **Reversibility:** High — offset metadata can be replaced with richer span structs later without affecting external AST JSON contracts.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T01:03:41Z
+
+## DEC-019
+- **Decision:** Which explicit `dynamic` annotation syntax/policy to lock in Step 6.5 RED before implementation exists.
+- **Chosen Option:** Treat `dynamic` as an explicit parameter annotation marker (`def helper(dynamic value)`) and lock a deterministic parser rejection for function return-position annotation (`def run() -> dynamic do`) with message `dynamic annotation is only allowed on parameters at offset 30`.
+- **Confidence (0-100):** 61
+- **Alternatives Considered:**
+  - Use expression-level escape hatch syntax (for example `dynamic(expr)`) and defer parameter annotations.
+  - Introduce colon-based type annotations (`value: dynamic`) despite current lexer/parser shape.
+  - Assert only generic parse failure without a specific policy diagnostic.
+- **Reasoning:** Parameter-position annotation is the narrowest additive extension compatible with the current grammar while still enforcing a concrete “allowed vs disallowed” policy. Locking a deterministic rejection message now creates clear backpressure for the upcoming GREEN implementation.
+- **Reversibility:** Medium-High — syntax can be migrated later, but this contract intentionally pins one concrete policy for the next slice.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:09:43Z
+
+## DEC-020
+- **Decision:** How to implement explicit `dynamic` parameter boundaries without breaking existing AST JSON fixtures.
+- **Chosen Option:** Introduce parser-side `Parameter` nodes with a hidden `ParameterAnnotation` (`Inferred` vs `Dynamic`), keep `params` serialized as plain strings via custom `Serialize`, reject `-> dynamic` after function heads with a policy-specific parser diagnostic, and seed typing parameter constraints from the annotation.
+- **Confidence (0-100):** 73
+- **Alternatives Considered:**
+  - Keep `params: Vec<String>` and ignore annotation semantics after parsing.
+  - Change AST JSON schema to expose parameter objects and update all dump fixtures.
+  - Handle annotation policy only in typing, leaving parser grammar unchanged.
+- **Reasoning:** Hidden parameter metadata gives us real explicit-boundary semantics for typing while preserving every existing `--dump-ast` contract. Parser-side rejection of `-> dynamic` enforces the policy at the right phase with deterministic offsets.
+- **Reversibility:** High — parameter metadata can be surfaced or refactored later without changing current JSON output.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:13:10Z

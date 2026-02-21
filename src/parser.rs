@@ -63,18 +63,59 @@ pub struct Function {
     #[serde(skip_serializing)]
     pub id: NodeId,
     pub name: String,
-    pub params: Vec<String>,
+    pub params: Vec<Parameter>,
     pub body: Expr,
 }
 
 impl Function {
-    fn with_id(id: NodeId, name: String, params: Vec<String>, body: Expr) -> Self {
+    fn with_id(id: NodeId, name: String, params: Vec<Parameter>, body: Expr) -> Self {
         Self {
             id,
             name,
             params,
             body,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParameterAnnotation {
+    Inferred,
+    Dynamic,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parameter {
+    name: String,
+    annotation: ParameterAnnotation,
+}
+
+impl Parameter {
+    fn inferred(name: String) -> Self {
+        Self {
+            name,
+            annotation: ParameterAnnotation::Inferred,
+        }
+    }
+
+    fn dynamic(name: String) -> Self {
+        Self {
+            name,
+            annotation: ParameterAnnotation::Dynamic,
+        }
+    }
+
+    pub fn annotation(&self) -> ParameterAnnotation {
+        self.annotation
+    }
+}
+
+impl Serialize for Parameter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.name)
     }
 }
 
@@ -341,6 +382,19 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::LParen, "(")?;
         let params = self.parse_params()?;
         self.expect(TokenKind::RParen, ")")?;
+
+        if self.check(TokenKind::Arrow)
+            && self
+                .peek(1)
+                .map(|token| token.kind() == TokenKind::Ident && token.lexeme() == "dynamic")
+                .unwrap_or(false)
+        {
+            return Err(ParserError::at_current(
+                "dynamic annotation is only allowed on parameters",
+                self.current(),
+            ));
+        }
+
         self.expect(TokenKind::Do, "do")?;
         let body = self.parse_expression()?;
         self.expect(TokenKind::End, "end")?;
@@ -348,7 +402,7 @@ impl<'a> Parser<'a> {
         Ok(Function::with_id(id, name, params, body))
     }
 
-    fn parse_params(&mut self) -> Result<Vec<String>, ParserError> {
+    fn parse_params(&mut self) -> Result<Vec<Parameter>, ParserError> {
         let mut params = Vec::new();
 
         if self.check(TokenKind::RParen) {
@@ -356,7 +410,7 @@ impl<'a> Parser<'a> {
         }
 
         loop {
-            params.push(self.expect_ident("parameter name")?);
+            params.push(self.parse_param()?);
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
@@ -366,6 +420,17 @@ impl<'a> Parser<'a> {
         }
 
         Ok(params)
+    }
+
+    fn parse_param(&mut self) -> Result<Parameter, ParserError> {
+        if self.current_starts_dynamic_param_annotation() {
+            self.advance();
+            let name = self.expect_ident("parameter name")?;
+            return Ok(Parameter::dynamic(name));
+        }
+
+        let name = self.expect_ident("parameter name")?;
+        Ok(Parameter::inferred(name))
     }
 
     fn parse_expression(&mut self) -> Result<Expr, ParserError> {
@@ -621,6 +686,20 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn current_starts_dynamic_param_annotation(&self) -> bool {
+        let Some(current) = self.current() else {
+            return false;
+        };
+
+        if current.kind() != TokenKind::Ident || current.lexeme() != "dynamic" {
+            return false;
+        }
+
+        self.peek(1)
+            .map(|next| next.kind() == TokenKind::Ident)
+            .unwrap_or(false)
+    }
+
     fn check(&self, kind: TokenKind) -> bool {
         self.current()
             .map(|token| token.kind() == kind)
@@ -644,6 +723,10 @@ impl<'a> Parser<'a> {
 
     fn current(&self) -> Option<&'a Token> {
         self.tokens.get(self.index)
+    }
+
+    fn peek(&self, distance: usize) -> Option<&'a Token> {
+        self.tokens.get(self.index + distance)
     }
 
     fn is_at_end(&self) -> bool {

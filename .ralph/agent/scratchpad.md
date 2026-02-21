@@ -257,3 +257,28 @@
 - Verification (green): `cargo test infer_types_reports_type_mismatch_with_span_offset`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771635465-22de` after verification.
 - Committed changes with message `feat: reject implicit dynamic coercions in typing`.
+
+## 2026-02-21T01:09:43Z — Builder Step 6.5 (RED)
+- Handled pending `task.complete` event for `task-1771635465-22de` by confirming the GREEN task is already closed (`ralph tools task show task-1771635465-22de`).
+- With no ready queue items, created Step 6 follow-up runtime tasks: `task-1771636121-a3f9` (RED explicit dynamic annotation policy) and blocked `task-1771636123-bdd0` (GREEN parser+typing implementation).
+- Added new failing typing contracts in `src/typing.rs`:
+  - `infer_types_accepts_explicit_dynamic_parameter_annotation` locks `def helper(dynamic value)` as accepted syntax with expected signatures (`Demo.helper => fn(dynamic) -> int`, `Demo.run => fn() -> int`).
+  - `parse_ast_rejects_dynamic_annotation_outside_parameter_positions` locks deterministic rejection for `def run() -> dynamic do` with message `dynamic annotation is only allowed on parameters at offset 30`.
+- Verification (red):
+  - `cargo test infer_types_accepts_explicit_dynamic_parameter_annotation` fails as expected with parser error `expected ), found IDENT(value)`.
+  - `cargo test parse_ast_rejects_dynamic_annotation_outside_parameter_positions` fails as expected because parser currently reports `expected do, found ARROW at offset 30` instead of the new policy diagnostic.
+- Confidence protocol: documented DEC-019 in `.ralph/agent/decisions.md` (confidence 61) for choosing `dynamic value` parameter annotation syntax plus return-position rejection contract.
+- Tooling memory capture: recorded `mem-1771636164-e470` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/typing.rs`; resolved with `cargo fmt --all` and reran `cargo fmt --all -- --check`.
+- Closed RED task `task-1771636121-a3f9`; `task-1771636123-bdd0` is now the next ready GREEN task.
+
+## 2026-02-21T01:13:31Z — Builder Step 6.6 (GREEN)
+- Handled pending `task.complete` event for `task-1771636121-a3f9` by confirming it was already closed via `ralph tools task show task-1771636121-a3f9`, then executed ready task `task-1771636123-bdd0`.
+- Implemented explicit dynamic annotation boundaries across parser + typing while preserving existing AST JSON contracts:
+  - `src/parser.rs`: introduced parser-side `Parameter` metadata with `ParameterAnnotation` (`Inferred`/`Dynamic`), kept serialized `params` as plain strings via custom `Serialize`, and taught parameter parsing to accept `dynamic value` annotation heads.
+  - `src/parser.rs`: added a policy-specific parser guard that rejects `def ...() -> dynamic do` with deterministic message `dynamic annotation is only allowed on parameters` at the arrow token offset.
+  - `src/typing.rs`: updated signature seeding to consume parser annotations so explicitly annotated parameters are treated as `Type::Dynamic` boundaries.
+- Confidence protocol: documented DEC-020 in `.ralph/agent/decisions.md` (confidence 73) for hidden parameter metadata + serialization-preserving implementation strategy.
+- Tooling memory capture: recorded `mem-1771636258-1963` after `cargo test` failed due passing two test names in one invocation; resolved by running each test separately.
+- Verification (green): `cargo test infer_types_accepts_explicit_dynamic_parameter_annotation`, `cargo test parse_ast_rejects_dynamic_annotation_outside_parameter_positions`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771636123-bdd0` after verification.
+- Committed changes with message `feat: enforce explicit dynamic annotation boundaries`.
