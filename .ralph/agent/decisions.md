@@ -152,3 +152,59 @@ Template:
 - **Reasoning:** This keeps parser and AST changes minimal, preserves all existing `--dump-ast` fixture contracts, and still enables module graph lookup for cross-module calls in the current Step 5 scope.
 - **Reversibility:** High — if import syntax or richer call metadata is needed later, the resolver can be refactored to a structured call target without changing current CLI behavior.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T00:42:35Z
+
+## DEC-014
+- **Decision:** How to centralize resolver diagnostics in Step 5.5 without changing existing CLI error contracts.
+- **Chosen Option:** Extract resolver error code/message construction into a dedicated `resolver_diag` module (`ResolverDiagnosticCode` + `ResolverError`) and update `resolver` to consume shared constructors while keeping `[E1001] ...` output unchanged.
+- **Confidence (0-100):** 75
+- **Alternatives Considered:**
+  - Keep diagnostics inline in `resolver.rs` and only add comments/constants.
+  - Introduce a more generic compiler-wide diagnostic framework now.
+- **Reasoning:** A focused module extraction satisfies Step 5.5 centralization with minimal scope, avoids speculative cross-phase architecture, and keeps all existing tests/CLI contracts stable.
+- **Reversibility:** High — the diagnostics module can later be expanded into a broader diagnostic catalog without changing resolver traversal logic.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T00:46:30Z
+
+## DEC-015
+- **Decision:** What initial type-inference contract to lock for Step 6.1 RED before an inference engine exists.
+- **Chosen Option:** Introduce a dedicated `typing::infer_types(&Ast)` unit test that expects deterministic function signatures for a polymorphic-like helper (`Demo.helper` => `fn(dynamic) -> int`) and a concrete consumer (`Demo.run` => `fn() -> int`).
+- **Confidence (0-100):** 66
+- **Alternatives Considered:**
+  - Add another CLI integration test for `tonic check` success/failure only (would not force type inference).
+  - Add a new CLI dump flag (`--dump-types`) before the typing core exists.
+- **Reasoning:** CLI pass/fail behavior is currently resolver-only, so another integration test would not provide type-inference backpressure. A focused unit-level contract is the narrowest way to force real inference behavior while reusing the existing AST pipeline.
+- **Reversibility:** High — signature string format and API shape can be revised once typed-module data structures stabilize.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T00:51:14Z
+
+## DEC-016
+- **Decision:** Whether Step 6.2 should constrain call-site argument types into callee parameter variables while implementing the first unification pass.
+- **Chosen Option:** Infer return types via expression constraints and unification, but do not yet flow call-site argument constraints back into callee parameters; unresolved parameters finalize to `dynamic`.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Fully unify call-site argument types with callee parameter variables now.
+  - Hardcode every parameter as `dynamic` and skip type-variable/unification scaffolding.
+- **Reasoning:** The locked RED contract expects `Demo.helper` to remain `fn(dynamic) -> int` even with concrete int call sites. Deferring argument-to-parameter unification keeps this slice narrow, preserves the RED expectation, and still introduces a real constraint solver for return and operator typing.
+- **Reversibility:** High — call-site parameter constraints can be added in a follow-up slice once explicit mismatch policy and dynamic-boundary rules are locked.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T00:55:36Z
+
+## DEC-017
+- **Decision:** What concrete mismatch fixture and span contract to lock for Step 6.3 RED before mismatch diagnostics exist.
+- **Chosen Option:** Add a failing typing unit test where `unknown()` returns `dynamic` via an empty `case` expression and is used in `unknown() + 1`; assert inference fails with `[E2001] type mismatch: expected int, found dynamic at offset 123`.
+- **Confidence (0-100):** 68
+- **Alternatives Considered:**
+  - Assert only that inference returns `Err` without pinning code/message/offset.
+  - Use a CLI integration test (current `tonic check` path is resolver-only, so mismatch behavior would not be exercised).
+- **Reasoning:** This is the narrowest deterministic RED contract that directly pressures Step 6.4 to implement both coercion rejection and span-aware diagnostics without changing CLI routing yet.
+- **Reversibility:** High — the exact diagnostic text/offset contract is localized to one unit test and can be adjusted with coordinated updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T00:58:55Z
+
+## DEC-018
+- **Decision:** How to provide span offsets for Step 6.4 mismatch diagnostics without changing existing AST JSON fixtures.
+- **Chosen Option:** Add parser-only expression `offset` metadata (skipped during serialization) to every `Expr` variant, then use those offsets in typing unification errors while rejecting implicit `dynamic`↔`int` coercions.
+- **Confidence (0-100):** 78
+- **Alternatives Considered:**
+  - Hardcode the RED-test offset in typing diagnostics.
+  - Keep AST unchanged and infer offsets indirectly from node IDs.
+  - Add fully serialized spans to AST output and update all dump-ast contracts.
+- **Reasoning:** Hidden per-expression offsets give deterministic span-aware diagnostics with minimal blast radius. This preserves all existing `--dump-ast` goldens and avoids brittle special-casing in the type checker.
+- **Reversibility:** High — offset metadata can be replaced with richer span structs later without affecting external AST JSON contracts.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:03:41Z

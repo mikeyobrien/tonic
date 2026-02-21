@@ -84,17 +84,23 @@ pub enum Expr {
     Int {
         #[serde(skip_serializing)]
         id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
         value: i64,
     },
     Call {
         #[serde(skip_serializing)]
         id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
         callee: String,
         args: Vec<Expr>,
     },
     Binary {
         #[serde(skip_serializing)]
         id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
         op: BinaryOp,
         left: Box<Expr>,
         right: Box<Expr>,
@@ -102,12 +108,16 @@ pub enum Expr {
     Pipe {
         #[serde(skip_serializing)]
         id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
         left: Box<Expr>,
         right: Box<Expr>,
     },
     Case {
         #[serde(skip_serializing)]
         id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
         subject: Box<Expr>,
         branches: Vec<CaseBranch>,
     },
@@ -184,17 +194,25 @@ pub struct MapPatternEntry {
 }
 
 impl Expr {
-    fn int(id: NodeId, value: i64) -> Self {
-        Self::Int { id, value }
+    fn int(id: NodeId, offset: usize, value: i64) -> Self {
+        Self::Int { id, offset, value }
     }
 
-    fn call(id: NodeId, callee: String, args: Vec<Expr>) -> Self {
-        Self::Call { id, callee, args }
+    fn call(id: NodeId, offset: usize, callee: String, args: Vec<Expr>) -> Self {
+        Self::Call {
+            id,
+            offset,
+            callee,
+            args,
+        }
     }
 
     fn binary(id: NodeId, op: BinaryOp, left: Expr, right: Expr) -> Self {
+        let offset = left.offset();
+
         Self::Binary {
             id,
+            offset,
             op,
             left: Box::new(left),
             right: Box::new(right),
@@ -202,18 +220,32 @@ impl Expr {
     }
 
     fn pipe(id: NodeId, left: Expr, right: Expr) -> Self {
+        let offset = left.offset();
+
         Self::Pipe {
             id,
+            offset,
             left: Box::new(left),
             right: Box::new(right),
         }
     }
 
-    fn case(id: NodeId, subject: Expr, branches: Vec<CaseBranch>) -> Self {
+    fn case(id: NodeId, offset: usize, subject: Expr, branches: Vec<CaseBranch>) -> Self {
         Self::Case {
             id,
+            offset,
             subject: Box::new(subject),
             branches,
+        }
+    }
+
+    pub fn offset(&self) -> usize {
+        match self {
+            Self::Int { offset, .. }
+            | Self::Call { offset, .. }
+            | Self::Binary { offset, .. }
+            | Self::Pipe { offset, .. }
+            | Self::Case { offset, .. } => *offset,
         }
     }
 }
@@ -374,6 +406,7 @@ impl<'a> Parser<'a> {
 
         if self.check(TokenKind::Integer) {
             let token = self.advance().expect("integer token should be available");
+            let offset = token.span().start();
             let value = token.lexeme().parse::<i64>().map_err(|_| {
                 ParserError::at_current(
                     format!("invalid integer literal '{}'", token.lexeme()),
@@ -381,15 +414,15 @@ impl<'a> Parser<'a> {
                 )
             })?;
 
-            return Ok(Expr::int(self.node_ids.next_expr(), value));
+            return Ok(Expr::int(self.node_ids.next_expr(), offset, value));
         }
 
         if self.check(TokenKind::Ident) {
-            let mut callee = self
+            let callee_token = self
                 .advance()
-                .expect("identifier token should be available")
-                .lexeme()
-                .to_string();
+                .expect("identifier token should be available");
+            let offset = callee_token.span().start();
+            let mut callee = callee_token.lexeme().to_string();
 
             if self.match_kind(TokenKind::Dot) {
                 let function_name = self.expect_ident("qualified function name")?;
@@ -400,14 +433,14 @@ impl<'a> Parser<'a> {
             let args = self.parse_call_args()?;
             self.expect(TokenKind::RParen, ")")?;
 
-            return Ok(Expr::call(self.node_ids.next_expr(), callee, args));
+            return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
         }
 
         Err(self.expected("expression"))
     }
 
     fn parse_case_expression(&mut self) -> Result<Expr, ParserError> {
-        self.expect(TokenKind::Case, "case")?;
+        let offset = self.expect_token(TokenKind::Case, "case")?.span().start();
         let subject = self.parse_expression()?;
         self.expect(TokenKind::Do, "do")?;
 
@@ -422,7 +455,12 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::End, "end")?;
 
-        Ok(Expr::case(self.node_ids.next_expr(), subject, branches))
+        Ok(Expr::case(
+            self.node_ids.next_expr(),
+            offset,
+            subject,
+            branches,
+        ))
     }
 
     fn parse_case_branch(&mut self) -> Result<CaseBranch, ParserError> {
@@ -548,8 +586,12 @@ impl<'a> Parser<'a> {
     }
 
     fn expect(&mut self, kind: TokenKind, expected: &str) -> Result<(), ParserError> {
-        if self.match_kind(kind) {
-            Ok(())
+        self.expect_token(kind, expected).map(|_| ())
+    }
+
+    fn expect_token(&mut self, kind: TokenKind, expected: &str) -> Result<&'a Token, ParserError> {
+        if self.check(kind) {
+            Ok(self.advance().expect("expected token should be available"))
         } else {
             Err(self.expected(expected))
         }
@@ -858,7 +900,9 @@ mod tests {
                 collect_expr_ids(left, ids);
                 collect_expr_ids(right, ids);
             }
-            Expr::Pipe { id, left, right } => {
+            Expr::Pipe {
+                id, left, right, ..
+            } => {
                 ids.push(id.0.clone());
                 collect_expr_ids(left, ids);
                 collect_expr_ids(right, ids);
@@ -867,6 +911,7 @@ mod tests {
                 id,
                 subject,
                 branches,
+                ..
             } => {
                 ids.push(id.0.clone());
                 collect_expr_ids(subject, ids);

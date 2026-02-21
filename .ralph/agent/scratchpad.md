@@ -210,3 +210,50 @@
 - Confidence protocol: documented DEC-013 in `.ralph/agent/decisions.md` (confidence 76) for representing qualified calls as dotted callee strings plus resolver-side graph lookup.
 - Tooling memory capture: recorded `mem-1771634543-79db` after `cargo fmt --all -- --check` failed with rustfmt diffs; resolved with `cargo fmt --all` and reran checks.
 - Verification (green): `cargo test --test check_resolve_module_reference`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T00:46:43Z — Builder Step 5.5 (REFACTOR)
+- Handled pending `task.complete` event for `task-1771634269-a113` by confirming it was already closed, then advanced Step 5 planning with an empty ready queue.
+- Created and executed runtime task `task-1771634684-a68b` for Step 5.5 resolver diagnostic centralization.
+- RED: extended resolver unit coverage in `src/resolver.rs` to assert undefined-symbol failures expose a centralized diagnostic code (`ResolverDiagnosticCode::UndefinedSymbol`); initial run failed at compile-time because no shared diagnostics module or `ResolverError::code()` surface existed.
+- GREEN/REFACTOR: extracted resolver diagnostics into new `src/resolver_diag.rs` (`ResolverDiagnosticCode` + `ResolverError` constructor/accessors + display contract), wired `src/resolver.rs` to consume the shared module, and registered it in `src/main.rs`.
+- Confidence protocol: documented DEC-014 in `.ralph/agent/decisions.md` (confidence 75) for the focused module extraction approach.
+- Tooling memory capture: recorded `mem-1771634774-8726` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/resolver_diag.rs`; resolved with `cargo fmt --all` and reran checks.
+- Verification (green): `cargo test --test check_resolve_module_reference`, `cargo test --test check_undefined_symbol`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771634684-a68b` after verification.
+
+## 2026-02-21T00:51:14Z — Builder Step 6.1 (RED)
+- Handled pending `task.complete` event for `task-1771634684-a68b` by confirming it was already closed, then advanced to Step 6 planning with an empty runtime queue.
+- Created Step 6 follow-up tasks: `task-1771634902-2178` (RED polymorphic-helper inference contract) and blocked `task-1771634908-ca68` (GREEN base type constraints + unification).
+- Added new typing module scaffold `src/typing.rs` and locked a failing unit contract `infer_types_supports_polymorphic_like_helper_with_concrete_call_sites`, which expects deterministic inferred signatures (`Demo.helper => fn(dynamic) -> int`, `Demo.run => fn() -> int`) from `typing::infer_types(&Ast)`.
+- Registered the new module in `src/main.rs` (`mod typing;`) so the RED typing test is compiled in the binary crate test target.
+- Verification (red): `cargo test infer_types_supports_polymorphic_like_helper_with_concrete_call_sites` fails as expected with `not yet implemented: type inference is not implemented yet`, confirming inference logic is still missing.
+- Confidence protocol: documented DEC-015 in `.ralph/agent/decisions.md` (confidence 66) for selecting a unit-level inference contract over additional CLI pass/fail tests.
+
+## 2026-02-21T00:56:00Z — Builder Step 6.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771634902-2178` by confirming the RED task was already closed, then executed ready task `task-1771634908-ca68`.
+- Implemented base type inference in `src/typing.rs` using a constraint-solver foundation: seeded function signatures with type variables, inferred expression return constraints (`int`, `call`, `binary`, `pipe`, `case`), and finalized unresolved type variables to `dynamic` for stable signature output.
+- Added module-aware call target qualification (`local` vs `Module.function`) plus deterministic signature rendering so `typing::infer_types(&Ast)` now returns expected values (`Demo.helper => fn(dynamic) -> int`, `Demo.run => fn() -> int`).
+- Confidence protocol: documented DEC-016 in `.ralph/agent/decisions.md` (confidence 74) for deferring call-site argument-to-parameter unification in this slice while still shipping a real unification core.
+- Tooling memory capture: recorded `mem-1771635321-15d3` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/typing.rs`; resolved via `cargo fmt --all` and reran checks.
+- Verification (green): `cargo test infer_types_supports_polymorphic_like_helper_with_concrete_call_sites`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771634908-ca68` after verification.
+
+## 2026-02-21T00:59:42Z — Builder Step 6.3 (RED)
+- Handled pending `task.complete` event for `task-1771634908-ca68` by confirming it is closed, then advanced Step 6 planning because no runtime tasks were ready.
+- Created next runtime tasks: `task-1771635463-7608` (RED type-mismatch diagnostic contract) and blocked follow-up `task-1771635465-22de` (GREEN mismatch diagnostics + coercion rejection).
+- Added typing unit coverage in `src/typing.rs`: `infer_types_reports_type_mismatch_with_span_offset` asserts `infer_types(&Ast)` fails for `unknown() + 1` when `unknown()` infers `dynamic`, with deterministic diagnostic contract `[E2001] type mismatch: expected int, found dynamic at offset 123`.
+- Verification (red): `cargo test infer_types_reports_type_mismatch_with_span_offset` fails as expected because inference currently accepts implicit `dynamic` -> `int` coercion and returns a successful `TypeSummary`.
+- Confidence protocol: documented DEC-017 in `.ralph/agent/decisions.md` (confidence 68) for choosing the empty-case dynamic fixture and fixed offset contract.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771635463-7608`; `task-1771635465-22de` is now the next ready GREEN task.
+
+## 2026-02-21T01:04:00Z — Builder Step 6.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771635463-7608` by confirming it was already closed, then executed ready task `task-1771635465-22de`.
+- Implemented coercion rejection + span-aware mismatch diagnostics for type inference:
+  - `src/parser.rs`: added parser-only `offset` metadata to each `Expr` variant (serde-skipped) plus `Expr::offset()` accessor so diagnostics can point to stable source offsets without changing AST dump JSON contracts.
+  - `src/typing.rs`: introduced typed mismatch diagnostics (`[E2001]`) and updated unification to reject implicit `dynamic`↔`int` coercions, reporting deterministic offsets from expression metadata.
+- Confidence protocol: documented DEC-018 in `.ralph/agent/decisions.md` (confidence 78) for the hidden-offset AST approach.
+- Tooling memory capture: recorded `mem-1771635805-098a` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/parser.rs`; resolved with `cargo fmt --all` and reran checks.
+- Verification (green): `cargo test infer_types_reports_type_mismatch_with_span_offset`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771635465-22de` after verification.
+- Committed changes with message `feat: reject implicit dynamic coercions in typing`.
