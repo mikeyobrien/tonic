@@ -30,6 +30,8 @@ If no viable task exists, set SELECTED_TASK_PATH=NONE and explain why.
 
 Heartbeat Implement phase.
 
+Model requirement: MUST run with `gemini-3.1-pro-preview` unless explicitly overridden by the user.
+
 Input:
 - Previous step output includes SELECTED_TASK_PATH.
 - Artifact available at {chain_dir}/selected-task.json.
