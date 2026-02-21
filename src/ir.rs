@@ -1,20 +1,20 @@
 use crate::parser::{Ast, BinaryOp, Expr, Pattern};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IrProgram {
     pub(crate) functions: Vec<IrFunction>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct IrFunction {
     pub(crate) name: String,
     pub(crate) params: Vec<String>,
     pub(crate) ops: Vec<IrOp>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub(crate) enum IrOp {
     ConstInt {
@@ -41,20 +41,20 @@ pub(crate) enum IrOp {
     },
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum IrCallTarget {
     Builtin { name: String },
     Function { name: String },
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct IrCaseBranch {
     pub(crate) pattern: IrPattern,
     pub(crate) ops: Vec<IrOp>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub(crate) enum IrPattern {
     Atom { value: String },

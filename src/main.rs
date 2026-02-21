@@ -1,4 +1,5 @@
 mod acceptance;
+mod cache;
 mod cli_diag;
 mod ir;
 mod lexer;
@@ -10,8 +11,12 @@ mod runtime;
 mod typing;
 
 use acceptance::{load_acceptance_yaml, load_feature_scenarios};
+use cache::{
+    build_run_cache_key, load_cached_ir, should_trace_cache_status, store_cached_ir,
+    trace_cache_status,
+};
 use cli_diag::{CliDiagnostic, EXIT_OK};
-use ir::lower_ast_to_ir;
+use ir::{lower_ast_to_ir, IrProgram};
 use lexer::scan_tokens;
 use manifest::load_run_source;
 use parser::parse_ast;
@@ -90,7 +95,7 @@ fn handle_run(args: Vec<String>) -> i32 {
 
     let source_path = args[0].clone();
 
-    for argument in args.iter().skip(1) {
+    if let Some(argument) = args.get(1) {
         return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
     }
 
@@ -99,28 +104,28 @@ fn handle_run(args: Vec<String>) -> i32 {
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
-    let tokens = match scan_tokens(&source) {
-        Ok(tokens) => tokens,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+    let cache_key = build_run_cache_key(&source);
+    let mut cache_status = "miss";
+
+    let ir = match load_cached_ir(&cache_key) {
+        Ok(Some(cached_ir)) => {
+            cache_status = "hit";
+            cached_ir
+        }
+        Ok(None) | Err(_) => {
+            let compiled_ir = match compile_source_to_ir(&source) {
+                Ok(ir) => ir,
+                Err(error) => return CliDiagnostic::failure(error).emit(),
+            };
+
+            let _ = store_cached_ir(&cache_key, &compiled_ir);
+            compiled_ir
+        }
     };
 
-    let ast = match parse_ast(&tokens) {
-        Ok(ast) => ast,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
-    };
-
-    if let Err(error) = resolve_ast(&ast) {
-        return CliDiagnostic::failure(error.to_string()).emit();
+    if should_trace_cache_status() {
+        trace_cache_status(cache_status);
     }
-
-    if let Err(error) = infer_types(&ast) {
-        return CliDiagnostic::failure(error.to_string()).emit();
-    }
-
-    let ir = match lower_ast_to_ir(&ast) {
-        Ok(ir) => ir,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
-    };
 
     let value = match evaluate_entrypoint(&ir) {
         Ok(value) => value,
@@ -136,6 +141,16 @@ fn handle_run(args: Vec<String>) -> i32 {
             EXIT_OK
         }
     }
+}
+
+fn compile_source_to_ir(source: &str) -> Result<IrProgram, String> {
+    let tokens = scan_tokens(source).map_err(|error| error.to_string())?;
+    let ast = parse_ast(&tokens).map_err(|error| error.to_string())?;
+
+    resolve_ast(&ast).map_err(|error| error.to_string())?;
+    infer_types(&ast).map_err(|error| error.to_string())?;
+
+    lower_ast_to_ir(&ast).map_err(|error| error.to_string())
 }
 
 fn run_placeholder(command: &str) -> i32 {

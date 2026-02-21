@@ -577,3 +577,63 @@ Template:
 - **Reasoning:** This is the narrowest additive change that satisfies both RED contracts (no eager stdlib load when unreferenced + successful referenced load with trace output) while preserving existing call paths and avoiding broader API churn.
 - **Reversibility:** High — optional-module detection and trace emission remain localized to `src/manifest.rs` and can migrate to richer module-loader metadata later.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T03:01:57Z
+
+## DEC-050
+- **Decision:** What initial Step 12.1 RED contract should define cache-key variance and cache lookup semantics before on-disk wiring exists.
+- **Chosen Option:** Add a new `src/cache.rs` unit-test contract that uses synthetic dimensions (`entry_hash`, `dependency_hash`, `runtime_version`, `target`, `flags`) and asserts (a) identical inputs produce identical keys, (b) changing one dimension changes the key, and (c) cache lookup transitions from miss to hit after storing payload.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Start with an end-to-end `tonic run` warm-cache integration contract before cache interfaces exist.
+  - Test only key stability/variance and defer cache store behavior.
+  - Add cache tests directly in `main.rs` instead of a dedicated cache module seam.
+- **Reasoning:** Step 12 begins with cache hit/miss unit tests using synthetic keys. A dedicated module-level contract is the narrowest path that creates deterministic backpressure without forcing premature CLI/runtime cache plumbing.
+- **Reversibility:** High — key shape and cache storage backend can change behind the same test seam.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:05:05Z
+
+## DEC-051
+- **Decision:** How to implement Step 12.2 cache-key derivation and cache storage seams without prematurely wiring on-disk persistence.
+- **Chosen Option:** Derive `CacheKey` deterministically from the five synthetic dimensions using a length-prefixed concatenation format, and introduce a `CacheStorage` lookup/store interface implemented by an in-memory `CompileCache` (`HashMap<CacheKey, String>`).
+- **Confidence (0-100):** 78
+- **Alternatives Considered:**
+  - Concatenate raw values with plain delimiters only (simpler but more collision-prone with delimiter-containing parts).
+  - Pull in a hashing crate and hash dimensions into a digest key.
+  - Skip a storage interface and keep direct `CompileCache` methods only.
+- **Reasoning:** Length-prefixing gives deterministic key variance without new dependencies, and a small trait keeps Step 12.2 focused while creating a clean seam for later on-disk backend wiring in Step 12.4.
+- **Reversibility:** High — key encoding and storage backend can be changed behind `CacheKey::from_parts` and `CacheStorage` without affecting callers.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:07:56Z
+
+## DEC-052
+- **Decision:** What RED integration contract should define Step 12.3 warm-run cache behavior before run-pipeline cache wiring exists.
+- **Chosen Option:** Add `tests/run_cache_hit_smoke.rs` asserting two consecutive `tonic run .` executions under `TONIC_DEBUG_CACHE=1` report `cache-status miss` on first run and `cache-status hit` on second run while preserving program output.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Assert cache-hit behavior indirectly through timing differences (flaky and environment-dependent).
+  - Add only a unit test in `src/cache.rs` and defer CLI integration coverage.
+  - Assert warm-run success only without pinning cache trace semantics.
+- **Reasoning:** Step 12.3 requires an integration contract that the second run uses cache. A debug-trace assertion is deterministic, avoids perf-flake risk, and creates direct backpressure for Step 12.4 cache plumbing without over-scoping into benchmark gates.
+- **Reversibility:** High — trace token strings can be revised later with coordinated test updates while preserving the same warm-run cache intent.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:12:43Z
+
+## DEC-053
+- **Decision:** How to wire Step 12.4 on-disk cache into `tonic run` while keeping runtime behavior stable on cache read/write issues.
+- **Chosen Option:** Compute a deterministic run cache key from source-derived hashes + runtime target metadata, attempt to load serialized IR from `.tonic/cache/<key>.ir.json` before compilation, and treat cache I/O/deserialize failures as cache misses (compile + continue) while emitting `cache-status miss|hit` only when `TONIC_DEBUG_CACHE` is set.
+- **Confidence (0-100):** 77
+- **Alternatives Considered:**
+  - Fail `tonic run` immediately on cache read/write/deserialize errors.
+  - Implement in-memory-only warm cache in-process and defer on-disk persistence.
+  - Cache source text or typed AST instead of lowered IR.
+- **Reasoning:** The active GREEN contract requires deterministic miss/hit tracing across separate `tonic run` invocations. On-disk IR artifacts satisfy cross-process reuse directly, and miss-on-error behavior avoids introducing new user-facing failures from optional cache plumbing.
+- **Reversibility:** High — cache location, key dimensions, and artifact format are localized to `src/cache.rs` and `handle_run`, so behavior can be tightened later (e.g., corruption diagnostics) without changing CLI contracts.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:19:43Z
+
+## DEC-054
+- **Decision:** What Step 12.5 RED corruption contract should enforce cache recovery beyond a one-off compile fallback.
+- **Chosen Option:** Add an integration test that warms cache, corrupts the artifact path by replacing the cache file with a directory, asserts the next run falls back with `cache-status miss`, and then requires a subsequent run to report `cache-status hit`.
+- **Confidence (0-100):** 75
+- **Alternatives Considered:**
+  - Corrupt cache JSON payload only (already tolerated by current load path, likely green now).
+  - Assert fallback success only, without requiring cache self-healing on a later run.
+  - Add unit-only corruption tests in `src/cache.rs` instead of an end-to-end run contract.
+- **Reasoning:** Step 12 requires corruption recovery behavior, and current implementation already handles invalid JSON misses. Directory-path corruption exposes a real gap: fallback succeeds but cache never recovers to hits because write failures are ignored. This red contract gives precise pressure for the next GREEN slice.
+- **Reversibility:** High — corruption fixture shape and trace strings are localized to one integration test and can evolve with cache policy updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T03:22:30Z

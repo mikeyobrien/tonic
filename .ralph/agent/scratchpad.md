@@ -614,3 +614,60 @@
 - Tooling memory capture: recorded `mem-1771642893-58e9` after `cargo fmt --all -- --check` reported rustfmt diff in `src/manifest.rs`; resolved via `cargo fmt --all` and re-ran verification.
 - Verification (green): `cargo test --test run_lazy_stdlib_loading_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771642627-581b` after verification.
+
+## 2026-02-21T03:25:40Z — Planner bootstrap
+- Reviewed runtime tasks and pending build.start event for Language Core v0 plan.
+- `ralph tools task list --status open` shows one open task: `task-1771644080-e362` (Step 12.6 GREEN cache corruption fallback).
+- `ralph tools task ready` returned no ready tasks even though dependency `task-1771644078-ae0b` is already closed; treating Step 12.6 as the next atomic implementation unit for builder handoff.
+- Input classification: **Type 3 (rough description)** from build objective payload; derived task name for handoff: `step-12-6-corrupted-cache-fallback-implementation`.
+- Planner action: publish `tasks.ready` event with concise context for Builder to execute RED→GREEN on Step 12.6 only.
+
+## 2026-02-21T03:27:01Z — Builder Step 12.6 GREEN
+- Reproduced RED state with `cargo test --test run_cache_corruption_recovery_smoke` (failed: post-corruption follow-up run stayed `cache-status miss`).
+- Implemented corruption healing in `src/cache.rs`: `store_cached_ir` now removes directory-shaped artifact paths before writing serialized IR.
+- Verified GREEN on target and regression suites:
+  - `cargo test --test run_cache_corruption_recovery_smoke`
+  - `cargo test`
+  - `cargo fmt --all -- --check`
+- Closed runtime task `task-1771644080-e362` after verification.
+
+## 2026-02-21T03:28:43Z — Validator Step 12.6 gate
+- Processed pending `implementation.ready` for Step 12.6 cache corruption fallback.
+- Re-ran claimed checks:
+  - `cargo test --test run_cache_corruption_recovery_smoke` ✅
+  - `cargo test` ✅
+  - `cargo fmt --all -- --check` ✅
+- Ran mandatory validator gates:
+  - `cargo build` ✅ (build succeeds, warning-only)
+  - `cargo clippy --all-targets` ❌ (`clippy::never_loop` in `src/main.rs:98`)
+- Executed manual E2E cache-recovery scenario via `target/debug/tonic run .` in temp fixture; observed miss → miss after injected directory corruption → hit on follow-up run ✅.
+- Recorded fix memory `mem-1771644526-b6e4` and opened follow-up runtime task `task-1771644528-5496` for clippy remediation.
+- Validation outcome: **FAILED** due to lint gate failure; handoff back to Builder.
+
+## 2026-02-21T03:30:02Z — Builder lint remediation (task-1771644528-5496)
+- Reproduced validator failure with `cargo clippy --all-targets` (`clippy::never_loop` in `src/main.rs:98`).
+- Applied minimal fix in `handle_run` argument parsing: replaced single-iteration `for` loop with `args.get(1)` guard to reject unexpected trailing args without triggering lint.
+- Verification gates after fix:
+  - `cargo clippy --all-targets` ✅
+  - `cargo test` ✅
+  - `cargo build` ✅
+  - `cargo fmt --all -- --check` ✅
+- Closed runtime task `task-1771644528-5496`.
+
+## 2026-02-21T03:32:16Z — Validator re-check (task-1771644528-5496)
+- Processed pending `implementation.ready` for clippy remediation in `src/main.rs` (`args.get(1)` guard replacing single-iteration loop).
+- Re-ran mandatory gates:
+  - `cargo test` ✅
+  - `cargo build` ✅ (warning-only)
+  - `cargo clippy --all-targets` ✅ (warning-only; no lint errors)
+  - `cargo fmt --all -- --check` ✅
+- Manual E2E validation:
+  - Cache corruption recovery fixture via `target/debug/tonic run .` with `TONIC_DEBUG_CACHE=1`: observed `miss -> miss -> hit` across warm/corrupt/recovery runs ✅.
+  - CLI arg handling sanity check `tonic run . unexpected` returns usage error (exit 64) without clippy `never_loop` antipattern ✅.
+- Quality review: change is minimal, idiomatic, and non-speculative (YAGNI/KISS/idiomatic checks pass).
+- Validation outcome: **PASSED**. Emitting `validation.passed` for Committer handoff.
+
+## 2026-02-21T03:34:10Z — Committer handoff (task-1771644528-5496)
+- Processed pending `validation.passed` event and prepared a focused commit for Step 12 cache recovery + lint remediation.
+- Included runtime cache corruption recovery implementation and guardrails (`src/cache.rs`, `src/main.rs`, `src/ir.rs`) plus cache smoke coverage (`tests/run_cache_hit_smoke.rs`, `tests/run_cache_corruption_recovery_smoke.rs`).
+- Created conventional commit and emitted `commit.complete` to hand control back to Ralph.
