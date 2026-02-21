@@ -1,0 +1,212 @@
+# Scratchpad
+
+## 2026-02-20T23:22:02Z — Planner bootstrap
+- Received `build.start` payload as a rough-description objective (Language Core v0 implementation plan).
+- Runtime task queue is already populated for Step 1 micro-TDD; no new tasks needed.
+- Next unblocked atomic task to execute is `task-1771622367-847f` (Step 1.1 RED: add CLI --help smoke test).
+- Handing off to Builder with a `tasks.ready` event scoped to this queue.
+
+## 2026-02-20T23:23:27Z — Builder Step 1.1 (RED)
+- Confirmed `task-1771622367-847f` is the only unblocked task and scoped to writing a failing `--help` smoke test.
+- Kept the existing RED assertion shape (expects `run/check/test/fmt/cache/verify`) but switched the test harness to `std::process::Command` + `env!("CARGO_BIN_EXE_tonic")` to avoid deprecated `assert_cmd::Command::cargo_bin` warnings.
+- Verification: `cargo test --test cli_help_smoke` fails as expected because current CLI prints placeholder output, proving RED state is active for Step 1.2 GREEN.
+
+## 2026-02-20T23:26:12Z — Builder Step 1.2 (GREEN)
+- Implemented CLI command skeleton in `src/main.rs` with explicit routing for `run/check/test/fmt/cache/verify`, including `verify run <slice-id> [--mode <auto|mixed|manual>]` argument parsing.
+- Added stable CLI exit code constants (`EXIT_OK=0`, `EXIT_USAGE=64`) and usage diagnostics for unknown commands/arguments.
+- Added unit coverage for command routing/exit-code behavior while keeping command bodies as placeholders for later steps.
+- Verification (green): `cargo test --test cli_help_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-20T23:27:38Z — Builder Step 1.3 (RED)
+- Picked unblocked task `task-1771622367-9b3c` to codify missing-acceptance behavior before implementing loader logic.
+- Added integration test `tests/verify_missing_acceptance.rs` asserting `tonic verify run step-01 --mode auto` exits non-zero and emits an explicit `missing acceptance file` diagnostic including `acceptance/step-01.yaml`.
+- Verification (red): `cargo test --test verify_missing_acceptance` fails with **Unexpected success** (`code=0`, placeholder stdout), confirming the test is correctly red for Step 1.4 GREEN.
+
+## 2026-02-20T23:30:26Z — Builder Step 1.4 (GREEN)
+- Implemented acceptance YAML loading in `src/main.rs` via `load_acceptance_yaml(slice_id)` and `acceptance_file_path(slice_id)` so `tonic verify run` now reads/parses `acceptance/<slice-id>.yaml` before reporting success.
+- Added deterministic verify failure path with `EXIT_FAILURE=1` and explicit diagnostics (`error: missing acceptance file acceptance/<slice-id>.yaml`) when the acceptance file is absent.
+- Added `serde_yaml` runtime dependency and updated unit routing coverage so `verify run` now reflects acceptance-loading behavior (missing acceptance returns failure instead of placeholder success).
+- Verification (green): `cargo test --test verify_missing_acceptance`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-20T23:33:38Z — Builder Step 1.5 (RED)
+- Handled the prior `task.complete` handoff and moved to unblocked task `task-1771622367-aba5`.
+- Added integration test `tests/verify_feature_parser.rs` that seeds acceptance + feature fixtures and asserts `tonic verify run step-01 --mode mixed` reports scenario IDs (`auto-smoke`, `agent-review`, `human-ux`) and tag metadata (`@auto`, `@agent-manual`, `@human-manual`).
+- Verification (red): `cargo test --test verify_feature_parser` fails as expected because current verify output still omits parsed feature scenario metadata.
+- Confidence protocol: documented DEC-001 in `.ralph/agent/decisions.md` (confidence 68) for the temporary scenario-ID convention used by this RED test.
+- Hygiene: `cargo fmt --all -- --check` passes.
+
+## 2026-02-20T23:36:37Z — Builder Step 1.6 (GREEN)
+- Consumed pending `task.complete` event for `task-1771622367-aba5` and advanced to `task-1771622367-b51f` (feature parsing + mode metadata).
+- Implemented minimal acceptance-backed feature metadata flow in `src/main.rs`: parse `feature_files` from acceptance YAML, load linked `.feature` files, collect `Scenario`/`Scenario Outline` IDs and scenario tags (`@auto`, `@agent-manual`, `@human-manual`), and print verify metadata.
+- Added explicit mode metadata via `VerifyMode` (`auto|mixed|manual`) with selected-tag sets, surfaced in verify output (`mode-tags=...`) while keeping parsing non-filtering at this step.
+- Added unit coverage for mode tag metadata and feature scenario parsing to lock behavior expected by Step 1.5 RED test.
+- Verification (green): `cargo test --test verify_feature_parser`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-20T23:40:39Z — Builder Step 1.7 (REFACTOR)
+- Handled pending `task.complete` event for `task-1771622367-b51f` by closing the dependency task, then advanced to `task-1771622367-c023`.
+- RED: added refactor-locking unit assertions in `src/main.rs` for shared diagnostics shape (`CliDiagnostic`) and canonical acceptance slice path utility (`acceptance_file_path`); `cargo test` failed at compile time because the shared modules did not exist yet.
+- GREEN/REFACTOR: extracted behavior-preserving shared utilities into `src/cli_diag.rs` (usage/failure diagnostics + stable exit constants) and `src/acceptance.rs` (acceptance YAML + feature scenario parsing/path resolution), then rewired `src/main.rs` to consume them.
+- Added dedicated unit coverage in the new modules for diagnostics formatting/exit codes and acceptance utility path resolution + parser behavior.
+- Verification (green): `cargo test`, `cargo fmt --all -- --check` all pass.
+
+## 2026-02-20T23:42:42Z — Builder Step 1.8 (RED)
+- Handled pending `task.complete` event for `task-1771622367-c023`; runtime queue was empty, so I created the next Step 1 tasks: `task-1771630921-047c` (RED JSON integration test) and blocked follow-up `task-1771630923-2b8f` (GREEN reporter implementation).
+- Added integration test `tests/verify_auto_mode_json.rs` asserting `tonic verify run step-01 --mode auto` emits pass/fail JSON with `slice_id`, `mode`, `status`, and `acceptance_file` fields.
+- Verification (red): `cargo test --test verify_auto_mode_json` fails as expected because current verify output is plain-text skeleton lines, not JSON.
+- Hygiene: `cargo fmt --all -- --check` passes.
+
+## 2026-02-20T23:44:16Z — Builder Step 1.9 (GREEN)
+- Consumed pending `task.complete` context for `task-1771630921-047c` (already closed) and executed unblocked task `task-1771630923-2b8f`.
+- Replaced the verify plain-text skeleton reporter in `src/main.rs` with structured JSON output containing `slice_id`, `mode`, `status`, `acceptance_file`, `mode_tags`, and per-scenario `{id,tags}` metadata.
+- Added runtime dependency `serde_json` in `Cargo.toml` for deterministic JSON encoding.
+- Verification (green): `cargo test --test verify_auto_mode_json`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-20T23:46:41Z — Builder Step 2.1 (RED)
+- Consumed pending `task.complete` event for `task-1771630923-2b8f` (already closed), found runtime queue empty, and created Step 2 follow-ups: `task-1771631146-33fe` (RED lexer golden test) and blocked `task-1771631150-2649` (GREEN baseline scanner implementation).
+- Added integration test `tests/check_dump_tokens.rs` to lock a deterministic golden contract for `tonic check examples/lexer_smoke.tn --dump-tokens` over a minimal `defmodule` fixture (`DEFMODULE/DEF/IDENT/.../EOF` token stream).
+- Verification (red): `cargo test --test check_dump_tokens` fails as expected with current placeholder output (`tonic check command skeleton`) instead of the golden token stream.
+- Hygiene: `cargo fmt --all -- --check` passes.
+
+## 2026-02-20T23:49:43Z — Builder Step 2.2 (GREEN)
+- Consumed pending `task.complete` handoff for `task-1771631146-33fe` (RED golden test already closed), then executed ready task `task-1771631150-2649`.
+- Implemented baseline lexer scanner in new `src/lexer.rs` for identifiers, integer/string literals, core keywords (`defmodule/def/do/end/if/case/cond/fn`), and minimal delimiters/operators (`(`/`)`, `,`, `+`) with deterministic dump labels ending in `EOF`.
+- Wired `tonic check` to parse `tonic check <path> [--dump-tokens]`, read source files, invoke `scan_tokens`, and print one token label per line; retained command skeleton behavior when `--dump-tokens` is absent.
+- Added lexer unit coverage for minimal module tokenization, identifier+literal scanning, and invalid-token diagnostics.
+- Verification (green): `cargo test --test check_dump_tokens`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-20T23:51:49Z — Builder Step 2.3 (RED)
+- Handled pending `task.complete` event for `task-1771631150-2649`; runtime queue was empty, so I created Step 2 follow-ups: `task-1771631470-1f03` (RED operator/atom golden test) and blocked `task-1771631474-b082` (GREEN lexer implementation).
+- Added integration test `tests/check_dump_tokens_ops.rs` asserting `tonic check examples/lexer_ops.tn --dump-tokens` emits a deterministic stream including new operator/atom labels (`PIPE_GT`, `ARROW`, `ATOM(ok)`) alongside keyword tokens (`CASE`, `FN`, etc.).
+- Verification (red): `cargo test --test check_dump_tokens_ops` fails as expected with `error: invalid token ':' at offset 62`, confirming missing atom/operator lexing behavior for Step 2.4.
+- Confidence protocol: documented DEC-003 in `.ralph/agent/decisions.md` (confidence 67) for token label naming in this RED contract.
+- Hygiene: `cargo fmt --all -- --check` passes.
+
+## 2026-02-20T23:54:31Z — Builder Step 2.4 (GREEN)
+- Consumed pending `task.complete` event for `task-1771631470-1f03` and executed ready task `task-1771631474-b082`.
+- Extended `src/lexer.rs` tokenization to recognize `|>` (`PIPE_GT`), `->` (`ARROW`), and `:atom` (`ATOM(<name>)`) while preserving existing keyword/identifier/literal behavior.
+- Added lexer unit coverage (`scan_tokens_supports_atoms_and_operators`) for atom/operator scanning and deterministic dump labels.
+- Verification surfaced a red-contract mismatch: the fixture `fn arg -> arg end` contributes an additional `END(end)` token, so `tests/check_dump_tokens_ops.rs` golden output now includes the fourth `END(end)` before `EOF`.
+- Verification (green): `cargo test --test check_dump_tokens_ops`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-20T23:58:56Z — Builder Step 2.5 (REFACTOR)
+- Handled pending `task.complete` event for `task-1771631474-b082` and created/claimed `task-1771631762-e24e` as the next unblocked atomic task.
+- RED: extended lexer unit tests to require source-span preservation (`scan_tokens_assigns_spans_for_tokens_and_eof`) and structured error spans (`scan_tokens_reports_invalid_character`), which initially failed to compile because span APIs/error typing did not exist.
+- GREEN/REFACTOR: refactored `src/lexer.rs` to centralize span handling (`Span` on every token, including EOF), replaced ad-hoc string failures with typed `LexerError` diagnostics, and preserved existing dump-label behavior used by integration goldens.
+- Added regression coverage for unterminated string diagnostics (`scan_tokens_reports_unterminated_string_with_span`) and updated `src/main.rs` check-path error mapping to emit `LexerError` via CLI diagnostics.
+- Verification (green): `cargo test --test check_dump_tokens_ops`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T00:01:13Z — Builder Step 3.1 (RED)
+- Handled pending `task.complete` event for `task-1771631762-e24e`; task was already closed, so I advanced the queue to Step 3 by creating `task-1771631998-5cef` (RED parser AST golden) and blocked follow-up `task-1771632000-e141` (GREEN parser implementation).
+- Added integration test `tests/check_dump_ast_module.rs` asserting `tonic check examples/parser_smoke.tn --dump-ast` succeeds and emits a deterministic JSON AST for a single module with two functions (`one/0`, `two/0`).
+- Verification (red): `cargo test --test check_dump_ast_module` fails as expected with usage error `unexpected argument '--dump-ast'` (exit code 64), proving parser/AST dumping is still unimplemented.
+- Confidence protocol: documented DEC-004 in `.ralph/agent/decisions.md` (confidence 64) for the initial AST dump contract.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Tooling memory capture: recorded `mem-1771632050-0db0` after a failed `ralph tools task close ... --format json` invocation (invalid flag); reran close without `--format` and closed `task-1771631998-5cef`.
+
+## 2026-02-21T00:05:00Z — Builder Step 3.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771631998-5cef` by confirming it was already closed, then executed ready task `task-1771632000-e141`.
+- Implemented `src/parser.rs` with a deterministic parser for `defmodule`/`def` declarations, function params, integer literals, and call expressions; added JSON-serializable AST types (`modules -> functions -> body`) matching the Step 3.1 golden contract.
+- Extended `tonic check` in `src/main.rs` to accept `--dump-ast`, parse lexer output into AST, and emit compact JSON; preserved existing `--dump-tokens` behavior and added a guard against combining both dump flags.
+- Updated lexer surface in `src/lexer.rs` with token accessors used by the parser and updated check help text to document `--dump-ast`.
+- Added `serde` derive dependency for stable AST serialization output.
+- Verification (green): `cargo test --test check_dump_ast_module`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Tooling memory capture: recorded `mem-1771632288-be44` after an initial `cargo fmt --all -- --check` failure (rustfmt diffs in `src/lexer.rs` and `src/main.rs`), then ran `cargo fmt --all` and re-ran checks.
+
+## 2026-02-21T00:07:31Z — Builder Step 3.3 (RED)
+- Handled pending `task.complete` event for `task-1771632000-e141`; runtime task queue had no remaining items, so I created Step 3 follow-ups: `task-1771632378-20c6` (RED expression AST contract) and blocked `task-1771632380-ae64` (GREEN precedence parser implementation).
+- Added integration test `tests/check_dump_ast_expressions.rs` asserting `tonic check examples/parser_expressions.tn --dump-ast` succeeds and emits deterministic JSON for nested calls plus `+` precedence via a `binary` AST node (`op=plus`).
+- Verification (red): `cargo test --test check_dump_ast_expressions` fails as expected with parser diagnostic `error: expected end, found PLUS at offset 55`, confirming precedence parsing is not implemented yet.
+- Confidence protocol: documented DEC-005 in `.ralph/agent/decisions.md` (confidence 66) for the binary-expression AST contract used by this RED test.
+- Hygiene: `cargo fmt --all -- --check` passes.
+
+## 2026-02-21T00:10:20Z — Builder Step 3.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771632378-20c6` by confirming it was already closed, then executed ready task `task-1771632380-ae64`.
+- Implemented precedence-aware expression parsing in `src/parser.rs` using a binary-operator table (`PLUS` precedence) with left-associative parsing, adding `Expr::Binary` and `BinaryOp::Plus` so AST JSON now emits `{"kind":"binary","op":"plus",...}`.
+- Preserved existing call parsing semantics while allowing nested call arguments to contain infix expressions (e.g. `inner(3 + 4)`), and added parser unit coverage (`parse_ast_supports_nested_calls_with_plus_precedence`) for the new contract.
+- Tooling memory capture: recorded `mem-1771632588-79f8` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/parser.rs`; resolved via `cargo fmt --all`.
+- Verification (green): `cargo test --test check_dump_ast_expressions`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771632380-ae64` after verification.
+
+## 2026-02-21T00:16:08Z — Builder Step 3.5 (REFACTOR)
+- Consumed pending `task.complete` event for `task-1771632380-ae64`; runtime queue was empty, so I created and claimed `task-1771632777-8771` for Step 3.5 (`stable AST node constructors`).
+- RED: added parser unit coverage (`parse_ast_assigns_stable_node_ids`) requiring deterministic IDs (`module-0001`, `function-0002`, `expr-0003`, ...) and uniqueness across module/function/expression nodes; initial run failed at compile-time because AST nodes had no ID surface.
+- GREEN/REFACTOR: introduced parser-owned `NodeIdGenerator` + constructor helpers (`Module::with_id`, `Function::with_id`, `Expr::int/call/binary`) and attached deterministic IDs to all AST nodes while keeping `--dump-ast` contract stable by marking ID fields `#[serde(skip_serializing)]`.
+- Updated parser shape tests to assert serialized expression JSON (instead of raw enum equality) so refactor coverage remains stable while ID metadata evolves.
+- Confidence protocol: documented DEC-006 in `.ralph/agent/decisions.md` (confidence 74) for embedding IDs on nodes but skipping serialization.
+- Tooling memory capture: recorded `mem-1771632903-85ae` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/parser.rs`; resolved via `cargo fmt --all` then re-ran checks.
+- Verification (green): `cargo test parse_ast_assigns_stable_node_ids`, `cargo test --test check_dump_ast_module`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T00:17:14Z — Builder Step 4.1 (RED)
+- Handled pending `task.complete` event for `task-1771632777-8771` by confirming the task is already closed, then advanced to Step 4 planning because the ready queue was empty.
+- Created next runtime tasks: `task-1771633001-e6ce` (RED pipe-chain AST golden) and blocked follow-up `task-1771633003-9914` (GREEN pipe parser implementation).
+- Added integration test `tests/check_dump_ast_pipe_chain.rs` asserting `tonic check examples/parser_pipe_chain.tn --dump-ast` succeeds and emits deterministic nested `pipe` AST JSON for `source() |> normalize() |> persist(1)`.
+- Verification (red): `cargo test --test check_dump_ast_pipe_chain` fails as expected with parser diagnostic `error: expected end, found PIPE_GT at offset 47`, confirming pipe parsing is not implemented yet.
+- Confidence protocol: documented DEC-007 in `.ralph/agent/decisions.md` (confidence 65) for the left-associative nested `pipe` AST contract used by this RED test.
+- Hygiene: `cargo fmt --all -- --check` passes.
+
+## 2026-02-21T00:19:17Z — Builder Step 4.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771633001-e6ce` by confirming the RED task is already closed, then executed ready task `task-1771633003-9914`.
+- Implemented pipe-chain parsing in `src/parser.rs`: added `Expr::Pipe` (`kind: "pipe"`) plus `parse_pipe_expression` so `|>` chains parse left-associatively while preserving existing `+` precedence parsing for each stage.
+- Kept stable-node-id behavior by assigning IDs to each pipe node via existing `NodeIdGenerator`; updated parser test helper traversal to include `Expr::Pipe` nodes.
+- Verification (green): `cargo test --test check_dump_ast_pipe_chain`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T00:21:55Z — Builder Step 4.3 (RED)
+- Consumed pending `task.complete` event for `task-1771633003-9914` by confirming it is closed, then advanced Step 4 planning because the ready queue was empty.
+- Created new runtime tasks for this slice: `task-1771633233-1d65` (RED case-pattern AST golden) and `task-1771633246-feaf` (blocked GREEN parser implementation).
+- Added integration test `tests/check_dump_ast_case_patterns.rs` asserting `tonic check examples/parser_case_patterns.tn --dump-ast` succeeds and emits deterministic `case` AST JSON with tuple/list/map pattern branches.
+- Verification (red): `cargo test --test check_dump_ast_case_patterns` fails as expected with lexer diagnostic `error: invalid token '{' at offset 66`, confirming pattern-form parsing is still unimplemented.
+- Closed RED task `task-1771633233-1d65` after verification; `task-1771633246-feaf` is now the next ready GREEN task.
+- Confidence protocol: documented DEC-008 in `.ralph/agent/decisions.md` (confidence 63) for the case/pattern AST schema contract.
+- Hygiene: `cargo fmt --all -- --check` passes.
+
+## 2026-02-21T00:25:18Z — Builder Step 4.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771633233-1d65` by confirming it was already closed, then executed ready task `task-1771633246-feaf`.
+- Extended lexer support in `src/lexer.rs` with pattern delimiters/tokens (`{}`, `[]`, `%`) plus dump labels, and added unit coverage `scan_tokens_supports_pattern_delimiters`.
+- Implemented case/pattern parsing in `src/parser.rs`: added `Expr::Case` plus `CaseBranch`/`Pattern` AST variants for tuple/list/map/atom/bind/wildcard patterns; parser now handles `case ... do <pattern> -> <expr> ... end` branches.
+- Added parser unit coverage `parse_ast_supports_case_patterns` (includes wildcard branch) and updated node-id traversal to include `Expr::Case` children while preserving stable ID behavior.
+- Verification (green): `cargo test --test check_dump_ast_case_patterns`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771633246-feaf` after verification.
+
+## 2026-02-21T00:29:59Z — Builder Step 4.5 (REFACTOR)
+- Handled pending `task.complete` event for `task-1771633246-feaf` by confirming it was already closed, then created/claimed `task-1771633643-f895` for the Step 4.5 branch-normalization refactor.
+- RED: added parser unit coverage `parse_ast_exposes_normalized_case_branch_head_and_body` requiring normalized branch accessors (`head()` / `body()`); initial run failed at compile-time because `CaseBranch` exposed only raw fields.
+- GREEN/REFACTOR: replaced ad-hoc `CaseBranch` with normalized `Branch<Head>` representation plus `BranchHead` serialization contract, keeping case AST JSON stable (`pattern` + `body`) while exposing reusable branch accessors for future type-checking stages.
+- Updated parser branch construction (`CaseBranch::new(...)`) and node-id traversal to consume normalized `branch.body()` accessors without changing existing AST goldens.
+- Confidence protocol: documented DEC-009 in `.ralph/agent/decisions.md` (confidence 71) for the generic-branch + trait-based serialization approach.
+- Tooling memory capture: recorded `mem-1771633808-4177` after failed `ralph tools task close ... --format json` (invalid flag); reran close without `--format` and closed `task-1771633643-f895`.
+- Verification (green): `cargo test parse_ast_exposes_normalized_case_branch_head_and_body`, `cargo test --test check_dump_ast_case_patterns`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T00:33:58Z — Builder Step 5.1 (RED)
+- Handled pending `task.complete` event for `task-1771633643-f895` by confirming it was already closed, then created Step 5 runtime tasks because the queue was empty: `task-1771633902-edee` (RED undefined-symbol diagnostic contract) and blocked `task-1771633905-fe11` (GREEN resolver baseline implementation).
+- Added integration test `tests/check_undefined_symbol.rs` asserting `tonic check examples/resolver_undefined_symbol.tn` fails deterministically with `error: [E1001] undefined symbol 'missing' in Demo.run`.
+- Verification (red): `cargo test --test check_undefined_symbol` fails as expected with current placeholder behavior (`tonic check command skeleton`, exit 0), proving resolver diagnostics are unimplemented.
+- Confidence protocol: documented DEC-010 in `.ralph/agent/decisions.md` (confidence 69) for the initial resolver error-code contract.
+- Tooling memory capture: recorded `mem-1771633958-97e9` after `cargo fmt --all -- --check` reported rustfmt diffs in `tests/check_undefined_symbol.rs`; resolved via `cargo fmt --all` then re-ran `cargo fmt --all -- --check`.
+- Closed RED task `task-1771633902-edee`; `task-1771633905-fe11` is now the next ready GREEN task.
+
+## 2026-02-21T00:35:33Z — Builder Step 5.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771633902-edee` by confirming RED expectations were already captured, then executed ready task `task-1771633905-fe11`.
+- Implemented baseline resolver in new `src/resolver.rs`: traverses parsed AST expressions and validates `Expr::Call` targets against module-local function symbols, returning deterministic `[E1001]` diagnostics for unresolved names.
+- Wired default `tonic check <path>` flow in `src/main.rs` to run lexer -> parser -> resolver when no dump flags are present; retained `--dump-tokens` and `--dump-ast` behavior unchanged.
+- Added resolver unit coverage for both success (`module-local helper call`) and failure (`missing()` emits `[E1001] undefined symbol 'missing' in Demo.run`).
+- Confidence protocol: documented DEC-011 in `.ralph/agent/decisions.md` (confidence 77) for local-scope baseline semantics before import/module-graph work.
+- Verification (green): `cargo test --test check_undefined_symbol`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+
+## 2026-02-21T00:38:54Z — Builder Step 5.3 (RED)
+- Handled pending `task.complete` event for `task-1771633905-fe11` by confirming the task is already closed, then advanced Step 5 planning because the ready queue was empty.
+- Created next runtime tasks: `task-1771634267-ea3e` (RED two-module resolver contract) and blocked follow-up `task-1771634269-a113` (GREEN module-graph + cross-module resolution).
+- Added integration test `tests/check_resolve_module_reference.rs` asserting `tonic check examples/resolver_module_reference.tn` succeeds for a module-qualified cross-module call (`Math.helper()`).
+- Verification (red): `cargo test --test check_resolve_module_reference` fails as expected with lexer diagnostic `error: invalid token '.' at offset 94`, confirming module-qualified reference parsing/resolution is not implemented yet.
+- Confidence protocol: documented DEC-012 in `.ralph/agent/decisions.md` (confidence 70) for locking a module-qualified RED contract before import syntax exists.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771634267-ea3e`; `task-1771634269-a113` is now the next ready GREEN task.
+
+## 2026-02-21T00:42:56Z — Builder Step 5.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771634267-ea3e` by confirming the RED task was already closed, then executed ready task `task-1771634269-a113`.
+- Implemented module-qualified call support end-to-end:
+  - `src/lexer.rs`: added `DOT` token scanning/dump-label support and lexer unit coverage (`scan_tokens_supports_module_qualified_calls`).
+  - `src/parser.rs`: extended call parsing to accept `Module.function(...)` targets while preserving existing `Expr::Call` JSON contract (`callee` string); added parser unit coverage (`parse_ast_supports_module_qualified_calls`).
+  - `src/resolver.rs`: introduced a resolver `ModuleGraph` foundation and updated symbol lookup to resolve both local calls and module-qualified calls across modules in the same AST; added resolver unit coverage for success and missing qualified symbols.
+- Confidence protocol: documented DEC-013 in `.ralph/agent/decisions.md` (confidence 76) for representing qualified calls as dotted callee strings plus resolver-side graph lookup.
+- Tooling memory capture: recorded `mem-1771634543-79db` after `cargo fmt --all -- --check` failed with rustfmt diffs; resolved with `cargo fmt --all` and reran checks.
+- Verification (green): `cargo test --test check_resolve_module_reference`, `cargo test`, and `cargo fmt --all -- --check` all pass.
