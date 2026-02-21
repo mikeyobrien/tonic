@@ -2,6 +2,7 @@ mod acceptance;
 mod cli_diag;
 mod ir;
 mod lexer;
+mod manifest;
 mod parser;
 mod resolver;
 mod resolver_diag;
@@ -12,6 +13,7 @@ use acceptance::{load_acceptance_yaml, load_feature_scenarios};
 use cli_diag::{CliDiagnostic, EXIT_OK};
 use ir::lower_ast_to_ir;
 use lexer::scan_tokens;
+use manifest::load_run_source;
 use parser::parse_ast;
 use resolver::resolve_ast;
 use runtime::{evaluate_entrypoint, RuntimeValue};
@@ -92,14 +94,9 @@ fn handle_run(args: Vec<String>) -> i32 {
         return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
     }
 
-    let source = match std::fs::read_to_string(&source_path) {
-        Ok(contents) => contents,
-        Err(error) => {
-            return CliDiagnostic::failure(format!(
-                "failed to read source file {source_path}: {error}"
-            ))
-            .emit();
-        }
+    let source = match load_run_source(&source_path) {
+        Ok(source) => source,
+        Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
     let tokens = match scan_tokens(&source) {

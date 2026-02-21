@@ -505,3 +505,51 @@ Template:
 - **Reasoning:** Threading lhs into existing call inference/lowering is the narrowest reversible change that unblocks the failing integration contract (`Enum.stage_one/0` becomes arity-1 at call-site) without introducing new runtime opcodes or parser surface area.
 - **Reversibility:** High — this is localized to typing/lowering call handling and can later be replaced by richer pipe desugaring or dedicated IR.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:42:34Z
+
+## DEC-044
+- **Decision:** What Step 11.1 RED contract should define initial tonic.toml validation behavior for project-root execution.
+- **Chosen Option:** Add a failing `tonic run .` integration test that writes `tonic.toml` with `[project]` but no `project.entry`, and assert deterministic failure `error: invalid tonic.toml: missing required key project.entry`.
+- **Confidence (0-100):** 72
+- **Alternatives Considered:**
+  - Start with a manifest parser unit test only (no CLI/run-path pressure).
+  - Lock a success contract for `tonic run <dir>` immediately, including module loading.
+  - Validate a different missing-field contract first (for example `project.name`).
+- **Reasoning:** The objective starts Step 11 with manifest parse/validation. This contract is the narrowest additive entry point that forces project-root detection plus deterministic validation messaging without pulling in multi-module loader behavior yet.
+- **Reversibility:** High — required keys and message wording are localized to manifest validation and can evolve with coordinated test updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:44:29Z
+
+## DEC-045
+- **Decision:** How to add Step 11.2 project-root `tonic run` behavior without entangling manifest parsing into CLI command routing.
+- **Chosen Option:** Introduce a dedicated `manifest` module that loads `tonic.toml`, validates required `project.entry`, and supplies run-source contents when the run path is a directory; keep file-path runs unchanged by delegating all source loading through `load_run_source(...)`.
+- **Confidence (0-100):** 77
+- **Alternatives Considered:**
+  - Inline manifest parsing directly inside `handle_run` in `src/main.rs`.
+  - Keep run-path behavior file-only and add a separate `--project` flag for root execution.
+  - Implement a broader multi-module manifest loader in this slice.
+- **Reasoning:** The active RED contract only requires deterministic validation for `tonic run .` when `project.entry` is missing. A focused loader module keeps `main.rs` from ballooning, preserves existing run contracts, and creates a clean seam for upcoming Step 11 module-graph work.
+- **Reversibility:** High — manifest schema and loader behavior remain localized to one module and can be extended without changing CLI command parsing.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:48:14Z
+
+## DEC-046
+- **Decision:** What Step 11.3 RED contract should force project-level multi-module loading after manifest entry resolution.
+- **Chosen Option:** Add a failing `tonic run .` integration fixture with `tonic.toml` entry `src/main.tn`, where `Demo.run` calls `Math.helper()` implemented in sibling file `src/math.tn`, and assert successful execution with stdout `1\n`.
+- **Confidence (0-100):** 74
+- **Alternatives Considered:**
+  - Add only `manifest::load_run_source` unit tests for multiple files.
+  - Use `tonic check` instead of `tonic run` and assert resolver success only.
+  - Lock a failure-message contract instead of success behavior.
+- **Reasoning:** Step 11.3 explicitly targets a multi-module project run fixture. This contract pressures the entire run pipeline (project loader + resolver/runtime visibility) and cleanly exposes the current gap (`Math.helper` unresolved) without introducing new syntax.
+- **Reversibility:** High — fixture topology and expected output can evolve as import semantics/stdlib loading mature.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:49:43Z
+
+## DEC-047
+- **Decision:** How to implement Step 11.4 project module graph loading for `tonic run <project-root>` without introducing import syntax or a resolver-level dependency walker.
+- **Chosen Option:** Keep manifest-driven entry loading, then recursively discover additional `.tn` files under the entry file’s directory, sort them deterministically, and concatenate their sources (entry first) into the run pipeline input.
+- **Confidence (0-100):** 76
+- **Alternatives Considered:**
+  - Add parser/resolver-driven dependency walking based on call targets before loading files.
+  - Load every `.tn` file from the project root (broader than needed, higher accidental coupling risk).
+  - Introduce explicit module import declarations now and require manifests to enumerate modules.
+- **Reasoning:** The active RED contract only requires sibling module visibility for `tonic run .`. Entry-dir recursive discovery is the narrowest reversible change that unblocks multi-module execution while preserving deterministic ordering and keeping scope aligned with Step 11.
+- **Reversibility:** High — module discovery is isolated to `src/manifest.rs` and can be replaced later by explicit dependency graph loading.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:54:37Z

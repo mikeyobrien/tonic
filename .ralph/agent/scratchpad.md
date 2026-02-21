@@ -545,3 +545,47 @@
 - Tooling memory capture: recorded `mem-1771641699-3106` after `cargo fmt --all -- --check` failed with rustfmt diffs in `src/typing.rs` + `src/typing/tests.rs`; resolved via `cargo fmt --all`.
 - Verification (green): `cargo test --test run_pipe_enum_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771641358-f88c` after verification.
+
+## 2026-02-21T02:44:29Z — Builder Step 11.1 (RED)
+- Handled pending `task.complete` event for `task-1771641358-f88c` by confirming it is already closed (`ralph tools task show task-1771641358-f88c`).
+- Runtime queue had no ready tasks, so I created Step 11 follow-up tasks: `task-1771641833-0ce0` (RED tonic.toml manifest validation contract) and blocked `task-1771641837-95ec` (GREEN manifest model + project-root run loading).
+- Added integration test `tests/run_manifest_validation.rs` asserting `tonic run .` fails deterministically with `error: invalid tonic.toml: missing required key project.entry` when a project root has `tonic.toml` but omits `project.entry`.
+- Verification (red): `cargo test --test run_manifest_validation` fails as expected with stderr mismatch (`error: failed to read source file .: Is a directory (os error 21)`), confirming `tonic run` still treats project-root paths as plain source files.
+- Confidence protocol: documented DEC-044 in `.ralph/agent/decisions.md` (confidence 72) for choosing missing-`project.entry` as the first manifest validation contract.
+- Tooling memory capture:
+  - `mem-1771641807-a2cd` after `ls -la examples` failed (`examples/` absent) while probing fixture layout.
+  - `mem-1771641856-9048` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771641833-0ce0`; `task-1771641837-95ec` is now the next ready GREEN task.
+
+## 2026-02-21T02:48:14Z — Builder Step 11.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771641833-0ce0` by confirming it remained closed (`ralph tools task show task-1771641833-0ce0`).
+- Executed ready task `task-1771641837-95ec` and implemented manifest model + project-root run loading:
+  - `src/manifest.rs` (new): added `ProjectManifest` model, `tonic.toml` parser/validator (`project.entry` required), and `load_run_source(...)` that routes directory paths through manifest entry loading while preserving file-path source loading.
+  - `src/main.rs`: routed `tonic run` source loading through `manifest::load_run_source(...)` so `tonic run .` now validates manifest and loads entry file source.
+  - `Cargo.toml`: added `toml` dependency for manifest parsing.
+  - `src/manifest.rs` tests: added coverage for missing `project.entry`, valid manifest parsing, and directory-path entry source loading.
+- Confidence protocol: documented DEC-045 in `.ralph/agent/decisions.md` (confidence 77) for isolating manifest loading logic in a dedicated module.
+- Tooling memory capture: recorded `mem-1771642062-330c` after `cargo fmt --all -- --check` reported rustfmt diffs in `src/manifest.rs`; resolved via `cargo fmt --all` and re-ran verification.
+- Verification (green): `cargo test --test run_manifest_validation`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771641837-95ec` after verification.
+
+## 2026-02-21T02:50:03Z — Builder Step 11.3 (RED)
+- Handled pending `task.complete` event for `task-1771641837-95ec` by confirming it remained closed (`ralph tools task show task-1771641837-95ec`).
+- Runtime queue had no ready tasks, so I created Step 11.3/11.4 follow-up tasks: `task-1771642174-4fde` (RED multi-module project run fixture) and blocked `task-1771642177-fe17` (GREEN project module graph loader implementation).
+- Added integration test `tests/run_project_multimodule_smoke.rs` asserting `tonic run .` succeeds for a manifest-driven project where `src/main.tn` calls `Math.helper()` implemented in sibling module `src/math.tn`, with expected stdout `1`.
+- Verification (red): `cargo test --test run_project_multimodule_smoke` fails as expected with resolver diagnostic `error: [E1001] undefined symbol 'Math.helper' in Demo.run`, confirming project-root runs still load only the manifest entry file.
+- Confidence protocol: documented DEC-046 in `.ralph/agent/decisions.md` (confidence 74) for locking the multi-module run contract before loader implementation.
+- Tooling memory capture: recorded `mem-1771642197-0b84` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771642174-4fde`; `task-1771642177-fe17` is now the next ready GREEN task.
+
+## 2026-02-21T02:54:37Z — Builder Step 11.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771642174-4fde` by confirming the task is already closed (`ralph tools task show task-1771642174-4fde`); no duplicate close action required.
+- Executed ready task `task-1771642177-fe17` and implemented project module graph loading for manifest-root runs:
+  - `src/manifest.rs`: expanded `load_run_source_from_project_root(...)` to load the manifest entry source plus recursively discovered sibling `.tn` module files under the entry directory (entry first, deterministic sorted order).
+  - `src/manifest.rs`: added focused helper seams for file reads and module path discovery (`read_source_file`, `collect_project_module_paths`, `collect_tonic_source_paths`) with deterministic directory-read diagnostics.
+  - `src/manifest.rs` tests: added `load_run_source_includes_sibling_project_modules` to assert loader output parses into both `Demo` and `Math` modules for project fixtures.
+- Confidence protocol: documented DEC-047 in `.ralph/agent/decisions.md` (confidence 76) for the entry-dir recursive module loader strategy.
+- Verification (green): `cargo test --test run_project_multimodule_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771642177-fe17` after verification.
