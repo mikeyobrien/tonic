@@ -375,6 +375,15 @@ impl Expr {
 #[serde(rename_all = "lowercase")]
 pub enum BinaryOp {
     Plus,
+    Minus,
+    Mul,
+    Div,
+    Eq,
+    NotEq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -769,7 +778,16 @@ impl<'a> Parser<'a> {
 
     fn current_binary_operator(&self) -> Option<(u8, BinaryOp)> {
         self.current().and_then(|token| match token.kind() {
+            TokenKind::Star => Some((20, BinaryOp::Mul)),
+            TokenKind::Slash => Some((20, BinaryOp::Div)),
             TokenKind::Plus => Some((10, BinaryOp::Plus)),
+            TokenKind::Minus => Some((10, BinaryOp::Minus)),
+            TokenKind::EqEq => Some((5, BinaryOp::Eq)),
+            TokenKind::BangEq => Some((5, BinaryOp::NotEq)),
+            TokenKind::Lt => Some((5, BinaryOp::Lt)),
+            TokenKind::LtEq => Some((5, BinaryOp::Lte)),
+            TokenKind::Gt => Some((5, BinaryOp::Gt)),
+            TokenKind::GtEq => Some((5, BinaryOp::Gte)),
             _ => None,
         })
     }

@@ -1,5 +1,5 @@
 use crate::interop::{HostError, HOST_REGISTRY};
-use crate::ir::{IrCallTarget, IrOp, IrProgram, IrPattern};
+use crate::ir::{CmpKind, IrCallTarget, IrOp, IrProgram, IrPattern};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -154,6 +154,37 @@ fn evaluate_ops(
                 let right = pop_int(stack, *offset)?;
                 let left = pop_int(stack, *offset)?;
                 stack.push(RuntimeValue::Int(left + right));
+            }
+            IrOp::SubInt { offset } => {
+                let right = pop_int(stack, *offset)?;
+                let left = pop_int(stack, *offset)?;
+                stack.push(RuntimeValue::Int(left - right));
+            }
+            IrOp::MulInt { offset } => {
+                let right = pop_int(stack, *offset)?;
+                let left = pop_int(stack, *offset)?;
+                stack.push(RuntimeValue::Int(left * right));
+            }
+            IrOp::DivInt { offset } => {
+                let right = pop_int(stack, *offset)?;
+                let left = pop_int(stack, *offset)?;
+                if right == 0 {
+                    return Err(RuntimeError::at_offset("division by zero", *offset));
+                }
+                stack.push(RuntimeValue::Int(left / right));
+            }
+            IrOp::CmpInt { kind, offset } => {
+                let right = pop_int(stack, *offset)?;
+                let left = pop_int(stack, *offset)?;
+                let result = match kind {
+                    CmpKind::Eq => left == right,
+                    CmpKind::NotEq => left != right,
+                    CmpKind::Lt => left < right,
+                    CmpKind::Lte => left <= right,
+                    CmpKind::Gt => left > right,
+                    CmpKind::Gte => left >= right,
+                };
+                stack.push(RuntimeValue::Bool(result));
             }
             IrOp::Return { offset } => {
                 return Ok(Some(pop_value(stack, *offset, "return")?));
@@ -413,12 +444,12 @@ fn pop_value(
 }
 
 fn pop_int(stack: &mut Vec<RuntimeValue>, offset: usize) -> Result<i64, RuntimeError> {
-    let value = pop_value(stack, offset, "add_int")?;
+    let value = pop_value(stack, offset, "int op")?;
 
     match value {
         RuntimeValue::Int(number) => Ok(number),
         other => Err(RuntimeError::at_offset(
-            format!("add_int expects int operands, found {}", other.kind_label()),
+            format!("int operator expects int operands, found {}", other.kind_label()),
             offset,
         )),
     }

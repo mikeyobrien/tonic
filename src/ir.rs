@@ -55,9 +55,33 @@ pub(crate) enum IrOp {
     AddInt {
         offset: usize,
     },
+    SubInt {
+        offset: usize,
+    },
+    MulInt {
+        offset: usize,
+    },
+    DivInt {
+        offset: usize,
+    },
+    CmpInt {
+        kind: CmpKind,
+        offset: usize,
+    },
     Return {
         offset: usize,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CmpKind {
+    Eq,
+    NotEq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -181,7 +205,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             Ok(())
         }
         Expr::Binary {
-            op: BinaryOp::Plus,
+            op,
             left,
             right,
             offset,
@@ -189,7 +213,19 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         } => {
             lower_expr(left, current_module, ops)?;
             lower_expr(right, current_module, ops)?;
-            ops.push(IrOp::AddInt { offset: *offset });
+            let ir_op = match op {
+                BinaryOp::Plus => IrOp::AddInt { offset: *offset },
+                BinaryOp::Minus => IrOp::SubInt { offset: *offset },
+                BinaryOp::Mul => IrOp::MulInt { offset: *offset },
+                BinaryOp::Div => IrOp::DivInt { offset: *offset },
+                BinaryOp::Eq => IrOp::CmpInt { kind: CmpKind::Eq, offset: *offset },
+                BinaryOp::NotEq => IrOp::CmpInt { kind: CmpKind::NotEq, offset: *offset },
+                BinaryOp::Lt => IrOp::CmpInt { kind: CmpKind::Lt, offset: *offset },
+                BinaryOp::Lte => IrOp::CmpInt { kind: CmpKind::Lte, offset: *offset },
+                BinaryOp::Gt => IrOp::CmpInt { kind: CmpKind::Gt, offset: *offset },
+                BinaryOp::Gte => IrOp::CmpInt { kind: CmpKind::Gte, offset: *offset },
+            };
+            ops.push(ir_op);
             Ok(())
         }
         Expr::Question { value, offset, .. } => {

@@ -1,4 +1,4 @@
-use crate::parser::{Ast, Expr, ParameterAnnotation, Pattern};
+use crate::parser::{Ast, BinaryOp, Expr, ParameterAnnotation, Pattern};
 #[path = "typing_diag.rs"]
 mod diag;
 use diag::TypingError;
@@ -239,14 +239,22 @@ fn infer_expression_type(
                 )),
             }
         }
-        Expr::Binary { left, right, .. } => {
+        Expr::Binary { op, left, right, .. } => {
             let left_type = infer_expression_type(left, current_module, signatures, solver)?;
             let right_type = infer_expression_type(right, current_module, signatures, solver)?;
 
             solver.unify(Type::Int, left_type, Some(left.offset()))?;
             solver.unify(Type::Int, right_type, Some(right.offset()))?;
 
-            Ok(Type::Int)
+            match op {
+                BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => Ok(Type::Int),
+                BinaryOp::Eq
+                | BinaryOp::NotEq
+                | BinaryOp::Lt
+                | BinaryOp::Lte
+                | BinaryOp::Gt
+                | BinaryOp::Gte => Ok(Type::Bool),
+            }
         }
         Expr::Pipe { left, right, .. } => {
             let piped_value_type = infer_expression_type(left, current_module, signatures, solver)?;

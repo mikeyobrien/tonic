@@ -50,6 +50,15 @@ pub enum TokenKind {
     Comma,
     Dot,
     Plus,
+    Minus,
+    Star,
+    Slash,
+    EqEq,
+    BangEq,
+    Lt,
+    LtEq,
+    Gt,
+    GtEq,
     Question,
     PipeGt,
     Arrow,
@@ -112,6 +121,15 @@ impl Token {
             TokenKind::Comma => "COMMA".to_string(),
             TokenKind::Dot => "DOT".to_string(),
             TokenKind::Plus => "PLUS".to_string(),
+            TokenKind::Minus => "MINUS".to_string(),
+            TokenKind::Star => "STAR".to_string(),
+            TokenKind::Slash => "SLASH".to_string(),
+            TokenKind::EqEq => "EQ_EQ".to_string(),
+            TokenKind::BangEq => "BANG_EQ".to_string(),
+            TokenKind::Lt => "LT".to_string(),
+            TokenKind::LtEq => "LT_EQ".to_string(),
+            TokenKind::Gt => "GT".to_string(),
+            TokenKind::GtEq => "GT_EQ".to_string(),
             TokenKind::Question => "QUESTION".to_string(),
             TokenKind::PipeGt => "PIPE_GT".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
@@ -236,6 +254,64 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 idx += 1;
                 tokens.push(Token::simple(TokenKind::Plus, Span::new(start, idx)));
             }
+            '-' => {
+                let start = idx;
+                if chars.get(idx + 1) == Some(&'>') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::Arrow, Span::new(start, idx)));
+                } else {
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Minus, Span::new(start, idx)));
+                }
+            }
+            '*' => {
+                let start = idx;
+                idx += 1;
+                tokens.push(Token::simple(TokenKind::Star, Span::new(start, idx)));
+            }
+            '/' => {
+                let start = idx;
+                idx += 1;
+                tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
+            }
+            '=' => {
+                let start = idx;
+                if chars.get(idx + 1) == Some(&'=') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::EqEq, Span::new(start, idx)));
+                } else {
+                    return Err(LexerError::invalid_token('=', Span::new(start, start + 1)));
+                }
+            }
+            '!' => {
+                let start = idx;
+                if chars.get(idx + 1) == Some(&'=') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::BangEq, Span::new(start, idx)));
+                } else {
+                    return Err(LexerError::invalid_token('!', Span::new(start, start + 1)));
+                }
+            }
+            '<' => {
+                let start = idx;
+                if chars.get(idx + 1) == Some(&'=') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::LtEq, Span::new(start, idx)));
+                } else {
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Lt, Span::new(start, idx)));
+                }
+            }
+            '>' => {
+                let start = idx;
+                if chars.get(idx + 1) == Some(&'=') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::GtEq, Span::new(start, idx)));
+                } else {
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Gt, Span::new(start, idx)));
+                }
+            }
             '?' => {
                 let start = idx;
                 idx += 1;
@@ -248,15 +324,6 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     tokens.push(Token::simple(TokenKind::PipeGt, Span::new(start, idx)));
                 } else {
                     return Err(LexerError::invalid_token('|', Span::new(start, start + 1)));
-                }
-            }
-            '-' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'>') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::Arrow, Span::new(start, idx)));
-                } else {
-                    return Err(LexerError::invalid_token('-', Span::new(start, start + 1)));
                 }
             }
             ':' => {
