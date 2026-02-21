@@ -314,3 +314,27 @@ Template:
 - **Reasoning:** The active GREEN contract only requires deterministic IR output for a simple typed function and explicitly names literals/calls. A focused lowering module plus CLI wiring keeps the slice minimal, preserves test determinism, and avoids overbuilding ahead of the next RED steps.
 - **Reversibility:** High — op names and unsupported-form handling are localized to `src/ir.rs` and can be extended once Step 8.3 contracts are locked.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T01:42:51Z
+
+## DEC-028
+- **Decision:** What Step 8.3 RED snapshot shape to lock for IR lowering that combines `?` propagation and `case` branches.
+- **Chosen Option:** Add a failing integration test for `tonic check --dump-ir` that expects a compact ops stream containing `question` and `case` ops, with explicit branch payloads (`pattern` + branch `ops`) for an atom branch and wildcard fallback.
+- **Confidence (0-100):** 69
+- **Alternatives Considered:**
+  - Assert only command failure/success without pinning IR JSON details.
+  - Add unit-only lowering tests in `src/ir.rs` and defer CLI snapshot coverage.
+  - Keep rejecting `question`/`case` until a larger runtime design is finalized.
+- **Reasoning:** Step 8.3 explicitly asks for a lowering snapshot on `?` + `case`. Locking the CLI JSON contract now gives Step 8.4 clear implementation backpressure and keeps scope focused on IR shape rather than runtime semantics.
+- **Reversibility:** High — op names and branch payload schema are early-stage and can evolve with coordinated snapshot updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:46:25Z
+
+## DEC-029
+- **Decision:** How to implement Step 8.4 lowering for `Expr::Question` and `Expr::Case` while preserving the locked IR snapshot contract.
+- **Chosen Option:** Lower `?` into a dedicated `{"op":"question"}` instruction emitted after lowering the operand, lower `case` into a single `{"op":"case","branches":[...]}` instruction with per-branch `{pattern, ops}` payloads, and keep `ok/err` constructor calls unqualified (`ok`, `err`) in IR output.
+- **Confidence (0-100):** 75
+- **Alternatives Considered:**
+  - Continue qualifying all unqualified call targets (`Demo.ok`) and adjust snapshots.
+  - Desugar `case` into a flattened jump-like op sequence instead of structured branch payloads.
+  - Keep rejecting `case`/`question` in lowering until a fuller runtime control-flow design lands.
+- **Reasoning:** The Step 8.3 RED test already locked an explicit JSON shape. Emitting focused `question` + structured `case` ops is the narrowest GREEN implementation that satisfies the contract and keeps future interpreter work straightforward.
+- **Reversibility:** High — op/pattern schema is localized to `src/ir.rs` and can be canonicalized in Step 8.5 with coordinated snapshot updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T01:49:52Z

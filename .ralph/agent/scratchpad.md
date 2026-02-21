@@ -348,3 +348,38 @@
 - Tooling memory capture: recorded `mem-1771637977-6064` for the expected RED failure (`--dump-ir` unsupported); this now points the GREEN slice to add CLI flag + lowering pipeline.
 - Hygiene: `cargo fmt --all -- --check` passes.
 - Closed RED task `task-1771637942-a5e3`; `task-1771637944-b628` is now the next ready GREEN task.
+
+## 2026-02-21T01:43:59Z — Builder Step 8.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771637942-a5e3` by confirming the RED task remained closed (`ralph tools task show task-1771637942-a5e3`), then executed ready task `task-1771637944-b628`.
+- Implemented initial typed-AST-to-IR lowering and CLI dump wiring:
+  - `src/ir.rs` (new): added compact IR model (`functions[]` + linear `ops[]`) and lowering for literals/calls/`+` plus deterministic function/call qualification (`Module.function`), returning explicit lowering errors for unsupported `question`/`pipe`/`case` forms.
+  - `src/main.rs`: added `--dump-ir` support to `tonic check`, extended dump-flag exclusivity checks, and wired lowering + JSON serialization after resolver/type inference succeeds.
+  - `src/parser.rs`: exposed `Parameter::name()` accessor so lowering can preserve function parameter names in emitted IR.
+- Added focused lowering coverage in `src/ir.rs` unit tests (`lower_ast_emits_const_int_and_return_for_literal_function`, `lower_ast_qualifies_local_call_targets`) while satisfying the Step 8.1 integration contract in `tests/check_dump_ir_smoke.rs`.
+- Confidence protocol: documented DEC-027 in `.ralph/agent/decisions.md` (confidence 77) for scoping Step 8.2 to literals/calls with explicit unsupported-form errors for later Step 8 slices.
+- Tooling memory capture: recorded `mem-1771638263-b5e5` after an `rg` invocation failed due newline-escape pattern misuse; resolved by rerunning search with a plain single-line regex.
+- Verification (green): `cargo test --test check_dump_ir_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771637944-b628` and committed with message `feat: add initial ir lowering and dump-ir output` (`b05fcb3`).
+
+## 2026-02-21T01:46:25Z — Builder Step 8.3 (RED)
+- Handled pending `task.complete` event for `task-1771637944-b628` by confirming it was already closed (`ralph tools task show task-1771637944-b628`).
+- Runtime queue had no ready items, so I created Step 8 follow-up tasks: `task-1771638358-aa89` (RED IR snapshot for `?` + `case`) and blocked `task-1771638361-2033` (GREEN lowering implementation).
+- Added integration test `tests/check_dump_ir_result_case.rs` asserting `tonic check examples/ir_result_case.tn --dump-ir` succeeds and emits deterministic IR JSON containing explicit `question` and `case` ops with branch payloads.
+- Verification (red): `cargo test --test check_dump_ir_result_case` fails as expected with current lowering diagnostic `error: unsupported expression for ir lowering: case at offset 37`, confirming `Expr::Question`/`Expr::Case` lowering is still missing.
+- Confidence protocol: documented DEC-028 in `.ralph/agent/decisions.md` (confidence 69) for the Step 8.3 IR snapshot shape.
+- Tooling memory capture: recorded `mem-1771638385-0e5d` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771638358-aa89`; `task-1771638361-2033` is now the next ready GREEN task.
+
+## 2026-02-21T01:50:39Z — Builder Step 8.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771638358-aa89` by confirming it was already closed (`ralph tools task show task-1771638358-aa89`), then executed ready task `task-1771638361-2033`.
+- Implemented Result + case lowering in `src/ir.rs`:
+  - Added IR ops `question` and `case` with structured branch payloads (`pattern` + branch-local `ops`).
+  - Added IR pattern lowering for atom/bind/wildcard/tuple/list and explicit unsupported error for map patterns (`unsupported expression for ir lowering: map pattern`).
+  - Lowered `Expr::Question` by lowering the operand then emitting `{"op":"question"}`.
+  - Lowered `Expr::Case` by lowering subject expression first, then emitting a single `{"op":"case"}` op with lowered branches.
+  - Preserved Result constructor names in IR (`ok`/`err`) by skipping module qualification for those builtins while keeping local-function qualification behavior unchanged.
+- Added focused lowering coverage in `src/ir.rs` (`lower_ast_supports_question_and_case_ops`) to lock internal `question`/`case` op emission shape.
+- Confidence protocol: documented DEC-029 in `.ralph/agent/decisions.md` (confidence 75) for the structured case-op + builtin call-target strategy.
+- Verification (green): `cargo test --test check_dump_ir_result_case`, `cargo test lower_ast_supports_question_and_case_ops`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771638361-2033` after verification.
