@@ -8,6 +8,9 @@ pub enum RuntimeValue {
     Int(i64),
     ResultOk(Box<RuntimeValue>),
     ResultErr(Box<RuntimeValue>),
+    Tuple(Box<RuntimeValue>, Box<RuntimeValue>),
+    Map(Box<RuntimeValue>, Box<RuntimeValue>),
+    Keyword(Box<RuntimeValue>, Box<RuntimeValue>),
 }
 
 impl RuntimeValue {
@@ -16,6 +19,9 @@ impl RuntimeValue {
             Self::Int(value) => value.to_string(),
             Self::ResultOk(value) => format!("ok({})", value.render()),
             Self::ResultErr(value) => format!("err({})", value.render()),
+            Self::Tuple(left, right) => format!("{{{}, {}}}", left.render(), right.render()),
+            Self::Map(key, value) => format!("%{{{} => {}}}", key.render(), value.render()),
+            Self::Keyword(key, value) => format!("[{}: {}]", key.render(), value.render()),
         }
     }
 
@@ -23,6 +29,9 @@ impl RuntimeValue {
         match self {
             Self::Int(_) => "int",
             Self::ResultOk(_) | Self::ResultErr(_) => "result",
+            Self::Tuple(_, _) => "tuple",
+            Self::Map(_, _) => "map",
+            Self::Keyword(_, _) => "keyword",
         }
     }
 }
@@ -179,6 +188,18 @@ fn evaluate_builtin_call(
             let arg = expect_single_builtin_arg(name, args, offset)?;
             Ok(RuntimeValue::ResultErr(Box::new(arg)))
         }
+        "tuple" => {
+            let (left, right) = expect_pair_builtin_args(name, args, offset)?;
+            Ok(RuntimeValue::Tuple(Box::new(left), Box::new(right)))
+        }
+        "map" => {
+            let (key, value) = expect_pair_builtin_args(name, args, offset)?;
+            Ok(RuntimeValue::Map(Box::new(key), Box::new(value)))
+        }
+        "keyword" => {
+            let (key, value) = expect_pair_builtin_args(name, args, offset)?;
+            Ok(RuntimeValue::Keyword(Box::new(key), Box::new(value)))
+        }
         _ => Err(RuntimeError::at_offset(
             format!("unsupported builtin call in runtime evaluator: {name}"),
             offset,
@@ -204,6 +225,31 @@ fn expect_single_builtin_arg(
     Ok(args
         .pop()
         .expect("arity check should guarantee one builtin argument"))
+}
+
+fn expect_pair_builtin_args(
+    name: &str,
+    mut args: Vec<RuntimeValue>,
+    offset: usize,
+) -> Result<(RuntimeValue, RuntimeValue), RuntimeError> {
+    if args.len() != 2 {
+        return Err(RuntimeError::at_offset(
+            format!(
+                "arity mismatch for runtime builtin {name}: expected 2 args, found {}",
+                args.len()
+            ),
+            offset,
+        ));
+    }
+
+    let right = args
+        .pop()
+        .expect("arity check should guarantee second builtin argument");
+    let left = args
+        .pop()
+        .expect("arity check should guarantee first builtin argument");
+
+    Ok((left, right))
 }
 
 fn pop_value(
@@ -279,6 +325,24 @@ mod tests {
             value,
             RuntimeValue::ResultErr(Box::new(RuntimeValue::Int(7)))
         );
+    }
+
+    #[test]
+    fn evaluate_builtin_collection_constructors_render_expected_shape() {
+        let map = evaluate_builtin_call("map", vec![RuntimeValue::Int(1), RuntimeValue::Int(2)], 0)
+            .expect("builtin map should produce a runtime map value");
+
+        let keyword = evaluate_builtin_call(
+            "keyword",
+            vec![RuntimeValue::Int(3), RuntimeValue::Int(4)],
+            0,
+        )
+        .expect("builtin keyword should produce a runtime keyword value");
+
+        let tuple = evaluate_builtin_call("tuple", vec![map, keyword], 0)
+            .expect("builtin tuple should produce a runtime tuple value");
+
+        assert_eq!(tuple.render(), "{%{1 => 2}, [3: 4]}");
     }
 
     #[test]

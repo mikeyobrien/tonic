@@ -433,3 +433,27 @@ Template:
 - **Reasoning:** This is the narrowest reversible refactor that directly targets allocation churn now: function calls no longer allocate transient arg vectors, builtin calls consume moved values, and runtime semantics remain unchanged under existing integration tests.
 - **Reversibility:** High — call dispatch remains localized to `src/runtime.rs`, so the evaluator can later migrate to richer frame layouts without touching CLI contracts.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:19:05Z
+
+## DEC-038
+- **Decision:** What Step 10.1 RED contract to use for tuple/map/keyword behavior before literal syntax exists.
+- **Chosen Option:** Add an end-to-end `tonic run` integration fixture that builds collections via call-form constructors (`tuple(map(1, 2), keyword(3, 4))`) and expects rendered stdout `{%{1 => 2}, [3: 4]}`.
+- **Confidence (0-100):** 71
+- **Alternatives Considered:**
+  - Add runtime unit tests for builtin constructors only (no CLI pipeline pressure).
+  - Wait for tuple/map/keyword literal expression syntax before writing Step 10 tests.
+  - Split into three independent integration fixtures (tuple/map/keyword) instead of one composite contract.
+- **Reasoning:** The parser currently supports call expressions with integer arguments, so constructor-form fixtures are the narrowest reversible path to lock a red contract that pressures resolver, typing, lowering, runtime, and rendering together.
+- **Reversibility:** High — constructor names, arities, and rendered format can be revised later with coordinated snapshot updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:21:52Z
+
+## DEC-039
+- **Decision:** How to introduce Step 10.2 tuple/map/keyword constructor support across resolver, typing, lowering, and runtime without expanding language syntax.
+- **Chosen Option:** Treat `tuple`, `map`, and `keyword` as builtin call targets with fixed arity 2, infer their call type as `dynamic`, lower them as IR builtin calls, and represent runtime values with dedicated variants rendered as `{a, b}`, `%{k => v}`, and `[k: v]`.
+- **Confidence (0-100):** 78
+- **Alternatives Considered:**
+  - Add first-class tuple/map/keyword expression syntax and type variants now.
+  - Route constructors through synthetic stdlib functions instead of builtins.
+  - Model map/keyword as generic list pairs without dedicated runtime variants.
+- **Reasoning:** The RED contract is constructor-call based and needs end-to-end `tonic run` behavior immediately. Builtin call handling is the narrowest reversible change that unblocks the pipeline while preserving room for richer syntax and static typing later.
+- **Reversibility:** High — constructor recognition, typing precision, and runtime value shapes are localized and can be evolved with coordinated fixture updates.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:26:32Z

@@ -207,7 +207,7 @@ fn infer_expression_type(
         Expr::Int { .. } => Ok(Type::Int),
         Expr::Call { callee, args, .. } => {
             if let Some(result_type) =
-                infer_builtin_result_call_type(callee, args, current_module, signatures, solver)?
+                infer_builtin_call_type(callee, args, current_module, signatures, solver)?
             {
                 return Ok(result_type);
             }
@@ -301,7 +301,7 @@ fn infer_expression_type(
     }
 }
 
-fn infer_builtin_result_call_type(
+fn infer_builtin_call_type(
     callee: &str,
     args: &[Expr],
     current_module: &str,
@@ -332,6 +332,19 @@ fn infer_builtin_result_call_type(
             let ok_type = solver.fresh_var();
             let err_type = infer_expression_type(&args[0], current_module, signatures, solver)?;
             Ok(Some(Type::result(ok_type, err_type)))
+        }
+        "tuple" | "map" | "keyword" => {
+            if args.len() != 2 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for {callee}: expected 2 args, found {}",
+                    args.len()
+                )));
+            }
+
+            infer_expression_type(&args[0], current_module, signatures, solver)?;
+            infer_expression_type(&args[1], current_module, signatures, solver)?;
+
+            Ok(Some(Type::Dynamic))
         }
         _ => Ok(None),
     }

@@ -44,6 +44,20 @@ fn infer_types_supports_question_operator_for_result_values() {
 }
 
 #[test]
+fn infer_types_accepts_collection_constructor_builtins() {
+    let source =
+        "defmodule Demo do\n  def run() do\n    tuple(map(1, 2), keyword(3, 4))\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize collection constructor fixture");
+    let ast = parse_ast(&tokens).expect("parser should build collection constructor fixture ast");
+
+    let summary = infer_types(&ast)
+        .expect("type inference should accept tuple/map/keyword constructor builtins");
+
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
+}
+
+#[test]
 fn infer_types_accepts_explicit_dynamic_parameter_annotation() {
     let source = "defmodule Demo do\n  def helper(dynamic value) do\n    1\n  end\n\n  def run() do\n    helper(1)\n  end\nend\n";
     let tokens =

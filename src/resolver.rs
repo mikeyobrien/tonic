@@ -44,7 +44,7 @@ impl ModuleGraph {
     }
 
     fn contains_call_target(&self, current_module: &str, callee: &str) -> bool {
-        if matches!(callee, "ok" | "err") {
+        if is_builtin_call_target(callee) {
             return true;
         }
 
@@ -59,6 +59,10 @@ impl ModuleGraph {
             .get(current_module)
             .is_some_and(|symbols| symbols.contains(callee))
     }
+}
+
+fn is_builtin_call_target(callee: &str) -> bool {
+    matches!(callee, "ok" | "err" | "tuple" | "map" | "keyword")
 }
 
 struct ResolveContext<'a> {
@@ -139,6 +143,16 @@ mod tests {
         let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
 
         resolve_ast(&ast).expect("resolver should accept result constructor builtins");
+    }
+
+    #[test]
+    fn resolve_ast_accepts_builtin_collection_constructors() {
+        let source =
+            "defmodule Demo do\n  def run() do\n    tuple(map(1, 2), keyword(3, 4))\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
+        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept collection constructor builtins");
     }
 
     #[test]

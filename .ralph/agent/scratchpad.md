@@ -476,3 +476,28 @@
   - `mem-1771640324-e751` after combined verification command reported rustfmt diff; resolved with `cargo fmt --all`.
 - Verification (green): `cargo test evaluate_builtin_ok_moves_nested_payload_without_cloning`, `cargo test --test run_result_propagation`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771640332-8c57` after verification.
+
+## 2026-02-21T02:22:16Z — Builder Step 10.1 (RED)
+- Handled pending `task.complete` event for `task-1771640332-8c57` by confirming it remains closed (`ralph tools task show task-1771640332-8c57`); no duplicate close action required.
+- Runtime queue had no ready tasks, so I created Step 10 follow-up tasks: `task-1771640440-22fe` (RED map/tuple/keyword runtime contract) and blocked `task-1771640442-e0e7` (GREEN constructor/runtime implementation).
+- Added integration test `tests/run_collections_smoke.rs` asserting `tonic run examples/run_collections.tn` succeeds and prints `{%{1 => 2}, [3: 4]}` for constructor-form tuple/map/keyword output.
+- Verification (red): `cargo test --test run_collections_smoke` fails as expected with resolver diagnostic `error: [E1001] undefined symbol 'tuple' in Demo.run`, confirming collection constructor builtins are not wired yet.
+- Confidence protocol: documented DEC-038 in `.ralph/agent/decisions.md` (confidence 71) for locking constructor-form collection behavior before literal syntax.
+- Tooling memory capture: recorded `mem-1771640504-74b0` for the expected RED failure and next GREEN action.
+- Closed RED task `task-1771640440-22fe`; `task-1771640442-e0e7` is now the next ready GREEN task.
+
+## 2026-02-21T02:26:46Z — Builder Step 10.2 (GREEN)
+- Handled pending `task.complete` event for `task-1771640440-22fe` by confirming it remains closed (`ralph tools task show task-1771640440-22fe`), then executed ready task `task-1771640442-e0e7`.
+- Implemented tuple/map/keyword constructor support end-to-end for `tonic run`:
+  - `src/resolver.rs`: expanded builtin symbol handling to accept `tuple`, `map`, and `keyword` call targets in addition to `ok`/`err`.
+  - `src/typing.rs`: generalized builtin call typing, added arity-2 checks for collection constructors, and inferred constructor calls as `dynamic` while still type-checking constructor arguments.
+  - `src/ir.rs`: canonical call-target lowering now classifies `tuple`/`map`/`keyword` as builtin IR callees (not module-qualified function calls).
+  - `src/runtime.rs`: added runtime value variants + renderers for tuple/map/keyword and runtime builtin evaluation for constructor arity-2 calls.
+- Added focused regression coverage:
+  - `src/resolver.rs`: `resolve_ast_accepts_builtin_collection_constructors`.
+  - `src/typing/tests.rs`: `infer_types_accepts_collection_constructor_builtins`.
+  - `src/runtime.rs`: `evaluate_builtin_collection_constructors_render_expected_shape`.
+- Confidence protocol: documented DEC-039 in `.ralph/agent/decisions.md` (confidence 78) for the builtin-constructor strategy.
+- Tooling memory capture: recorded `mem-1771640759-a910` after `cargo fmt --all -- --check` reported rustfmt diffs; resolved via `cargo fmt --all`.
+- Verification (green): `cargo test --test run_collections_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771640442-e0e7` after verification.

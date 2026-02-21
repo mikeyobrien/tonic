@@ -220,7 +220,7 @@ fn qualify_function_name(module_name: &str, function_name: &str) -> String {
 }
 
 fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
-    if is_result_constructor_builtin(callee) {
+    if is_builtin_call_target(callee) {
         IrCallTarget::Builtin {
             name: callee.to_string(),
         }
@@ -235,8 +235,8 @@ fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
     }
 }
 
-fn is_result_constructor_builtin(callee: &str) -> bool {
-    matches!(callee, "ok" | "err")
+fn is_builtin_call_target(callee: &str) -> bool {
+    matches!(callee, "ok" | "err" | "tuple" | "map" | "keyword")
 }
 
 #[cfg(test)]
