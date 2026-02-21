@@ -200,11 +200,37 @@ fn evaluate_builtin_call(
             let (key, value) = expect_pair_builtin_args(name, args, offset)?;
             Ok(RuntimeValue::Keyword(Box::new(key), Box::new(value)))
         }
+        "protocol_dispatch" => {
+            let value = expect_single_builtin_arg(name, args, offset)?;
+            evaluate_protocol_dispatch(value, offset)
+        }
         _ => Err(RuntimeError::at_offset(
             format!("unsupported builtin call in runtime evaluator: {name}"),
             offset,
         )),
     }
+}
+
+const PROTOCOL_DISPATCH_TABLE: &[(&str, i64)] = &[("tuple", 1), ("map", 2)];
+
+fn evaluate_protocol_dispatch(
+    value: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, RuntimeError> {
+    let implementation = PROTOCOL_DISPATCH_TABLE
+        .iter()
+        .find_map(|(kind, implementation)| (value.kind_label() == *kind).then_some(*implementation))
+        .ok_or_else(|| {
+            RuntimeError::at_offset(
+                format!(
+                    "protocol_dispatch has no implementation for {}",
+                    value.kind_label()
+                ),
+                offset,
+            )
+        })?;
+
+    Ok(RuntimeValue::Int(implementation))
 }
 
 fn expect_single_builtin_arg(
@@ -343,6 +369,23 @@ mod tests {
             .expect("builtin tuple should produce a runtime tuple value");
 
         assert_eq!(tuple.render(), "{%{1 => 2}, [3: 4]}");
+    }
+
+    #[test]
+    fn evaluate_builtin_protocol_dispatch_routes_tuple_and_map_values() {
+        let tuple =
+            evaluate_builtin_call("tuple", vec![RuntimeValue::Int(1), RuntimeValue::Int(2)], 0)
+                .expect("builtin tuple should produce a runtime tuple value");
+        let map = evaluate_builtin_call("map", vec![RuntimeValue::Int(3), RuntimeValue::Int(4)], 0)
+            .expect("builtin map should produce a runtime map value");
+
+        let tuple_impl = evaluate_builtin_call("protocol_dispatch", vec![tuple], 0)
+            .expect("protocol dispatch should resolve tuple implementation");
+        let map_impl = evaluate_builtin_call("protocol_dispatch", vec![map], 0)
+            .expect("protocol dispatch should resolve map implementation");
+
+        assert_eq!(tuple_impl, RuntimeValue::Int(1));
+        assert_eq!(map_impl, RuntimeValue::Int(2));
     }
 
     #[test]

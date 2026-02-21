@@ -236,7 +236,10 @@ fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
 }
 
 fn is_builtin_call_target(callee: &str) -> bool {
-    matches!(callee, "ok" | "err" | "tuple" | "map" | "keyword")
+    matches!(
+        callee,
+        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch"
+    )
 }
 
 #[cfg(test)]
@@ -300,6 +303,29 @@ mod tests {
                 {"op":"const_int","value":1,"offset":47},
                 {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1,"offset":40},
                 {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1,"offset":37},
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_marks_protocol_dispatch_as_builtin_call_target() {
+        let source =
+            "defmodule Demo do\n  def run() do\n    protocol_dispatch(tuple(1, 2))\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir =
+            lower_ast_to_ir(&ast).expect("lowering should classify protocol dispatch as builtin");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_int","value":1,"offset":61},
+                {"op":"const_int","value":2,"offset":64},
+                {"op":"call","callee":{"kind":"builtin","name":"tuple"},"argc":2,"offset":55},
+                {"op":"call","callee":{"kind":"builtin","name":"protocol_dispatch"},"argc":1,"offset":37},
                 {"op":"return","offset":37}
             ])
         );

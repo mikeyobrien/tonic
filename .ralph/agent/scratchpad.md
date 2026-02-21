@@ -501,3 +501,25 @@
 - Tooling memory capture: recorded `mem-1771640759-a910` after `cargo fmt --all -- --check` reported rustfmt diffs; resolved via `cargo fmt --all`.
 - Verification (green): `cargo test --test run_collections_smoke`, `cargo test`, and `cargo fmt --all -- --check` all pass.
 - Closed task `task-1771640442-e0e7` after verification.
+
+## 2026-02-21T02:29:59Z — Builder Step 10.3 (RED)
+- Handled pending `task.complete` event for `task-1771640442-e0e7` by confirming it remains closed (`ralph tools task show task-1771640442-e0e7`).
+- Runtime queue had no ready tasks, so I created Step 10 protocol follow-up tasks: `task-1771640923-d527` (RED protocol dispatch smoke contract) and blocked `task-1771640925-3f67` (GREEN protocol dispatch tables).
+- Added integration test `tests/run_protocol_dispatch_smoke.rs` asserting `tonic run examples/run_protocol_dispatch.tn` succeeds and prints `{1, 2}` for protocol-style dispatch over `tuple(...)` and `map(...)` values via `protocol_dispatch(...)`.
+- Verification (red): `cargo test --test run_protocol_dispatch_smoke` fails as expected with resolver diagnostic `error: [E1001] undefined symbol 'protocol_dispatch' in Demo.run`, confirming protocol dispatch builtin plumbing is not implemented yet.
+- Confidence protocol: documented DEC-040 in `.ralph/agent/decisions.md` (confidence 69) for the call-form protocol dispatch contract.
+- Tooling memory capture: recorded `mem-1771640965-6a50` for the expected RED failure and next GREEN action.
+- Hygiene: `cargo fmt --all -- --check` passes.
+- Closed RED task `task-1771640923-d527`; `task-1771640925-3f67` is now the next ready GREEN task.
+
+## 2026-02-21T02:33:33Z — Builder Step 10.4 (GREEN)
+- Handled pending `task.complete` event for `task-1771640923-d527` by confirming it remained closed (`ralph tools task show task-1771640923-d527`).
+- Executed ready task `task-1771640925-3f67` and implemented protocol dispatch-table plumbing end-to-end:
+  - `src/resolver.rs`: expanded builtin call-target recognition to include `protocol_dispatch` and added resolver coverage (`resolve_ast_accepts_builtin_protocol_dispatch`).
+  - `src/typing.rs` + `src/typing/tests.rs`: added builtin inference path for `protocol_dispatch/1` (arity-checked, argument typed, returns `dynamic`) with regression test `infer_types_accepts_protocol_dispatch_builtin_calls`.
+  - `src/ir.rs`: classified `protocol_dispatch` as an IR builtin call target and added lowering contract test `lower_ast_marks_protocol_dispatch_as_builtin_call_target`.
+  - `src/runtime.rs`: introduced deterministic protocol dispatch table mapping runtime kinds to implementation IDs (`tuple -> 1`, `map -> 2`), wired builtin `protocol_dispatch/1`, and added runtime unit test `evaluate_builtin_protocol_dispatch_routes_tuple_and_map_values`.
+- Confidence protocol: documented DEC-041 in `.ralph/agent/decisions.md` (confidence 75) for the builtin + runtime dispatch-table strategy.
+- Tooling memory capture: recorded `mem-1771641227-1581` after `cargo fmt --all -- --check` failed with rustfmt diffs; resolved via `cargo fmt --all` then re-ran checks.
+- Verification (green): `cargo test --test run_protocol_dispatch_smoke`, `cargo test`, `cargo fmt --all`, and `cargo fmt --all -- --check` all pass.
+- Closed task `task-1771640925-3f67` after verification.

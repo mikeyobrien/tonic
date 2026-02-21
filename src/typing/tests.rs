@@ -58,6 +58,18 @@ fn infer_types_accepts_collection_constructor_builtins() {
 }
 
 #[test]
+fn infer_types_accepts_protocol_dispatch_builtin_calls() {
+    let source = "defmodule Demo do\n  def run() do\n    tuple(protocol_dispatch(tuple(1, 2)), protocol_dispatch(map(3, 4)))\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize protocol dispatch fixture");
+    let ast = parse_ast(&tokens).expect("parser should build protocol dispatch fixture ast");
+
+    let summary =
+        infer_types(&ast).expect("type inference should accept protocol dispatch builtin calls");
+
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
+}
+
+#[test]
 fn infer_types_accepts_explicit_dynamic_parameter_annotation() {
     let source = "defmodule Demo do\n  def helper(dynamic value) do\n    1\n  end\n\n  def run() do\n    helper(1)\n  end\nend\n";
     let tokens =

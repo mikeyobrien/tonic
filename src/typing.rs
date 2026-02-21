@@ -346,6 +346,18 @@ fn infer_builtin_call_type(
 
             Ok(Some(Type::Dynamic))
         }
+        "protocol_dispatch" => {
+            if args.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for protocol_dispatch: expected 1 args, found {}",
+                    args.len()
+                )));
+            }
+
+            infer_expression_type(&args[0], current_module, signatures, solver)?;
+
+            Ok(Some(Type::Dynamic))
+        }
         _ => Ok(None),
     }
 }

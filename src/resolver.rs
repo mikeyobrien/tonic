@@ -62,7 +62,10 @@ impl ModuleGraph {
 }
 
 fn is_builtin_call_target(callee: &str) -> bool {
-    matches!(callee, "ok" | "err" | "tuple" | "map" | "keyword")
+    matches!(
+        callee,
+        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch"
+    )
 }
 
 struct ResolveContext<'a> {
@@ -153,6 +156,15 @@ mod tests {
         let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
 
         resolve_ast(&ast).expect("resolver should accept collection constructor builtins");
+    }
+
+    #[test]
+    fn resolve_ast_accepts_builtin_protocol_dispatch() {
+        let source = "defmodule Demo do\n  def run() do\n    tuple(protocol_dispatch(tuple(1, 2)), protocol_dispatch(map(3, 4)))\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
+        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept protocol dispatch builtin calls");
     }
 
     #[test]

@@ -457,3 +457,27 @@ Template:
 - **Reasoning:** The RED contract is constructor-call based and needs end-to-end `tonic run` behavior immediately. Builtin call handling is the narrowest reversible change that unblocks the pipeline while preserving room for richer syntax and static typing later.
 - **Reversibility:** High — constructor recognition, typing precision, and runtime value shapes are localized and can be evolved with coordinated fixture updates.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T02:26:32Z
+
+## DEC-040
+- **Decision:** What Step 10.3 RED protocol-dispatch contract to lock before protocol declarations/dispatch tables exist.
+- **Chosen Option:** Add an end-to-end `tonic run` integration test that calls a new builtin-like `protocol_dispatch` over two concrete runtime values (`tuple(...)` and `map(...)`) and expects deterministic output `{1, 2}`.
+- **Confidence (0-100):** 69
+- **Alternatives Considered:**
+  - Introduce full `defprotocol`/`defimpl` syntax in the RED fixture immediately.
+  - Add runtime unit tests only for protocol dispatch internals without CLI coverage.
+  - Use non-deterministic/partial assertions (exit status only) instead of a fixed output contract.
+- **Reasoning:** Current parser grammar only supports integer/call/case expressions, so a call-form contract is the narrowest path that still pressures resolver, typing, lowering, runtime, and CLI output end-to-end for protocol-style dispatch behavior.
+- **Reversibility:** High — the contract can migrate to richer protocol syntax later while preserving the same dispatch expectations.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:29:35Z
+
+## DEC-041
+- **Decision:** How to implement Step 10.4 protocol dispatch tables while the type system has no concrete collection/protocol types.
+- **Chosen Option:** Treat `protocol_dispatch/1` as a builtin call across resolver/typing/IR lowering, and in runtime route it through a deterministic table mapping runtime kind labels (`tuple`, `map`) to integer implementation IDs (`1`, `2`).
+- **Confidence (0-100):** 75
+- **Alternatives Considered:**
+  - Introduce `defprotocol`/`defimpl` syntax plus declaration-time tables now.
+  - Encode dispatch using nested `case` logic in runtime instead of an explicit table.
+  - Resolve dispatch IDs in typing and bake them into IR constants.
+- **Reasoning:** The RED contract only requires protocol-style dispatch behavior for two concrete runtime values with deterministic output. A builtin + runtime table is the narrowest reversible GREEN slice that keeps end-to-end plumbing aligned with existing builtin call flow.
+- **Reversibility:** High — dispatch tables can later be sourced from real protocol declarations without changing call sites.
+- **Timestamp (UTC ISO 8601):** 2026-02-21T02:33:33Z
