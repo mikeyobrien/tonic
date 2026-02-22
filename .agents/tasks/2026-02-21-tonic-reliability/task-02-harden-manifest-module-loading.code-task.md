@@ -1,4 +1,14 @@
+HEARTBEAT_TASK_STATUS=done
 # Task: Harden Manifest Validation and Module Loading
+
+## Status
+**Completed**
+- Hardened `tonic.toml` parsing with distinct errors for missing file, invalid syntax, missing entry, and empty entry strings.
+- Added validation to ensure the entry path exists and is a file.
+- Ensured `collect_tonic_source_paths` ignores hidden (`.*`) and `target` directories, restricting traversal to actual project source directories.
+- Relied on the existing name resolver validation to catch and explicitly reject duplicate module definitions with `E1003` deterministically.
+- Cleaned up unused functions to adhere strictly to Rust idioms and clippy warnings.
+- Wrote regression tests comprehensively covering the new manifest and module loader constraints.
 
 ## Description
 Strengthen project-root loading behavior so `tonic run <project-root>` and `tonic check <project-root>` fail clearly on invalid structure and behave deterministically for valid multi-module trees.

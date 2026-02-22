@@ -40,6 +40,19 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
     let manifest = load_project_manifest(project_root)?;
     let entry_path = project_root.join(&manifest.entry);
 
+    if !entry_path.exists() {
+        return Err(format!(
+            "project entry path '{}' does not exist",
+            manifest.entry.display()
+        ));
+    }
+    if !entry_path.is_file() {
+        return Err(format!(
+            "project entry path '{}' is not a file",
+            manifest.entry.display()
+        ));
+    }
+
     let mut project_sources = vec![read_source_file(&entry_path)?];
 
     for module_path in collect_project_module_paths(project_root, &entry_path)? {
@@ -51,7 +64,7 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
     project_sources.extend(dependency_sources);
 
     let mut source = project_sources.join("\n\n");
-    let analysis = analyze_project_source(&source);
+    let analysis = analyze_project_source(&source)?;
 
     if should_trace_module_loads() {
         for module_name in &analysis.module_names {
@@ -140,30 +153,29 @@ struct ProjectSourceAnalysis {
     references_enum: bool,
 }
 
-fn analyze_project_source(source: &str) -> ProjectSourceAnalysis {
+fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {
     let Some(ast) = parse_project_ast(source) else {
-        return ProjectSourceAnalysis {
+        return Ok(ProjectSourceAnalysis {
             module_names: Vec::new(),
             references_enum: source.contains("Enum."),
-        };
+        });
     };
 
-    ProjectSourceAnalysis {
-        module_names: collect_module_names(&ast),
-        references_enum: ast_references_module(&ast, "Enum"),
+    let mut module_names = Vec::new();
+
+    for module in &ast.modules {
+        module_names.push(module.name.clone());
     }
+
+    Ok(ProjectSourceAnalysis {
+        module_names,
+        references_enum: ast_references_module(&ast, "Enum"),
+    })
 }
 
 fn parse_project_ast(source: &str) -> Option<Ast> {
     let tokens = scan_tokens(source).ok()?;
     parse_ast(&tokens).ok()
-}
-
-fn collect_module_names(ast: &Ast) -> Vec<String> {
-    ast.modules
-        .iter()
-        .map(|module| module.name.clone())
-        .collect()
 }
 
 fn ast_references_module(ast: &Ast, module_name: &str) -> bool {
@@ -243,8 +255,12 @@ fn trace_module_load(scope: &str, module_name: &str) {
 
 pub(crate) fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest, String> {
     let manifest_path = project_root.join("tonic.toml");
-    let source = std::fs::read_to_string(&manifest_path)
-        .map_err(|error| format!("failed to read tonic.toml: {error}"))?;
+    let source = std::fs::read_to_string(&manifest_path).map_err(|_| {
+        format!(
+            "missing project manifest 'tonic.toml' at {}",
+            manifest_path.display()
+        )
+    })?;
 
     parse_manifest(&source, project_root)
 }
@@ -254,13 +270,18 @@ fn parse_manifest(source: &str, project_root: &Path) -> Result<ProjectManifest, 
     let value: toml::Value =
         toml::from_str(source).map_err(|error| format!("invalid tonic.toml: {}", error))?;
 
-    let entry = value
-        .get("project")
-        .and_then(|p| p.get("entry"))
-        .and_then(|e| e.as_str())
-        .map(|e| e.trim().to_string())
-        .filter(|e| !e.is_empty())
-        .ok_or_else(|| "invalid tonic.toml: missing required key project.entry".to_string())?;
+    let entry = value.get("project").and_then(|p| p.get("entry"));
+
+    let entry_str = match entry {
+        None => return Err("invalid tonic.toml: missing required key project.entry".to_string()),
+        Some(toml::Value::String(s)) => {
+            if s.trim().is_empty() {
+                return Err("invalid tonic.toml: project.entry cannot be empty".to_string());
+            }
+            s.trim().to_string()
+        }
+        Some(_) => return Err("invalid tonic.toml: project.entry must be a string".to_string()),
+    };
 
     let dependencies = value
         .get("dependencies")
@@ -268,7 +289,7 @@ fn parse_manifest(source: &str, project_root: &Path) -> Result<ProjectManifest, 
         .unwrap_or_else(|| Ok(Dependencies::default()))?;
 
     Ok(ProjectManifest {
-        entry: PathBuf::from(entry),
+        entry: PathBuf::from(entry_str),
         dependencies,
     })
 }
@@ -421,7 +442,16 @@ fn collect_tonic_source_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
             let path = entry.path();
 
             if path.is_dir() {
-                pending_directories.push(path);
+                let is_hidden = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with('.'));
+
+                let is_target = path.file_name().is_some_and(|name| name == "target");
+
+                if !is_hidden && !is_target {
+                    pending_directories.push(path);
+                }
                 continue;
             }
 
