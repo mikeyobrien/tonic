@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Only run rustfmt when Rust files are staged for commit.
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -E '\.rs$' >/dev/null; then
+  exit 0
+fi
+
+printf '%s\n' "[pre-commit] Running cargo fmt --all..."
+cargo fmt --all
+
+# Re-stage any tracked Rust files changed by rustfmt.
+while IFS= read -r file; do
+  [[ -n "$file" ]] || continue
+  git add "$file"
+done < <(git ls-files -m '*.rs')
+
+printf '%s\n' "[pre-commit] rustfmt complete."
