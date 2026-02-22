@@ -1,6 +1,6 @@
 use crate::parser::{Ast, Expr};
 use crate::resolver_diag::ResolverError;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
     let module_graph = ModuleGraph::from_ast(ast);
@@ -13,6 +13,12 @@ pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
                 module_graph: &module_graph,
             };
 
+            for param in &function.params {
+                if let Some(default) = param.default() {
+                    resolve_expr(default, &context)?;
+                }
+            }
+
             if let Some(guard) = function.guard() {
                 resolve_expr(guard, &context)?;
             }
@@ -24,44 +30,72 @@ pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
     Ok(())
 }
 
+#[derive(Debug, Default)]
 struct ModuleGraph {
-    modules: HashMap<String, HashSet<String>>,
+    modules: HashMap<String, HashMap<String, FunctionVisibility>>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct FunctionVisibility {
+    public: bool,
+    private: bool,
+}
+
+enum CallResolution {
+    Found,
+    Missing,
+    Private,
 }
 
 impl ModuleGraph {
     fn from_ast(ast: &Ast) -> Self {
-        let modules = ast
-            .modules
-            .iter()
-            .map(|module| {
-                let functions = module
-                    .functions
-                    .iter()
-                    .map(|function| function.name.clone())
-                    .collect();
+        let mut modules: HashMap<String, HashMap<String, FunctionVisibility>> = HashMap::new();
 
-                (module.name.clone(), functions)
-            })
-            .collect();
+        for module in &ast.modules {
+            let symbols = modules.entry(module.name.clone()).or_default();
+            for function in &module.functions {
+                let visibility = symbols.entry(function.name.clone()).or_default();
+                if function.is_private() {
+                    visibility.private = true;
+                } else {
+                    visibility.public = true;
+                }
+            }
+        }
 
         Self { modules }
     }
 
-    fn contains_call_target(&self, current_module: &str, callee: &str) -> bool {
+    fn resolve_call_target(&self, current_module: &str, callee: &str) -> CallResolution {
         if is_builtin_call_target(callee) {
-            return true;
+            return CallResolution::Found;
         }
 
         if let Some((module_name, function_name)) = callee.split_once('.') {
-            return self
-                .modules
-                .get(module_name)
-                .is_some_and(|symbols| symbols.contains(function_name));
+            let Some(module_symbols) = self.modules.get(module_name) else {
+                return CallResolution::Missing;
+            };
+
+            let Some(symbol) = module_symbols.get(function_name) else {
+                return CallResolution::Missing;
+            };
+
+            if symbol.public {
+                return CallResolution::Found;
+            }
+
+            return if module_name == current_module && symbol.private {
+                CallResolution::Found
+            } else {
+                CallResolution::Private
+            };
         }
 
         self.modules
             .get(current_module)
-            .is_some_and(|symbols| symbols.contains(callee))
+            .and_then(|symbols| symbols.get(callee))
+            .map(|_| CallResolution::Found)
+            .unwrap_or(CallResolution::Missing)
     }
 }
 
@@ -94,15 +128,25 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             Ok(())
         }
         Expr::Call { callee, args, .. } => {
-            if !context
+            match context
                 .module_graph
-                .contains_call_target(context.module_name, callee)
+                .resolve_call_target(context.module_name, callee)
             {
-                return Err(ResolverError::undefined_symbol(
-                    callee,
-                    context.module_name,
-                    context.function_name,
-                ));
+                CallResolution::Found => {}
+                CallResolution::Missing => {
+                    return Err(ResolverError::undefined_symbol(
+                        callee,
+                        context.module_name,
+                        context.function_name,
+                    ));
+                }
+                CallResolution::Private => {
+                    return Err(ResolverError::private_function(
+                        callee,
+                        context.module_name,
+                        context.function_name,
+                    ));
+                }
             }
 
             for arg in args {
@@ -215,6 +259,33 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1001] undefined symbol 'Math.unknown' in Demo.run"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_accepts_local_calls_to_private_functions() {
+        let source = "defmodule Demo do\n  defp hidden() do\n    1\n  end\n\n  def run() do\n    hidden()\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize private local-call fixture");
+        let ast = parse_ast(&tokens).expect("parser should build private local-call fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept local calls to defp functions");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_cross_module_calls_to_private_functions() {
+        let source = "defmodule Math do\n  defp hidden() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.hidden()\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize private visibility fixture");
+        let ast = parse_ast(&tokens).expect("parser should build private visibility fixture ast");
+
+        let error = resolve_ast(&ast)
+            .expect_err("resolver should reject cross-module calls to private functions");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::PrivateFunction);
+        assert_eq!(
+            error.to_string(),
+            "[E1002] private function 'Math.hidden' cannot be called from Demo.run"
         );
     }
 }

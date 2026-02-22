@@ -1,7 +1,8 @@
+use crate::deps::Lockfile;
 use crate::ir::IrProgram;
 use std::collections::HashMap;
 use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const CACHE_DIRECTORY: &str = ".tonic/cache";
 const CACHE_ARTIFACT_EXTENSION: &str = "ir.json";
@@ -39,9 +40,21 @@ impl CacheKey {
     }
 }
 
-pub(crate) fn build_run_cache_key(source: &str) -> CacheKey {
+pub(crate) fn build_run_cache_key(source: &str, project_root: &Path) -> CacheKey {
     let entry_hash = stable_content_hash(source);
-    let dependency_hash = stable_content_hash(source);
+
+    // FIX: Use lockfile content for dependency hash, not source again
+    let dependency_hash = match Lockfile::load(project_root) {
+        Ok(Some(lockfile)) => {
+            let lockfile_content = serde_json::to_string(&lockfile).unwrap_or_default();
+            stable_content_hash(&lockfile_content)
+        }
+        _ => {
+            // No lockfile or failed to load - use empty hash to indicate no dependencies
+            stable_content_hash("")
+        }
+    };
+
     let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
 
     CacheKey::from_parts(

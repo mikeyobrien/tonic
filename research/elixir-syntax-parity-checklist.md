@@ -71,7 +71,7 @@ Legend:
 - [x] list patterns
 - [~] map patterns (lowering/runtime support for current single-entry map model)
 - [x] pin operator (`^var`)
-- [~] guards in patterns (`when`) — case branches + single-clause function guards with boolean expressions
+- [~] guards in patterns (`when`) — case branches + function clauses with boolean-expression guard subset
 - [x] match operator (`=`) in general expression/binding contexts
 - [ ] exhaustive diagnostics parity for complex patterns
 
@@ -80,11 +80,11 @@ Legend:
 ## 5) Functions & Clauses
 
 - [x] named functions with fixed arity
-- [ ] multi-clause function definitions (same name/arity, pattern-dispatched)
-- [ ] pattern matching in function heads
-- [ ] function guards (`def f(x) when ...`)
-- [ ] default arguments (`\\`)
-- [ ] private functions (`defp`)
+- [x] multi-clause function definitions (same name/arity, pattern-dispatched)
+- [x] pattern matching in function heads
+- [x] function guards (`def f(x) when ...`)
+- [x] default arguments (`\\`)
+- [x] private functions (`defp`)
 - [ ] anonymous functions (`fn -> ... end`)
 - [ ] capture operator (`&`, `&1`)
 - [ ] function invocation parity for anonymous functions (`fun.(x)`)

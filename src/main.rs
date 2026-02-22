@@ -112,7 +112,18 @@ fn handle_run(args: Vec<String>) -> i32 {
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
-    let cache_key = build_run_cache_key(&source);
+    // Derive project_root from source_path (same logic as load_run_source)
+    let source_path_obj = std::path::Path::new(&source_path);
+    let project_root = if source_path_obj.is_dir() {
+        source_path_obj.to_path_buf()
+    } else {
+        source_path_obj
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::Path::new(".").to_path_buf())
+    };
+
+    let cache_key = build_run_cache_key(&source, &project_root);
     let mut cache_status = "miss";
 
     let ir = match load_cached_ir(&cache_key) {

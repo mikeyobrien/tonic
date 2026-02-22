@@ -27,6 +27,7 @@ pub struct Token {
 pub enum TokenKind {
     Defmodule,
     Def,
+    Defp,
     Do,
     End,
     If,
@@ -75,6 +76,7 @@ pub enum TokenKind {
     Question,
     PipeGt,
     Arrow,
+    BackslashBackslash,
     AndAnd,
     OrOr,
     Eof,
@@ -113,6 +115,7 @@ impl Token {
         match self.kind {
             TokenKind::Defmodule => format!("DEFMODULE({})", self.lexeme),
             TokenKind::Def => format!("DEF({})", self.lexeme),
+            TokenKind::Defp => format!("DEFP({})", self.lexeme),
             TokenKind::Do => format!("DO({})", self.lexeme),
             TokenKind::End => format!("END({})", self.lexeme),
             TokenKind::If => format!("IF({})", self.lexeme),
@@ -161,6 +164,7 @@ impl Token {
             TokenKind::Question => "QUESTION".to_string(),
             TokenKind::PipeGt => "PIPE_GT".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
+            TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH".to_string(),
             TokenKind::AndAnd => "AND_AND".to_string(),
             TokenKind::OrOr => "OR_OR".to_string(),
             TokenKind::Eof => "EOF".to_string(),
@@ -321,6 +325,18 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 let start = idx;
                 idx += 1;
                 tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
+            }
+            '\\' => {
+                let start = idx;
+                if chars.get(idx + 1) == Some(&'\\') {
+                    idx += 2;
+                    tokens.push(Token::simple(
+                        TokenKind::BackslashBackslash,
+                        Span::new(start, idx),
+                    ));
+                } else {
+                    return Err(LexerError::invalid_token('\\', Span::new(start, start + 1)));
+                }
             }
             '=' => {
                 let start = idx;
@@ -493,6 +509,7 @@ fn keyword_kind(lexeme: &str) -> Option<TokenKind> {
     match lexeme {
         "defmodule" => Some(TokenKind::Defmodule),
         "def" => Some(TokenKind::Def),
+        "defp" => Some(TokenKind::Defp),
         "do" => Some(TokenKind::Do),
         "end" => Some(TokenKind::End),
         "if" => Some(TokenKind::If),
@@ -686,6 +703,32 @@ mod tests {
                 "IDENT(value)",
                 "MATCH_EQ",
                 "IDENT(tail)",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_defp_and_default_argument_operator() {
+        let labels = dump_labels("defp add(value, inc \\\\ 2) do value + inc end");
+
+        assert_eq!(
+            labels,
+            [
+                "DEFP(defp)",
+                "IDENT(add)",
+                "LPAREN",
+                "IDENT(value)",
+                "COMMA",
+                "IDENT(inc)",
+                "BACKSLASH_BACKSLASH",
+                "INT(2)",
+                "RPAREN",
+                "DO(do)",
+                "IDENT(value)",
+                "PLUS",
+                "IDENT(inc)",
+                "END(end)",
                 "EOF",
             ]
         );

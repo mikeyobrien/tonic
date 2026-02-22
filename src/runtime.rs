@@ -100,53 +100,94 @@ impl fmt::Display for RuntimeError {
 impl std::error::Error for RuntimeError {}
 
 pub fn evaluate_entrypoint(program: &IrProgram) -> Result<RuntimeValue, RuntimeError> {
-    evaluate_function(program, ENTRYPOINT, &[])
+    evaluate_function(program, ENTRYPOINT, &[], 0)
 }
 
 fn evaluate_function(
     program: &IrProgram,
     function_name: &str,
     args: &[RuntimeValue],
+    call_offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
-    let function = program
+    let all_candidates = program
         .functions
         .iter()
-        .find(|function| function.name == function_name)
-        .ok_or_else(|| RuntimeError::new(format!("missing runtime function: {function_name}")))?;
+        .filter(|function| function.name == function_name)
+        .collect::<Vec<_>>();
 
-    if function.params.len() != args.len() {
+    if all_candidates.is_empty() {
+        return Err(RuntimeError::new(format!(
+            "missing runtime function: {function_name}"
+        )));
+    }
+
+    let arity_candidates = all_candidates
+        .iter()
+        .copied()
+        .filter(|function| function.params.len() == args.len())
+        .collect::<Vec<_>>();
+
+    if arity_candidates.is_empty() {
+        let expected_arity = all_candidates
+            .first()
+            .map(|function| function.params.len())
+            .unwrap_or(0);
+
         return Err(RuntimeError::new(format!(
             "arity mismatch for runtime function {function_name}: expected {} args, found {}",
-            function.params.len(),
+            expected_arity,
             args.len()
         )));
     }
 
-    let mut env = HashMap::new();
-    for (param, arg) in function.params.iter().zip(args.iter()) {
-        env.insert(param.clone(), arg.clone());
-    }
+    let mut fallback_guard_offset = None;
 
-    if let Some(guard_ops) = &function.guard_ops {
-        let guard_passed = evaluate_guard_ops(program, guard_ops, &mut env)?;
-        if !guard_passed {
-            let guard_offset = guard_ops.first().map(ir_op_offset).unwrap_or(0);
-            return Err(RuntimeError::at_offset(
-                format!("no function clause matching {function_name}"),
-                guard_offset,
-            ));
+    for function in arity_candidates {
+        let mut env = HashMap::new();
+
+        if let Some(patterns) = &function.param_patterns {
+            let mut matched = true;
+            for (pattern, arg) in patterns.iter().zip(args.iter()) {
+                let mut bindings = HashMap::new();
+                if !match_pattern(arg, pattern, &env, &mut bindings) {
+                    matched = false;
+                    break;
+                }
+                env.extend(bindings);
+            }
+
+            if !matched {
+                continue;
+            }
+        } else {
+            for (param, arg) in function.params.iter().zip(args.iter()) {
+                env.insert(param.clone(), arg.clone());
+            }
         }
+
+        if let Some(guard_ops) = &function.guard_ops {
+            let guard_passed = evaluate_guard_ops(program, guard_ops, &mut env)?;
+            if !guard_passed {
+                fallback_guard_offset = guard_ops.first().map(ir_op_offset);
+                continue;
+            }
+        }
+
+        let mut stack: Vec<RuntimeValue> = Vec::new();
+
+        if let Some(ret) = evaluate_ops(program, &function.ops, &mut env, &mut stack)? {
+            return Ok(ret);
+        }
+
+        return Err(RuntimeError::new(format!(
+            "runtime function ended without return: {function_name}"
+        )));
     }
 
-    let mut stack: Vec<RuntimeValue> = Vec::new();
-
-    if let Some(ret) = evaluate_ops(program, &function.ops, &mut env, &mut stack)? {
-        return Ok(ret);
-    }
-
-    Err(RuntimeError::new(format!(
-        "runtime function ended without return: {function_name}"
-    )))
+    Err(RuntimeError::at_offset(
+        format!("no function clause matching {function_name}"),
+        fallback_guard_offset.unwrap_or(call_offset),
+    ))
 }
 
 fn evaluate_ops(
@@ -543,7 +584,7 @@ fn evaluate_call(
             evaluate_builtin_call(name, args, offset)
         }
         IrCallTarget::Function { name } => {
-            let value = evaluate_function(program, name, &stack[args_start..])?;
+            let value = evaluate_function(program, name, &stack[args_start..], offset)?;
             stack.truncate(args_start);
             Ok(value)
         }
@@ -775,6 +816,7 @@ mod tests {
             functions: vec![IrFunction {
                 name: "Demo.run".to_string(),
                 params: vec![],
+                param_patterns: None,
                 guard_ops: None,
                 ops: vec![
                     IrOp::ConstInt {

@@ -58,11 +58,26 @@ impl Module {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum FunctionVisibility {
+    Public,
+    Private,
+}
+
+impl FunctionVisibility {
+    fn is_public(&self) -> bool {
+        matches!(self, Self::Public)
+    }
+}
+
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Function {
     #[serde(skip_serializing)]
     pub id: NodeId,
     pub name: String,
+    #[serde(skip_serializing_if = "FunctionVisibility::is_public")]
+    pub visibility: FunctionVisibility,
     pub params: Vec<Parameter>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guard: Option<Expr>,
@@ -73,6 +88,7 @@ impl Function {
     fn with_id(
         id: NodeId,
         name: String,
+        visibility: FunctionVisibility,
         params: Vec<Parameter>,
         guard: Option<Expr>,
         body: Expr,
@@ -80,6 +96,7 @@ impl Function {
         Self {
             id,
             name,
+            visibility,
             params,
             guard,
             body,
@@ -89,6 +106,14 @@ impl Function {
     pub fn guard(&self) -> Option<&Expr> {
         self.guard.as_ref()
     }
+
+    pub fn visibility(&self) -> FunctionVisibility {
+        self.visibility
+    }
+
+    pub fn is_private(&self) -> bool {
+        matches!(self.visibility, FunctionVisibility::Private)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,24 +122,30 @@ pub enum ParameterAnnotation {
     Dynamic,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Parameter {
     name: String,
     annotation: ParameterAnnotation,
+    pattern: Pattern,
+    default: Option<Expr>,
 }
 
 impl Parameter {
-    fn inferred(name: String) -> Self {
+    fn inferred(name: String, pattern: Pattern, default: Option<Expr>) -> Self {
         Self {
             name,
             annotation: ParameterAnnotation::Inferred,
+            pattern,
+            default,
         }
     }
 
-    fn dynamic(name: String) -> Self {
+    fn dynamic(name: String, default: Option<Expr>) -> Self {
         Self {
+            pattern: Pattern::Bind { name: name.clone() },
             name,
             annotation: ParameterAnnotation::Dynamic,
+            default,
         }
     }
 
@@ -125,6 +156,18 @@ impl Parameter {
     pub fn annotation(&self) -> ParameterAnnotation {
         self.annotation
     }
+
+    pub fn pattern(&self) -> &Pattern {
+        &self.pattern
+    }
+
+    pub fn default(&self) -> Option<&Expr> {
+        self.default.as_ref()
+    }
+
+    pub fn has_default(&self) -> bool {
+        self.default.is_some()
+    }
 }
 
 impl Serialize for Parameter {
@@ -132,7 +175,24 @@ impl Serialize for Parameter {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.name)
+        if self.default.is_none()
+            && matches!(&self.pattern, Pattern::Bind { name } if name == &self.name)
+        {
+            return serializer.serialize_str(&self.name);
+        }
+
+        use serde::ser::SerializeStruct;
+
+        let mut parameter = serializer.serialize_struct("Parameter", 4)?;
+        parameter.serialize_field("name", &self.name)?;
+        parameter.serialize_field("pattern", &self.pattern)?;
+        if matches!(self.annotation, ParameterAnnotation::Dynamic) {
+            parameter.serialize_field("annotation", "dynamic")?;
+        }
+        if let Some(default) = &self.default {
+            parameter.serialize_field("default", default)?;
+        }
+        parameter.end()
     }
 }
 
@@ -611,7 +671,14 @@ impl<'a> Parser<'a> {
     fn parse_function(&mut self) -> Result<Function, ParserError> {
         let id = self.node_ids.next_function();
 
-        self.expect(TokenKind::Def, "def")?;
+        let visibility = if self.match_kind(TokenKind::Def) {
+            FunctionVisibility::Public
+        } else if self.match_kind(TokenKind::Defp) {
+            FunctionVisibility::Private
+        } else {
+            return Err(self.expected("def or defp"));
+        };
+
         let name = self.expect_ident("function name")?;
         self.expect(TokenKind::LParen, "(")?;
         let params = self.parse_params()?;
@@ -639,18 +706,28 @@ impl<'a> Parser<'a> {
         let body = self.parse_expression()?;
         self.expect(TokenKind::End, "end")?;
 
-        Ok(Function::with_id(id, name, params, guard, body))
+        Ok(Function::with_id(id, name, visibility, params, guard, body))
     }
 
     fn parse_params(&mut self) -> Result<Vec<Parameter>, ParserError> {
         let mut params = Vec::new();
+        let mut saw_default = false;
 
         if self.check(TokenKind::RParen) {
             return Ok(params);
         }
 
         loop {
-            params.push(self.parse_param()?);
+            let param = self.parse_param(params.len())?;
+
+            if saw_default && !param.has_default() {
+                return Err(ParserError::at_current(
+                    "default parameters must be trailing",
+                    self.current(),
+                ));
+            }
+            saw_default |= param.has_default();
+            params.push(param);
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
@@ -662,15 +739,49 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
-    fn parse_param(&mut self) -> Result<Parameter, ParserError> {
-        if self.current_starts_dynamic_param_annotation() {
-            self.advance();
-            let name = self.expect_ident("parameter name")?;
-            return Ok(Parameter::dynamic(name));
+    fn parse_param(&mut self, index: usize) -> Result<Parameter, ParserError> {
+        let (name, annotation, pattern, supports_default) =
+            if self.current_starts_dynamic_param_annotation() {
+                self.advance();
+                let name = self.expect_ident("parameter name")?;
+                (
+                    name.clone(),
+                    ParameterAnnotation::Dynamic,
+                    Pattern::Bind { name },
+                    true,
+                )
+            } else {
+                let pattern = self.parse_pattern()?;
+                let supports_default = matches!(pattern, Pattern::Bind { .. });
+                let name = match &pattern {
+                    Pattern::Bind { name } => name.clone(),
+                    _ => format!("__arg{index}"),
+                };
+                (
+                    name,
+                    ParameterAnnotation::Inferred,
+                    pattern,
+                    supports_default,
+                )
+            };
+
+        let default = if self.match_kind(TokenKind::BackslashBackslash) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        if default.is_some() && !supports_default {
+            return Err(ParserError::at_current(
+                "default values require variable parameters",
+                self.current(),
+            ));
         }
 
-        let name = self.expect_ident("parameter name")?;
-        Ok(Parameter::inferred(name))
+        match annotation {
+            ParameterAnnotation::Inferred => Ok(Parameter::inferred(name, pattern, default)),
+            ParameterAnnotation::Dynamic => Ok(Parameter::dynamic(name, default)),
+        }
     }
 
     fn parse_expression(&mut self) -> Result<Expr, ParserError> {
@@ -1462,6 +1573,49 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_function_head_patterns_defaults_and_private_defs() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def classify({:ok, value}) do\n    value\n  end\n\n  defp add(value, inc \\\\ 2) do\n    value + inc\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(ast.modules[0].functions[0].params[0].name(), "__arg0");
+        assert_eq!(
+            serde_json::to_value(ast.modules[0].functions[0].params[0].pattern())
+                .expect("pattern should serialize"),
+            serde_json::json!({
+                "kind":"tuple",
+                "items":[
+                    {"kind":"atom","value":"ok"},
+                    {"kind":"bind","name":"value"}
+                ]
+            })
+        );
+        assert!(ast.modules[0].functions[1].is_private());
+        assert!(ast.modules[0].functions[1].params[1].default().is_some());
+    }
+
+    #[test]
+    fn parse_ast_rejects_non_trailing_default_params() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def add(value \\\\ 1, other) do\n    value + other\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let error =
+            parse_ast(&tokens).expect_err("parser should reject non-trailing default params");
+
+        assert!(
+            error
+                .to_string()
+                .starts_with("default parameters must be trailing at offset"),
+            "unexpected parser error: {error}"
+        );
+    }
+
+    #[test]
     fn parse_ast_assigns_stable_node_ids() {
         let tokens = scan_tokens(
             "defmodule Math do\n  def one() do\n    1\n  end\n\n  def two() do\n    one()\n  end\nend\n",
@@ -1517,6 +1671,11 @@ mod tests {
 
             for function in &module.functions {
                 ids.push(function.id.0.clone());
+                for param in &function.params {
+                    if let Some(default) = param.default() {
+                        collect_expr_ids(default, &mut ids);
+                    }
+                }
                 if let Some(guard) = function.guard() {
                     collect_expr_ids(guard, &mut ids);
                 }

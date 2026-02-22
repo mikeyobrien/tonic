@@ -12,6 +12,8 @@ pub(crate) struct IrFunction {
     pub(crate) name: String,
     pub(crate) params: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) param_patterns: Option<Vec<IrPattern>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) guard_ops: Option<Vec<IrOp>>,
     pub(crate) ops: Vec<IrOp>,
 }
@@ -203,20 +205,113 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
                 None
             };
 
+            let params = function
+                .params
+                .iter()
+                .map(|param| param.name().to_string())
+                .collect::<Vec<_>>();
+            let param_patterns = lower_function_param_patterns(function, &params)?;
+
             functions.push(IrFunction {
                 name: qualify_function_name(&module.name, &function.name),
-                params: function
-                    .params
-                    .iter()
-                    .map(|param| param.name().to_string())
-                    .collect(),
+                params,
+                param_patterns,
                 guard_ops,
                 ops,
             });
+
+            let wrappers = lower_default_argument_wrappers(module.name.as_str(), function)?;
+            functions.extend(wrappers);
         }
     }
 
     Ok(IrProgram { functions })
+}
+
+fn lower_function_param_patterns(
+    function: &crate::parser::Function,
+    params: &[String],
+) -> Result<Option<Vec<IrPattern>>, LoweringError> {
+    let lowered_patterns = function
+        .params
+        .iter()
+        .map(|param| lower_pattern(param.pattern()))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let is_simple_bind_shape = lowered_patterns.iter().zip(params.iter()).all(
+        |(pattern, param_name)| matches!(pattern, IrPattern::Bind { name } if name == param_name),
+    );
+
+    if is_simple_bind_shape {
+        Ok(None)
+    } else {
+        Ok(Some(lowered_patterns))
+    }
+}
+
+fn lower_default_argument_wrappers(
+    module_name: &str,
+    function: &crate::parser::Function,
+) -> Result<Vec<IrFunction>, LoweringError> {
+    let trailing_default_count = function
+        .params
+        .iter()
+        .rev()
+        .take_while(|param| param.has_default())
+        .count();
+
+    if trailing_default_count == 0 {
+        return Ok(Vec::new());
+    }
+
+    let total_params = function.params.len();
+    let min_arity = total_params - trailing_default_count;
+    let qualified_name = qualify_function_name(module_name, &function.name);
+    let call_offset = function.body.offset();
+    let mut wrappers = Vec::new();
+
+    for provided_arity in min_arity..total_params {
+        let mut ops = Vec::new();
+        let wrapper_params = function.params[..provided_arity]
+            .iter()
+            .map(|param| param.name().to_string())
+            .collect::<Vec<_>>();
+
+        for param in &wrapper_params {
+            ops.push(IrOp::LoadVariable {
+                name: param.clone(),
+                offset: call_offset,
+            });
+        }
+
+        for parameter in &function.params[provided_arity..] {
+            let default = parameter
+                .default()
+                .ok_or_else(|| LoweringError::unsupported("default argument shape", call_offset))?;
+            lower_expr(default, module_name, &mut ops)?;
+        }
+
+        ops.push(IrOp::Call {
+            callee: IrCallTarget::Function {
+                name: qualified_name.clone(),
+            },
+            argc: total_params,
+            offset: call_offset,
+        });
+        ops.push(IrOp::Return {
+            offset: call_offset,
+        });
+
+        wrappers.push(IrFunction {
+            name: qualified_name.clone(),
+            params: wrapper_params,
+            param_patterns: None,
+            guard_ops: None,
+            ops,
+        });
+    }
+
+    Ok(wrappers)
 }
 
 fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<(), LoweringError> {

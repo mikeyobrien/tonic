@@ -59,6 +59,7 @@ type TypeVarId = usize;
 struct FunctionSignature {
     params: Vec<Type>,
     return_type: Type,
+    default_count: usize,
 }
 
 #[derive(Debug, Default)]
@@ -157,15 +158,26 @@ pub fn infer_types(ast: &Ast) -> Result<TypeSummary, TypingError> {
                     ParameterAnnotation::Inferred => solver.fresh_var(),
                     ParameterAnnotation::Dynamic => Type::Dynamic,
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            let default_count = function
+                .params
+                .iter()
+                .rev()
+                .take_while(|param| param.has_default())
+                .count();
             let return_type = solver.fresh_var();
-            signatures.insert(
-                qualify_function_name(&module.name, &function.name),
-                FunctionSignature {
+            let function_name = qualify_function_name(&module.name, &function.name);
+
+            signatures
+                .entry(function_name)
+                .and_modify(|signature| {
+                    signature.default_count = signature.default_count.max(default_count);
+                })
+                .or_insert(FunctionSignature {
                     params,
                     return_type,
-                },
-            );
+                    default_count,
+                });
         }
     }
 
@@ -177,6 +189,20 @@ pub fn infer_types(ast: &Ast) -> Result<TypeSummary, TypingError> {
                 .expect("function signature should be pre-seeded")
                 .return_type
                 .clone();
+
+            if let Some(signature) = signatures.get(&function_name) {
+                for (index, parameter) in function.params.iter().enumerate() {
+                    if let Some(default) = parameter.default() {
+                        let default_type =
+                            infer_expression_type(default, &module.name, &signatures, &mut solver)?;
+                        solver.unify(
+                            signature.params[index].clone(),
+                            default_type,
+                            Some(default.offset()),
+                        )?;
+                    }
+                }
+            }
 
             if let Some(guard) = function.guard() {
                 let guard_type =
@@ -407,10 +433,18 @@ fn infer_call_type(
         ))
     })?;
 
-    if signature.params.len() != arg_types.len() {
+    let max_arity = signature.params.len();
+    let min_arity = max_arity.saturating_sub(signature.default_count);
+
+    if arg_types.len() < min_arity || arg_types.len() > max_arity {
+        let expected = if min_arity == max_arity {
+            max_arity.to_string()
+        } else {
+            format!("{min_arity}..{max_arity}")
+        };
+
         return Err(TypingError::new(format!(
-            "arity mismatch for {target_name}: expected {} args, found {}",
-            signature.params.len(),
+            "arity mismatch for {target_name}: expected {expected} args, found {}",
             arg_types.len()
         )));
     }
