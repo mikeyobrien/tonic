@@ -87,33 +87,53 @@ pub(crate) fn load_cached_ir(key: &CacheKey) -> Result<Option<IrProgram>, String
 pub(crate) fn store_cached_ir(key: &CacheKey, program: &IrProgram) -> Result<(), String> {
     let artifact_path = cache_artifact_path(key)?;
 
-    if let Some(cache_directory) = artifact_path.parent() {
-        std::fs::create_dir_all(cache_directory).map_err(|error| {
-            format!(
-                "failed to create cache directory {}: {error}",
-                cache_directory.display()
-            )
-        })?;
-    }
-
-    if artifact_path.is_dir() {
-        std::fs::remove_dir_all(&artifact_path).map_err(|error| {
-            format!(
-                "failed to repair cache artifact directory {}: {error}",
-                artifact_path.display()
-            )
-        })?;
-    }
-
     let payload = serde_json::to_string(program)
         .map_err(|error| format!("failed to serialize cache artifact: {error}"))?;
 
-    std::fs::write(&artifact_path, payload).map_err(|error| {
+    write_atomic(&artifact_path, &payload).map_err(|error| {
         format!(
             "failed to write cache artifact {}: {error}",
             artifact_path.display()
         )
     })
+}
+
+pub(crate) fn write_atomic(target_path: &Path, content: &str) -> std::io::Result<()> {
+    if target_path.is_dir() {
+        let _ = std::fs::remove_dir_all(target_path);
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let pid = std::process::id();
+
+    let temp_file_name = format!(
+        "{}.tmp.{}.{}",
+        target_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("artifact"),
+        timestamp,
+        pid
+    );
+    let temp_path = target_path.with_file_name(temp_file_name);
+
+    if let Some(parent) = target_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
+    std::fs::write(&temp_path, content)?;
+    match std::fs::rename(&temp_path, target_path) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = std::fs::remove_file(&temp_path);
+            Err(error)
+        }
+    }
 }
 
 pub(crate) fn should_trace_cache_status() -> bool {

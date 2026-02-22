@@ -144,7 +144,9 @@ fn handle_run(args: Vec<String>) -> i32 {
                 Err(error) => return CliDiagnostic::failure(error).emit(),
             };
 
-            let _ = store_cached_ir(&cache_key, &compiled_ir);
+            if let Err(error) = store_cached_ir(&cache_key, &compiled_ir) {
+                eprintln!("warning: {}", error);
+            }
             compiled_ir
         }
     };
@@ -458,7 +460,7 @@ fn handle_compile(args: Vec<String>) -> i32 {
         }
     };
 
-    if let Err(error) = std::fs::write(&artifact_path, serialized) {
+    if let Err(error) = crate::cache::write_atomic(&artifact_path, &serialized) {
         return CliDiagnostic::failure(format!(
             "failed to write compile artifact to {}: {}",
             artifact_path.display(),

@@ -69,3 +69,7 @@ Tonic relies on on-disk artifacts for warm-start performance and compile reuse. 
 - **Complexity**: Medium
 - **Labels**: Cache, Artifact, Atomic Writes, Target Isolation, Reliability
 - **Required Skills**: Rust IO/fs semantics, atomic file strategies, robust error handling, integration testing
+
+```
+HEARTBEAT_TASK_STATUS=done
+```
