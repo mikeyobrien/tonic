@@ -31,7 +31,7 @@ Legend:
 - [x] `nil`
 - [x] string literals as expressions
 - [ ] string interpolation (`"#{expr}"`)
-- [ ] heredocs (`"""..."""`)
+- [x] heredocs (`"""..."""`) baseline triple-quoted multiline strings
 - [ ] sigils (`~r`, `~s`, etc.)
 - [ ] bitstring/binary syntax (`<<>>`)
 

@@ -455,21 +455,43 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
             }
             '"' => {
                 let start = idx;
-                idx += 1;
+                let is_heredoc =
+                    chars.get(idx + 1) == Some(&'"') && chars.get(idx + 2) == Some(&'"');
+
                 let mut literal = String::new();
                 let mut terminated = false;
 
-                while idx < chars.len() {
-                    let peek = chars[idx];
+                if is_heredoc {
+                    idx += 3;
 
-                    if peek == '"' {
-                        terminated = true;
+                    while idx < chars.len() {
+                        if chars.get(idx) == Some(&'"')
+                            && chars.get(idx + 1) == Some(&'"')
+                            && chars.get(idx + 2) == Some(&'"')
+                        {
+                            terminated = true;
+                            idx += 3;
+                            break;
+                        }
+
+                        literal.push(chars[idx]);
                         idx += 1;
-                        break;
                     }
-
-                    literal.push(peek);
+                } else {
                     idx += 1;
+
+                    while idx < chars.len() {
+                        let peek = chars[idx];
+
+                        if peek == '"' {
+                            terminated = true;
+                            idx += 1;
+                            break;
+                        }
+
+                        literal.push(peek);
+                        idx += 1;
+                    }
                 }
 
                 if !terminated {
@@ -622,6 +644,13 @@ mod tests {
                 "EOF",
             ]
         );
+    }
+
+    #[test]
+    fn scan_tokens_supports_triple_quoted_heredoc_literals() {
+        let labels = dump_labels("\"\"\"hello\nworld\"\"\"");
+
+        assert_eq!(labels, ["STRING(hello\nworld)", "EOF"]);
     }
 
     #[test]
