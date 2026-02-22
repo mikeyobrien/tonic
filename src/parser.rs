@@ -1,5 +1,6 @@
 use crate::lexer::{Span, Token, TokenKind};
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -40,19 +41,56 @@ impl NodeIdGenerator {
     }
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ModuleForm {
+    Alias {
+        module: String,
+        #[serde(rename = "as")]
+        as_name: String,
+    },
+    Import {
+        module: String,
+    },
+    Require {
+        module: String,
+    },
+    Use {
+        module: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ModuleAttribute {
+    pub name: String,
+    pub value: Expr,
+}
+
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Module {
     #[serde(skip_serializing)]
     pub id: NodeId,
     pub name: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub forms: Vec<ModuleForm>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<ModuleAttribute>,
     pub functions: Vec<Function>,
 }
 
 impl Module {
-    fn with_id(id: NodeId, name: String, functions: Vec<Function>) -> Self {
+    fn with_id(
+        id: NodeId,
+        name: String,
+        forms: Vec<ModuleForm>,
+        attributes: Vec<ModuleAttribute>,
+        functions: Vec<Function>,
+    ) -> Self {
         Self {
             id,
             name,
+            forms,
+            attributes,
             functions,
         }
     }
@@ -372,6 +410,14 @@ where
     pub fn body(&self) -> &Expr {
         &self.body
     }
+
+    fn guard_mut(&mut self) -> Option<&mut Expr> {
+        self.guard.as_mut()
+    }
+
+    fn body_mut(&mut self) -> &mut Expr {
+        &mut self.body
+    }
 }
 
 impl<Head> Serialize for Branch<Head>
@@ -654,6 +700,133 @@ impl fmt::Display for ParserError {
 
 impl std::error::Error for ParserError {}
 
+fn canonicalize_module_call_targets(module: &mut Module) {
+    let aliases = module
+        .forms
+        .iter()
+        .filter_map(|form| match form {
+            ModuleForm::Alias { module, as_name } => Some((as_name.clone(), module.clone())),
+            _ => None,
+        })
+        .collect::<HashMap<_, _>>();
+
+    let imports = module
+        .forms
+        .iter()
+        .filter_map(|form| match form {
+            ModuleForm::Import { module } => Some(module.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    let local_functions = module
+        .functions
+        .iter()
+        .map(|function| function.name.clone())
+        .collect::<HashSet<_>>();
+
+    for function in &mut module.functions {
+        for param in &mut function.params {
+            if let Some(default) = &mut param.default {
+                canonicalize_expr_call_targets(default, &aliases, &imports, &local_functions);
+            }
+        }
+
+        if let Some(guard) = &mut function.guard {
+            canonicalize_expr_call_targets(guard, &aliases, &imports, &local_functions);
+        }
+
+        canonicalize_expr_call_targets(&mut function.body, &aliases, &imports, &local_functions);
+    }
+}
+
+fn canonicalize_expr_call_targets(
+    expr: &mut Expr,
+    aliases: &HashMap<String, String>,
+    imports: &[String],
+    local_functions: &HashSet<String>,
+) {
+    match expr {
+        Expr::Tuple { items, .. } | Expr::List { items, .. } => {
+            for item in items {
+                canonicalize_expr_call_targets(item, aliases, imports, local_functions);
+            }
+        }
+        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => {
+            for entry in entries {
+                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+            }
+        }
+        Expr::Call { callee, args, .. } => {
+            for arg in args {
+                canonicalize_expr_call_targets(arg, aliases, imports, local_functions);
+            }
+
+            if let Some((alias_name, function_name)) = callee.split_once('.') {
+                if let Some(module_name) = aliases.get(alias_name) {
+                    *callee = format!("{module_name}.{function_name}");
+                }
+                return;
+            }
+
+            if local_functions.contains(callee) || is_builtin_call_target(callee) {
+                return;
+            }
+
+            if imports.len() == 1 {
+                *callee = format!("{}.{}", imports[0], callee);
+            }
+        }
+        Expr::Fn { body, .. } => {
+            canonicalize_expr_call_targets(body, aliases, imports, local_functions);
+        }
+        Expr::Invoke { callee, args, .. } => {
+            canonicalize_expr_call_targets(callee, aliases, imports, local_functions);
+            for arg in args {
+                canonicalize_expr_call_targets(arg, aliases, imports, local_functions);
+            }
+        }
+        Expr::Question { value, .. }
+        | Expr::Group { inner: value, .. }
+        | Expr::Unary { value, .. } => {
+            canonicalize_expr_call_targets(value, aliases, imports, local_functions);
+        }
+        Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
+            canonicalize_expr_call_targets(left, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(right, aliases, imports, local_functions);
+        }
+        Expr::Case {
+            subject, branches, ..
+        } => {
+            canonicalize_expr_call_targets(subject, aliases, imports, local_functions);
+            for branch in branches {
+                if let Some(guard) = branch.guard_mut() {
+                    canonicalize_expr_call_targets(guard, aliases, imports, local_functions);
+                }
+                canonicalize_expr_call_targets(
+                    branch.body_mut(),
+                    aliases,
+                    imports,
+                    local_functions,
+                );
+            }
+        }
+        Expr::Int { .. }
+        | Expr::Bool { .. }
+        | Expr::Nil { .. }
+        | Expr::String { .. }
+        | Expr::Variable { .. }
+        | Expr::Atom { .. } => {}
+    }
+}
+
+fn is_builtin_call_target(callee: &str) -> bool {
+    matches!(
+        callee,
+        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+    )
+}
+
 pub fn parse_ast(tokens: &[Token]) -> Result<Ast, ParserError> {
     Parser::new(tokens).parse_program()
 }
@@ -692,18 +865,38 @@ impl<'a> Parser<'a> {
         let name = self.expect_ident("module name")?;
         self.expect(TokenKind::Do, "do")?;
 
+        let mut forms = Vec::new();
+        let mut attributes = Vec::new();
         let mut functions = Vec::new();
+
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
-                return Err(self.expected("function declaration"));
+                return Err(self.expected("module declaration"));
             }
 
-            functions.push(self.parse_function()?);
+            if self.check(TokenKind::Def) || self.check(TokenKind::Defp) {
+                functions.push(self.parse_function()?);
+                continue;
+            }
+
+            if self.current_starts_module_form() {
+                forms.push(self.parse_module_form()?);
+                continue;
+            }
+
+            if self.check(TokenKind::At) {
+                attributes.push(self.parse_module_attribute()?);
+                continue;
+            }
+
+            return Err(self.expected("module declaration"));
         }
 
         self.expect(TokenKind::End, "end")?;
 
-        Ok(Module::with_id(id, name, functions))
+        let mut module = Module::with_id(id, name, forms, attributes, functions);
+        canonicalize_module_call_targets(&mut module);
+        Ok(module)
     }
 
     fn parse_function(&mut self) -> Result<Function, ParserError> {
@@ -745,6 +938,94 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::End, "end")?;
 
         Ok(Function::with_id(id, name, visibility, params, guard, body))
+    }
+
+    fn current_starts_module_form(&self) -> bool {
+        self.current().is_some_and(|token| {
+            token.kind() == TokenKind::Ident
+                && matches!(token.lexeme(), "alias" | "import" | "require" | "use")
+        })
+    }
+
+    fn parse_module_form(&mut self) -> Result<ModuleForm, ParserError> {
+        let form_name = self.expect_ident("module form")?;
+
+        match form_name.as_str() {
+            "alias" => self.parse_alias_form(),
+            "import" => self.parse_named_module_form("import"),
+            "require" => self.parse_named_module_form("require"),
+            "use" => self.parse_named_module_form("use"),
+            _ => Err(ParserError::at_current(
+                format!("unsupported module form '{form_name}'"),
+                self.current(),
+            )),
+        }
+    }
+
+    fn parse_alias_form(&mut self) -> Result<ModuleForm, ParserError> {
+        let module = self.parse_module_reference("aliased module")?;
+        let mut as_name = module.rsplit('.').next().unwrap_or(&module).to_string();
+
+        if self.match_kind(TokenKind::Comma) {
+            let option_token = self.expect_token(TokenKind::Ident, "alias option")?;
+            if option_token.lexeme() != "as" {
+                return Err(ParserError::at_current(
+                    format!("unsupported alias option '{}'", option_token.lexeme()),
+                    Some(option_token),
+                ));
+            }
+
+            self.expect(TokenKind::Colon, ":")?;
+            as_name = self.expect_ident("alias name")?;
+        }
+
+        Ok(ModuleForm::Alias { module, as_name })
+    }
+
+    fn parse_named_module_form(&mut self, form_name: &str) -> Result<ModuleForm, ParserError> {
+        let module = self.parse_module_reference("module name")?;
+
+        if self.match_kind(TokenKind::Comma) {
+            let option_token = self.expect_token(TokenKind::Ident, "module form option")?;
+            return Err(ParserError::at_current(
+                format!("unsupported {form_name} option '{}'", option_token.lexeme()),
+                Some(option_token),
+            ));
+        }
+
+        let form = match form_name {
+            "import" => ModuleForm::Import { module },
+            "require" => ModuleForm::Require { module },
+            "use" => ModuleForm::Use { module },
+            _ => {
+                return Err(ParserError::at_current(
+                    format!("unsupported module form '{form_name}'"),
+                    self.current(),
+                ));
+            }
+        };
+
+        Ok(form)
+    }
+
+    fn parse_module_attribute(&mut self) -> Result<ModuleAttribute, ParserError> {
+        self.expect(TokenKind::At, "@")?;
+        let name = self.expect_ident("attribute name")?;
+        let value = self.parse_expression()?;
+
+        Ok(ModuleAttribute { name, value })
+    }
+
+    fn parse_module_reference(&mut self, expected: &str) -> Result<String, ParserError> {
+        let mut module = self.expect_ident(expected)?;
+
+        while self.match_kind(TokenKind::Dot) {
+            let segment = self.expect_ident("module name segment")?;
+            module.push('.');
+            module.push_str(&segment);
+        }
+
+        Ok(module)
     }
 
     fn parse_params(&mut self) -> Result<Vec<Parameter>, ParserError> {
@@ -2071,6 +2352,60 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_module_forms_and_attributes() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  alias Math, as: M\n  import Math\n  require Logger\n  use Feature\n  @moduledoc \"demo module\"\n  @doc \"run docs\"\n  @answer 5\n\n  def run() do\n    M.helper() + helper()\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].forms).expect("module forms should serialize"),
+            serde_json::json!([
+                {"kind":"alias","module":"Math","as":"M"},
+                {"kind":"import","module":"Math"},
+                {"kind":"require","module":"Logger"},
+                {"kind":"use","module":"Feature"}
+            ])
+        );
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].attributes)
+                .expect("module attributes should serialize"),
+            serde_json::json!([
+                {"name":"moduledoc","value":{"kind":"string","value":"demo module"}},
+                {"name":"doc","value":{"kind":"string","value":"run docs"}},
+                {"name":"answer","value":{"kind":"int","value":5}}
+            ])
+        );
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"binary",
+                "op":"plus",
+                "left":{"kind":"call","callee":"Math.helper","args":[]},
+                "right":{"kind":"call","callee":"Math.helper","args":[]}
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_rejects_unsupported_alias_options() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  alias Math, via: M\n\n  def run() do\n    1\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let error = parse_ast(&tokens).expect_err("parser should reject unsupported alias options");
+
+        assert_eq!(
+            error.to_string(),
+            "unsupported alias option 'via' at offset 32"
+        );
+    }
+
+    #[test]
     fn parse_ast_reports_missing_module_end() {
         let tokens = scan_tokens("defmodule Broken do\n  def one() do\n    1\n  end\n")
             .expect("scanner should tokenize parser fixture");
@@ -2080,7 +2415,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .starts_with("expected function declaration, found EOF"),
+                .starts_with("expected module declaration, found EOF"),
             "unexpected parser error: {error}"
         );
     }

@@ -56,6 +56,7 @@ pub enum TokenKind {
     LBracket,
     RBracket,
     Percent,
+    At,
     Colon,
     Comma,
     Dot,
@@ -149,6 +150,7 @@ impl Token {
             TokenKind::LBracket => "LBRACKET".to_string(),
             TokenKind::RBracket => "RBRACKET".to_string(),
             TokenKind::Percent => "PERCENT".to_string(),
+            TokenKind::At => "AT".to_string(),
             TokenKind::Colon => "COLON".to_string(),
             TokenKind::Comma => "COMMA".to_string(),
             TokenKind::Dot => "DOT".to_string(),
@@ -282,6 +284,11 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 let start = idx;
                 idx += 1;
                 tokens.push(Token::simple(TokenKind::Percent, Span::new(start, idx)));
+            }
+            '@' => {
+                let start = idx;
+                idx += 1;
+                tokens.push(Token::simple(TokenKind::At, Span::new(start, idx)));
             }
             ',' => {
                 let start = idx;
@@ -807,6 +814,27 @@ mod tests {
                 "LPAREN",
                 "INT(2)",
                 "RPAREN",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_module_attributes_and_forms() {
+        let labels = dump_labels("@doc \"ok\" alias Math, as: M");
+
+        assert_eq!(
+            labels,
+            [
+                "AT",
+                "IDENT(doc)",
+                "STRING(ok)",
+                "IDENT(alias)",
+                "IDENT(Math)",
+                "COMMA",
+                "IDENT(as)",
+                "COLON",
+                "IDENT(M)",
                 "EOF",
             ]
         );

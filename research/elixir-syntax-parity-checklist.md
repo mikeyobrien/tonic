@@ -107,11 +107,11 @@ Legend:
 ## 7) Module System & Compile-Time Forms
 
 - [x] module declarations
-- [ ] `alias`
-- [ ] `import`
-- [ ] `require`
-- [ ] `use`
-- [ ] module attributes (`@foo`, `@doc`, `@moduledoc`, `@spec`, etc.)
+- [x] `alias`
+- [x] `import`
+- [x] `require`
+- [x] `use`
+- [~] module attributes (`@foo`, `@doc`, `@moduledoc`, `@spec`, etc.) — parser/AST storage for generic attrs + `@doc`/`@moduledoc`; no `@spec` semantics yet
 - [ ] protocol/impl syntax compatibility (`defprotocol`, `defimpl`) — optional for “syntax parity”, high for ecosystem parity
 
 ---
