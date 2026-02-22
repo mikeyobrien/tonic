@@ -103,10 +103,12 @@ fn collect_module_names(ast: &Ast) -> Vec<String> {
 
 fn ast_references_module(ast: &Ast, module_name: &str) -> bool {
     ast.modules.iter().any(|module| {
-        module
-            .functions
-            .iter()
-            .any(|function| expr_references_module(&function.body, module_name))
+        module.functions.iter().any(|function| {
+            function
+                .guard()
+                .is_some_and(|guard| expr_references_module(guard, module_name))
+                || expr_references_module(&function.body, module_name)
+        })
     })
 }
 
@@ -139,9 +141,12 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
             subject, branches, ..
         } => {
             expr_references_module(subject, module_name)
-                || branches
-                    .iter()
-                    .any(|branch| expr_references_module(branch.body(), module_name))
+                || branches.iter().any(|branch| {
+                    branch
+                        .guard()
+                        .is_some_and(|guard| expr_references_module(guard, module_name))
+                        || expr_references_module(branch.body(), module_name)
+                })
         }
         Expr::Group { inner, .. } => expr_references_module(inner, module_name),
         Expr::Variable { .. } | Expr::Atom { .. } => false,

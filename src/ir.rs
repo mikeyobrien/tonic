@@ -11,6 +11,8 @@ pub struct IrProgram {
 pub(crate) struct IrFunction {
     pub(crate) name: String,
     pub(crate) params: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) guard_ops: Option<Vec<IrOp>>,
     pub(crate) ops: Vec<IrOp>,
 }
 
@@ -105,6 +107,10 @@ pub(crate) enum IrOp {
     Range {
         offset: usize,
     },
+    Match {
+        pattern: IrPattern,
+        offset: usize,
+    },
     Return {
         offset: usize,
     },
@@ -131,6 +137,8 @@ pub(crate) enum IrCallTarget {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct IrCaseBranch {
     pub(crate) pattern: IrPattern,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) guard_ops: Option<Vec<IrOp>>,
     pub(crate) ops: Vec<IrOp>,
 }
 
@@ -139,6 +147,7 @@ pub(crate) struct IrCaseBranch {
 pub(crate) enum IrPattern {
     Atom { value: String },
     Bind { name: String },
+    Pin { name: String },
     Wildcard,
     Integer { value: i64 },
     Tuple { items: Vec<IrPattern> },
@@ -186,6 +195,14 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
                 offset: function.body.offset(),
             });
 
+            let guard_ops = if let Some(guard) = function.guard() {
+                let mut guard_ops = Vec::new();
+                lower_expr(guard, &module.name, &mut guard_ops)?;
+                Some(guard_ops)
+            } else {
+                None
+            };
+
             functions.push(IrFunction {
                 name: qualify_function_name(&module.name, &function.name),
                 params: function
@@ -193,6 +210,7 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
                     .iter()
                     .map(|param| param.name().to_string())
                     .collect(),
+                guard_ops,
                 ops,
             });
         }
@@ -342,6 +360,16 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             offset,
             ..
         } => {
+            if *op == BinaryOp::Match {
+                lower_expr(right, current_module, ops)?;
+                let pattern = lower_expr_pattern(left)?;
+                ops.push(IrOp::Match {
+                    pattern,
+                    offset: *offset,
+                });
+                return Ok(());
+            }
+
             lower_expr(left, current_module, ops)?;
 
             match op {
@@ -419,7 +447,11 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 BinaryOp::PlusPlus => IrOp::PlusPlus { offset: *offset },
                 BinaryOp::MinusMinus => IrOp::MinusMinus { offset: *offset },
                 BinaryOp::Range => IrOp::Range { offset: *offset },
-                _ => unreachable!(),
+                BinaryOp::Match
+                | BinaryOp::And
+                | BinaryOp::Or
+                | BinaryOp::AndAnd
+                | BinaryOp::OrOr => unreachable!(),
             };
             ops.push(ir_op);
             Ok(())
@@ -449,8 +481,17 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                     let mut branch_ops = Vec::new();
                     lower_expr(branch.body(), current_module, &mut branch_ops)?;
 
+                    let guard_ops = if let Some(guard) = branch.guard() {
+                        let mut guard_ops = Vec::new();
+                        lower_expr(guard, current_module, &mut guard_ops)?;
+                        Some(guard_ops)
+                    } else {
+                        None
+                    };
+
                     Ok(IrCaseBranch {
                         pattern: lower_pattern(branch.head())?,
+                        guard_ops,
                         ops: branch_ops,
                     })
                 })
@@ -512,12 +553,66 @@ fn lower_pipe_expr(
     Ok(())
 }
 
+fn lower_expr_pattern(expr: &Expr) -> Result<IrPattern, LoweringError> {
+    match expr {
+        Expr::Atom { value, .. } => Ok(IrPattern::Atom {
+            value: value.clone(),
+        }),
+        Expr::Variable { name, .. } if name == "_" => Ok(IrPattern::Wildcard),
+        Expr::Variable { name, .. } => Ok(IrPattern::Bind { name: name.clone() }),
+        Expr::Int { value, .. } => Ok(IrPattern::Integer { value: *value }),
+        Expr::Tuple { items, offset, .. } => {
+            let items = items
+                .iter()
+                .map(lower_expr_pattern)
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            if items.len() != 2 {
+                return Err(LoweringError::unsupported(
+                    "match tuple pattern arity",
+                    *offset,
+                ));
+            }
+            Ok(IrPattern::Tuple { items })
+        }
+        Expr::List { items, .. } => {
+            let items = items
+                .iter()
+                .map(lower_expr_pattern)
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            Ok(IrPattern::List { items })
+        }
+        Expr::Map { entries, .. } => {
+            let entries = entries
+                .iter()
+                .map(|entry| {
+                    Ok(IrMapPatternEntry {
+                        key: IrPattern::Atom {
+                            value: entry.key.clone(),
+                        },
+                        value: lower_expr_pattern(&entry.value)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            Ok(IrPattern::Map { entries })
+        }
+        Expr::Binary {
+            op: BinaryOp::Match,
+            ..
+        } => Err(LoweringError::unsupported(
+            "nested match pattern",
+            expr.offset(),
+        )),
+        _ => Err(LoweringError::unsupported("match pattern", expr.offset())),
+    }
+}
+
 fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
     match pattern {
         Pattern::Atom { value } => Ok(IrPattern::Atom {
             value: value.clone(),
         }),
         Pattern::Bind { name } => Ok(IrPattern::Bind { name: name.clone() }),
+        Pattern::Pin { name } => Ok(IrPattern::Pin { name: name.clone() }),
         Pattern::Wildcard => Ok(IrPattern::Wildcard),
         Pattern::Integer { value } => Ok(IrPattern::Integer { value: *value }),
         Pattern::Tuple { items } => {

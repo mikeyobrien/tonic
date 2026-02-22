@@ -13,6 +13,10 @@ pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
                 module_graph: &module_graph,
             };
 
+            if let Some(guard) = function.guard() {
+                resolve_expr(guard, &context)?;
+            }
+
             resolve_expr(&function.body, &context)?;
         }
     }
@@ -118,6 +122,9 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             resolve_expr(subject, context)?;
 
             for branch in branches {
+                if let Some(guard) = branch.guard() {
+                    resolve_expr(guard, context)?;
+                }
                 resolve_expr(branch.body(), context)?;
             }
 

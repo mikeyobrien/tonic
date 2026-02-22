@@ -84,6 +84,41 @@ fn check_dump_ir_lowers_list_and_map_case_patterns() {
     );
 }
 
+#[test]
+fn check_dump_ir_lowers_pin_guard_and_match_operator_forms() {
+    let fixture_root = unique_fixture_root("check-dump-ir-pin-guard-match");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("ir_pin_guard_match.tn"),
+        "defmodule Demo do\n  def run() do\n    case list(7, 8) do\n      [^expected, value] when value == 8 -> expected = value\n      _ -> 0\n    end\n  end\n\n  def expected() do\n    7\n  end\nend\n",
+    )
+    .expect("fixture setup should write pin/guard/match source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["check", "examples/ir_pin_guard_match.tn", "--dump-ir"])
+        .output()
+        .expect("check command should run");
+
+    assert!(
+        output.status.success(),
+        "expected successful check invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
+    let branches = &json["functions"][0]["ops"][3]["branches"];
+
+    assert_eq!(branches[0]["pattern"]["kind"], "list");
+    assert_eq!(branches[0]["pattern"]["items"][0]["kind"], "pin");
+    assert_eq!(branches[0]["guard_ops"][2]["op"], "cmp_int");
+    assert_eq!(branches[0]["ops"][1]["op"], "match");
+}
+
 fn unique_fixture_root(test_name: &str) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

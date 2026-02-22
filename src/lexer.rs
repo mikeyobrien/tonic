@@ -40,6 +40,7 @@ pub enum TokenKind {
     Or,
     Not,
     In,
+    When,
     Ident,
     Atom,
     Integer,
@@ -55,12 +56,14 @@ pub enum TokenKind {
     Comma,
     Dot,
     DotDot,
+    Caret,
     Plus,
     PlusPlus,
     Minus,
     MinusMinus,
     Star,
     Slash,
+    MatchEq,
     EqEq,
     BangEq,
     Bang,
@@ -123,6 +126,7 @@ impl Token {
             TokenKind::Or => format!("OR({})", self.lexeme),
             TokenKind::Not => format!("NOT({})", self.lexeme),
             TokenKind::In => format!("IN({})", self.lexeme),
+            TokenKind::When => format!("WHEN({})", self.lexeme),
             TokenKind::Ident => format!("IDENT({})", self.lexeme),
             TokenKind::Atom => format!("ATOM({})", self.lexeme),
             TokenKind::Integer => format!("INT({})", self.lexeme),
@@ -138,12 +142,14 @@ impl Token {
             TokenKind::Comma => "COMMA".to_string(),
             TokenKind::Dot => "DOT".to_string(),
             TokenKind::DotDot => "DOT_DOT".to_string(),
+            TokenKind::Caret => "CARET".to_string(),
             TokenKind::Plus => "PLUS".to_string(),
             TokenKind::PlusPlus => "PLUS_PLUS".to_string(),
             TokenKind::Minus => "MINUS".to_string(),
             TokenKind::MinusMinus => "MINUS_MINUS".to_string(),
             TokenKind::Star => "STAR".to_string(),
             TokenKind::Slash => "SLASH".to_string(),
+            TokenKind::MatchEq => "MATCH_EQ".to_string(),
             TokenKind::EqEq => "EQ_EQ".to_string(),
             TokenKind::BangEq => "BANG_EQ".to_string(),
             TokenKind::Bang => "BANG".to_string(),
@@ -278,6 +284,11 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     tokens.push(Token::simple(TokenKind::Dot, Span::new(start, idx)));
                 }
             }
+            '^' => {
+                let start = idx;
+                idx += 1;
+                tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
+            }
             '+' => {
                 let start = idx;
                 if chars.get(idx + 1) == Some(&'+') {
@@ -317,7 +328,8 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::EqEq, Span::new(start, idx)));
                 } else {
-                    return Err(LexerError::invalid_token('=', Span::new(start, start + 1)));
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::MatchEq, Span::new(start, idx)));
                 }
             }
             '!' => {
@@ -494,6 +506,7 @@ fn keyword_kind(lexeme: &str) -> Option<TokenKind> {
         "or" => Some(TokenKind::Or),
         "not" => Some(TokenKind::Not),
         "in" => Some(TokenKind::In),
+        "when" => Some(TokenKind::When),
         _ => None,
     }
 }
@@ -649,6 +662,32 @@ mod tests {
         assert_eq!(
             labels,
             ["IDENT(value)", "LPAREN", "RPAREN", "QUESTION", "EOF",]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_pin_guards_and_match_operator() {
+        let labels = dump_labels("[^value, tail] when tail == 8 -> value = tail");
+
+        assert_eq!(
+            labels,
+            [
+                "LBRACKET",
+                "CARET",
+                "IDENT(value)",
+                "COMMA",
+                "IDENT(tail)",
+                "RBRACKET",
+                "WHEN(when)",
+                "IDENT(tail)",
+                "EQ_EQ",
+                "INT(8)",
+                "ARROW",
+                "IDENT(value)",
+                "MATCH_EQ",
+                "IDENT(tail)",
+                "EOF",
+            ]
         );
     }
 

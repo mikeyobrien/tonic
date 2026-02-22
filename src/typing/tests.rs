@@ -159,6 +159,30 @@ fn infer_types_reports_non_exhaustive_case_without_wildcard_branch() {
 }
 
 #[test]
+fn infer_types_requires_boolean_case_guard_expressions() {
+    let source = "defmodule Demo do\n  def run() do\n    case 1 do\n      value when 1 -> value\n      _ -> 0\n    end\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize guard typing fixture");
+    let ast = parse_ast(&tokens).expect("parser should build guard typing fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject non-boolean guards");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(error.message(), "type mismatch: expected bool, found int");
+}
+
+#[test]
+fn infer_types_accepts_match_operator_with_pattern_bindings() {
+    let source = "defmodule Demo do\n  def run() do\n    [head, _] = list(1, 2)\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize match typing fixture");
+    let ast = parse_ast(&tokens).expect("parser should build match typing fixture ast");
+
+    let summary =
+        infer_types(&ast).expect("type inference should accept match operator expressions");
+
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
+}
+
+#[test]
 fn infer_types_harmonizes_result_and_match_diagnostics() {
     let question_source =
         "defmodule Demo do\n  def value() do\n    1\n  end\n\n  def run() do\n    value()?\n  end\nend\n";

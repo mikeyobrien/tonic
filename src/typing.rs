@@ -178,6 +178,12 @@ pub fn infer_types(ast: &Ast) -> Result<TypeSummary, TypingError> {
                 .return_type
                 .clone();
 
+            if let Some(guard) = function.guard() {
+                let guard_type =
+                    infer_expression_type(guard, &module.name, &signatures, &mut solver)?;
+                solver.unify(Type::Bool, guard_type, Some(guard.offset()))?;
+            }
+
             let inferred_body_type =
                 infer_expression_type(&function.body, &module.name, &signatures, &mut solver)?;
 
@@ -272,6 +278,7 @@ fn infer_expression_type(
             let right_type = infer_expression_type(right, current_module, signatures, solver)?;
 
             match op {
+                BinaryOp::Match => Ok(right_type),
                 BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => {
                     solver.unify(Type::Int, left_type, Some(left.offset()))?;
                     solver.unify(Type::Int, right_type, Some(right.offset()))?;
@@ -340,6 +347,12 @@ fn infer_expression_type(
             let mut inferred_case_type = None;
 
             for branch in branches {
+                if let Some(guard) = branch.guard() {
+                    let guard_type =
+                        infer_expression_type(guard, current_module, signatures, solver)?;
+                    solver.unify(Type::Bool, guard_type, Some(guard.offset()))?;
+                }
+
                 let branch_type =
                     infer_expression_type(branch.body(), current_module, signatures, solver)?;
 

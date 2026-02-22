@@ -70,9 +70,9 @@ Legend:
 - [~] tuple patterns (currently narrow runtime support)
 - [x] list patterns
 - [~] map patterns (lowering/runtime support for current single-entry map model)
-- [ ] pin operator (`^var`)
-- [ ] guards in patterns (`when`)
-- [ ] match operator (`=`) in general expression/binding contexts
+- [x] pin operator (`^var`)
+- [~] guards in patterns (`when`) — case branches + single-clause function guards with boolean expressions
+- [x] match operator (`=`) in general expression/binding contexts
 - [ ] exhaustive diagnostics parity for complex patterns
 
 ---

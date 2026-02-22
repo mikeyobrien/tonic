@@ -127,6 +127,17 @@ fn evaluate_function(
         env.insert(param.clone(), arg.clone());
     }
 
+    if let Some(guard_ops) = &function.guard_ops {
+        let guard_passed = evaluate_guard_ops(program, guard_ops, &mut env)?;
+        if !guard_passed {
+            let guard_offset = guard_ops.first().map(ir_op_offset).unwrap_or(0);
+            return Err(RuntimeError::at_offset(
+                format!("no function clause matching {function_name}"),
+                guard_offset,
+            ));
+        }
+    }
+
     let mut stack: Vec<RuntimeValue> = Vec::new();
 
     if let Some(ret) = evaluate_ops(program, &function.ops, &mut env, &mut stack)? {
@@ -321,6 +332,23 @@ fn evaluate_ops(
                 };
                 stack.push(RuntimeValue::Bool(result));
             }
+            IrOp::Match { pattern, offset } => {
+                let value = pop_value(stack, *offset, "match")?;
+                let mut bindings = HashMap::new();
+
+                if !match_pattern(&value, pattern, env, &mut bindings) {
+                    return Err(RuntimeError::at_offset(
+                        format!("no match of right hand side value: {}", value.render()),
+                        *offset,
+                    ));
+                }
+
+                for (name, bound_value) in bindings {
+                    env.insert(name, bound_value);
+                }
+
+                stack.push(value);
+            }
             IrOp::Return { offset } => {
                 return Ok(Some(pop_value(stack, *offset, "return")?));
             }
@@ -349,20 +377,28 @@ fn evaluate_ops(
 
                 for branch in branches {
                     let mut bindings = HashMap::new();
-                    if match_pattern(&subject, &branch.pattern, &mut bindings) {
-                        matched = true;
-                        let mut branch_env = env.clone();
-                        for (k, v) in bindings {
-                            branch_env.insert(k, v);
-                        }
-
-                        if let Some(ret) =
-                            evaluate_ops(program, &branch.ops, &mut branch_env, stack)?
-                        {
-                            return Ok(Some(ret));
-                        }
-                        break;
+                    if !match_pattern(&subject, &branch.pattern, env, &mut bindings) {
+                        continue;
                     }
+
+                    let mut branch_env = env.clone();
+                    for (k, v) in bindings {
+                        branch_env.insert(k, v);
+                    }
+
+                    if let Some(guard_ops) = &branch.guard_ops {
+                        let guard_passed = evaluate_guard_ops(program, guard_ops, &mut branch_env)?;
+                        if !guard_passed {
+                            continue;
+                        }
+                    }
+
+                    matched = true;
+
+                    if let Some(ret) = evaluate_ops(program, &branch.ops, &mut branch_env, stack)? {
+                        return Ok(Some(ret));
+                    }
+                    break;
                 }
 
                 if !matched {
@@ -375,17 +411,84 @@ fn evaluate_ops(
     Ok(None)
 }
 
+fn evaluate_guard_ops(
+    program: &IrProgram,
+    guard_ops: &[IrOp],
+    env: &mut HashMap<String, RuntimeValue>,
+) -> Result<bool, RuntimeError> {
+    let mut guard_stack = Vec::new();
+
+    if let Some(ret) = evaluate_ops(program, guard_ops, env, &mut guard_stack)? {
+        guard_stack.push(ret);
+    }
+
+    let guard_offset = guard_ops.first().map(ir_op_offset).unwrap_or(0);
+    let guard_value = pop_value(&mut guard_stack, guard_offset, "guard")?;
+
+    match guard_value {
+        RuntimeValue::Bool(flag) => Ok(flag),
+        other => Err(RuntimeError::at_offset(
+            format!(
+                "guard expression must evaluate to bool, found {}",
+                other.kind_label()
+            ),
+            guard_offset,
+        )),
+    }
+}
+
+fn ir_op_offset(op: &IrOp) -> usize {
+    match op {
+        IrOp::ConstInt { offset, .. }
+        | IrOp::ConstBool { offset, .. }
+        | IrOp::ConstNil { offset }
+        | IrOp::ConstString { offset, .. }
+        | IrOp::Call { offset, .. }
+        | IrOp::Question { offset }
+        | IrOp::Case { offset, .. }
+        | IrOp::LoadVariable { offset, .. }
+        | IrOp::ConstAtom { offset, .. }
+        | IrOp::AddInt { offset }
+        | IrOp::SubInt { offset }
+        | IrOp::MulInt { offset }
+        | IrOp::DivInt { offset }
+        | IrOp::CmpInt { offset, .. }
+        | IrOp::Not { offset }
+        | IrOp::Bang { offset }
+        | IrOp::AndAnd { offset, .. }
+        | IrOp::OrOr { offset, .. }
+        | IrOp::And { offset, .. }
+        | IrOp::Or { offset, .. }
+        | IrOp::Concat { offset }
+        | IrOp::In { offset }
+        | IrOp::PlusPlus { offset }
+        | IrOp::MinusMinus { offset }
+        | IrOp::Range { offset }
+        | IrOp::Match { offset, .. }
+        | IrOp::Return { offset } => *offset,
+    }
+}
+
 fn match_pattern(
     value: &RuntimeValue,
     pattern: &IrPattern,
+    env: &HashMap<String, RuntimeValue>,
     bindings: &mut HashMap<String, RuntimeValue>,
 ) -> bool {
     match pattern {
         IrPattern::Wildcard => true,
         IrPattern::Bind { name } => {
+            if let Some(existing) = bindings.get(name) {
+                return existing == value;
+            }
+
             bindings.insert(name.clone(), value.clone());
             true
         }
+        IrPattern::Pin { name } => bindings
+            .get(name)
+            .or_else(|| env.get(name))
+            .is_some_and(|pinned| pinned == value),
         IrPattern::Integer { value: p_val } => match value {
             RuntimeValue::Int(v) => v == p_val,
             _ => false,
@@ -396,8 +499,8 @@ fn match_pattern(
         },
         IrPattern::Tuple { items } => match value {
             RuntimeValue::Tuple(left, right) if items.len() == 2 => {
-                match_pattern(left, &items[0], bindings)
-                    && match_pattern(right, &items[1], bindings)
+                match_pattern(left, &items[0], env, bindings)
+                    && match_pattern(right, &items[1], env, bindings)
             }
             _ => false,
         },
@@ -405,14 +508,14 @@ fn match_pattern(
             RuntimeValue::List(values) if values.len() == items.len() => values
                 .iter()
                 .zip(items.iter())
-                .all(|(value, pattern)| match_pattern(value, pattern, bindings)),
+                .all(|(value, pattern)| match_pattern(value, pattern, env, bindings)),
             _ => false,
         },
         IrPattern::Map { entries } => match value {
             RuntimeValue::Map(_, _) if entries.is_empty() => true,
             RuntimeValue::Map(key, map_value) if entries.len() == 1 => {
-                match_pattern(key, &entries[0].key, bindings)
-                    && match_pattern(map_value, &entries[0].value, bindings)
+                match_pattern(key, &entries[0].key, env, bindings)
+                    && match_pattern(map_value, &entries[0].value, env, bindings)
             }
             RuntimeValue::Map(_, _) => false,
             _ => false,
@@ -672,6 +775,7 @@ mod tests {
             functions: vec![IrFunction {
                 name: "Demo.run".to_string(),
                 params: vec![],
+                guard_ops: None,
                 ops: vec![
                     IrOp::ConstInt {
                         value: 1,
@@ -682,6 +786,7 @@ mod tests {
                             pattern: IrPattern::Atom {
                                 value: "ok".to_string(),
                             },
+                            guard_ops: None,
                             ops: vec![IrOp::ConstInt {
                                 value: 2,
                                 offset: 55,

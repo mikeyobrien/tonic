@@ -64,17 +64,30 @@ pub struct Function {
     pub id: NodeId,
     pub name: String,
     pub params: Vec<Parameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guard: Option<Expr>,
     pub body: Expr,
 }
 
 impl Function {
-    fn with_id(id: NodeId, name: String, params: Vec<Parameter>, body: Expr) -> Self {
+    fn with_id(
+        id: NodeId,
+        name: String,
+        params: Vec<Parameter>,
+        guard: Option<Expr>,
+        body: Expr,
+    ) -> Self {
         Self {
             id,
             name,
             params,
+            guard,
             body,
         }
+    }
+
+    pub fn guard(&self) -> Option<&Expr> {
+        self.guard.as_ref()
     }
 }
 
@@ -260,6 +273,7 @@ where
     Head: BranchHead,
 {
     head: Head,
+    guard: Option<Expr>,
     body: Expr,
 }
 
@@ -267,12 +281,16 @@ impl<Head> Branch<Head>
 where
     Head: BranchHead,
 {
-    fn new(head: Head, body: Expr) -> Self {
-        Self { head, body }
+    fn new(head: Head, guard: Option<Expr>, body: Expr) -> Self {
+        Self { head, guard, body }
     }
 
     pub fn head(&self) -> &Head {
         &self.head
+    }
+
+    pub fn guard(&self) -> Option<&Expr> {
+        self.guard.as_ref()
     }
 
     pub fn body(&self) -> &Expr {
@@ -290,8 +308,11 @@ where
     {
         use serde::ser::SerializeStruct;
 
-        let mut branch = serializer.serialize_struct("Branch", 2)?;
+        let mut branch = serializer.serialize_struct("Branch", 3)?;
         branch.serialize_field(Head::FIELD_NAME, self.head())?;
+        if let Some(guard) = self.guard() {
+            branch.serialize_field("guard", guard)?;
+        }
         branch.serialize_field("body", self.body())?;
         branch.end()
     }
@@ -306,6 +327,7 @@ pub trait BranchHead: Serialize {
 pub enum Pattern {
     Atom { value: String },
     Bind { name: String },
+    Pin { name: String },
     Wildcard,
     Integer { value: i64 },
     Tuple { items: Vec<Pattern> },
@@ -487,6 +509,7 @@ pub enum UnaryOp {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BinaryOp {
+    Match,
     Plus,
     Minus,
     Mul,
@@ -606,11 +629,17 @@ impl<'a> Parser<'a> {
             ));
         }
 
+        let guard = if self.match_kind(TokenKind::When) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
         self.expect(TokenKind::Do, "do")?;
         let body = self.parse_expression()?;
         self.expect(TokenKind::End, "end")?;
 
-        Ok(Function::with_id(id, name, params, body))
+        Ok(Function::with_id(id, name, params, guard, body))
     }
 
     fn parse_params(&mut self) -> Result<Vec<Parameter>, ParserError> {
@@ -645,7 +674,23 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Result<Expr, ParserError> {
-        self.parse_pipe_expression()
+        self.parse_match_expression()
+    }
+
+    fn parse_match_expression(&mut self) -> Result<Expr, ParserError> {
+        let left = self.parse_pipe_expression()?;
+
+        if self.match_kind(TokenKind::MatchEq) {
+            let right = self.parse_match_expression()?;
+            return Ok(Expr::binary(
+                self.node_ids.next_expr(),
+                BinaryOp::Match,
+                left,
+                right,
+            ));
+        }
+
+        Ok(left)
     }
 
     fn parse_pipe_expression(&mut self) -> Result<Expr, ParserError> {
@@ -941,13 +986,23 @@ impl<'a> Parser<'a> {
 
     fn parse_case_branch(&mut self) -> Result<CaseBranch, ParserError> {
         let pattern = self.parse_pattern()?;
+        let guard = if self.match_kind(TokenKind::When) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
         self.expect(TokenKind::Arrow, "->")?;
         let body = self.parse_expression()?;
 
-        Ok(CaseBranch::new(pattern, body))
+        Ok(CaseBranch::new(pattern, guard, body))
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParserError> {
+        if self.match_kind(TokenKind::Caret) {
+            let name = self.expect_ident("pinned variable")?;
+            return Ok(Pattern::Pin { name });
+        }
+
         if self.check(TokenKind::Integer) {
             let token = self.advance().expect("integer token should be available");
             let value = token.lexeme().parse::<i64>().map_err(|_| {
@@ -1332,6 +1387,52 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_pin_patterns_case_guards_and_match_operator() {
+        let tokens = scan_tokens(
+            "defmodule PatternDemo do\n  def run() do\n    case list(7, 8) do\n      [^value, tail] when tail == 8 -> value = tail\n      _ -> 0\n    end\n  end\n\n  def value() do\n    7\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"case",
+                "subject":{"kind":"call","callee":"list","args":[{"kind":"int","value":7},{"kind":"int","value":8}]},
+                "branches":[
+                    {
+                        "pattern":{
+                            "kind":"list",
+                            "items":[
+                                {"kind":"pin","name":"value"},
+                                {"kind":"bind","name":"tail"}
+                            ]
+                        },
+                        "guard":{
+                            "kind":"binary",
+                            "op":"eq",
+                            "left":{"kind":"variable","name":"tail"},
+                            "right":{"kind":"int","value":8}
+                        },
+                        "body":{
+                            "kind":"binary",
+                            "op":"match",
+                            "left":{"kind":"variable","name":"value"},
+                            "right":{"kind":"variable","name":"tail"}
+                        }
+                    },
+                    {
+                        "pattern":{"kind":"wildcard"},
+                        "body":{"kind":"int","value":0}
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
     fn parse_ast_exposes_normalized_case_branch_head_and_body() {
         let tokens = scan_tokens(
             "defmodule PatternDemo do\n  def run() do\n    case input() do\n      {:ok, value} -> 1\n      _ -> 2\n    end\n  end\nend\n",
@@ -1416,6 +1517,9 @@ mod tests {
 
             for function in &module.functions {
                 ids.push(function.id.0.clone());
+                if let Some(guard) = function.guard() {
+                    collect_expr_ids(guard, &mut ids);
+                }
                 collect_expr_ids(&function.body, &mut ids);
             }
         }
@@ -1482,6 +1586,9 @@ mod tests {
                 collect_expr_ids(subject, ids);
 
                 for branch in branches {
+                    if let Some(guard) = branch.guard() {
+                        collect_expr_ids(guard, ids);
+                    }
                     collect_expr_ids(branch.body(), ids);
                 }
             }
