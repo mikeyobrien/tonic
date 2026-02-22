@@ -69,6 +69,7 @@ pub(crate) enum IrOp {
         offset: usize,
     },
     Not { offset: usize },
+    Bang { offset: usize },
     AndAnd { right_ops: Vec<IrOp>, offset: usize },
     OrOr { right_ops: Vec<IrOp>, offset: usize },
     And { right_ops: Vec<IrOp>, offset: usize },
@@ -222,9 +223,8 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         } => {
             lower_expr(value, current_module, ops)?;
             let ir_op = match op {
-                crate::parser::UnaryOp::Not | crate::parser::UnaryOp::Bang => {
-                    IrOp::Not { offset: *offset }
-                }
+                crate::parser::UnaryOp::Not => IrOp::Not { offset: *offset },
+                crate::parser::UnaryOp::Bang => IrOp::Bang { offset: *offset },
             };
             ops.push(ir_op);
             Ok(())
@@ -603,6 +603,28 @@ mod tests {
                     ],
                     "offset":37
                 },
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_emits_distinct_not_and_bang_ops() {
+        let source = "defmodule Demo do\n  def run() do\n    tuple(not false, !nil)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize unary op fixture");
+        let ast = parse_ast(&tokens).expect("parser should build unary op fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support unary op fixture");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_bool","value":false,"offset":47},
+                {"op":"not","offset":43},
+                {"op":"const_nil","offset":55},
+                {"op":"bang","offset":54},
+                {"op":"call","callee":{"kind":"builtin","name":"tuple"},"argc":2,"offset":37},
                 {"op":"return","offset":37}
             ])
         );

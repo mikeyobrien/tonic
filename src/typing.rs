@@ -242,10 +242,11 @@ fn infer_expression_type(
         Expr::Unary { op, value, .. } => {
             let value_type = infer_expression_type(value, current_module, signatures, solver)?;
             match op {
-                crate::parser::UnaryOp::Not | crate::parser::UnaryOp::Bang => {
+                crate::parser::UnaryOp::Not => {
                     solver.unify(Type::Bool, value_type, Some(value.offset()))?;
                     Ok(Type::Bool)
                 }
+                crate::parser::UnaryOp::Bang => Ok(Type::Bool),
             }
         }
         Expr::Binary { op, left, right, .. } => {

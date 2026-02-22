@@ -161,6 +161,13 @@ fn evaluate_ops(
             }
             IrOp::Not { offset } => {
                 let value = pop_value(stack, *offset, "not")?;
+                match value {
+                    RuntimeValue::Bool(flag) => stack.push(RuntimeValue::Bool(!flag)),
+                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
+                }
+            }
+            IrOp::Bang { offset } => {
+                let value = pop_value(stack, *offset, "!")?;
                 let truthy = !matches!(value, RuntimeValue::Nil | RuntimeValue::Bool(false));
                 stack.push(RuntimeValue::Bool(!truthy));
             }
@@ -577,10 +584,11 @@ fn pop_int(stack: &mut Vec<RuntimeValue>, offset: usize) -> Result<i64, RuntimeE
 
 #[cfg(test)]
 mod tests {
-    use super::{evaluate_builtin_call, evaluate_entrypoint, RuntimeError, RuntimeValue};
-    use crate::ir::lower_ast_to_ir;
+    use super::{evaluate_builtin_call, evaluate_entrypoint, evaluate_ops, RuntimeError, RuntimeValue};
+    use crate::ir::{lower_ast_to_ir, IrOp, IrProgram};
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
+    use std::collections::HashMap;
 
     #[test]
     fn evaluate_entrypoint_executes_integer_addition() {
@@ -742,5 +750,91 @@ mod tests {
         // Test that host_call requires at least the key argument
         let result = evaluate_builtin_call("host_call", vec![], 0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn evaluate_entrypoint_distinguishes_strict_not_and_relaxed_bang() {
+        let source =
+            "defmodule Demo do\n  def run() do\n    tuple(tuple(!nil, !1), not false)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize unary logical fixture");
+        let ast = parse_ast(&tokens).expect("parser should build unary logical fixture ast");
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support unary logical fixture");
+
+        let value = evaluate_entrypoint(&ir).expect("runtime should evaluate unary logical fixture");
+
+        assert_eq!(value.render(), "{{true, false}, true}");
+    }
+
+    #[test]
+    fn evaluate_entrypoint_rejects_not_for_non_boolean_values() {
+        let source = "defmodule Demo do\n  def run() do\n    not 1\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize strict-not fixture");
+        let ast = parse_ast(&tokens).expect("parser should build strict-not fixture ast");
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support strict-not fixture");
+
+        let error = evaluate_entrypoint(&ir)
+            .expect_err("runtime should reject strict not on non-boolean values");
+
+        assert_eq!(error.message, "badarg");
+    }
+
+    #[test]
+    fn evaluate_ops_supports_list_membership_concat_and_subtract() {
+        let program = IrProgram { functions: vec![] };
+        let mut env = HashMap::new();
+
+        let mut in_stack = vec![
+            RuntimeValue::Int(2),
+            RuntimeValue::List(vec![RuntimeValue::Int(1), RuntimeValue::Int(2)]),
+        ];
+        evaluate_ops(&program, &[IrOp::In { offset: 0 }], &mut env, &mut in_stack)
+            .expect("runtime should evaluate list membership");
+        assert_eq!(in_stack, vec![RuntimeValue::Bool(true)]);
+
+        let mut plus_plus_stack = vec![
+            RuntimeValue::List(vec![RuntimeValue::Int(1), RuntimeValue::Int(2)]),
+            RuntimeValue::List(vec![RuntimeValue::Int(2), RuntimeValue::Int(3)]),
+        ];
+        evaluate_ops(
+            &program,
+            &[IrOp::PlusPlus { offset: 0 }],
+            &mut env,
+            &mut plus_plus_stack,
+        )
+        .expect("runtime should concatenate list values");
+        assert_eq!(
+            plus_plus_stack,
+            vec![RuntimeValue::List(vec![
+                RuntimeValue::Int(1),
+                RuntimeValue::Int(2),
+                RuntimeValue::Int(2),
+                RuntimeValue::Int(3),
+            ])]
+        );
+
+        let mut minus_minus_stack = vec![
+            RuntimeValue::List(vec![
+                RuntimeValue::Int(1),
+                RuntimeValue::Int(2),
+                RuntimeValue::Int(2),
+                RuntimeValue::Int(3),
+            ]),
+            RuntimeValue::List(vec![RuntimeValue::Int(2), RuntimeValue::Int(4)]),
+        ];
+        evaluate_ops(
+            &program,
+            &[IrOp::MinusMinus { offset: 0 }],
+            &mut env,
+            &mut minus_minus_stack,
+        )
+        .expect("runtime should subtract list values deterministically");
+        assert_eq!(
+            minus_minus_stack,
+            vec![RuntimeValue::List(vec![
+                RuntimeValue::Int(1),
+                RuntimeValue::Int(2),
+                RuntimeValue::Int(3),
+            ])]
+        );
     }
 }

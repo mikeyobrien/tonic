@@ -44,6 +44,29 @@ fn infer_types_supports_question_operator_for_result_values() {
 }
 
 #[test]
+fn infer_types_treats_bang_as_relaxed_boolean_not() {
+    let source = "defmodule Demo do\n  def run() do\n    tuple(!nil, !1)\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize bang typing fixture");
+    let ast = parse_ast(&tokens).expect("parser should build bang typing fixture ast");
+
+    let summary = infer_types(&ast).expect("type inference should accept ! for non-boolean values");
+
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
+}
+
+#[test]
+fn infer_types_keeps_not_strictly_boolean() {
+    let source = "defmodule Demo do\n  def run() do\n    not 1\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize not typing fixture");
+    let ast = parse_ast(&tokens).expect("parser should build not typing fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject not on non-boolean");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(error.message(), "type mismatch: expected bool, found int");
+}
+
+#[test]
 fn infer_types_accepts_collection_constructor_builtins() {
     let source =
         "defmodule Demo do\n  def run() do\n    tuple(map(1, 2), keyword(3, 4))\n  end\nend\n";
