@@ -2,6 +2,7 @@ mod acceptance;
 mod cache;
 mod cli_diag;
 mod deps;
+mod formatter;
 mod interop;
 mod ir;
 mod lexer;
@@ -18,6 +19,7 @@ use cache::{
     trace_cache_status,
 };
 use cli_diag::{CliDiagnostic, EXIT_FAILURE, EXIT_OK};
+use formatter::{format_path, FormatMode};
 use ir::{lower_ast_to_ir, IrProgram};
 use lexer::scan_tokens;
 use manifest::load_run_source;
@@ -315,13 +317,27 @@ fn handle_fmt(args: Vec<String>) -> i32 {
     }
 
     let source_path = args[0].clone();
+    let mut mode = FormatMode::Write;
 
-    if let Some(argument) = args.get(1) {
-        return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
+    for argument in args.iter().skip(1) {
+        match argument.as_str() {
+            "--check" => mode = FormatMode::Check,
+            other => return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit(),
+        }
     }
 
-    if let Err(error) = load_run_source(&source_path) {
-        return CliDiagnostic::failure(error).emit();
+    let report = match format_path(&source_path, mode) {
+        Ok(report) => report,
+        Err(error) => return CliDiagnostic::failure(error).emit(),
+    };
+
+    if mode == FormatMode::Check && report.changed_files > 0 {
+        let suffix = if report.changed_files == 1 { "" } else { "s" };
+        return CliDiagnostic::failure(format!(
+            "formatting required for {} file{} (run `tonic fmt <path>` to apply fixes)",
+            report.changed_files, suffix
+        ))
+        .emit();
     }
 
     println!("fmt: ok");
@@ -736,7 +752,7 @@ fn print_test_help() {
 }
 
 fn print_fmt_help() {
-    println!("Usage:\n  tonic fmt <path>\n");
+    println!("Usage:\n  tonic fmt <path> [--check]\n");
 }
 
 fn print_compile_help() {

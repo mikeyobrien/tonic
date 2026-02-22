@@ -119,9 +119,10 @@ Legend:
 ## 8) Tooling Parity (Language UX)
 
 - [x] `run`, `check` command entrypoints
-- [~] `fmt`/`test` command contracts (skeleton behavior exists)
-- [ ] real formatter parity (`mix format`-like baseline)
-- [ ] richer diagnostics (spans, hints, recovery quality)
+- [~] `fmt`/`test` command contracts (`fmt` now formats source + `--check`; `test` command remains baseline contract)
+- [x] real formatter parity baseline (`tonic fmt <path> [--check]` with deterministic rewrites + idempotence)
+- [~] richer diagnostics (actionable hints for unsupported module-form options; broader span/recovery polish still pending)
+- [x] translated fixture sweep parses/checks/runs (`tests/run_translated_fixtures_smoke.rs`)
 - [ ] docs generation parity (`ExDoc`-like experience, minus OTP coupling)
 
 ---

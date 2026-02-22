@@ -970,7 +970,10 @@ impl<'a> Parser<'a> {
             let option_token = self.expect_token(TokenKind::Ident, "alias option")?;
             if option_token.lexeme() != "as" {
                 return Err(ParserError::at_current(
-                    format!("unsupported alias option '{}'", option_token.lexeme()),
+                    format!(
+                        "unsupported alias option '{}'; supported syntax: alias Module, as: Name",
+                        option_token.lexeme()
+                    ),
                     Some(option_token),
                 ));
             }
@@ -988,7 +991,10 @@ impl<'a> Parser<'a> {
         if self.match_kind(TokenKind::Comma) {
             let option_token = self.expect_token(TokenKind::Ident, "module form option")?;
             return Err(ParserError::at_current(
-                format!("unsupported {form_name} option '{}'", option_token.lexeme()),
+                format!(
+                    "unsupported {form_name} option '{}'; remove options from {form_name} for now",
+                    option_token.lexeme()
+                ),
                 Some(option_token),
             ));
         }
@@ -2401,7 +2407,23 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "unsupported alias option 'via' at offset 32"
+            "unsupported alias option 'via'; supported syntax: alias Module, as: Name at offset 32"
+        );
+    }
+
+    #[test]
+    fn parse_ast_rejects_unsupported_import_options_with_actionable_hint() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  import Math, only: [helper: 1]\n\n  def run() do\n    helper(1)\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let error =
+            parse_ast(&tokens).expect_err("parser should reject unsupported import options");
+
+        assert_eq!(
+            error.to_string(),
+            "unsupported import option 'only'; remove options from import for now at offset 33"
         );
     }
 
