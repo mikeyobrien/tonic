@@ -106,7 +106,11 @@ impl ConstraintSolver {
                 self.unify(*expected_ok, *found_ok, offset)?;
                 self.unify(*expected_err, *found_err, offset)
             }
-            (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Nil, Type::Nil) | (Type::String, Type::String) | (Type::Dynamic, Type::Dynamic) => Ok(()),
+            (Type::Int, Type::Int)
+            | (Type::Bool, Type::Bool)
+            | (Type::Nil, Type::Nil)
+            | (Type::String, Type::String)
+            | (Type::Dynamic, Type::Dynamic) => Ok(()),
             (expected_ty, found_ty) => Err(TypingError::type_mismatch(
                 expected_ty.label(),
                 found_ty.label(),
@@ -214,6 +218,18 @@ fn infer_expression_type(
         Expr::Bool { .. } => Ok(Type::Bool),
         Expr::Nil { .. } => Ok(Type::Nil),
         Expr::String { .. } => Ok(Type::String),
+        Expr::Tuple { items, .. } | Expr::List { items, .. } => {
+            for item in items {
+                infer_expression_type(item, current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
+        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => {
+            for entry in entries {
+                infer_expression_type(&entry.value, current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
         Expr::Call { callee, args, .. } => {
             infer_call_type(callee, args, None, current_module, signatures, solver)
         }
@@ -249,7 +265,9 @@ fn infer_expression_type(
                 crate::parser::UnaryOp::Bang => Ok(Type::Bool),
             }
         }
-        Expr::Binary { op, left, right, .. } => {
+        Expr::Binary {
+            op, left, right, ..
+        } => {
             let left_type = infer_expression_type(left, current_module, signatures, solver)?;
             let right_type = infer_expression_type(right, current_module, signatures, solver)?;
 
@@ -259,7 +277,12 @@ fn infer_expression_type(
                     solver.unify(Type::Int, right_type, Some(right.offset()))?;
                     Ok(Type::Int)
                 }
-                BinaryOp::Eq | BinaryOp::NotEq | BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte => {
+                BinaryOp::Eq
+                | BinaryOp::NotEq
+                | BinaryOp::Lt
+                | BinaryOp::Lte
+                | BinaryOp::Gt
+                | BinaryOp::Gte => {
                     solver.unify(Type::Int, left_type, Some(left.offset()))?;
                     solver.unify(Type::Int, right_type, Some(right.offset()))?;
                     Ok(Type::Bool)
@@ -329,7 +352,9 @@ fn infer_expression_type(
 
             Ok(inferred_case_type.unwrap_or(Type::Dynamic))
         }
-        Expr::Group { inner, .. } => infer_expression_type(inner, current_module, signatures, solver),
+        Expr::Group { inner, .. } => {
+            infer_expression_type(inner, current_module, signatures, solver)
+        }
         Expr::Variable { .. } => Ok(solver.fresh_var()),
         Expr::Atom { .. } => Ok(Type::Dynamic),
     }
@@ -420,6 +445,7 @@ fn infer_builtin_call_type(
 
             Ok(Some(Type::Dynamic))
         }
+        "list" => Ok(Some(Type::Dynamic)),
         "protocol_dispatch" => {
             if arg_types.len() != 1 {
                 return Err(TypingError::new(format!(

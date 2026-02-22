@@ -2,8 +2,8 @@ mod acceptance;
 mod cache;
 mod cli_diag;
 mod deps;
-mod ir;
 mod interop;
+mod ir;
 mod lexer;
 mod manifest;
 mod parser;
@@ -80,6 +80,7 @@ fn run(args: Vec<String>) -> i32 {
         Some("check") => handle_check(iter.collect()),
         Some("test") => handle_test(iter.collect()),
         Some("fmt") => handle_fmt(iter.collect()),
+        Some("compile") => handle_compile(iter.collect()),
         Some("cache") => run_placeholder("cache"),
         Some("verify") => handle_verify(iter.collect()),
         Some("deps") => handle_deps(iter.collect()),
@@ -316,6 +317,108 @@ fn handle_fmt(args: Vec<String>) -> i32 {
     EXIT_OK
 }
 
+fn handle_compile(args: Vec<String>) -> i32 {
+    if matches!(
+        args.first().map(String::as_str),
+        None | Some("-h" | "--help")
+    ) {
+        print_compile_help();
+        return EXIT_OK;
+    }
+
+    let source_path = args[0].clone();
+    let mut out_path = None;
+    let mut idx = 1;
+
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--out" => {
+                idx += 1;
+                if idx >= args.len() {
+                    return CliDiagnostic::usage("--out requires a value").emit();
+                }
+                out_path = Some(args[idx].clone());
+                idx += 1;
+            }
+            other => {
+                return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
+            }
+        }
+    }
+
+    let is_project_root_path = std::path::Path::new(&source_path).is_dir();
+
+    let source = match load_run_source(&source_path) {
+        Ok(source) => source,
+        Err(error) => return CliDiagnostic::failure(error).emit(),
+    };
+
+    let ir = match compile_source_to_ir(&source) {
+        Ok(ir) => ir,
+        Err(error) => return CliDiagnostic::failure(error).emit(),
+    };
+
+    let artifact_path = match out_path {
+        Some(path) => std::path::PathBuf::from(path),
+        None => {
+            let stem = if is_project_root_path {
+                manifest::load_project_manifest(std::path::Path::new(&source_path))
+                    .ok()
+                    .and_then(|m| {
+                        m.entry
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().into_owned())
+                    })
+                    .unwrap_or_else(|| "out".to_string())
+            } else {
+                std::path::Path::new(&source_path)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "out".to_string())
+            };
+
+            let mut p = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            p.push(".tonic");
+            p.push("build");
+            p.push(format!("{}.tir.json", stem));
+            p
+        }
+    };
+
+    if let Some(parent) = artifact_path.parent() {
+        if let Err(error) = std::fs::create_dir_all(parent) {
+            return CliDiagnostic::failure(format!(
+                "failed to create artifact directory {}: {}",
+                parent.display(),
+                error
+            ))
+            .emit();
+        }
+    }
+
+    let serialized = match serde_json::to_string(&ir) {
+        Ok(s) => s,
+        Err(error) => {
+            return CliDiagnostic::failure(format!(
+                "failed to serialize compile artifact: {error}"
+            ))
+            .emit();
+        }
+    };
+
+    if let Err(error) = std::fs::write(&artifact_path, serialized) {
+        return CliDiagnostic::failure(format!(
+            "failed to write compile artifact to {}: {}",
+            artifact_path.display(),
+            error
+        ))
+        .emit();
+    }
+
+    println!("compile: ok {}", artifact_path.display());
+    EXIT_OK
+}
+
 fn handle_verify(args: Vec<String>) -> i32 {
     let mut iter = args.into_iter();
 
@@ -521,7 +624,8 @@ fn handle_deps(args: Vec<String>) -> i32 {
     // Find project root by looking for tonic.toml
     let project_root = find_project_root();
     if project_root.is_none() {
-        return CliDiagnostic::failure("no tonic.toml found in current directory or parents").emit();
+        return CliDiagnostic::failure("no tonic.toml found in current directory or parents")
+            .emit();
     }
     let project_root = project_root.unwrap();
 
@@ -547,22 +651,26 @@ fn handle_deps(args: Vec<String>) -> i32 {
                     println!("  - git dependencies: {}", lockfile.git_deps.len());
                     EXIT_OK
                 }
-                Err(msg) => CliDiagnostic::failure(format!("failed to sync dependencies: {}", msg)).emit(),
+                Err(msg) => {
+                    CliDiagnostic::failure(format!("failed to sync dependencies: {}", msg)).emit()
+                }
             }
         }
         "lock" => {
             println!("Generating lockfile...");
             match deps::Lockfile::generate(&manifest.dependencies, &project_root) {
-                Ok(lockfile) => {
-                    match lockfile.save(&project_root) {
-                        Ok(()) => {
-                            println!("Lockfile generated: tonic.lock");
-                            EXIT_OK
-                        }
-                        Err(msg) => CliDiagnostic::failure(format!("failed to save lockfile: {}", msg)).emit(),
+                Ok(lockfile) => match lockfile.save(&project_root) {
+                    Ok(()) => {
+                        println!("Lockfile generated: tonic.lock");
+                        EXIT_OK
                     }
+                    Err(msg) => {
+                        CliDiagnostic::failure(format!("failed to save lockfile: {}", msg)).emit()
+                    }
+                },
+                Err(msg) => {
+                    CliDiagnostic::failure(format!("failed to generate lockfile: {}", msg)).emit()
                 }
-                Err(msg) => CliDiagnostic::failure(format!("failed to generate lockfile: {}", msg)).emit(),
             }
         }
         _ => EXIT_OK,
@@ -600,7 +708,7 @@ fn benchmark_thresholds_report() -> serde_json::Value {
 
 fn print_help() {
     println!(
-        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n"
+        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  compile  Compile source to IR artifact\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n"
     );
 }
 
@@ -620,6 +728,10 @@ fn print_fmt_help() {
     println!("Usage:\n  tonic fmt <path>\n");
 }
 
+fn print_compile_help() {
+    println!("Usage:\n  tonic compile <path> [--out <artifact-path>]\n");
+}
+
 fn print_verify_help() {
     println!("Usage:\n  tonic verify run <slice-id> [--mode <auto|mixed|manual>]\n");
 }
@@ -635,7 +747,7 @@ mod tests {
 
     #[test]
     fn known_commands_exit_success() {
-        for command in ["run", "check", "test", "fmt", "cache", "deps"] {
+        for command in ["run", "check", "test", "fmt", "compile", "cache", "deps"] {
             assert_eq!(run(vec![command.to_string()]), EXIT_OK);
         }
     }

@@ -51,6 +51,7 @@ pub enum TokenKind {
     LBracket,
     RBracket,
     Percent,
+    Colon,
     Comma,
     Dot,
     DotDot,
@@ -133,6 +134,7 @@ impl Token {
             TokenKind::LBracket => "LBRACKET".to_string(),
             TokenKind::RBracket => "RBRACKET".to_string(),
             TokenKind::Percent => "PERCENT".to_string(),
+            TokenKind::Colon => "COLON".to_string(),
             TokenKind::Comma => "COMMA".to_string(),
             TokenKind::Dot => "DOT".to_string(),
             TokenKind::DotDot => "DOT_DOT".to_string(),
@@ -379,25 +381,26 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
             }
             ':' => {
                 let start = idx;
-                idx += 1;
 
-                if idx >= chars.len() || !is_ident_start(chars[idx]) {
-                    return Err(LexerError::invalid_token(':', Span::new(start, start + 1)));
-                }
-
-                let atom_start = idx;
-                idx += 1;
-
-                while idx < chars.len() && is_ident_continue(chars[idx]) {
+                if chars.get(idx + 1).is_some_and(|next| is_ident_start(*next)) {
                     idx += 1;
-                }
+                    let atom_start = idx;
+                    idx += 1;
 
-                let lexeme: String = chars[atom_start..idx].iter().collect();
-                tokens.push(Token::with_lexeme(
-                    TokenKind::Atom,
-                    lexeme,
-                    Span::new(start, idx),
-                ));
+                    while idx < chars.len() && is_ident_continue(chars[idx]) {
+                        idx += 1;
+                    }
+
+                    let lexeme: String = chars[atom_start..idx].iter().collect();
+                    tokens.push(Token::with_lexeme(
+                        TokenKind::Atom,
+                        lexeme,
+                        Span::new(start, idx),
+                    ));
+                } else {
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Colon, Span::new(start, idx)));
+                }
             }
             '"' => {
                 let start = idx;
@@ -594,6 +597,29 @@ mod tests {
                 "PERCENT",
                 "LBRACE",
                 "RBRACE",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_collection_literal_key_syntax() {
+        let labels = dump_labels("%{ok: 1} [done: 2]");
+
+        assert_eq!(
+            labels,
+            [
+                "PERCENT",
+                "LBRACE",
+                "IDENT(ok)",
+                "COLON",
+                "INT(1)",
+                "RBRACE",
+                "LBRACKET",
+                "IDENT(done)",
+                "COLON",
+                "INT(2)",
+                "RBRACKET",
                 "EOF",
             ]
         );

@@ -64,7 +64,7 @@ impl ModuleGraph {
 fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
-        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
     )
 }
 
@@ -77,6 +77,18 @@ struct ResolveContext<'a> {
 fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
     match expr {
         Expr::Int { .. } | Expr::Bool { .. } | Expr::Nil { .. } | Expr::String { .. } => Ok(()),
+        Expr::Tuple { items, .. } | Expr::List { items, .. } => {
+            for item in items {
+                resolve_expr(item, context)?;
+            }
+            Ok(())
+        }
+        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => {
+            for entry in entries {
+                resolve_expr(&entry.value, context)?;
+            }
+            Ok(())
+        }
         Expr::Call { callee, args, .. } => {
             if !context
                 .module_graph

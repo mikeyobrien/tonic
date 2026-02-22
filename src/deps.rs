@@ -26,8 +26,12 @@ pub(crate) struct GitDepLock {
     pub(crate) cached_at: u64,
 }
 
+#[allow(dead_code)]
 impl Lockfile {
-    pub(crate) fn generate(dependencies: &Dependencies, _project_root: &Path) -> Result<Self, String> {
+    pub(crate) fn generate(
+        dependencies: &Dependencies,
+        _project_root: &Path,
+    ) -> Result<Self, String> {
         let mut path_deps = HashMap::new();
         let mut git_deps = HashMap::new();
 
@@ -75,8 +79,8 @@ impl Lockfile {
         let content = fs::read_to_string(&lockfile_path)
             .map_err(|e| format!("failed to read {}: {}", LOCKFILE_NAME, e))?;
 
-        let lockfile: Lockfile = toml::from_str(&content)
-            .map_err(|e| format!("invalid {}: {}", LOCKFILE_NAME, e))?;
+        let lockfile: Lockfile =
+            toml::from_str(&content).map_err(|e| format!("invalid {}: {}", LOCKFILE_NAME, e))?;
 
         Ok(Some(lockfile))
     }
@@ -136,7 +140,13 @@ impl DependencyResolver {
     fn fetch_git_dep(url: &str, rev: &str, target_path: &Path) -> Result<(), String> {
         // Use git to fetch the specific revision
         let output = std::process::Command::new("git")
-            .args(["clone", "--bare", "--no-checkout", url, target_path.to_str().unwrap()])
+            .args([
+                "clone",
+                "--bare",
+                "--no-checkout",
+                url,
+                target_path.to_str().unwrap(),
+            ])
             .output()
             .map_err(|e| format!("failed to run git: {}", e))?;
 

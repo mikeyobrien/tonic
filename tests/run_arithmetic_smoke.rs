@@ -55,7 +55,10 @@ fn run_executes_subtraction() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert_eq!(String::from_utf8(output.stdout).expect("stdout should be utf8"), "2\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "2\n"
+    );
 }
 
 #[test]
@@ -83,7 +86,10 @@ fn run_executes_multiplication() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert_eq!(String::from_utf8(output.stdout).expect("stdout should be utf8"), "12\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "12\n"
+    );
 }
 
 #[test]
@@ -111,7 +117,10 @@ fn run_executes_division() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert_eq!(String::from_utf8(output.stdout).expect("stdout should be utf8"), "5\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "5\n"
+    );
 }
 
 #[test]
@@ -139,7 +148,10 @@ fn run_precedence_mul_before_add_yields_fourteen() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert_eq!(String::from_utf8(output.stdout).expect("stdout should be utf8"), "14\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "14\n"
+    );
 }
 
 #[test]
@@ -167,7 +179,10 @@ fn run_comparison_gt_returns_bool() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert_eq!(String::from_utf8(output.stdout).expect("stdout should be utf8"), "true\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "true\n"
+    );
 }
 
 #[test]
@@ -195,7 +210,10 @@ fn run_comparison_eq_returns_false_for_unequal_ints() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert_eq!(String::from_utf8(output.stdout).expect("stdout should be utf8"), "false\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "false\n"
+    );
 }
 
 #[test]

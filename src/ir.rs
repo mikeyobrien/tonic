@@ -68,17 +68,43 @@ pub(crate) enum IrOp {
         kind: CmpKind,
         offset: usize,
     },
-    Not { offset: usize },
-    Bang { offset: usize },
-    AndAnd { right_ops: Vec<IrOp>, offset: usize },
-    OrOr { right_ops: Vec<IrOp>, offset: usize },
-    And { right_ops: Vec<IrOp>, offset: usize },
-    Or { right_ops: Vec<IrOp>, offset: usize },
-    Concat { offset: usize },
-    In { offset: usize },
-    PlusPlus { offset: usize },
-    MinusMinus { offset: usize },
-    Range { offset: usize },
+    Not {
+        offset: usize,
+    },
+    Bang {
+        offset: usize,
+    },
+    AndAnd {
+        right_ops: Vec<IrOp>,
+        offset: usize,
+    },
+    OrOr {
+        right_ops: Vec<IrOp>,
+        offset: usize,
+    },
+    And {
+        right_ops: Vec<IrOp>,
+        offset: usize,
+    },
+    Or {
+        right_ops: Vec<IrOp>,
+        offset: usize,
+    },
+    Concat {
+        offset: usize,
+    },
+    In {
+        offset: usize,
+    },
+    PlusPlus {
+        offset: usize,
+    },
+    MinusMinus {
+        offset: usize,
+    },
+    Range {
+        offset: usize,
+    },
     Return {
         offset: usize,
     },
@@ -185,14 +211,90 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             Ok(())
         }
         Expr::Nil { offset, .. } => {
-            ops.push(IrOp::ConstNil {
-                offset: *offset,
-            });
+            ops.push(IrOp::ConstNil { offset: *offset });
             Ok(())
         }
         Expr::String { value, offset, .. } => {
             ops.push(IrOp::ConstString {
                 value: value.clone(),
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Tuple { items, offset, .. } => {
+            if items.len() != 2 {
+                return Err(LoweringError::unsupported("tuple literal arity", *offset));
+            }
+
+            for item in items {
+                lower_expr(item, current_module, ops)?;
+            }
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "tuple".to_string(),
+                },
+                argc: 2,
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::List { items, offset, .. } => {
+            for item in items {
+                lower_expr(item, current_module, ops)?;
+            }
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "list".to_string(),
+                },
+                argc: items.len(),
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Map {
+            entries, offset, ..
+        } => {
+            if entries.len() != 1 {
+                return Err(LoweringError::unsupported("map literal arity", *offset));
+            }
+
+            let entry = &entries[0];
+            ops.push(IrOp::ConstAtom {
+                value: entry.key.clone(),
+                offset: *offset,
+            });
+            lower_expr(&entry.value, current_module, ops)?;
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "map".to_string(),
+                },
+                argc: 2,
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Keyword {
+            entries, offset, ..
+        } => {
+            if entries.len() != 1 {
+                return Err(LoweringError::unsupported("keyword literal arity", *offset));
+            }
+
+            let entry = &entries[0];
+            ops.push(IrOp::ConstAtom {
+                value: entry.key.clone(),
+                offset: *offset,
+            });
+            lower_expr(&entry.value, current_module, ops)?;
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "keyword".to_string(),
+                },
+                argc: 2,
                 offset: *offset,
             });
             Ok(())
@@ -216,10 +318,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             Ok(())
         }
         Expr::Unary {
-            op,
-            value,
-            offset,
-            ..
+            op, value, offset, ..
         } => {
             lower_expr(value, current_module, ops)?;
             let ir_op = match op {
@@ -237,30 +336,42 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ..
         } => {
             lower_expr(left, current_module, ops)?;
-            
+
             match op {
                 BinaryOp::AndAnd => {
                     let mut right_ops = Vec::new();
                     lower_expr(right, current_module, &mut right_ops)?;
-                    ops.push(IrOp::AndAnd { right_ops, offset: *offset });
+                    ops.push(IrOp::AndAnd {
+                        right_ops,
+                        offset: *offset,
+                    });
                     return Ok(());
                 }
                 BinaryOp::OrOr => {
                     let mut right_ops = Vec::new();
                     lower_expr(right, current_module, &mut right_ops)?;
-                    ops.push(IrOp::OrOr { right_ops, offset: *offset });
+                    ops.push(IrOp::OrOr {
+                        right_ops,
+                        offset: *offset,
+                    });
                     return Ok(());
                 }
                 BinaryOp::And => {
                     let mut right_ops = Vec::new();
                     lower_expr(right, current_module, &mut right_ops)?;
-                    ops.push(IrOp::And { right_ops, offset: *offset });
+                    ops.push(IrOp::And {
+                        right_ops,
+                        offset: *offset,
+                    });
                     return Ok(());
                 }
                 BinaryOp::Or => {
                     let mut right_ops = Vec::new();
                     lower_expr(right, current_module, &mut right_ops)?;
-                    ops.push(IrOp::Or { right_ops, offset: *offset });
+                    ops.push(IrOp::Or {
+                        right_ops,
+                        offset: *offset,
+                    });
                     return Ok(());
                 }
                 _ => {}
@@ -272,12 +383,30 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 BinaryOp::Minus => IrOp::SubInt { offset: *offset },
                 BinaryOp::Mul => IrOp::MulInt { offset: *offset },
                 BinaryOp::Div => IrOp::DivInt { offset: *offset },
-                BinaryOp::Eq => IrOp::CmpInt { kind: CmpKind::Eq, offset: *offset },
-                BinaryOp::NotEq => IrOp::CmpInt { kind: CmpKind::NotEq, offset: *offset },
-                BinaryOp::Lt => IrOp::CmpInt { kind: CmpKind::Lt, offset: *offset },
-                BinaryOp::Lte => IrOp::CmpInt { kind: CmpKind::Lte, offset: *offset },
-                BinaryOp::Gt => IrOp::CmpInt { kind: CmpKind::Gt, offset: *offset },
-                BinaryOp::Gte => IrOp::CmpInt { kind: CmpKind::Gte, offset: *offset },
+                BinaryOp::Eq => IrOp::CmpInt {
+                    kind: CmpKind::Eq,
+                    offset: *offset,
+                },
+                BinaryOp::NotEq => IrOp::CmpInt {
+                    kind: CmpKind::NotEq,
+                    offset: *offset,
+                },
+                BinaryOp::Lt => IrOp::CmpInt {
+                    kind: CmpKind::Lt,
+                    offset: *offset,
+                },
+                BinaryOp::Lte => IrOp::CmpInt {
+                    kind: CmpKind::Lte,
+                    offset: *offset,
+                },
+                BinaryOp::Gt => IrOp::CmpInt {
+                    kind: CmpKind::Gt,
+                    offset: *offset,
+                },
+                BinaryOp::Gte => IrOp::CmpInt {
+                    kind: CmpKind::Gte,
+                    offset: *offset,
+                },
                 BinaryOp::Concat => IrOp::Concat { offset: *offset },
                 BinaryOp::In => IrOp::In { offset: *offset },
                 BinaryOp::PlusPlus => IrOp::PlusPlus { offset: *offset },
@@ -427,7 +556,7 @@ fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
 fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
-        "ok" | "err" | "tuple" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
     )
 }
 
@@ -522,7 +651,8 @@ mod tests {
 
     #[test]
     fn lower_ast_marks_host_call_as_builtin_call_target() {
-        let source = "defmodule Demo do\n  def run() do\n    host_call(:identity, 42)\n  end\nend\n";
+        let source =
+            "defmodule Demo do\n  def run() do\n    host_call(:identity, 42)\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
         let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
 

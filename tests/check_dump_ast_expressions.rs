@@ -280,6 +280,61 @@ fn check_dump_ast_concat_plus_plus_minus_minus_and_range_are_right_associative()
     assert_eq!(stdout, expected);
 }
 
+#[test]
+fn check_dump_ast_matches_collection_literal_contract() {
+    let fixture_root = unique_fixture_root("check-dump-ast-collection-literals");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("collection_literals.tn"),
+        "defmodule Demo do\n  def run() do\n    tuple({1, 2}, tuple([3, 4], tuple(%{ok: 5}, [done: 6])))\n  end\nend\n",
+    )
+    .expect("fixture setup should write collection literal source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["check", "examples/collection_literals.tn", "--dump-ast"])
+        .output()
+        .expect("check command should run");
+
+    assert!(
+        output.status.success(),
+        "expected successful check invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let expected = concat!(
+        "{\"modules\":[{\"name\":\"Demo\",\"functions\":[",
+        "{\"name\":\"run\",\"params\":[],\"body\":{",
+        "\"kind\":\"call\",\"callee\":\"tuple\",\"args\":[",
+        "{\"kind\":\"tuple\",\"items\":[",
+        "{\"kind\":\"int\",\"value\":1},",
+        "{\"kind\":\"int\",\"value\":2}",
+        "]},",
+        "{\"kind\":\"call\",\"callee\":\"tuple\",\"args\":[",
+        "{\"kind\":\"list\",\"items\":[",
+        "{\"kind\":\"int\",\"value\":3},",
+        "{\"kind\":\"int\",\"value\":4}",
+        "]},",
+        "{\"kind\":\"call\",\"callee\":\"tuple\",\"args\":[",
+        "{\"kind\":\"map\",\"entries\":[",
+        "{\"key\":\"ok\",\"value\":{\"kind\":\"int\",\"value\":5}}",
+        "]},",
+        "{\"kind\":\"keyword\",\"entries\":[",
+        "{\"key\":\"done\",\"value\":{\"kind\":\"int\",\"value\":6}}",
+        "]}",
+        "]}",
+        "]}",
+        "]}}]}",
+        "]}\n"
+    );
+
+    assert_eq!(stdout, expected);
+}
+
 fn unique_fixture_root(test_name: &str) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -1,5 +1,5 @@
 use crate::interop::{HostError, HOST_REGISTRY};
-use crate::ir::{CmpKind, IrCallTarget, IrOp, IrProgram, IrPattern};
+use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern, IrProgram};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -33,7 +33,13 @@ impl RuntimeValue {
             Self::ResultErr(value) => format!("err({})", value.render()),
             Self::Tuple(left, right) => format!("{{{}, {}}}", left.render(), right.render()),
             Self::Map(key, value) => format!("%{{{} => {}}}", key.render(), value.render()),
-            Self::Keyword(key, value) => format!("[{}: {}]", key.render(), value.render()),
+            Self::Keyword(key, value) => {
+                let rendered_key = match key.as_ref() {
+                    RuntimeValue::Atom(atom) => atom.clone(),
+                    _ => key.render(),
+                };
+                format!("[{}: {}]", rendered_key, value.render())
+            }
             Self::List(items) => {
                 let items: Vec<String> = items.iter().map(|item| item.render()).collect();
                 format!("[{}]", items.join(", "))
@@ -225,14 +231,16 @@ fn evaluate_ops(
                 let right = pop_value(stack, *offset, "<>")?;
                 let left = pop_value(stack, *offset, "<>")?;
                 match (left, right) {
-                    (RuntimeValue::String(l), RuntimeValue::String(r)) => stack.push(RuntimeValue::String(l + &r)),
+                    (RuntimeValue::String(l), RuntimeValue::String(r)) => {
+                        stack.push(RuntimeValue::String(l + &r))
+                    }
                     _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
                 }
             }
             IrOp::In { offset } => {
                 let right = pop_value(stack, *offset, "in")?;
                 let left = pop_value(stack, *offset, "in")?;
-                
+
                 let found = match right {
                     RuntimeValue::List(items) => items.contains(&left),
                     RuntimeValue::Range(start, end) => {
@@ -348,7 +356,9 @@ fn evaluate_ops(
                             branch_env.insert(k, v);
                         }
 
-                        if let Some(ret) = evaluate_ops(program, &branch.ops, &mut branch_env, stack)? {
+                        if let Some(ret) =
+                            evaluate_ops(program, &branch.ops, &mut branch_env, stack)?
+                        {
                             return Ok(Some(ret));
                         }
                         break;
@@ -386,7 +396,8 @@ fn match_pattern(
         },
         IrPattern::Tuple { items } => match value {
             RuntimeValue::Tuple(left, right) if items.len() == 2 => {
-                match_pattern(left, &items[0], bindings) && match_pattern(right, &items[1], bindings)
+                match_pattern(left, &items[0], bindings)
+                    && match_pattern(right, &items[1], bindings)
             }
             _ => false,
         },
@@ -439,6 +450,7 @@ fn evaluate_builtin_call(
             let (left, right) = expect_pair_builtin_args(name, args, offset)?;
             Ok(RuntimeValue::Tuple(Box::new(left), Box::new(right)))
         }
+        "list" => Ok(RuntimeValue::List(args)),
         "map" => {
             let (key, value) = expect_pair_builtin_args(name, args, offset)?;
             Ok(RuntimeValue::Map(Box::new(key), Box::new(value)))
@@ -451,9 +463,7 @@ fn evaluate_builtin_call(
             let value = expect_single_builtin_arg(name, args, offset)?;
             evaluate_protocol_dispatch(value, offset)
         }
-        "host_call" => {
-            evaluate_host_call(args, offset)
-        }
+        "host_call" => evaluate_host_call(args, offset),
         _ => Err(RuntimeError::at_offset(
             format!("unsupported builtin call in runtime evaluator: {name}"),
             offset,
@@ -576,7 +586,10 @@ fn pop_int(stack: &mut Vec<RuntimeValue>, offset: usize) -> Result<i64, RuntimeE
     match value {
         RuntimeValue::Int(number) => Ok(number),
         other => Err(RuntimeError::at_offset(
-            format!("int operator expects int operands, found {}", other.kind_label()),
+            format!(
+                "int operator expects int operands, found {}",
+                other.kind_label()
+            ),
             offset,
         )),
     }
@@ -584,7 +597,9 @@ fn pop_int(stack: &mut Vec<RuntimeValue>, offset: usize) -> Result<i64, RuntimeE
 
 #[cfg(test)]
 mod tests {
-    use super::{evaluate_builtin_call, evaluate_entrypoint, evaluate_ops, RuntimeError, RuntimeValue};
+    use super::{
+        evaluate_builtin_call, evaluate_entrypoint, evaluate_ops, RuntimeError, RuntimeValue,
+    };
     use crate::ir::{lower_ast_to_ir, IrOp, IrProgram};
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
@@ -760,7 +775,8 @@ mod tests {
         let ast = parse_ast(&tokens).expect("parser should build unary logical fixture ast");
         let ir = lower_ast_to_ir(&ast).expect("lowering should support unary logical fixture");
 
-        let value = evaluate_entrypoint(&ir).expect("runtime should evaluate unary logical fixture");
+        let value =
+            evaluate_entrypoint(&ir).expect("runtime should evaluate unary logical fixture");
 
         assert_eq!(value.render(), "{{true, false}, true}");
     }

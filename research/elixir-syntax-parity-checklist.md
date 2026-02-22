@@ -53,10 +53,10 @@ Legend:
 
 ## 3) Data Structure Syntax (Literal Forms)
 
-- [~] tuple construction (`tuple(a, b)` builtin exists; `{a, b}` literal syntax missing)
-- [~] map construction (`map(k, v)` builtin exists; `%{}` literal syntax missing)
-- [~] keyword construction (`keyword(k, v)` builtin exists; `[k: v]` literal syntax missing)
-- [ ] list literals (`[1, 2, 3]`)
+- [x] tuple construction (`tuple(a, b)` builtin exists; `{a, b}` literal syntax supported)
+- [x] map construction (`map(k, v)` builtin exists; `%{k: v}` literal syntax supported)
+- [x] keyword construction (`keyword(k, v)` builtin exists; `[k: v]` literal syntax supported)
+- [x] list literals (`[1, 2, 3]`)
 - [ ] map updates (`%{m | k: v}`)
 - [ ] access syntax parity (`map.key`, `map[:key]`) where applicable
 

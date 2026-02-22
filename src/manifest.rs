@@ -113,6 +113,12 @@ fn ast_references_module(ast: &Ast, module_name: &str) -> bool {
 fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
     match expr {
         Expr::Int { .. } | Expr::Bool { .. } | Expr::Nil { .. } | Expr::String { .. } => false,
+        Expr::Tuple { items, .. } | Expr::List { items, .. } => items
+            .iter()
+            .any(|item| expr_references_module(item, module_name)),
+        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => entries
+            .iter()
+            .any(|entry| expr_references_module(&entry.value, module_name)),
         Expr::Call { callee, args, .. } => {
             let calls_module = callee
                 .split_once('.')
@@ -123,7 +129,9 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                     .iter()
                     .any(|arg| expr_references_module(arg, module_name))
         }
-        Expr::Question { value, .. } | Expr::Unary { value, .. } => expr_references_module(value, module_name),
+        Expr::Question { value, .. } | Expr::Unary { value, .. } => {
+            expr_references_module(value, module_name)
+        }
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
             expr_references_module(left, module_name) || expr_references_module(right, module_name)
         }
@@ -162,8 +170,8 @@ pub(crate) fn load_project_manifest(project_root: &Path) -> Result<ProjectManife
 
 fn parse_manifest(source: &str) -> Result<ProjectManifest, String> {
     // Parse into Value to handle inline tables correctly
-    let value: toml::Value = toml::from_str(source)
-        .map_err(|error| format!("invalid tonic.toml: {}", error))?;
+    let value: toml::Value =
+        toml::from_str(source).map_err(|error| format!("invalid tonic.toml: {}", error))?;
 
     let entry = value
         .get("project")

@@ -153,6 +153,34 @@ pub enum Expr {
         offset: usize,
         value: String,
     },
+    Tuple {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        items: Vec<Expr>,
+    },
+    List {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        items: Vec<Expr>,
+    },
+    Map {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        entries: Vec<LabelExprEntry>,
+    },
+    Keyword {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        entries: Vec<LabelExprEntry>,
+    },
     Call {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -295,6 +323,12 @@ pub struct MapPatternEntry {
     value: Pattern,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct LabelExprEntry {
+    pub(crate) key: String,
+    pub(crate) value: Expr,
+}
+
 impl Expr {
     fn int(id: NodeId, offset: usize, value: i64) -> Self {
         Self::Int { id, offset, value }
@@ -310,6 +344,30 @@ impl Expr {
 
     fn string(id: NodeId, offset: usize, value: String) -> Self {
         Self::String { id, offset, value }
+    }
+
+    fn tuple(id: NodeId, offset: usize, items: Vec<Expr>) -> Self {
+        Self::Tuple { id, offset, items }
+    }
+
+    fn list(id: NodeId, offset: usize, items: Vec<Expr>) -> Self {
+        Self::List { id, offset, items }
+    }
+
+    fn map(id: NodeId, offset: usize, entries: Vec<LabelExprEntry>) -> Self {
+        Self::Map {
+            id,
+            offset,
+            entries,
+        }
+    }
+
+    fn keyword(id: NodeId, offset: usize, entries: Vec<LabelExprEntry>) -> Self {
+        Self::Keyword {
+            id,
+            offset,
+            entries,
+        }
     }
 
     fn call(id: NodeId, offset: usize, callee: String, args: Vec<Expr>) -> Self {
@@ -392,6 +450,10 @@ impl Expr {
             | Self::Bool { offset, .. }
             | Self::Nil { offset, .. }
             | Self::String { offset, .. }
+            | Self::Tuple { offset, .. }
+            | Self::List { offset, .. }
+            | Self::Map { offset, .. }
+            | Self::Keyword { offset, .. }
             | Self::Call { offset, .. }
             | Self::Question { offset, .. }
             | Self::Group { offset, .. }
@@ -617,7 +679,7 @@ impl<'a> Parser<'a> {
                 return Ok(Expr::unary(self.node_ids.next_expr(), offset, op, expr));
             }
         }
-        
+
         self.parse_postfix_expression()
     }
 
@@ -643,12 +705,20 @@ impl<'a> Parser<'a> {
 
         if self.check(TokenKind::True) {
             let token = self.advance().expect("true token should be available");
-            return Ok(Expr::bool(self.node_ids.next_expr(), token.span().start(), true));
+            return Ok(Expr::bool(
+                self.node_ids.next_expr(),
+                token.span().start(),
+                true,
+            ));
         }
 
         if self.check(TokenKind::False) {
             let token = self.advance().expect("false token should be available");
-            return Ok(Expr::bool(self.node_ids.next_expr(), token.span().start(), false));
+            return Ok(Expr::bool(
+                self.node_ids.next_expr(),
+                token.span().start(),
+                false,
+            ));
         }
 
         if self.check(TokenKind::Nil) {
@@ -683,6 +753,18 @@ impl<'a> Parser<'a> {
             return Ok(Expr::atom(self.node_ids.next_expr(), offset, value));
         }
 
+        if self.check(TokenKind::LBrace) {
+            return self.parse_tuple_literal_expression();
+        }
+
+        if self.check(TokenKind::LBracket) {
+            return self.parse_list_or_keyword_literal_expression();
+        }
+
+        if self.check(TokenKind::Percent) {
+            return self.parse_map_literal_expression();
+        }
+
         if self.check(TokenKind::Ident) {
             let callee_token = self
                 .advance()
@@ -703,7 +785,10 @@ impl<'a> Parser<'a> {
 
             if callee.contains('.') {
                 return Err(ParserError::at_current(
-                    format!("qualified names without arguments are not supported: {}", callee),
+                    format!(
+                        "qualified names without arguments are not supported: {}",
+                        callee
+                    ),
                     Some(callee_token),
                 ));
             }
@@ -713,13 +798,111 @@ impl<'a> Parser<'a> {
 
         // Handle parenthesized expressions: (expr)
         if self.check(TokenKind::LParen) {
-            let offset = self.advance().expect("lparen token should be available").span().start();
+            let offset = self
+                .advance()
+                .expect("lparen token should be available")
+                .span()
+                .start();
             let inner = self.parse_expression()?;
             self.expect(TokenKind::RParen, ")")?;
             return Ok(Expr::group(self.node_ids.next_expr(), offset, inner));
         }
 
         Err(self.expected("expression"))
+    }
+
+    fn parse_tuple_literal_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::LBrace, "{")?.span().start();
+        let items = self.parse_expression_items(TokenKind::RBrace, "}")?;
+        Ok(Expr::tuple(self.node_ids.next_expr(), offset, items))
+    }
+
+    fn parse_list_or_keyword_literal_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::LBracket, "[")?.span().start();
+
+        if self.check(TokenKind::RBracket) {
+            self.advance();
+            return Ok(Expr::list(self.node_ids.next_expr(), offset, Vec::new()));
+        }
+
+        if self.starts_keyword_literal_entry() {
+            let entries = self.parse_label_entries(TokenKind::RBracket, "keyword key")?;
+            return Ok(Expr::keyword(self.node_ids.next_expr(), offset, entries));
+        }
+
+        let items = self.parse_expression_items(TokenKind::RBracket, "]")?;
+        Ok(Expr::list(self.node_ids.next_expr(), offset, items))
+    }
+
+    fn parse_map_literal_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Percent, "%")?.span().start();
+        self.expect(TokenKind::LBrace, "{")?;
+
+        let entries = if self.check(TokenKind::RBrace) {
+            self.advance();
+            Vec::new()
+        } else {
+            self.parse_label_entries(TokenKind::RBrace, "map key")?
+        };
+
+        Ok(Expr::map(self.node_ids.next_expr(), offset, entries))
+    }
+
+    fn starts_keyword_literal_entry(&self) -> bool {
+        self.check(TokenKind::Ident)
+            && self
+                .peek(1)
+                .is_some_and(|token| token.kind() == TokenKind::Colon)
+    }
+
+    fn parse_label_entries(
+        &mut self,
+        closing: TokenKind,
+        expected_key: &str,
+    ) -> Result<Vec<LabelExprEntry>, ParserError> {
+        let mut entries = Vec::new();
+
+        loop {
+            let key = self.expect_ident(expected_key)?;
+            self.expect(TokenKind::Colon, ":")?;
+            let value = self.parse_expression()?;
+            entries.push(LabelExprEntry { key, value });
+
+            if self.match_kind(TokenKind::Comma) {
+                continue;
+            }
+
+            break;
+        }
+
+        self.expect(closing, "literal terminator")?;
+        Ok(entries)
+    }
+
+    fn parse_expression_items(
+        &mut self,
+        closing: TokenKind,
+        expected_closing: &str,
+    ) -> Result<Vec<Expr>, ParserError> {
+        let mut items = Vec::new();
+
+        if self.check(closing) {
+            self.advance();
+            return Ok(items);
+        }
+
+        loop {
+            items.push(self.parse_expression()?);
+
+            if self.match_kind(TokenKind::Comma) {
+                continue;
+            }
+
+            break;
+        }
+
+        self.expect(closing, expected_closing)?;
+        Ok(items)
     }
 
     fn parse_case_expression(&mut self) -> Result<Expr, ParserError> {
@@ -1232,7 +1415,24 @@ mod tests {
 
     fn collect_expr_ids(expr: &Expr, ids: &mut Vec<String>) {
         match expr {
-            Expr::Int { id, .. } | Expr::Bool { id, .. } | Expr::Nil { id, .. } | Expr::String { id, .. } => ids.push(id.0.clone()),
+            Expr::Int { id, .. }
+            | Expr::Bool { id, .. }
+            | Expr::Nil { id, .. }
+            | Expr::String { id, .. } => ids.push(id.0.clone()),
+            Expr::Tuple { id, items, .. } | Expr::List { id, items, .. } => {
+                ids.push(id.0.clone());
+
+                for item in items {
+                    collect_expr_ids(item, ids);
+                }
+            }
+            Expr::Map { id, entries, .. } | Expr::Keyword { id, entries, .. } => {
+                ids.push(id.0.clone());
+
+                for entry in entries {
+                    collect_expr_ids(&entry.value, ids);
+                }
+            }
             Expr::Call { id, args, .. } => {
                 ids.push(id.0.clone());
 
@@ -1251,9 +1451,7 @@ mod tests {
                 collect_expr_ids(left, ids);
                 collect_expr_ids(right, ids);
             }
-            Expr::Unary {
-                id, value, ..
-            } => {
+            Expr::Unary { id, value, .. } => {
                 ids.push(id.0.clone());
                 collect_expr_ids(value, ids);
             }

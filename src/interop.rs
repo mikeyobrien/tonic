@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn host_registry_registers_and_calls_functions() {
         let registry = HostRegistry::new();
-        
+
         // Register a simple function
         registry.register("double", |args| {
             if let Some(RuntimeValue::Int(n)) = args.first() {
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn host_registry_reports_unknown_function() {
         let registry = HostRegistry::new();
-        
+
         let result = registry.call("nonexistent", &[]);
         assert!(result.is_err());
         assert_eq!(
