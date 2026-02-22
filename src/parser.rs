@@ -262,6 +262,22 @@ pub enum Expr {
         callee: String,
         args: Vec<Expr>,
     },
+    Fn {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        params: Vec<String>,
+        body: Box<Expr>,
+    },
+    Invoke {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
     Question {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -471,6 +487,24 @@ impl Expr {
         }
     }
 
+    fn anonymous_fn(id: NodeId, offset: usize, params: Vec<String>, body: Expr) -> Self {
+        Self::Fn {
+            id,
+            offset,
+            params,
+            body: Box::new(body),
+        }
+    }
+
+    fn invoke(id: NodeId, offset: usize, callee: Expr, args: Vec<Expr>) -> Self {
+        Self::Invoke {
+            id,
+            offset,
+            callee: Box::new(callee),
+            args,
+        }
+    }
+
     fn question(id: NodeId, offset: usize, value: Expr) -> Self {
         Self::Question {
             id,
@@ -547,6 +581,8 @@ impl Expr {
             | Self::Map { offset, .. }
             | Self::Keyword { offset, .. }
             | Self::Call { offset, .. }
+            | Self::Fn { offset, .. }
+            | Self::Invoke { offset, .. }
             | Self::Question { offset, .. }
             | Self::Group { offset, .. }
             | Self::Binary { offset, .. }
@@ -626,6 +662,7 @@ struct Parser<'a> {
     tokens: &'a [Token],
     index: usize,
     node_ids: NodeIdGenerator,
+    capture_param_max_stack: Vec<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -634,6 +671,7 @@ impl<'a> Parser<'a> {
             tokens,
             index: 0,
             node_ids: NodeIdGenerator::default(),
+            capture_param_max_stack: Vec::new(),
         }
     }
 
@@ -852,13 +890,35 @@ impl<'a> Parser<'a> {
     fn parse_postfix_expression(&mut self) -> Result<Expr, ParserError> {
         let mut expression = self.parse_atomic_expression()?;
 
-        while self.check(TokenKind::Question) {
-            let offset = self
-                .advance()
-                .expect("question token should be available")
-                .span()
-                .start();
-            expression = Expr::question(self.node_ids.next_expr(), offset, expression);
+        loop {
+            if self.check(TokenKind::Question) {
+                let offset = self
+                    .advance()
+                    .expect("question token should be available")
+                    .span()
+                    .start();
+                expression = Expr::question(self.node_ids.next_expr(), offset, expression);
+                continue;
+            }
+
+            if self.check(TokenKind::Dot)
+                && self
+                    .peek(1)
+                    .is_some_and(|token| token.kind() == TokenKind::LParen)
+            {
+                let offset = self
+                    .advance()
+                    .expect("dot token should be available")
+                    .span()
+                    .start();
+                self.expect(TokenKind::LParen, "(")?;
+                let args = self.parse_call_args()?;
+                self.expect(TokenKind::RParen, ")")?;
+                expression = Expr::invoke(self.node_ids.next_expr(), offset, expression, args);
+                continue;
+            }
+
+            break;
         }
 
         Ok(expression)
@@ -867,6 +927,67 @@ impl<'a> Parser<'a> {
     fn parse_atomic_expression(&mut self) -> Result<Expr, ParserError> {
         if self.check(TokenKind::Case) {
             return self.parse_case_expression();
+        }
+
+        if self.check(TokenKind::Fn) {
+            return self.parse_anonymous_function_expression();
+        }
+
+        if self.check(TokenKind::Ampersand) {
+            if self
+                .peek(1)
+                .is_some_and(|token| token.kind() == TokenKind::LParen)
+            {
+                return self.parse_capture_expression();
+            }
+
+            if self
+                .peek(1)
+                .is_some_and(|token| token.kind() == TokenKind::Integer)
+            {
+                let offset = self
+                    .advance()
+                    .expect("ampersand token should be available")
+                    .span()
+                    .start();
+                let placeholder = self
+                    .expect_token(TokenKind::Integer, "capture placeholder index")?
+                    .lexeme()
+                    .parse::<usize>()
+                    .map_err(|_| {
+                        ParserError::at_current(
+                            "capture placeholder index must be a positive integer",
+                            self.current(),
+                        )
+                    })?;
+
+                if placeholder == 0 {
+                    return Err(ParserError::at_current(
+                        "capture placeholder index must be >= 1",
+                        self.current(),
+                    ));
+                }
+
+                if let Some(current_max) = self.capture_param_max_stack.last_mut() {
+                    *current_max = (*current_max).max(placeholder);
+                } else {
+                    return Err(ParserError::at_current(
+                        "capture placeholders are only valid inside capture expressions",
+                        self.current(),
+                    ));
+                }
+
+                return Ok(Expr::variable(
+                    self.node_ids.next_expr(),
+                    offset,
+                    format!("__capture{placeholder}"),
+                ));
+            }
+
+            return Err(ParserError::at_current(
+                "unsupported capture expression form",
+                self.current(),
+            ));
         }
 
         if self.check(TokenKind::True) {
@@ -938,7 +1059,12 @@ impl<'a> Parser<'a> {
             let offset = callee_token.span().start();
             let mut callee = callee_token.lexeme().to_string();
 
-            if self.match_kind(TokenKind::Dot) {
+            if self.check(TokenKind::Dot)
+                && self
+                    .peek(1)
+                    .is_some_and(|token| token.kind() == TokenKind::Ident)
+            {
+                self.advance();
                 let function_name = self.expect_ident("qualified function name")?;
                 callee = format!("{callee}.{function_name}");
             }
@@ -975,6 +1101,66 @@ impl<'a> Parser<'a> {
         }
 
         Err(self.expected("expression"))
+    }
+
+    fn parse_anonymous_function_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Fn, "fn")?.span().start();
+        let mut params = Vec::new();
+
+        if !self.check(TokenKind::Arrow) {
+            loop {
+                params.push(self.expect_ident("anonymous function parameter")?);
+
+                if self.match_kind(TokenKind::Comma) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        self.expect(TokenKind::Arrow, "->")?;
+        let body = self.parse_expression()?;
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(Expr::anonymous_fn(
+            self.node_ids.next_expr(),
+            offset,
+            params,
+            body,
+        ))
+    }
+
+    fn parse_capture_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Ampersand, "&")?.span().start();
+        self.expect(TokenKind::LParen, "(")?;
+
+        self.capture_param_max_stack.push(0);
+        let body = self.parse_expression()?;
+        let max_capture_index = self
+            .capture_param_max_stack
+            .pop()
+            .expect("capture placeholder scope should exist");
+
+        self.expect(TokenKind::RParen, ")")?;
+
+        if max_capture_index == 0 {
+            return Err(ParserError::at_current(
+                "capture expression requires at least one placeholder",
+                self.current(),
+            ));
+        }
+
+        let params = (1..=max_capture_index)
+            .map(|index| format!("__capture{index}"))
+            .collect::<Vec<_>>();
+
+        Ok(Expr::anonymous_fn(
+            self.node_ids.next_expr(),
+            offset,
+            params,
+            body,
+        ))
     }
 
     fn parse_tuple_literal_expression(&mut self) -> Result<Expr, ParserError> {
@@ -1598,6 +1784,37 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_anonymous_functions_capture_and_invocation() {
+        let tokens =
+            scan_tokens("defmodule Demo do\n  def run() do\n    (&(&1 + 1)).(2)\n  end\nend\n")
+                .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"invoke",
+                "callee":{
+                    "kind":"group",
+                    "inner":{
+                        "kind":"fn",
+                        "params":["__capture1"],
+                        "body":{
+                            "kind":"binary",
+                            "op":"plus",
+                            "left":{"kind":"variable","name":"__capture1"},
+                            "right":{"kind":"int","value":1}
+                        }
+                    }
+                },
+                "args":[{"kind":"int","value":2}]
+            })
+        );
+    }
+
+    #[test]
     fn parse_ast_rejects_non_trailing_default_params() {
         let tokens = scan_tokens(
             "defmodule Demo do\n  def add(value \\\\ 1, other) do\n    value + other\n  end\nend\n",
@@ -1709,6 +1926,19 @@ mod tests {
             Expr::Call { id, args, .. } => {
                 ids.push(id.0.clone());
 
+                for arg in args {
+                    collect_expr_ids(arg, ids);
+                }
+            }
+            Expr::Fn { id, body, .. } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(body, ids);
+            }
+            Expr::Invoke {
+                id, callee, args, ..
+            } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(callee, ids);
                 for arg in args {
                     collect_expr_ids(arg, ids);
                 }

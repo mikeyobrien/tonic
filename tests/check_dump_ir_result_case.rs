@@ -119,6 +119,41 @@ fn check_dump_ir_lowers_pin_guard_and_match_operator_forms() {
     assert_eq!(branches[0]["ops"][1]["op"], "match");
 }
 
+#[test]
+fn check_dump_ir_lowers_anonymous_function_and_invoke_ops() {
+    let fixture_root = unique_fixture_root("check-dump-ir-anon-fn");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("ir_anon_fn.tn"),
+        "defmodule Demo do\n  def run() do\n    (&(&1 + 1)).(2)\n  end\nend\n",
+    )
+    .expect("fixture setup should write anonymous function source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["check", "examples/ir_anon_fn.tn", "--dump-ir"])
+        .output()
+        .expect("check command should run");
+
+    assert!(
+        output.status.success(),
+        "expected successful check invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
+    let ops = &json["functions"][0]["ops"];
+
+    assert_eq!(ops[0]["op"], "make_closure");
+    assert_eq!(ops[0]["params"][0], "__capture1");
+    assert_eq!(ops[1]["op"], "const_int");
+    assert_eq!(ops[2]["op"], "call_value");
+}
+
 fn unique_fixture_root(test_name: &str) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -77,6 +77,7 @@ pub enum TokenKind {
     PipeGt,
     Arrow,
     BackslashBackslash,
+    Ampersand,
     AndAnd,
     OrOr,
     Eof,
@@ -165,6 +166,7 @@ impl Token {
             TokenKind::PipeGt => "PIPE_GT".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
             TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH".to_string(),
+            TokenKind::Ampersand => "AMPERSAND".to_string(),
             TokenKind::AndAnd => "AND_AND".to_string(),
             TokenKind::OrOr => "OR_OR".to_string(),
             TokenKind::Eof => "EOF".to_string(),
@@ -404,7 +406,8 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::AndAnd, Span::new(start, idx)));
                 } else {
-                    return Err(LexerError::invalid_token('&', Span::new(start, start + 1)));
+                    idx += 1;
+                    tokens.push(Token::simple(TokenKind::Ampersand, Span::new(start, idx)));
                 }
             }
             ':' => {
@@ -729,6 +732,30 @@ mod tests {
                 "PLUS",
                 "IDENT(inc)",
                 "END(end)",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_capture_and_function_value_invocation() {
+        let labels = dump_labels("&(&1 + 1) fun.(2)");
+
+        assert_eq!(
+            labels,
+            [
+                "AMPERSAND",
+                "LPAREN",
+                "AMPERSAND",
+                "INT(1)",
+                "PLUS",
+                "INT(1)",
+                "RPAREN",
+                "IDENT(fun)",
+                "DOT",
+                "LPAREN",
+                "INT(2)",
+                "RPAREN",
                 "EOF",
             ]
         );

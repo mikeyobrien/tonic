@@ -265,6 +265,17 @@ fn infer_expression_type(
         Expr::Call { callee, args, .. } => {
             infer_call_type(callee, args, None, current_module, signatures, solver)
         }
+        Expr::Fn { body, .. } => {
+            infer_expression_type(body, current_module, signatures, solver)?;
+            Ok(Type::Dynamic)
+        }
+        Expr::Invoke { callee, args, .. } => {
+            infer_expression_type(callee, current_module, signatures, solver)?;
+            for arg in args {
+                infer_expression_type(arg, current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
         Expr::Question { value, offset, .. } => {
             let value_type = infer_expression_type(value, current_module, signatures, solver)?;
             let resolved_value_type = solver.resolve(value_type);

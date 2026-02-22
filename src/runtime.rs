@@ -6,6 +6,13 @@ use std::fmt;
 const ENTRYPOINT: &str = "Demo.run";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeClosure {
+    params: Vec<String>,
+    ops: Vec<IrOp>,
+    env: HashMap<String, RuntimeValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeValue {
     Int(i64),
     Bool(bool),
@@ -19,6 +26,7 @@ pub enum RuntimeValue {
     Keyword(Box<RuntimeValue>, Box<RuntimeValue>),
     List(Vec<RuntimeValue>),
     Range(i64, i64),
+    Closure(Box<RuntimeClosure>),
 }
 
 impl RuntimeValue {
@@ -45,6 +53,7 @@ impl RuntimeValue {
                 format!("[{}]", items.join(", "))
             }
             Self::Range(start, end) => format!("{}..{}", start, end),
+            Self::Closure(closure) => format!("#Function<{}>", closure.params.len()),
         }
     }
 
@@ -61,6 +70,7 @@ impl RuntimeValue {
             Self::Keyword(_, _) => "keyword",
             Self::List(_) => "list",
             Self::Range(_, _) => "range",
+            Self::Closure(_) => "function",
         }
     }
 }
@@ -215,6 +225,17 @@ fn evaluate_ops(
                 offset,
             } => {
                 let value = evaluate_call(program, callee, stack, *argc, *offset)?;
+                stack.push(value);
+            }
+            IrOp::MakeClosure { params, ops, .. } => {
+                stack.push(RuntimeValue::Closure(Box::new(RuntimeClosure {
+                    params: params.clone(),
+                    ops: ops.clone(),
+                    env: env.clone(),
+                })));
+            }
+            IrOp::CallValue { argc, offset } => {
+                let value = evaluate_call_value(program, stack, *argc, *offset)?;
                 stack.push(value);
             }
             IrOp::Not { offset } => {
@@ -485,6 +506,8 @@ fn ir_op_offset(op: &IrOp) -> usize {
         | IrOp::ConstNil { offset }
         | IrOp::ConstString { offset, .. }
         | IrOp::Call { offset, .. }
+        | IrOp::MakeClosure { offset, .. }
+        | IrOp::CallValue { offset, .. }
         | IrOp::Question { offset }
         | IrOp::Case { offset, .. }
         | IrOp::LoadVariable { offset, .. }
@@ -588,6 +611,69 @@ fn evaluate_call(
             stack.truncate(args_start);
             Ok(value)
         }
+    }
+}
+
+fn evaluate_call_value(
+    program: &IrProgram,
+    stack: &mut Vec<RuntimeValue>,
+    argc: usize,
+    offset: usize,
+) -> Result<RuntimeValue, RuntimeError> {
+    let args_start = stack.len().checked_sub(argc).ok_or_else(|| {
+        RuntimeError::at_offset(
+            format!("runtime stack underflow for closure call with {argc} args"),
+            offset,
+        )
+    })?;
+
+    let args = stack.split_off(args_start);
+    let callee = stack
+        .pop()
+        .ok_or_else(|| RuntimeError::at_offset("missing function value for invocation", offset))?;
+
+    match callee {
+        RuntimeValue::Closure(closure) => evaluate_closure(program, closure.as_ref(), args, offset),
+        other => Err(RuntimeError::at_offset(
+            format!(
+                "attempted to call non-function value: {}",
+                other.kind_label()
+            ),
+            offset,
+        )),
+    }
+}
+
+fn evaluate_closure(
+    program: &IrProgram,
+    closure: &RuntimeClosure,
+    args: Vec<RuntimeValue>,
+    offset: usize,
+) -> Result<RuntimeValue, RuntimeError> {
+    if args.len() != closure.params.len() {
+        return Err(RuntimeError::at_offset(
+            format!(
+                "arity mismatch for anonymous function: expected {} args, found {}",
+                closure.params.len(),
+                args.len()
+            ),
+            offset,
+        ));
+    }
+
+    let mut env = closure.env.clone();
+    for (name, value) in closure.params.iter().zip(args.into_iter()) {
+        env.insert(name.clone(), value);
+    }
+
+    let mut closure_stack = Vec::new();
+    if let Some(value) = evaluate_ops(program, &closure.ops, &mut env, &mut closure_stack)? {
+        Ok(value)
+    } else {
+        Err(RuntimeError::at_offset(
+            "anonymous function ended without return",
+            offset,
+        ))
     }
 }
 

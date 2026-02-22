@@ -176,6 +176,13 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                     .iter()
                     .any(|arg| expr_references_module(arg, module_name))
         }
+        Expr::Fn { body, .. } => expr_references_module(body, module_name),
+        Expr::Invoke { callee, args, .. } => {
+            expr_references_module(callee, module_name)
+                || args
+                    .iter()
+                    .any(|arg| expr_references_module(arg, module_name))
+        }
         Expr::Question { value, .. } | Expr::Unary { value, .. } => {
             expr_references_module(value, module_name)
         }

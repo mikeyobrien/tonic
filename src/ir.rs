@@ -2,12 +2,12 @@ use crate::parser::{Ast, BinaryOp, Expr, Pattern};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IrProgram {
     pub(crate) functions: Vec<IrFunction>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct IrFunction {
     pub(crate) name: String,
     pub(crate) params: Vec<String>,
@@ -18,7 +18,7 @@ pub(crate) struct IrFunction {
     pub(crate) ops: Vec<IrOp>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub(crate) enum IrOp {
     ConstInt {
@@ -38,6 +38,15 @@ pub(crate) enum IrOp {
     },
     Call {
         callee: IrCallTarget,
+        argc: usize,
+        offset: usize,
+    },
+    MakeClosure {
+        params: Vec<String>,
+        ops: Vec<IrOp>,
+        offset: usize,
+    },
+    CallValue {
         argc: usize,
         offset: usize,
     },
@@ -129,14 +138,14 @@ pub(crate) enum CmpKind {
     Gte,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum IrCallTarget {
     Builtin { name: String },
     Function { name: String },
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct IrCaseBranch {
     pub(crate) pattern: IrPattern,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -144,7 +153,7 @@ pub(crate) struct IrCaseBranch {
     pub(crate) ops: Vec<IrOp>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub(crate) enum IrPattern {
     Atom { value: String },
@@ -157,7 +166,7 @@ pub(crate) enum IrPattern {
     Map { entries: Vec<IrMapPatternEntry> },
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct IrMapPatternEntry {
     pub(crate) key: IrPattern,
     pub(crate) value: IrPattern,
@@ -431,6 +440,45 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
 
             ops.push(IrOp::Call {
                 callee: qualify_call_target(current_module, callee),
+                argc: args.len(),
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::Fn {
+            params,
+            body,
+            offset,
+            ..
+        } => {
+            let mut closure_ops = Vec::new();
+            lower_expr(body, current_module, &mut closure_ops)?;
+            closure_ops.push(IrOp::Return {
+                offset: body.offset(),
+            });
+
+            ops.push(IrOp::MakeClosure {
+                params: params.clone(),
+                ops: closure_ops,
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::Invoke {
+            callee,
+            args,
+            offset,
+            ..
+        } => {
+            lower_expr(callee, current_module, ops)?;
+
+            for arg in args {
+                lower_expr(arg, current_module, ops)?;
+            }
+
+            ops.push(IrOp::CallValue {
                 argc: args.len(),
                 offset: *offset,
             });

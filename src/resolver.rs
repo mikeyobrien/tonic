@@ -155,6 +155,14 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
 
             Ok(())
         }
+        Expr::Fn { body, .. } => resolve_expr(body, context),
+        Expr::Invoke { callee, args, .. } => {
+            resolve_expr(callee, context)?;
+            for arg in args {
+                resolve_expr(arg, context)?;
+            }
+            Ok(())
+        }
         Expr::Question { value, .. } | Expr::Unary { value, .. } => resolve_expr(value, context),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
             resolve_expr(left, context)?;

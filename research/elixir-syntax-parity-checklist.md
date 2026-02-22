@@ -85,9 +85,9 @@ Legend:
 - [x] function guards (`def f(x) when ...`)
 - [x] default arguments (`\\`)
 - [x] private functions (`defp`)
-- [ ] anonymous functions (`fn -> ... end`)
-- [ ] capture operator (`&`, `&1`)
-- [ ] function invocation parity for anonymous functions (`fun.(x)`)
+- [x] anonymous functions (`fn -> ... end`)
+- [x] capture operator (`&`, `&1`)
+- [x] function invocation parity for anonymous functions (`fun.(x)`)
 
 ---
 
