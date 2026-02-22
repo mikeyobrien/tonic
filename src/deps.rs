@@ -1,6 +1,6 @@
 use crate::manifest::Dependencies;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -10,8 +10,8 @@ const DEPS_CACHE_DIR: &str = ".tonic/deps";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Lockfile {
     pub(crate) version: u32,
-    pub(crate) path_deps: HashMap<String, PathDepLock>,
-    pub(crate) git_deps: HashMap<String, GitDepLock>,
+    pub(crate) path_deps: BTreeMap<String, PathDepLock>,
+    pub(crate) git_deps: BTreeMap<String, GitDepLock>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +23,6 @@ pub(crate) struct PathDepLock {
 pub(crate) struct GitDepLock {
     pub(crate) url: String,
     pub(crate) rev: String,
-    pub(crate) cached_at: u64,
 }
 
 #[allow(dead_code)]
@@ -32,8 +31,8 @@ impl Lockfile {
         dependencies: &Dependencies,
         _project_root: &Path,
     ) -> Result<Self, String> {
-        let mut path_deps = HashMap::new();
-        let mut git_deps = HashMap::new();
+        let mut path_deps = BTreeMap::new();
+        let mut git_deps = BTreeMap::new();
 
         for (name, path) in &dependencies.path {
             let canonical = path
@@ -47,18 +46,12 @@ impl Lockfile {
             );
         }
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| "system time before unix epoch")?
-            .as_secs();
-
         for (name, git_dep) in &dependencies.git {
             git_deps.insert(
                 name.clone(),
                 GitDepLock {
                     url: git_dep.url.clone(),
                     rev: git_dep.rev.clone(),
-                    cached_at: now,
                 },
             );
         }
