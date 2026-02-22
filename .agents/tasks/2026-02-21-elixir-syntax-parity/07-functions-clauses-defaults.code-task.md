@@ -1,5 +1,9 @@
 # Task: Function Parity (clauses/defaults/defp)
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Bring named function syntax closer to Elixir with clauses, head patterns, defaults, and private defs.
 

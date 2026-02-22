@@ -1,5 +1,9 @@
 # Task: Add `tonic compile` Command for Files and Project Roots
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Description
 Implement a first-class `tonic compile` command that compiles a `.tn` file or a project root (directory with `tonic.toml`) into a reusable on-disk artifact. This closes a current CLI gap where compilation only happens implicitly inside `tonic run` and cannot be invoked directly by users or CI workflows.
 

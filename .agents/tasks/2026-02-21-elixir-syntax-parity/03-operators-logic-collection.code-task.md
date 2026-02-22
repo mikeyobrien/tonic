@@ -1,5 +1,9 @@
 # Task: Operators Logical + Collection
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Add logical and collection-centric operators required for idiomatic Elixir-style code.
 

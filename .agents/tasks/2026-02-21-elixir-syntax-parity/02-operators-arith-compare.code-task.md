@@ -1,5 +1,9 @@
 # Task: Operators Arithmetic + Comparison
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Implement core arithmetic and comparison operators with deterministic precedence.
 

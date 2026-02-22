@@ -1,5 +1,9 @@
 # Task: Add Tonic-Native Package Support (v1) with `path` + `git` Dependencies
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Description
 Implement a Tonic-native dependency system in `tonic.toml` that supports local path dependencies and pinned git dependencies, with lockfile-based reproducibility and deterministic module loading.
 

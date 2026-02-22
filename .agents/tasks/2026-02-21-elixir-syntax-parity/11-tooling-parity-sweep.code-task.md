@@ -1,5 +1,9 @@
 # Task: Tooling Parity Sweep (fmt/diagnostics/docs fixtures)
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Close parity loop with stable developer workflow: formatting, diagnostics, and translated fixtures.
 

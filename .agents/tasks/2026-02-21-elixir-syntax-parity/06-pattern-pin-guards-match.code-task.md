@@ -1,5 +1,9 @@
 # Task: Pattern Pin + Guards + Match Operator
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Add the core pattern tools used in real Elixir code: `^pin`, guards, and `=` matching.
 

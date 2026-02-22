@@ -1,5 +1,9 @@
 # Task: Literals Primitives (bool/nil/string)
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Add first-class expression support for `true`, `false`, `nil`, and string literals.
 

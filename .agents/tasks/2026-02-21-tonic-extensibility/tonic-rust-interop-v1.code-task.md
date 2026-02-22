@@ -1,5 +1,9 @@
 # Task: Add Rust Host Interop (v1) via `host_call` and Static Extension Registry
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Description
 Implement a first-class Rust interop layer so Tonic programs can call statically linked Rust host functions. The v1 design should prioritize deterministic behavior, low startup overhead, and strong diagnostics over dynamic plugin complexity.
 

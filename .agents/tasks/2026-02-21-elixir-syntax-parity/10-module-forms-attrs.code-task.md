@@ -1,5 +1,9 @@
 # Task: Module Forms + Attributes
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Add module-level compile-time forms required for practical code organization.
 

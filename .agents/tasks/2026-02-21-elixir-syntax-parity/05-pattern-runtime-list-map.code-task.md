@@ -1,5 +1,9 @@
 # Task: Pattern Runtime Completion (List/Map)
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Complete list/map pattern lowering and runtime matching semantics.
 

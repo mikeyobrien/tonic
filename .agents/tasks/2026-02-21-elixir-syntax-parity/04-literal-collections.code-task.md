@@ -1,5 +1,9 @@
 # Task: Collection Literal Syntax
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Support Elixir-style literal syntax for tuples, lists, maps, and keywords.
 

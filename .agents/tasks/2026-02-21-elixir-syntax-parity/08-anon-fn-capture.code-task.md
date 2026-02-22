@@ -1,5 +1,9 @@
 # Task: Anonymous Functions + Capture
 
+> **Status:** Done
+> `HEARTBEAT_TASK_STATUS=done`
+
+
 ## Goal
 Support `fn ... end`, capture syntax (`&`, `&1`), and invocation (`fun.(arg)`).
 
