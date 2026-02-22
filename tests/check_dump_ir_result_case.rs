@@ -45,6 +45,45 @@ fn check_dump_ir_matches_result_and_case_lowering_snapshot() {
     assert_eq!(stdout, expected);
 }
 
+#[test]
+fn check_dump_ir_lowers_list_and_map_case_patterns() {
+    let fixture_root = unique_fixture_root("check-dump-ir-list-map-case");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("ir_list_map_case.tn"),
+        "defmodule Demo do\n  def subject() do\n    map(:ok, list(1, 2))\n  end\n\n  def run() do\n    case subject() do\n      [head, tail] -> head + tail\n      %{:ok -> [value, _]} -> value + 0\n      _ -> 0\n    end\n  end\nend\n",
+    )
+    .expect("fixture setup should write list/map case source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["check", "examples/ir_list_map_case.tn", "--dump-ir"])
+        .output()
+        .expect("check command should run");
+
+    assert!(
+        output.status.success(),
+        "expected successful check invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid json");
+    let branches = &json["functions"][1]["ops"][1]["branches"];
+
+    assert_eq!(branches[0]["pattern"]["kind"], "list");
+    assert_eq!(branches[0]["pattern"]["items"][0]["kind"], "bind");
+    assert_eq!(branches[1]["pattern"]["kind"], "map");
+    assert_eq!(branches[1]["pattern"]["entries"][0]["key"]["kind"], "atom");
+    assert_eq!(
+        branches[1]["pattern"]["entries"][0]["value"]["kind"],
+        "list"
+    );
+}
+
 fn unique_fixture_root(test_name: &str) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

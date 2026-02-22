@@ -143,6 +143,13 @@ pub(crate) enum IrPattern {
     Integer { value: i64 },
     Tuple { items: Vec<IrPattern> },
     List { items: Vec<IrPattern> },
+    Map { entries: Vec<IrMapPatternEntry> },
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct IrMapPatternEntry {
+    pub(crate) key: IrPattern,
+    pub(crate) value: IrPattern,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -443,7 +450,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                     lower_expr(branch.body(), current_module, &mut branch_ops)?;
 
                     Ok(IrCaseBranch {
-                        pattern: lower_pattern(branch.head(), *offset)?,
+                        pattern: lower_pattern(branch.head())?,
                         ops: branch_ops,
                     })
                 })
@@ -505,7 +512,7 @@ fn lower_pipe_expr(
     Ok(())
 }
 
-fn lower_pattern(pattern: &Pattern, case_offset: usize) -> Result<IrPattern, LoweringError> {
+fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
     match pattern {
         Pattern::Atom { value } => Ok(IrPattern::Atom {
             value: value.clone(),
@@ -516,7 +523,7 @@ fn lower_pattern(pattern: &Pattern, case_offset: usize) -> Result<IrPattern, Low
         Pattern::Tuple { items } => {
             let items = items
                 .iter()
-                .map(|item| lower_pattern(item, case_offset))
+                .map(lower_pattern)
                 .collect::<Result<Vec<_>, LoweringError>>()?;
 
             Ok(IrPattern::Tuple { items })
@@ -524,12 +531,24 @@ fn lower_pattern(pattern: &Pattern, case_offset: usize) -> Result<IrPattern, Low
         Pattern::List { items } => {
             let items = items
                 .iter()
-                .map(|item| lower_pattern(item, case_offset))
+                .map(lower_pattern)
                 .collect::<Result<Vec<_>, LoweringError>>()?;
 
             Ok(IrPattern::List { items })
         }
-        Pattern::Map { .. } => Err(LoweringError::unsupported("map pattern", case_offset)),
+        Pattern::Map { entries } => {
+            let entries = entries
+                .iter()
+                .map(|entry| {
+                    Ok(IrMapPatternEntry {
+                        key: lower_pattern(entry.key())?,
+                        value: lower_pattern(entry.value())?,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+
+            Ok(IrPattern::Map { entries })
+        }
     }
 }
 

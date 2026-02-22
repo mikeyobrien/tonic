@@ -323,6 +323,16 @@ pub struct MapPatternEntry {
     value: Pattern,
 }
 
+impl MapPatternEntry {
+    pub(crate) fn key(&self) -> &Pattern {
+        &self.key
+    }
+
+    pub(crate) fn value(&self) -> &Pattern {
+        &self.value
+    }
+}
+
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct LabelExprEntry {
     pub(crate) key: String,

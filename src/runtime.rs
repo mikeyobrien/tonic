@@ -401,7 +401,22 @@ fn match_pattern(
             }
             _ => false,
         },
-        IrPattern::List { .. } => false,
+        IrPattern::List { items } => match value {
+            RuntimeValue::List(values) if values.len() == items.len() => values
+                .iter()
+                .zip(items.iter())
+                .all(|(value, pattern)| match_pattern(value, pattern, bindings)),
+            _ => false,
+        },
+        IrPattern::Map { entries } => match value {
+            RuntimeValue::Map(_, _) if entries.is_empty() => true,
+            RuntimeValue::Map(key, map_value) if entries.len() == 1 => {
+                match_pattern(key, &entries[0].key, bindings)
+                    && match_pattern(map_value, &entries[0].value, bindings)
+            }
+            RuntimeValue::Map(_, _) => false,
+            _ => false,
+        },
     }
 }
 
@@ -600,7 +615,7 @@ mod tests {
     use super::{
         evaluate_builtin_call, evaluate_entrypoint, evaluate_ops, RuntimeError, RuntimeValue,
     };
-    use crate::ir::{lower_ast_to_ir, IrOp, IrProgram};
+    use crate::ir::{lower_ast_to_ir, IrCaseBranch, IrFunction, IrOp, IrPattern, IrProgram};
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
     use std::collections::HashMap;
@@ -649,6 +664,40 @@ mod tests {
             value,
             RuntimeValue::ResultErr(Box::new(RuntimeValue::Int(7)))
         );
+    }
+
+    #[test]
+    fn evaluate_entrypoint_reports_deterministic_no_match_case_errors() {
+        let ir = IrProgram {
+            functions: vec![IrFunction {
+                name: "Demo.run".to_string(),
+                params: vec![],
+                ops: vec![
+                    IrOp::ConstInt {
+                        value: 1,
+                        offset: 37,
+                    },
+                    IrOp::Case {
+                        branches: vec![IrCaseBranch {
+                            pattern: IrPattern::Atom {
+                                value: "ok".to_string(),
+                            },
+                            ops: vec![IrOp::ConstInt {
+                                value: 2,
+                                offset: 55,
+                            }],
+                        }],
+                        offset: 37,
+                    },
+                    IrOp::Return { offset: 37 },
+                ],
+            }],
+        };
+
+        let error =
+            evaluate_entrypoint(&ir).expect_err("runtime should fail when no case branch matches");
+
+        assert_eq!(error.to_string(), "no case clause matching at offset 37");
     }
 
     #[test]

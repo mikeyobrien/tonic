@@ -68,8 +68,8 @@ Legend:
 - [x] atom patterns
 - [x] integer patterns
 - [~] tuple patterns (currently narrow runtime support)
-- [~] list patterns (parser support, incomplete runtime semantics)
-- [ ] map patterns (parse support exists; lowering/runtime support incomplete)
+- [x] list patterns
+- [~] map patterns (lowering/runtime support for current single-entry map model)
 - [ ] pin operator (`^var`)
 - [ ] guards in patterns (`when`)
 - [ ] match operator (`=`) in general expression/binding contexts
