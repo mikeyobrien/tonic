@@ -179,7 +179,11 @@ fn ast_references_module(ast: &Ast, module_name: &str) -> bool {
 
 fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
     match expr {
-        Expr::Int { .. } | Expr::Bool { .. } | Expr::Nil { .. } | Expr::String { .. } => false,
+        Expr::Int { .. }
+        | Expr::Float { .. }
+        | Expr::Bool { .. }
+        | Expr::Nil { .. }
+        | Expr::String { .. } => false,
         Expr::Tuple { items, .. } | Expr::List { items, .. } => items
             .iter()
             .any(|item| expr_references_module(item, module_name)),

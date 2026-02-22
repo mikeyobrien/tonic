@@ -26,7 +26,7 @@ Legend:
 
 - [x] integer literals
 - [x] atom literals (`:ok`) as expressions
-- [ ] float literals
+- [x] float literals
 - [ ] booleans (`true`/`false`)
 - [ ] `nil`
 - [ ] string literals as expressions (lexer token exists; expression support missing)

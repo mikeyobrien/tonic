@@ -48,6 +48,7 @@ pub enum TokenKind {
     Ident,
     Atom,
     Integer,
+    Float,
     String,
     LParen,
     RParen,
@@ -142,6 +143,7 @@ impl Token {
             TokenKind::Ident => format!("IDENT({})", self.lexeme),
             TokenKind::Atom => format!("ATOM({})", self.lexeme),
             TokenKind::Integer => format!("INT({})", self.lexeme),
+            TokenKind::Float => format!("FLOAT({})", self.lexeme),
             TokenKind::String => format!("STRING({})", self.lexeme),
             TokenKind::LParen => "LPAREN".to_string(),
             TokenKind::RParen => "RPAREN".to_string(),
@@ -491,12 +493,18 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     idx += 1;
                 }
 
+                let mut kind = TokenKind::Integer;
+                if idx + 1 < chars.len() && chars[idx] == '.' && chars[idx + 1].is_ascii_digit() {
+                    kind = TokenKind::Float;
+                    idx += 1;
+
+                    while idx < chars.len() && chars[idx].is_ascii_digit() {
+                        idx += 1;
+                    }
+                }
+
                 let lexeme: String = chars[start..idx].iter().collect();
-                tokens.push(Token::with_lexeme(
-                    TokenKind::Integer,
-                    lexeme,
-                    Span::new(start, idx),
-                ));
+                tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
             }
             value if is_ident_start(value) => {
                 let start = idx;
@@ -602,9 +610,18 @@ mod tests {
 
     #[test]
     fn scan_tokens_supports_identifiers_and_literals() {
-        let labels = dump_labels("value 42 \"ok\"");
+        let labels = dump_labels("value 42 3.14 \"ok\"");
 
-        assert_eq!(labels, ["IDENT(value)", "INT(42)", "STRING(ok)", "EOF",]);
+        assert_eq!(
+            labels,
+            [
+                "IDENT(value)",
+                "INT(42)",
+                "FLOAT(3.14)",
+                "STRING(ok)",
+                "EOF",
+            ]
+        );
     }
 
     #[test]

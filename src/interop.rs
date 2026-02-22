@@ -35,6 +35,7 @@ impl std::error::Error for HostError {}
 fn host_value_kind(value: &RuntimeValue) -> &'static str {
     match value {
         RuntimeValue::Int(_) => "int",
+        RuntimeValue::Float(_) => "float",
         RuntimeValue::Bool(_) => "bool",
         RuntimeValue::Nil => "nil",
         RuntimeValue::String(_) => "string",

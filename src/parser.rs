@@ -244,6 +244,13 @@ pub enum Expr {
         offset: usize,
         value: i64,
     },
+    Float {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        value: String,
+    },
     Bool {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -488,6 +495,10 @@ impl Expr {
         Self::Int { id, offset, value }
     }
 
+    fn float(id: NodeId, offset: usize, value: String) -> Self {
+        Self::Float { id, offset, value }
+    }
+
     fn bool(id: NodeId, offset: usize, value: bool) -> Self {
         Self::Bool { id, offset, value }
     }
@@ -619,6 +630,7 @@ impl Expr {
     pub fn offset(&self) -> usize {
         match self {
             Self::Int { offset, .. }
+            | Self::Float { offset, .. }
             | Self::Bool { offset, .. }
             | Self::Nil { offset, .. }
             | Self::String { offset, .. }
@@ -812,6 +824,7 @@ fn canonicalize_expr_call_targets(
             }
         }
         Expr::Int { .. }
+        | Expr::Float { .. }
         | Expr::Bool { .. }
         | Expr::Nil { .. }
         | Expr::String { .. }
@@ -1321,6 +1334,13 @@ impl<'a> Parser<'a> {
             let offset = token.span().start();
             let value = token.lexeme().to_string();
             return Ok(Expr::string(self.node_ids.next_expr(), offset, value));
+        }
+
+        if self.check(TokenKind::Float) {
+            let token = self.advance().expect("float token should be available");
+            let offset = token.span().start();
+            let value = token.lexeme().to_string();
+            return Ok(Expr::float(self.node_ids.next_expr(), offset, value));
         }
 
         if self.check(TokenKind::Integer) {
@@ -2468,6 +2488,7 @@ mod tests {
     fn collect_expr_ids(expr: &Expr, ids: &mut Vec<String>) {
         match expr {
             Expr::Int { id, .. }
+            | Expr::Float { id, .. }
             | Expr::Bool { id, .. }
             | Expr::Nil { id, .. }
             | Expr::String { id, .. } => ids.push(id.0.clone()),

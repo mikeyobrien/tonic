@@ -128,7 +128,11 @@ struct ResolveContext<'a> {
 
 fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
     match expr {
-        Expr::Int { .. } | Expr::Bool { .. } | Expr::Nil { .. } | Expr::String { .. } => Ok(()),
+        Expr::Int { .. }
+        | Expr::Float { .. }
+        | Expr::Bool { .. }
+        | Expr::Nil { .. }
+        | Expr::String { .. } => Ok(()),
         Expr::Tuple { items, .. } | Expr::List { items, .. } => {
             for item in items {
                 resolve_expr(item, context)?;

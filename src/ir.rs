@@ -25,6 +25,10 @@ pub(crate) enum IrOp {
         value: i64,
         offset: usize,
     },
+    ConstFloat {
+        value: String,
+        offset: usize,
+    },
     ConstBool {
         value: bool,
         offset: usize,
@@ -328,6 +332,13 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         Expr::Int { value, offset, .. } => {
             ops.push(IrOp::ConstInt {
                 value: *value,
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Float { value, offset, .. } => {
+            ops.push(IrOp::ConstFloat {
+                value: value.clone(),
                 offset: *offset,
             });
             Ok(())

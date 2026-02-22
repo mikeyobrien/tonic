@@ -15,6 +15,7 @@ pub struct RuntimeClosure {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeValue {
     Int(i64),
+    Float(String),
     Bool(bool),
     Nil,
     String(String),
@@ -33,6 +34,7 @@ impl RuntimeValue {
     pub fn render(&self) -> String {
         match self {
             Self::Int(value) => value.to_string(),
+            Self::Float(value) => value.clone(),
             Self::Bool(value) => value.to_string(),
             Self::Nil => "nil".to_string(),
             Self::String(value) => format!("\"{}\"", value),
@@ -60,6 +62,7 @@ impl RuntimeValue {
     fn kind_label(&self) -> &'static str {
         match self {
             Self::Int(_) => "int",
+            Self::Float(_) => "float",
             Self::Bool(_) => "bool",
             Self::Nil => "nil",
             Self::String(_) => "string",
@@ -209,6 +212,7 @@ fn evaluate_ops(
     for op in ops {
         match op {
             IrOp::ConstInt { value, .. } => stack.push(RuntimeValue::Int(*value)),
+            IrOp::ConstFloat { value, .. } => stack.push(RuntimeValue::Float(value.clone())),
             IrOp::ConstBool { value, .. } => stack.push(RuntimeValue::Bool(*value)),
             IrOp::ConstNil { .. } => stack.push(RuntimeValue::Nil),
             IrOp::ConstString { value, .. } => stack.push(RuntimeValue::String(value.clone())),
@@ -502,6 +506,7 @@ fn evaluate_guard_ops(
 fn ir_op_offset(op: &IrOp) -> usize {
     match op {
         IrOp::ConstInt { offset, .. }
+        | IrOp::ConstFloat { offset, .. }
         | IrOp::ConstBool { offset, .. }
         | IrOp::ConstNil { offset }
         | IrOp::ConstString { offset, .. }

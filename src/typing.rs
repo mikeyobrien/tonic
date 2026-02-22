@@ -18,6 +18,7 @@ impl TypeSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Type {
     Int,
+    Float,
     Bool,
     Nil,
     String,
@@ -37,6 +38,7 @@ impl Type {
     fn label(&self) -> &'static str {
         match self {
             Type::Int => "int",
+            Type::Float => "float",
             Type::Bool => "bool",
             Type::Nil => "nil",
             Type::String => "string",
@@ -108,6 +110,7 @@ impl ConstraintSolver {
                 self.unify(*expected_err, *found_err, offset)
             }
             (Type::Int, Type::Int)
+            | (Type::Float, Type::Float)
             | (Type::Bool, Type::Bool)
             | (Type::Nil, Type::Nil)
             | (Type::String, Type::String)
@@ -247,6 +250,7 @@ fn infer_expression_type(
 ) -> Result<Type, TypingError> {
     match expr {
         Expr::Int { .. } => Ok(Type::Int),
+        Expr::Float { .. } => Ok(Type::Float),
         Expr::Bool { .. } => Ok(Type::Bool),
         Expr::Nil { .. } => Ok(Type::Nil),
         Expr::String { .. } => Ok(Type::String),
@@ -486,7 +490,7 @@ fn validate_host_call_key_type(
 
     if matches!(
         key_type,
-        Type::Int | Type::Bool | Type::Nil | Type::String | Type::Result { .. }
+        Type::Int | Type::Float | Type::Bool | Type::Nil | Type::String | Type::Result { .. }
     ) {
         return Err(TypingError::type_mismatch(
             "atom",
