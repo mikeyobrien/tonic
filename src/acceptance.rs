@@ -293,6 +293,10 @@ mod tests {
     };
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    // Tests that call set_current_dir must hold this lock — CWD is process-global.
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn acceptance_file_path_is_stable() {
@@ -328,6 +332,7 @@ mod tests {
         .expect("fixture setup should write acceptance yaml");
 
         let previous_dir = std::env::current_dir().expect("cwd should be readable");
+        let _guard = CWD_LOCK.lock().expect("cwd lock should not be poisoned");
         std::env::set_current_dir(&fixture_root).expect("cwd should switch to fixture root");
 
         let metadata = load_acceptance_yaml("step-01");
@@ -364,6 +369,7 @@ mod tests {
         .expect("fixture setup should write acceptance yaml");
 
         let previous_dir = std::env::current_dir().expect("cwd should be readable");
+        let _guard = CWD_LOCK.lock().expect("cwd lock should not be poisoned");
         std::env::set_current_dir(&fixture_root).expect("cwd should switch to fixture root");
 
         let metadata = load_acceptance_yaml("step-13");

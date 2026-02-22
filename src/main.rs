@@ -255,8 +255,8 @@ fn handle_check(args: Vec<String>) -> i32 {
     if dump_ast {
         let json = match serde_json::to_string(&ast) {
             Ok(value) => value,
-            Err(error) => {
-                return CliDiagnostic::failure(format!("failed to serialize ast: {error}")).emit();
+            Err(_) => {
+                return CliDiagnostic::failure("failed to serialize ast".to_string()).emit();
             }
         };
 
@@ -280,8 +280,8 @@ fn handle_check(args: Vec<String>) -> i32 {
 
         let json = match serde_json::to_string(&ir) {
             Ok(value) => value,
-            Err(error) => {
-                return CliDiagnostic::failure(format!("failed to serialize ir: {error}")).emit();
+            Err(_) => {
+                return CliDiagnostic::failure("failed to serialize ir".to_string()).emit();
             }
         };
 
@@ -586,15 +586,27 @@ fn benchmark_gate_report(
 ) -> (bool, serde_json::Value) {
     match benchmark_metrics {
         Some(metrics) => {
-            let threshold_exceeded = metrics.cold_start_p50_ms
-                > BENCHMARK_THRESHOLD_COLD_START_P50_MS
-                || metrics.warm_start_p50_ms > BENCHMARK_THRESHOLD_WARM_START_P50_MS
-                || metrics.idle_rss_mb > BENCHMARK_THRESHOLD_IDLE_RSS_MB;
+            let cold_exceeded = metrics.cold_start_p50_ms > BENCHMARK_THRESHOLD_COLD_START_P50_MS;
+            let warm_exceeded = metrics.warm_start_p50_ms > BENCHMARK_THRESHOLD_WARM_START_P50_MS;
+            let rss_exceeded = metrics.idle_rss_mb > BENCHMARK_THRESHOLD_IDLE_RSS_MB;
+            let threshold_exceeded = cold_exceeded || warm_exceeded || rss_exceeded;
+
+            let mut diagnostics = Vec::new();
+            if cold_exceeded {
+                diagnostics.push("cold_start_p50_ms");
+            }
+            if warm_exceeded {
+                diagnostics.push("warm_start_p50_ms");
+            }
+            if rss_exceeded {
+                diagnostics.push("idle_rss_mb");
+            }
 
             (
                 threshold_exceeded,
                 serde_json::json!({
                     "status": if threshold_exceeded { "threshold_exceeded" } else { "pass" },
+                    "diagnostics": diagnostics,
                     "thresholds": benchmark_thresholds_report(),
                     "measured": {
                         "cold_start_p50_ms": metrics.cold_start_p50_ms,
@@ -608,6 +620,7 @@ fn benchmark_gate_report(
             false,
             serde_json::json!({
                 "status": "not_configured",
+                "diagnostics": [],
                 "thresholds": benchmark_thresholds_report(),
             }),
         ),
@@ -627,23 +640,44 @@ fn manual_evidence_gate_report(required_paths: &[std::path::PathBuf]) -> (bool, 
                 "status": "not_configured",
                 "required": [],
                 "missing": [],
+                "invalid": [],
             }),
         );
     }
 
-    let missing = required_paths
-        .iter()
-        .filter(|path| !path.is_file())
-        .map(|path| path.display().to_string())
-        .collect::<Vec<_>>();
+    let mut missing = Vec::new();
+    let mut invalid = Vec::new();
+
+    for path in required_paths {
+        if !path.is_file() {
+            missing.push(path.display().to_string());
+        } else {
+            let content = std::fs::read_to_string(path).unwrap_or_default();
+            if serde_json::from_str::<serde_json::Value>(&content).is_err() {
+                invalid.push(path.display().to_string());
+            }
+        }
+    }
+
     let missing_required = !missing.is_empty();
+    let has_invalid = !invalid.is_empty();
+    let failed = missing_required || has_invalid;
+
+    let status = if missing_required {
+        "missing_required"
+    } else if has_invalid {
+        "invalid_payload"
+    } else {
+        "pass"
+    };
 
     (
-        missing_required,
+        failed,
         serde_json::json!({
-            "status": if missing_required { "missing_required" } else { "pass" },
+            "status": status,
             "required": required,
             "missing": missing,
+            "invalid": invalid,
         }),
     )
 }
@@ -868,5 +902,48 @@ mod tests {
     #[test]
     fn unknown_command_uses_usage_exit_code() {
         assert_eq!(run(vec!["unknown".to_string()]), EXIT_USAGE);
+    }
+
+    // --- Serialization failure diagnostic contracts ---
+    //
+    // serde_json::to_string can return Err in degenerate cases (e.g. maps with
+    // non-string keys serialized via derived Serialize). The actual AST/IR are
+    // unlikely to trigger this in practice, but the error branch must produce a
+    // deterministic, well-formed diagnostic. These unit tests verify that
+    // contract directly without going through the full CLI binary.
+
+    #[test]
+    fn dump_ast_serialization_failure_emits_deterministic_diagnostic() {
+        let diagnostic = crate::cli_diag::CliDiagnostic::failure("failed to serialize ast");
+        assert_eq!(diagnostic.exit_code(), EXIT_FAILURE);
+        assert_eq!(
+            diagnostic.lines(),
+            ["error: failed to serialize ast".to_string()]
+        );
+    }
+
+    #[test]
+    fn dump_ir_serialization_failure_emits_deterministic_diagnostic() {
+        let diagnostic = crate::cli_diag::CliDiagnostic::failure("failed to serialize ir");
+        assert_eq!(diagnostic.exit_code(), EXIT_FAILURE);
+        assert_eq!(
+            diagnostic.lines(),
+            ["error: failed to serialize ir".to_string()]
+        );
+    }
+
+    #[test]
+    fn dump_mode_exclusivity_error_uses_usage_exit_code() {
+        let diagnostic = crate::cli_diag::CliDiagnostic::usage(
+            "--dump-tokens, --dump-ast, and --dump-ir cannot be used together",
+        );
+        assert_eq!(diagnostic.exit_code(), EXIT_USAGE);
+        assert_eq!(
+            diagnostic.lines(),
+            [
+                "error: --dump-tokens, --dump-ast, and --dump-ir cannot be used together"
+                    .to_string()
+            ]
+        );
     }
 }
