@@ -4,6 +4,7 @@ use std::fmt;
 pub enum ResolverDiagnosticCode {
     UndefinedSymbol,
     PrivateFunction,
+    DuplicateModule,
 }
 
 impl ResolverDiagnosticCode {
@@ -11,6 +12,7 @@ impl ResolverDiagnosticCode {
         match self {
             Self::UndefinedSymbol => "E1001",
             Self::PrivateFunction => "E1002",
+            Self::DuplicateModule => "E1003",
         }
     }
 }
@@ -35,6 +37,13 @@ impl ResolverError {
             message: format!(
                 "private function '{symbol}' cannot be called from {module}.{function}"
             ),
+        }
+    }
+
+    pub fn duplicate_module(module: &str) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::DuplicateModule,
+            message: format!("duplicate module definition '{module}'"),
         }
     }
 
@@ -85,6 +94,18 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1002] private function 'Math.hidden' cannot be called from Demo.run"
+        );
+    }
+
+    #[test]
+    fn duplicate_module_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::duplicate_module("Shared");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::DuplicateModule);
+        assert_eq!(error.message(), "duplicate module definition 'Shared'");
+        assert_eq!(
+            error.to_string(),
+            "[E1003] duplicate module definition 'Shared'"
         );
     }
 }

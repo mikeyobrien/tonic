@@ -1,8 +1,10 @@
 use crate::parser::{Ast, Expr};
 use crate::resolver_diag::ResolverError;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
+    ensure_no_duplicate_modules(ast)?;
+
     let module_graph = ModuleGraph::from_ast(ast);
 
     for module in &ast.modules {
@@ -24,6 +26,18 @@ pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
             }
 
             resolve_expr(&function.body, &context)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_no_duplicate_modules(ast: &Ast) -> Result<(), ResolverError> {
+    let mut seen = HashSet::new();
+
+    for module in &ast.modules {
+        if !seen.insert(module.name.as_str()) {
+            return Err(ResolverError::duplicate_module(&module.name));
         }
     }
 
@@ -294,6 +308,21 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1002] private function 'Math.hidden' cannot be called from Demo.run"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_rejects_duplicate_module_definitions() {
+        let source = "defmodule Shared do\n  def from_root() do\n    1\n  end\nend\n\ndefmodule Shared do\n  def from_dep() do\n    2\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize duplicate module fixture");
+        let ast = parse_ast(&tokens).expect("parser should build duplicate module fixture ast");
+
+        let error = resolve_ast(&ast).expect_err("resolver should reject duplicate modules");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::DuplicateModule);
+        assert_eq!(
+            error.to_string(),
+            "[E1003] duplicate module definition 'Shared'"
         );
     }
 }
