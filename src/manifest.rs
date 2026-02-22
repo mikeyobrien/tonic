@@ -47,7 +47,7 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
     }
 
     // FIX: Load dependency sources into the runtime
-    let dependency_sources = load_dependency_sources(project_root)?;
+    let dependency_sources = load_dependency_sources(project_root, &manifest.dependencies)?;
     project_sources.extend(dependency_sources);
 
     let mut source = project_sources.join("\n\n");
@@ -75,39 +75,59 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
 }
 
 /// Load source files from all dependencies (path and git)
-fn load_dependency_sources(project_root: &Path) -> Result<Vec<String>, String> {
+fn load_dependency_sources(
+    project_root: &Path,
+    manifest_dependencies: &Dependencies,
+) -> Result<Vec<String>, String> {
     let mut dependency_sources = Vec::new();
 
     let lockfile = match Lockfile::load(project_root)? {
         Some(lockfile) => lockfile,
-        None => return Ok(dependency_sources), // No dependencies
+        None if !manifest_dependencies.path.is_empty() || !manifest_dependencies.git.is_empty() => {
+            return Err(
+                "dependencies declared in tonic.toml but tonic.lock is missing; run `tonic deps lock` or `tonic deps sync`"
+                    .to_string(),
+            );
+        }
+        None => return Ok(dependency_sources),
     };
 
     let deps_dir = Lockfile::deps_dir(project_root);
 
     // Load path dependencies
-    for path_dep in lockfile.path_deps.values() {
+    for (name, path_dep) in &lockfile.path_deps {
         let dep_path = Path::new(&path_dep.path);
-        if dep_path.exists() {
-            for source_path in collect_tonic_source_paths(dep_path)? {
-                if should_trace_module_loads() {
-                    trace_module_load("dep:path", &source_path.to_string_lossy());
-                }
-                dependency_sources.push(read_source_file(&source_path)?);
+        if !dep_path.exists() {
+            return Err(format!(
+                "locked path dependency '{}' not found at {}; run `tonic deps lock`",
+                name, path_dep.path
+            ));
+        }
+
+        for source_path in collect_tonic_source_paths(dep_path)? {
+            if should_trace_module_loads() {
+                trace_module_load("dep:path", &source_path.to_string_lossy());
             }
+            dependency_sources.push(read_source_file(&source_path)?);
         }
     }
 
     // Load git dependencies from cache
     for name in lockfile.git_deps.keys() {
         let dep_path = deps_dir.join(name);
-        if dep_path.exists() {
-            for source_path in collect_tonic_source_paths(&dep_path)? {
-                if should_trace_module_loads() {
-                    trace_module_load("dep:git", &source_path.to_string_lossy());
-                }
-                dependency_sources.push(read_source_file(&source_path)?);
+        if !dep_path.exists() {
+            return Err(format!(
+                "cached git dependency '{}' not found at {}; run `tonic deps sync`",
+                name,
+                dep_path.display()
+            ));
+        }
+
+        for source_path in collect_tonic_source_paths(&dep_path)? {
+            if should_trace_module_loads() {
+                trace_module_load("dep:git", &source_path.to_string_lossy());
             }
+            dependency_sources.push(read_source_file(&source_path)?);
         }
     }
 
