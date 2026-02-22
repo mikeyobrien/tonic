@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_executes_alias_and_imported_calls() {
-    let fixture_root = unique_fixture_root("run-module-forms-alias-import");
+    let fixture_root = common::unique_fixture_root("run-module-forms-alias-import");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -32,7 +32,7 @@ fn run_executes_alias_and_imported_calls() {
 
 #[test]
 fn check_rejects_unsupported_module_form_option() {
-    let fixture_root = unique_fixture_root("check-module-forms-invalid-option");
+    let fixture_root = common::unique_fixture_root("check-module-forms-invalid-option");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -60,16 +60,4 @@ fn check_rejects_unsupported_module_form_option() {
         stderr,
         "error: unsupported alias option 'via'; supported syntax: alias Module, as: Name at offset 32\n"
     );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

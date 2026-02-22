@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_requires_lockfile_when_manifest_declares_dependencies() {
-    let fixture_root = unique_fixture_root("run-dependency-lockfile-required");
+    let fixture_root = common::unique_fixture_root("run-dependency-lockfile-required");
     let project_root = fixture_root.join("app");
     let src_dir = project_root.join("src");
     let dep_root = fixture_root.join("shared_dep");
@@ -49,7 +49,7 @@ fn run_requires_lockfile_when_manifest_declares_dependencies() {
 
 #[test]
 fn run_requires_warm_git_dependency_cache_when_lockfile_declares_git_deps() {
-    let fixture_root = unique_fixture_root("run-dependency-git-cache-required");
+    let fixture_root = common::unique_fixture_root("run-dependency-git-cache-required");
     let project_root = fixture_root.join("app");
     let src_dir = project_root.join("src");
 
@@ -95,16 +95,4 @@ fn run_requires_warm_git_dependency_cache_when_lockfile_declares_git_deps() {
             expected_cache_dir.display()
         )
     );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

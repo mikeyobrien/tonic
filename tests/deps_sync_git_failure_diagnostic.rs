@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn deps_sync_reports_deterministic_diagnostic_for_unreachable_git_dependency() {
-    let fixture_root = unique_fixture_root("deps-sync-git-failure-diagnostic");
+    let fixture_root = common::unique_fixture_root("deps-sync-git-failure-diagnostic");
     let project_root = fixture_root.join("app");
     let src_dir = project_root.join("src");
     let missing_repo = fixture_root.join("missing-remote");
@@ -44,16 +44,4 @@ fn deps_sync_reports_deterministic_diagnostic_for_unreachable_git_dependency() {
             missing_repo.display()
         )
     );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

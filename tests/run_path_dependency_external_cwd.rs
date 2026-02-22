@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_resolves_manifest_path_dependencies_relative_to_project_root() {
-    let fixture_root = unique_fixture_root("run-path-dependency-external-cwd");
+    let fixture_root = common::unique_fixture_root("run-path-dependency-external-cwd");
     let project_root = fixture_root.join("app");
     let src_dir = project_root.join("src");
     let dep_root = fixture_root.join("shared_dep");
@@ -58,16 +58,4 @@ fn run_resolves_manifest_path_dependencies_relative_to_project_root() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert_eq!(stdout, "7\n");
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

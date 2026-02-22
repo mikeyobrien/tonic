@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+mod common;
 
 #[test]
 fn deps_lock_rejects_dependency_without_path_or_git_source() {
@@ -52,7 +53,7 @@ fn deps_lock_rejects_path_dependency_with_non_string_path_value() {
 }
 
 fn setup_project(test_name: &str, manifest_source: &str) -> PathBuf {
-    let fixture_root = unique_fixture_root(test_name);
+    let fixture_root = common::unique_fixture_root(test_name);
     let project_root = fixture_root.join("app");
     let src_dir = project_root.join("src");
 
@@ -67,16 +68,4 @@ fn setup_project(test_name: &str, manifest_source: &str) -> PathBuf {
     .expect("fixture setup should write entry source");
 
     project_root
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

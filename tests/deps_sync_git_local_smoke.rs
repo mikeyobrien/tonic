@@ -1,9 +1,10 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+mod common;
 
 #[test]
 fn deps_sync_fetches_local_git_dependency_and_run_uses_it() {
-    let fixture_root = unique_fixture_root("deps-sync-git-local");
+    let fixture_root = common::unique_fixture_root("deps-sync-git-local");
     let remote_repo = fixture_root.join("remote_dep");
     let project_root = fixture_root.join("app");
     let src_dir = project_root.join("src");
@@ -107,16 +108,4 @@ fn run_git<const N: usize>(cwd: &Path, args: [&str; N]) {
         args,
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

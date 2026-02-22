@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+mod common;
 
 #[test]
 fn run_trace_skips_optional_stdlib_modules_when_unreferenced() {
@@ -62,7 +63,7 @@ fn run_trace_lazy_loads_optional_stdlib_module_when_referenced() {
 }
 
 fn create_project_fixture(test_name: &str, entry_source: &str) -> PathBuf {
-    let fixture_root = unique_fixture_root(test_name);
+    let fixture_root = common::unique_fixture_root(test_name);
     let src_dir = fixture_root.join("src");
 
     fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
@@ -84,16 +85,4 @@ fn run_with_module_trace(fixture_root: &Path) -> std::process::Output {
         .args(["run", "."])
         .output()
         .expect("run command should execute")
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

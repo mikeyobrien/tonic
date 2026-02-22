@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_dump_ast_matches_case_pattern_contract() {
-    let fixture_root = unique_fixture_root("check-dump-ast-case-patterns");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-case-patterns");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -52,7 +52,7 @@ fn check_dump_ast_matches_case_pattern_contract() {
 
 #[test]
 fn check_dump_ast_supports_literal_case_pattern_variants() {
-    let fixture_root = unique_fixture_root("check-dump-ast-case-pattern-literals");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-case-pattern-literals");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -96,16 +96,4 @@ fn check_dump_ast_supports_literal_case_pattern_variants() {
     );
 
     assert_eq!(stdout, expected);
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

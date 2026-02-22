@@ -1,22 +1,10 @@
 use serde_json::Value;
 use std::fs;
-use std::path::PathBuf;
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
-}
+mod common;
 
 #[test]
 fn verify_run_mixed_mode_fails_when_manual_evidence_contains_invalid_json() {
-    let fixture_root = unique_fixture_root("verify-manual-evidence-invalid-json");
+    let fixture_root = common::unique_fixture_root("verify-manual-evidence-invalid-json");
     let acceptance_dir = fixture_root.join("acceptance/features");
     let evidence_dir = fixture_root.join("acceptance/evidence");
 
@@ -87,7 +75,7 @@ fn verify_run_mixed_mode_fails_when_manual_evidence_contains_invalid_json() {
 
 #[test]
 fn verify_run_mixed_mode_passes_when_manual_evidence_is_valid_json() {
-    let fixture_root = unique_fixture_root("verify-manual-evidence-valid-json");
+    let fixture_root = common::unique_fixture_root("verify-manual-evidence-valid-json");
     let acceptance_dir = fixture_root.join("acceptance/features");
     let evidence_dir = fixture_root.join("acceptance/evidence");
 

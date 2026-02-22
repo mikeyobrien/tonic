@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_rejects_host_call_with_non_atom_key() {
-    let fixture_root = unique_fixture_root("check-host-call-non-atom-key");
+    let fixture_root = common::unique_fixture_root("check-host-call-non-atom-key");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -32,16 +32,4 @@ fn check_rejects_host_call_with_non_atom_key() {
         stderr,
         "error: [E2001] type mismatch: expected atom, found int at offset 47\n"
     );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

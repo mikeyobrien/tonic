@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_executes_arithmetic_entrypoint_and_prints_result() {
-    let fixture_root = unique_fixture_root("run-arithmetic-smoke");
+    let fixture_root = common::unique_fixture_root("run-arithmetic-smoke");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -32,7 +32,7 @@ fn run_executes_arithmetic_entrypoint_and_prints_result() {
 
 #[test]
 fn run_executes_subtraction() {
-    let fixture_root = unique_fixture_root("run-subtraction");
+    let fixture_root = common::unique_fixture_root("run-subtraction");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -63,7 +63,7 @@ fn run_executes_subtraction() {
 
 #[test]
 fn run_executes_multiplication() {
-    let fixture_root = unique_fixture_root("run-multiplication");
+    let fixture_root = common::unique_fixture_root("run-multiplication");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -94,7 +94,7 @@ fn run_executes_multiplication() {
 
 #[test]
 fn run_executes_division() {
-    let fixture_root = unique_fixture_root("run-division");
+    let fixture_root = common::unique_fixture_root("run-division");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -125,7 +125,7 @@ fn run_executes_division() {
 
 #[test]
 fn run_precedence_mul_before_add_yields_fourteen() {
-    let fixture_root = unique_fixture_root("run-precedence-mul-add");
+    let fixture_root = common::unique_fixture_root("run-precedence-mul-add");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -156,7 +156,7 @@ fn run_precedence_mul_before_add_yields_fourteen() {
 
 #[test]
 fn run_comparison_gt_returns_bool() {
-    let fixture_root = unique_fixture_root("run-comparison-gt");
+    let fixture_root = common::unique_fixture_root("run-comparison-gt");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -187,7 +187,7 @@ fn run_comparison_gt_returns_bool() {
 
 #[test]
 fn run_comparison_eq_returns_false_for_unequal_ints() {
-    let fixture_root = unique_fixture_root("run-comparison-eq-false");
+    let fixture_root = common::unique_fixture_root("run-comparison-eq-false");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -218,7 +218,7 @@ fn run_comparison_eq_returns_false_for_unequal_ints() {
 
 #[test]
 fn run_executes_remaining_comparison_operators() {
-    let fixture_root = unique_fixture_root("run-comparison-remaining");
+    let fixture_root = common::unique_fixture_root("run-comparison-remaining");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -249,7 +249,7 @@ fn run_executes_remaining_comparison_operators() {
 
 #[test]
 fn run_check_rejects_non_int_comparison_right_operand_with_type_mismatch() {
-    let fixture_root = unique_fixture_root("run-check-bool-comparison");
+    let fixture_root = common::unique_fixture_root("run-check-bool-comparison");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -280,7 +280,7 @@ fn run_check_rejects_non_int_comparison_right_operand_with_type_mismatch() {
 
 #[test]
 fn run_division_by_zero_produces_runtime_error() {
-    let fixture_root = unique_fixture_root("run-div-by-zero");
+    let fixture_root = common::unique_fixture_root("run-div-by-zero");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -311,7 +311,7 @@ fn run_division_by_zero_produces_runtime_error() {
 
 #[test]
 fn run_check_rejects_non_int_left_operand_with_type_mismatch() {
-    let fixture_root = unique_fixture_root("run-check-bool-arithmetic");
+    let fixture_root = common::unique_fixture_root("run-check-bool-arithmetic");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -342,7 +342,7 @@ fn run_check_rejects_non_int_left_operand_with_type_mismatch() {
 
 #[test]
 fn run_executes_unary_plus_and_minus() {
-    let fixture_root = unique_fixture_root("run-unary-plus-minus");
+    let fixture_root = common::unique_fixture_root("run-unary-plus-minus");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -373,7 +373,7 @@ fn run_executes_unary_plus_and_minus() {
 
 #[test]
 fn run_check_rejects_unary_minus_on_non_int_operand() {
-    let fixture_root = unique_fixture_root("run-check-unary-minus-bool");
+    let fixture_root = common::unique_fixture_root("run-check-unary-minus-bool");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -402,21 +402,9 @@ fn run_check_rejects_unary_minus_on_non_int_operand() {
     );
 }
 
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
-}
-
 #[test]
 fn run_executes_ergonomic_case_and_patterns() {
-    let fixture_root = unique_fixture_root("run-ergonomics-smoke");
+    let fixture_root = common::unique_fixture_root("run-ergonomics-smoke");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");

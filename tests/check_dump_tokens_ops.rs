@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_dump_tokens_supports_operator_and_atom_golden_stream() {
-    let fixture_root = unique_fixture_root("check-dump-tokens-ops");
+    let fixture_root = common::unique_fixture_root("check-dump-tokens-ops");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -62,16 +62,4 @@ fn check_dump_tokens_supports_operator_and_atom_golden_stream() {
     );
 
     assert_eq!(stdout, expected);
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

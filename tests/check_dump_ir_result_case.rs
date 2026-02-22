@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_dump_ir_matches_result_and_case_lowering_snapshot() {
-    let fixture_root = unique_fixture_root("check-dump-ir-result-case");
+    let fixture_root = common::unique_fixture_root("check-dump-ir-result-case");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -47,7 +47,7 @@ fn check_dump_ir_matches_result_and_case_lowering_snapshot() {
 
 #[test]
 fn check_dump_ir_lowers_list_and_map_case_patterns() {
-    let fixture_root = unique_fixture_root("check-dump-ir-list-map-case");
+    let fixture_root = common::unique_fixture_root("check-dump-ir-list-map-case");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -86,7 +86,7 @@ fn check_dump_ir_lowers_list_and_map_case_patterns() {
 
 #[test]
 fn check_dump_ir_lowers_pin_guard_and_match_operator_forms() {
-    let fixture_root = unique_fixture_root("check-dump-ir-pin-guard-match");
+    let fixture_root = common::unique_fixture_root("check-dump-ir-pin-guard-match");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -121,7 +121,7 @@ fn check_dump_ir_lowers_pin_guard_and_match_operator_forms() {
 
 #[test]
 fn check_dump_ir_lowers_anonymous_function_and_invoke_ops() {
-    let fixture_root = unique_fixture_root("check-dump-ir-anon-fn");
+    let fixture_root = common::unique_fixture_root("check-dump-ir-anon-fn");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -152,16 +152,4 @@ fn check_dump_ir_lowers_anonymous_function_and_invoke_ops() {
     assert_eq!(ops[0]["params"][0], "__capture1");
     assert_eq!(ops[1]["op"], "const_int");
     assert_eq!(ops[2]["op"], "call_value");
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

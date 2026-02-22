@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_dump_ir_matches_primitive_literal_lowering_snapshot() {
-    let fixture_root = unique_fixture_root("check-dump-ir-primitives");
+    let fixture_root = common::unique_fixture_root("check-dump-ir-primitives");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -47,7 +47,7 @@ fn check_dump_ir_matches_primitive_literal_lowering_snapshot() {
 
 #[test]
 fn check_dump_ir_matches_float_literal_lowering_snapshot() {
-    let fixture_root = unique_fixture_root("check-dump-ir-float");
+    let fixture_root = common::unique_fixture_root("check-dump-ir-float");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -87,7 +87,7 @@ fn check_dump_ir_matches_float_literal_lowering_snapshot() {
 
 #[test]
 fn check_dump_ir_matches_collection_literal_lowering_snapshot() {
-    let fixture_root = unique_fixture_root("check-dump-ir-collection-literals");
+    let fixture_root = common::unique_fixture_root("check-dump-ir-collection-literals");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -115,16 +115,4 @@ fn check_dump_ir_matches_collection_literal_lowering_snapshot() {
     assert!(stdout.contains("\"name\":\"list\""));
     assert!(stdout.contains("\"name\":\"map\""));
     assert!(stdout.contains("\"name\":\"keyword\""));
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

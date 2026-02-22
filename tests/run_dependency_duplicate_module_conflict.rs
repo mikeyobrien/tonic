@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_rejects_duplicate_module_names_across_project_and_path_dependency() {
-    let fixture_root = unique_fixture_root("run-duplicate-module-conflict");
+    let fixture_root = common::unique_fixture_root("run-duplicate-module-conflict");
     let src_dir = fixture_root.join("src");
     let dep_root = fixture_root.join("shared_dep");
 
@@ -64,16 +64,4 @@ fn run_rejects_duplicate_module_names_across_project_and_path_dependency() {
         stderr,
         "error: [E1003] duplicate module definition 'Shared'\n"
     );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

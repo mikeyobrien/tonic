@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_resolves_module_qualified_call_across_modules() {
-    let fixture_root = unique_fixture_root("check-resolve-module-reference");
+    let fixture_root = common::unique_fixture_root("check-resolve-module-reference");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -31,16 +31,4 @@ fn check_resolves_module_qualified_call_across_modules() {
 
     assert_eq!(stdout, "");
     assert_eq!(stderr, "");
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

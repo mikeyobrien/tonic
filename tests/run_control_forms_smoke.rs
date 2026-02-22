@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_executes_if_unless_cond_and_with_happy_path() {
-    let fixture_root = unique_fixture_root("run-control-forms-happy");
+    let fixture_root = common::unique_fixture_root("run-control-forms-happy");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -32,7 +32,7 @@ fn run_executes_if_unless_cond_and_with_happy_path() {
 
 #[test]
 fn run_executes_with_else_fallback_on_pattern_mismatch() {
-    let fixture_root = unique_fixture_root("run-control-forms-with-else");
+    let fixture_root = common::unique_fixture_root("run-control-forms-with-else");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -57,16 +57,4 @@ fn run_executes_with_else_fallback_on_pattern_mismatch() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert_eq!(stdout, "49\n");
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

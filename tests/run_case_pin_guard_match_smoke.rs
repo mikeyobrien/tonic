@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_executes_case_with_pin_patterns_and_guards() {
-    let fixture_root = unique_fixture_root("run-case-pin-guard");
+    let fixture_root = common::unique_fixture_root("run-case-pin-guard");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -32,7 +32,7 @@ fn run_executes_case_with_pin_patterns_and_guards() {
 
 #[test]
 fn run_executes_match_operator_with_destructuring_patterns() {
-    let fixture_root = unique_fixture_root("run-match-destructure");
+    let fixture_root = common::unique_fixture_root("run-match-destructure");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -61,7 +61,7 @@ fn run_executes_match_operator_with_destructuring_patterns() {
 
 #[test]
 fn run_reports_deterministic_bad_match_diagnostics() {
-    let fixture_root = unique_fixture_root("run-match-mismatch");
+    let fixture_root = common::unique_fixture_root("run-match-mismatch");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -91,7 +91,7 @@ fn run_reports_deterministic_bad_match_diagnostics() {
 
 #[test]
 fn run_executes_case_with_bool_nil_and_string_patterns() {
-    let fixture_root = unique_fixture_root("run-case-literal-pattern-variants");
+    let fixture_root = common::unique_fixture_root("run-case-literal-pattern-variants");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -116,16 +116,4 @@ fn run_executes_case_with_bool_nil_and_string_patterns() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert_eq!(stdout, "3\n");
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

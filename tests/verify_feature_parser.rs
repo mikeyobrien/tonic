@@ -2,11 +2,11 @@ use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn verify_run_reports_feature_scenario_ids_and_tags() {
-    let fixture_root = unique_fixture_root("feature-parser");
+    let fixture_root = common::unique_fixture_root("feature-parser");
     let acceptance_dir = fixture_root.join("acceptance/features");
 
     fs::create_dir_all(&acceptance_dir)
@@ -38,16 +38,4 @@ fn verify_run_reports_feature_scenario_ids_and_tags() {
                 .and(contains("@agent-manual"))
                 .and(contains("@human-manual")),
         );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

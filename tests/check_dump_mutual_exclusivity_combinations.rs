@@ -1,16 +1,5 @@
 use std::path::PathBuf;
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
-}
+mod common;
 
 fn write_minimal_fixture(fixture_root: &std::path::Path) -> PathBuf {
     std::fs::create_dir_all(fixture_root).expect("fixture setup should create directory");
@@ -35,7 +24,7 @@ const EXCLUSIVITY_MSG: &str = "--dump-tokens, --dump-ast, and --dump-ir cannot b
 
 #[test]
 fn check_rejects_dump_tokens_and_dump_ast_together() {
-    let fixture_root = unique_fixture_root("dump-tokens-ast-exclusivity");
+    let fixture_root = common::unique_fixture_root("dump-tokens-ast-exclusivity");
     let source_path = write_minimal_fixture(&fixture_root);
     let output = check_with_flags(
         source_path.to_str().unwrap(),
@@ -56,7 +45,7 @@ fn check_rejects_dump_tokens_and_dump_ast_together() {
 
 #[test]
 fn check_rejects_dump_tokens_and_dump_ir_together() {
-    let fixture_root = unique_fixture_root("dump-tokens-ir-exclusivity");
+    let fixture_root = common::unique_fixture_root("dump-tokens-ir-exclusivity");
     let source_path = write_minimal_fixture(&fixture_root);
     let output = check_with_flags(
         source_path.to_str().unwrap(),
@@ -77,7 +66,7 @@ fn check_rejects_dump_tokens_and_dump_ir_together() {
 
 #[test]
 fn check_rejects_all_three_dump_flags_together() {
-    let fixture_root = unique_fixture_root("dump-all-three-exclusivity");
+    let fixture_root = common::unique_fixture_root("dump-all-three-exclusivity");
     let source_path = write_minimal_fixture(&fixture_root);
     let output = check_with_flags(
         source_path.to_str().unwrap(),
@@ -98,7 +87,7 @@ fn check_rejects_all_three_dump_flags_together() {
 
 #[test]
 fn check_dump_tokens_alone_succeeds() {
-    let fixture_root = unique_fixture_root("dump-tokens-solo");
+    let fixture_root = common::unique_fixture_root("dump-tokens-solo");
     let source_path = write_minimal_fixture(&fixture_root);
     let output = check_with_flags(source_path.to_str().unwrap(), &["--dump-tokens"]);
 
@@ -111,7 +100,7 @@ fn check_dump_tokens_alone_succeeds() {
 
 #[test]
 fn check_dump_ast_alone_succeeds() {
-    let fixture_root = unique_fixture_root("dump-ast-solo");
+    let fixture_root = common::unique_fixture_root("dump-ast-solo");
     let source_path = write_minimal_fixture(&fixture_root);
     let output = check_with_flags(source_path.to_str().unwrap(), &["--dump-ast"]);
 
@@ -128,7 +117,7 @@ fn check_dump_ast_alone_succeeds() {
 
 #[test]
 fn check_dump_ir_alone_succeeds() {
-    let fixture_root = unique_fixture_root("dump-ir-solo");
+    let fixture_root = common::unique_fixture_root("dump-ir-solo");
     let source_path = write_minimal_fixture(&fixture_root);
     let output = check_with_flags(source_path.to_str().unwrap(), &["--dump-ir"]);
 

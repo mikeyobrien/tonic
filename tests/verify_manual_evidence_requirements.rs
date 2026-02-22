@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
+mod common;
 
 #[test]
 fn verify_run_mixed_mode_fails_when_required_manual_evidence_json_is_missing() {
@@ -36,7 +37,7 @@ fn verify_run_mixed_mode_fails_when_required_manual_evidence_json_is_missing() {
 }
 
 fn write_verify_fixture(test_name: &str) -> PathBuf {
-    let fixture_root = unique_fixture_root(test_name);
+    let fixture_root = common::unique_fixture_root(test_name);
     let acceptance_dir = fixture_root.join("acceptance/features");
 
     fs::create_dir_all(&acceptance_dir)
@@ -55,16 +56,4 @@ fn write_verify_fixture(test_name: &str) -> PathBuf {
     .expect("fixture setup should write feature file");
 
     fixture_root
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_dispatches_function_clauses_by_pattern_order() {
-    let fixture_root = unique_fixture_root("run-function-clauses-pattern");
+    let fixture_root = common::unique_fixture_root("run-function-clauses-pattern");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -32,7 +32,7 @@ fn run_dispatches_function_clauses_by_pattern_order() {
 
 #[test]
 fn run_supports_function_default_arguments() {
-    let fixture_root = unique_fixture_root("run-function-defaults");
+    let fixture_root = common::unique_fixture_root("run-function-defaults");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -61,7 +61,7 @@ fn run_supports_function_default_arguments() {
 
 #[test]
 fn check_rejects_cross_module_calls_to_private_functions() {
-    let fixture_root = unique_fixture_root("check-defp-visibility");
+    let fixture_root = common::unique_fixture_root("check-defp-visibility");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -84,16 +84,4 @@ fn check_rejects_cross_module_calls_to_private_functions() {
         stderr,
         "error: [E1002] private function 'Math.hidden' cannot be called from Demo.run\n"
     );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

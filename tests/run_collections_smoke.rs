@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn run_executes_tuple_map_keyword_constructors_and_prints_rendered_value() {
-    let fixture_root = unique_fixture_root("run-collections-smoke");
+    let fixture_root = common::unique_fixture_root("run-collections-smoke");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -32,7 +32,7 @@ fn run_executes_tuple_map_keyword_constructors_and_prints_rendered_value() {
 
 #[test]
 fn run_executes_collection_literals_and_matches_constructor_rendering() {
-    let fixture_root = unique_fixture_root("run-collection-literals");
+    let fixture_root = common::unique_fixture_root("run-collection-literals");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -57,16 +57,4 @@ fn run_executes_collection_literals_and_matches_constructor_rendering() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert_eq!(stdout, "{{1, 2}, {[3, 4], {%{:ok => 5}, [done: 6]}}}\n");
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

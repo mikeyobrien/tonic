@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_accepts_project_root_path_and_emits_ok_contract() {
@@ -74,7 +75,7 @@ fn fmt_accepts_project_root_path_and_emits_ok_contract() {
 }
 
 fn write_project_fixture(test_name: &str) -> PathBuf {
-    let fixture_root = unique_fixture_root(test_name);
+    let fixture_root = common::unique_fixture_root(test_name);
     let src_dir = fixture_root.join("src");
 
     fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
@@ -90,16 +91,4 @@ fn write_project_fixture(test_name: &str) -> PathBuf {
     .expect("fixture setup should write entry source file");
 
     fixture_root
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

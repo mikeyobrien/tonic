@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn fmt_rewrites_source_and_is_idempotent() {
-    let fixture_root = unique_fixture_root("fmt-rewrite-idempotent");
+    let fixture_root = common::unique_fixture_root("fmt-rewrite-idempotent");
     let examples_dir = fixture_root.join("examples");
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
 
@@ -56,7 +56,7 @@ fn fmt_rewrites_source_and_is_idempotent() {
 
 #[test]
 fn fmt_check_fails_when_source_needs_formatting() {
-    let fixture_root = unique_fixture_root("fmt-check-fail");
+    let fixture_root = common::unique_fixture_root("fmt-check-fail");
     let examples_dir = fixture_root.join("examples");
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
 
@@ -89,7 +89,7 @@ fn fmt_check_fails_when_source_needs_formatting() {
 
 #[test]
 fn fmt_check_succeeds_when_source_is_already_formatted() {
-    let fixture_root = unique_fixture_root("fmt-check-ok");
+    let fixture_root = common::unique_fixture_root("fmt-check-ok");
     let examples_dir = fixture_root.join("examples");
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
 
@@ -117,16 +117,4 @@ fn fmt_check_succeeds_when_source_is_already_formatted() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert_eq!(stderr, "");
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

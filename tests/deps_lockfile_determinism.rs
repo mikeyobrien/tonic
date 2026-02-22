@@ -1,25 +1,11 @@
 use assert_cmd::assert::OutputAssertExt;
 use predicates::str::contains;
 use std::fs;
-use std::path::PathBuf;
-
-fn unique_temp_dir(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    let path = std::env::temp_dir().join(format!(
-        "tonic-deps-lock-test-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ));
-    fs::create_dir_all(&path).expect("temp dir should be created");
-    path
-}
+mod common;
 
 #[test]
 fn deps_lock_generates_deterministic_lockfile_content() {
-    let temp_dir = unique_temp_dir("deterministic-content");
+    let temp_dir = common::unique_temp_dir("deterministic-content");
 
     fs::create_dir_all(temp_dir.join("deps/path_a")).expect("fixture should create path_a");
     fs::create_dir_all(temp_dir.join("deps/path_z")).expect("fixture should create path_z");

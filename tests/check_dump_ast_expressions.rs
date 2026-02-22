@@ -1,9 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn check_dump_ast_matches_expression_contract_for_calls_and_precedence() {
-    let fixture_root = unique_fixture_root("check-dump-ast-expressions");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-expressions");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -51,7 +51,7 @@ fn check_dump_ast_matches_expression_contract_for_calls_and_precedence() {
 
 #[test]
 fn check_dump_ast_matches_primitive_literal_contract() {
-    let fixture_root = unique_fixture_root("check-dump-ast-primitives");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-primitives");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -100,7 +100,7 @@ fn check_dump_ast_matches_primitive_literal_contract() {
 
 #[test]
 fn check_dump_ast_matches_float_literal_contract() {
-    let fixture_root = unique_fixture_root("check-dump-ast-float");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-float");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -139,7 +139,7 @@ fn check_dump_ast_matches_float_literal_contract() {
 
 #[test]
 fn check_dump_ast_matches_heredoc_literal_contract() {
-    let fixture_root = unique_fixture_root("check-dump-ast-heredoc");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-heredoc");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -176,7 +176,7 @@ fn check_dump_ast_matches_heredoc_literal_contract() {
 
 #[test]
 fn check_dump_ast_mul_binds_tighter_than_add() {
-    let fixture_root = unique_fixture_root("check-dump-ast-mul-precedence");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-mul-precedence");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -217,7 +217,7 @@ fn check_dump_ast_mul_binds_tighter_than_add() {
 
 #[test]
 fn check_dump_ast_comparison_has_lower_precedence_than_arithmetic() {
-    let fixture_root = unique_fixture_root("check-dump-ast-cmp-precedence");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-cmp-precedence");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -258,7 +258,7 @@ fn check_dump_ast_comparison_has_lower_precedence_than_arithmetic() {
 
 #[test]
 fn check_dump_ast_logical_and_collection_precedence() {
-    let fixture_root = unique_fixture_root("check-dump-ast-logical-collection");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-logical-collection");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -304,7 +304,7 @@ fn check_dump_ast_logical_and_collection_precedence() {
 
 #[test]
 fn check_dump_ast_concat_plus_plus_minus_minus_and_range_are_right_associative() {
-    let fixture_root = unique_fixture_root("check-dump-ast-right-assoc");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-right-assoc");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -358,7 +358,7 @@ fn check_dump_ast_concat_plus_plus_minus_minus_and_range_are_right_associative()
 
 #[test]
 fn check_dump_ast_matches_collection_literal_contract() {
-    let fixture_root = unique_fixture_root("check-dump-ast-collection-literals");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-collection-literals");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -413,7 +413,7 @@ fn check_dump_ast_matches_collection_literal_contract() {
 
 #[test]
 fn check_dump_ast_supports_unary_plus_and_minus() {
-    let fixture_root = unique_fixture_root("check-dump-ast-unary-plus-minus");
+    let fixture_root = common::unique_fixture_root("check-dump-ast-unary-plus-minus");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
@@ -450,16 +450,4 @@ fn check_dump_ast_supports_unary_plus_and_minus() {
     );
 
     assert_eq!(stdout, expected);
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

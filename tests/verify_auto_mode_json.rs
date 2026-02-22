@@ -2,11 +2,11 @@ use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::{contains, starts_with};
 use std::fs;
-use std::path::PathBuf;
+mod common;
 
 #[test]
 fn verify_run_auto_mode_emits_pass_fail_json() {
-    let fixture_root = unique_fixture_root("verify-auto-json");
+    let fixture_root = common::unique_fixture_root("verify-auto-json");
     let acceptance_dir = fixture_root.join("acceptance/features");
 
     fs::create_dir_all(&acceptance_dir)
@@ -38,16 +38,4 @@ fn verify_run_auto_mode_emits_pass_fail_json() {
                 .and(contains("\"status\":\"pass\""))
                 .and(contains("\"acceptance_file\":\"acceptance/step-01.yaml\"")),
         );
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }

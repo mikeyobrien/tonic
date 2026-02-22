@@ -1,21 +1,7 @@
 use assert_cmd::assert::OutputAssertExt;
 use predicates::str::contains;
 use std::fs;
-use std::path::PathBuf;
-
-fn unique_temp_dir(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    let path = std::env::temp_dir().join(format!(
-        "tonic-compile-test-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ));
-    fs::create_dir_all(&path).expect("temp dir should be created");
-    path
-}
+mod common;
 
 #[test]
 fn compile_help_lists_usage() {
@@ -30,7 +16,7 @@ fn compile_help_lists_usage() {
 
 #[test]
 fn compile_single_file_success() {
-    let temp_dir = unique_temp_dir("single-file");
+    let temp_dir = common::unique_temp_dir("single-file");
     let source_path = temp_dir.join("single.tn");
     fs::write(
         &source_path,
@@ -57,7 +43,7 @@ fn compile_single_file_success() {
 
 #[test]
 fn compile_project_root_success() {
-    let temp_dir = unique_temp_dir("project-root");
+    let temp_dir = common::unique_temp_dir("project-root");
     let src_dir = temp_dir.join("src");
     fs::create_dir_all(&src_dir).unwrap();
 
@@ -91,7 +77,7 @@ fn compile_project_root_success() {
 
 #[test]
 fn compile_custom_out_path() {
-    let temp_dir = unique_temp_dir("custom-out");
+    let temp_dir = common::unique_temp_dir("custom-out");
     let source_path = temp_dir.join("custom.tn");
     fs::write(
         &source_path,
@@ -121,7 +107,7 @@ fn compile_custom_out_path() {
 
 #[test]
 fn compile_artifact_content_is_deterministic() {
-    let temp_dir = unique_temp_dir("deterministic");
+    let temp_dir = common::unique_temp_dir("deterministic");
     let source_path = temp_dir.join("deterministic.tn");
     fs::write(
         &source_path,
@@ -164,7 +150,7 @@ fn compile_artifact_content_is_deterministic() {
 
 #[test]
 fn compile_failure_invalid_source() {
-    let temp_dir = unique_temp_dir("invalid-source");
+    let temp_dir = common::unique_temp_dir("invalid-source");
     let source_path = temp_dir.join("invalid.tn");
     fs::write(
         &source_path,

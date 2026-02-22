@@ -1,9 +1,10 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+mod common;
 
 #[test]
 fn run_cache_misses_when_lockfile_dependency_graph_changes() {
-    let fixture_root = unique_fixture_root("run-dependency-cache-invalidation");
+    let fixture_root = common::unique_fixture_root("run-dependency-cache-invalidation");
     let src_dir = fixture_root.join("src");
     let dep_v1 = fixture_root.join("deps/shared_dep_v1");
     let dep_v2 = fixture_root.join("deps/shared_dep_v2");
@@ -116,16 +117,4 @@ fn run_with_cache_trace(fixture_root: &Path) -> std::process::Output {
         .args(["run", "."])
         .output()
         .expect("run command should execute")
-}
-
-fn unique_fixture_root(test_name: &str) -> PathBuf {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-
-    std::env::temp_dir().join(format!(
-        "tonic-{test_name}-{timestamp}-{}",
-        std::process::id()
-    ))
 }
