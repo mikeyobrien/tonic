@@ -133,13 +133,7 @@ impl DependencyResolver {
     fn fetch_git_dep(url: &str, rev: &str, target_path: &Path) -> Result<(), String> {
         // Use git to fetch the specific revision
         let output = std::process::Command::new("git")
-            .args([
-                "clone",
-                "--bare",
-                "--no-checkout",
-                url,
-                target_path.to_str().unwrap(),
-            ])
+            .args(["clone", "--no-checkout", url, target_path.to_str().unwrap()])
             .output()
             .map_err(|e| format!("failed to run git: {}", e))?;
 
@@ -153,7 +147,7 @@ impl DependencyResolver {
         // Checkout specific revision
         let output = std::process::Command::new("git")
             .current_dir(target_path)
-            .args(["checkout", rev])
+            .args(["checkout", "--detach", rev])
             .output()
             .map_err(|e| format!("failed to checkout rev {}: {}", rev, e))?;
 
