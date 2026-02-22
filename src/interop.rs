@@ -32,6 +32,23 @@ impl std::fmt::Display for HostError {
 
 impl std::error::Error for HostError {}
 
+fn host_value_kind(value: &RuntimeValue) -> &'static str {
+    match value {
+        RuntimeValue::Int(_) => "int",
+        RuntimeValue::Bool(_) => "bool",
+        RuntimeValue::Nil => "nil",
+        RuntimeValue::String(_) => "string",
+        RuntimeValue::Atom(_) => "atom",
+        RuntimeValue::ResultOk(_) | RuntimeValue::ResultErr(_) => "result",
+        RuntimeValue::Tuple(_, _) => "tuple",
+        RuntimeValue::Map(_, _) => "map",
+        RuntimeValue::Keyword(_, _) => "keyword",
+        RuntimeValue::List(_) => "list",
+        RuntimeValue::Range(_, _) => "range",
+        RuntimeValue::Closure(_) => "function",
+    }
+}
+
 /// Static registry for host functions
 pub struct HostRegistry {
     functions: Mutex<HashMap<String, HostFn>>,
@@ -69,22 +86,38 @@ impl HostRegistry {
 
     /// Register sample host functions for testing
     fn register_sample_functions(&self) {
-        // :identity - returns its first argument unchanged
+        // :identity - returns its single argument unchanged
         self.register("identity", |args| {
-            args.first()
-                .cloned()
-                .ok_or_else(|| HostError::new("identity requires at least 1 argument"))
+            if args.len() != 1 {
+                return Err(HostError::new(format!(
+                    "identity expects exactly 1 argument, found {}",
+                    args.len()
+                )));
+            }
+
+            Ok(args[0].clone())
         });
 
-        // :sum_ints - sums all integer arguments
+        // :sum_ints - sums integer arguments with strict validation
         self.register("sum_ints", |args| {
-            let sum: i64 = args
-                .iter()
-                .filter_map(|v| match v {
-                    RuntimeValue::Int(i) => Some(i),
-                    _ => None,
-                })
-                .sum();
+            if args.is_empty() {
+                return Err(HostError::new("sum_ints expects at least 1 argument"));
+            }
+
+            let mut sum = 0i64;
+            for (index, value) in args.iter().enumerate() {
+                match value {
+                    RuntimeValue::Int(number) => sum += number,
+                    other => {
+                        return Err(HostError::new(format!(
+                            "sum_ints expects int arguments only; argument {} was {}",
+                            index + 1,
+                            host_value_kind(other)
+                        )));
+                    }
+                }
+            }
+
             Ok(RuntimeValue::Int(sum))
         });
 
@@ -159,6 +192,47 @@ mod tests {
             ],
         );
         assert_eq!(result, Ok(RuntimeValue::Int(6)));
+    }
+
+    #[test]
+    fn host_registry_sample_identity_rejects_wrong_arity() {
+        let zero_args = HOST_REGISTRY
+            .call("identity", &[])
+            .expect_err("identity should reject calls that do not provide exactly one argument");
+        assert_eq!(
+            zero_args.to_string(),
+            "host error: identity expects exactly 1 argument, found 0"
+        );
+
+        let two_args = HOST_REGISTRY
+            .call("identity", &[RuntimeValue::Int(1), RuntimeValue::Int(2)])
+            .expect_err("identity should reject calls with more than one argument");
+        assert_eq!(
+            two_args.to_string(),
+            "host error: identity expects exactly 1 argument, found 2"
+        );
+    }
+
+    #[test]
+    fn host_registry_sample_sum_ints_rejects_invalid_arguments() {
+        let zero_args = HOST_REGISTRY
+            .call("sum_ints", &[])
+            .expect_err("sum_ints should reject empty argument lists");
+        assert_eq!(
+            zero_args.to_string(),
+            "host error: sum_ints expects at least 1 argument"
+        );
+
+        let mixed = HOST_REGISTRY
+            .call(
+                "sum_ints",
+                &[RuntimeValue::Int(1), RuntimeValue::Atom("oops".to_string())],
+            )
+            .expect_err("sum_ints should reject non-int arguments");
+        assert_eq!(
+            mixed.to_string(),
+            "host error: sum_ints expects int arguments only; argument 2 was atom"
+        );
     }
 
     #[test]
