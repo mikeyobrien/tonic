@@ -196,7 +196,7 @@ impl Serialize for Parameter {
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Expr {
     Int {
@@ -343,7 +343,7 @@ pub enum Expr {
 
 pub type CaseBranch = Branch<Pattern>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Branch<Head>
 where
     Head: BranchHead,
@@ -398,7 +398,7 @@ pub trait BranchHead: Serialize {
     const FIELD_NAME: &'static str;
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Pattern {
     Atom { value: String },
@@ -415,7 +415,7 @@ impl BranchHead for Pattern {
     const FIELD_NAME: &'static str = "pattern";
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct MapPatternEntry {
     key: Pattern,
     value: Pattern,
@@ -431,7 +431,7 @@ impl MapPatternEntry {
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LabelExprEntry {
     pub(crate) key: String,
     pub(crate) value: Expr,
@@ -925,6 +925,22 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_atomic_expression(&mut self) -> Result<Expr, ParserError> {
+        if self.check(TokenKind::If) {
+            return self.parse_if_expression();
+        }
+
+        if self.check(TokenKind::Unless) {
+            return self.parse_unless_expression();
+        }
+
+        if self.check(TokenKind::Cond) {
+            return self.parse_cond_expression();
+        }
+
+        if self.check(TokenKind::With) {
+            return self.parse_with_expression();
+        }
+
         if self.check(TokenKind::Case) {
             return self.parse_case_expression();
         }
@@ -1161,6 +1177,179 @@ impl<'a> Parser<'a> {
             params,
             body,
         ))
+    }
+
+    fn parse_if_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::If, "if")?.span().start();
+        let condition = self.parse_expression()?;
+        self.expect(TokenKind::Do, "do")?;
+
+        let then_body = self.parse_expression()?;
+        let else_body = if self.match_kind(TokenKind::Else) {
+            self.parse_expression()?
+        } else {
+            Expr::nil(self.node_ids.next_expr(), offset)
+        };
+
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(self.lower_guarded_control_case(offset, condition, then_body, else_body))
+    }
+
+    fn parse_unless_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self
+            .expect_token(TokenKind::Unless, "unless")?
+            .span()
+            .start();
+        let condition = self.parse_expression()?;
+        self.expect(TokenKind::Do, "do")?;
+
+        let then_body = self.parse_expression()?;
+        let else_body = if self.match_kind(TokenKind::Else) {
+            self.parse_expression()?
+        } else {
+            Expr::nil(self.node_ids.next_expr(), offset)
+        };
+
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(self.lower_guarded_control_case(offset, condition, else_body, then_body))
+    }
+
+    fn parse_cond_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Cond, "cond")?.span().start();
+        self.expect(TokenKind::Do, "do")?;
+
+        let mut branches = Vec::new();
+        while !self.check(TokenKind::End) {
+            if self.is_at_end() {
+                return Err(self.expected("cond branch"));
+            }
+
+            let condition = self.parse_expression()?;
+            self.expect(TokenKind::Arrow, "->")?;
+            let body = self.parse_expression()?;
+            let guard = self.lower_truthy_guard(condition);
+            branches.push(CaseBranch::new(Pattern::Wildcard, Some(guard), body));
+        }
+
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(Expr::case(
+            self.node_ids.next_expr(),
+            offset,
+            Expr::nil(self.node_ids.next_expr(), offset),
+            branches,
+        ))
+    }
+
+    fn parse_with_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::With, "with")?.span().start();
+        let mut clauses = Vec::new();
+
+        loop {
+            let pattern = self.parse_pattern()?;
+            self.expect(TokenKind::LeftArrow, "<-")?;
+            let value = self.parse_expression()?;
+            clauses.push((pattern, value));
+
+            if self.match_kind(TokenKind::Comma) {
+                continue;
+            }
+
+            break;
+        }
+
+        self.expect(TokenKind::Do, "do")?;
+        let body = self.parse_expression()?;
+
+        let else_branches = if self.match_kind(TokenKind::Else) {
+            let mut branches = Vec::new();
+
+            while !self.check(TokenKind::End) {
+                if self.is_at_end() {
+                    return Err(self.expected("with else branch"));
+                }
+
+                branches.push(self.parse_case_branch()?);
+            }
+
+            branches
+        } else {
+            Vec::new()
+        };
+
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(self.lower_with_expression(offset, clauses, body, else_branches))
+    }
+
+    fn lower_with_expression(
+        &mut self,
+        offset: usize,
+        clauses: Vec<(Pattern, Expr)>,
+        body: Expr,
+        else_branches: Vec<CaseBranch>,
+    ) -> Expr {
+        let mut lowered = body;
+
+        for (pattern, value) in clauses.into_iter().rev() {
+            let failure_binding = "__tonic_with_failure".to_string();
+            let failure_handler = if else_branches.is_empty() {
+                Expr::variable(self.node_ids.next_expr(), offset, failure_binding.clone())
+            } else {
+                Expr::case(
+                    self.node_ids.next_expr(),
+                    offset,
+                    Expr::variable(self.node_ids.next_expr(), offset, failure_binding.clone()),
+                    else_branches.clone(),
+                )
+            };
+
+            lowered = Expr::case(
+                self.node_ids.next_expr(),
+                value.offset(),
+                value,
+                vec![
+                    CaseBranch::new(pattern, None, lowered),
+                    CaseBranch::new(
+                        Pattern::Bind {
+                            name: failure_binding,
+                        },
+                        None,
+                        failure_handler,
+                    ),
+                ],
+            );
+        }
+
+        lowered
+    }
+
+    fn lower_guarded_control_case(
+        &mut self,
+        offset: usize,
+        condition: Expr,
+        truthy_body: Expr,
+        fallback_body: Expr,
+    ) -> Expr {
+        let guard = self.lower_truthy_guard(condition);
+
+        Expr::case(
+            self.node_ids.next_expr(),
+            offset,
+            Expr::nil(self.node_ids.next_expr(), offset),
+            vec![
+                CaseBranch::new(Pattern::Wildcard, Some(guard), truthy_body),
+                CaseBranch::new(Pattern::Wildcard, None, fallback_body),
+            ],
+        )
+    }
+
+    fn lower_truthy_guard(&mut self, condition: Expr) -> Expr {
+        let offset = condition.offset();
+        let first_bang = Expr::unary(self.node_ids.next_expr(), offset, UnaryOp::Bang, condition);
+        Expr::unary(self.node_ids.next_expr(), offset, UnaryOp::Bang, first_bang)
     }
 
     fn parse_tuple_literal_expression(&mut self) -> Result<Expr, ParserError> {
@@ -1812,6 +2001,22 @@ mod tests {
                 "args":[{"kind":"int","value":2}]
             })
         );
+    }
+
+    #[test]
+    fn parse_ast_supports_if_unless_cond_and_with_forms() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def pick(flag) do\n    if flag do\n      1\n    else\n      0\n    end\n  end\n\n  def reject(flag) do\n    unless flag do\n      2\n    else\n      3\n    end\n  end\n\n  def route(value) do\n    cond do\n      value > 2 -> 4\n      true -> 5\n    end\n  end\n\n  def chain() do\n    with [left, right] <- list(1, 2),\n         total <- left + right do\n      total\n    else\n      _ -> 0\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+        let functions = &ast.modules[0].functions;
+
+        assert!(matches!(functions[0].body, Expr::Case { .. }));
+        assert!(matches!(functions[1].body, Expr::Case { .. }));
+        assert!(matches!(functions[2].body, Expr::Case { .. }));
+        assert!(matches!(functions[3].body, Expr::Case { .. }));
     }
 
     #[test]

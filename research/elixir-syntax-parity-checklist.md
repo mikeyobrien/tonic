@@ -94,10 +94,10 @@ Legend:
 ## 6) Core Control Flow Forms
 
 - [~] `case` (basic available)
-- [ ] `if`
-- [ ] `unless`
-- [ ] `cond`
-- [ ] `with`
+- [x] `if`
+- [x] `unless`
+- [x] `cond`
+- [~] `with` (supports `<-` chaining with pattern mismatch fallback via optional `else` clauses)
 - [ ] comprehensions (`for`)
 - [ ] `try/rescue/catch/after`
 - [ ] `raise`/exception forms

@@ -376,7 +376,7 @@ fn infer_expression_type(
 
             if !branches
                 .iter()
-                .any(|branch| matches!(branch.head(), Pattern::Wildcard))
+                .any(|branch| matches!(branch.head(), Pattern::Wildcard | Pattern::Bind { .. }))
             {
                 return Err(TypingError::non_exhaustive_case(Some(*offset)));
             }

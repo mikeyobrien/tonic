@@ -31,9 +31,12 @@ pub enum TokenKind {
     Do,
     End,
     If,
+    Unless,
     Case,
     Cond,
+    With,
     Fn,
+    Else,
     True,
     False,
     Nil,
@@ -76,6 +79,7 @@ pub enum TokenKind {
     Question,
     PipeGt,
     Arrow,
+    LeftArrow,
     BackslashBackslash,
     Ampersand,
     AndAnd,
@@ -120,9 +124,12 @@ impl Token {
             TokenKind::Do => format!("DO({})", self.lexeme),
             TokenKind::End => format!("END({})", self.lexeme),
             TokenKind::If => format!("IF({})", self.lexeme),
+            TokenKind::Unless => format!("UNLESS({})", self.lexeme),
             TokenKind::Case => format!("CASE({})", self.lexeme),
             TokenKind::Cond => format!("COND({})", self.lexeme),
+            TokenKind::With => format!("WITH({})", self.lexeme),
             TokenKind::Fn => format!("FN({})", self.lexeme),
+            TokenKind::Else => format!("ELSE({})", self.lexeme),
             TokenKind::True => format!("TRUE({})", self.lexeme),
             TokenKind::False => format!("FALSE({})", self.lexeme),
             TokenKind::Nil => format!("NIL({})", self.lexeme),
@@ -165,6 +172,7 @@ impl Token {
             TokenKind::Question => "QUESTION".to_string(),
             TokenKind::PipeGt => "PIPE_GT".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
+            TokenKind::LeftArrow => "LEFT_ARROW".to_string(),
             TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH".to_string(),
             TokenKind::Ampersand => "AMPERSAND".to_string(),
             TokenKind::AndAnd => "AND_AND".to_string(),
@@ -365,6 +373,9 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 if chars.get(idx + 1) == Some(&'=') {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::LtEq, Span::new(start, idx)));
+                } else if chars.get(idx + 1) == Some(&'-') {
+                    idx += 2;
+                    tokens.push(Token::simple(TokenKind::LeftArrow, Span::new(start, idx)));
                 } else if chars.get(idx + 1) == Some(&'>') {
                     idx += 2;
                     tokens.push(Token::simple(TokenKind::LessGreater, Span::new(start, idx)));
@@ -516,9 +527,12 @@ fn keyword_kind(lexeme: &str) -> Option<TokenKind> {
         "do" => Some(TokenKind::Do),
         "end" => Some(TokenKind::End),
         "if" => Some(TokenKind::If),
+        "unless" => Some(TokenKind::Unless),
         "case" => Some(TokenKind::Case),
         "cond" => Some(TokenKind::Cond),
+        "with" => Some(TokenKind::With),
         "fn" => Some(TokenKind::Fn),
+        "else" => Some(TokenKind::Else),
         "true" => Some(TokenKind::True),
         "false" => Some(TokenKind::False),
         "nil" => Some(TokenKind::Nil),
@@ -706,6 +720,43 @@ mod tests {
                 "IDENT(value)",
                 "MATCH_EQ",
                 "IDENT(tail)",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_control_form_keywords_and_with_operator() {
+        let labels = dump_labels("if value do 1 else 0 end unless value do 1 end cond do true -> 1 end with x <- 1 do x end");
+
+        assert_eq!(
+            labels,
+            [
+                "IF(if)",
+                "IDENT(value)",
+                "DO(do)",
+                "INT(1)",
+                "ELSE(else)",
+                "INT(0)",
+                "END(end)",
+                "UNLESS(unless)",
+                "IDENT(value)",
+                "DO(do)",
+                "INT(1)",
+                "END(end)",
+                "COND(cond)",
+                "DO(do)",
+                "TRUE(true)",
+                "ARROW",
+                "INT(1)",
+                "END(end)",
+                "WITH(with)",
+                "IDENT(x)",
+                "LEFT_ARROW",
+                "INT(1)",
+                "DO(do)",
+                "IDENT(x)",
+                "END(end)",
                 "EOF",
             ]
         );
