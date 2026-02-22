@@ -222,10 +222,10 @@ pub(crate) fn load_project_manifest(project_root: &Path) -> Result<ProjectManife
     let source = std::fs::read_to_string(&manifest_path)
         .map_err(|error| format!("failed to read tonic.toml: {error}"))?;
 
-    parse_manifest(&source)
+    parse_manifest(&source, project_root)
 }
 
-fn parse_manifest(source: &str) -> Result<ProjectManifest, String> {
+fn parse_manifest(source: &str, project_root: &Path) -> Result<ProjectManifest, String> {
     // Parse into Value to handle inline tables correctly
     let value: toml::Value =
         toml::from_str(source).map_err(|error| format!("invalid tonic.toml: {}", error))?;
@@ -240,7 +240,7 @@ fn parse_manifest(source: &str) -> Result<ProjectManifest, String> {
 
     let dependencies = value
         .get("dependencies")
-        .map(parse_dependencies_from_value)
+        .map(|deps| parse_dependencies_from_value(deps, project_root))
         .unwrap_or_else(|| Ok(Dependencies::default()))?;
 
     Ok(ProjectManifest {
@@ -249,7 +249,10 @@ fn parse_manifest(source: &str) -> Result<ProjectManifest, String> {
     })
 }
 
-fn parse_dependencies_from_value(deps_value: &toml::Value) -> Result<Dependencies, String> {
+fn parse_dependencies_from_value(
+    deps_value: &toml::Value,
+    project_root: &Path,
+) -> Result<Dependencies, String> {
     let mut deps = Dependencies::default();
 
     let deps_table = match deps_value {
@@ -267,7 +270,13 @@ fn parse_dependencies_from_value(deps_value: &toml::Value) -> Result<Dependencie
         // Check if it's a path dependency
         if let Some(path_val) = table.get("path") {
             if let Some(path_str) = path_val.as_str() {
-                let resolved = PathBuf::from(path_str);
+                let path = Path::new(path_str);
+                let resolved = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    project_root.join(path)
+                };
+
                 if !resolved.exists() {
                     return Err(format!(
                         "invalid tonic.toml: path dependency '{}' points to non-existent path: {}",
@@ -372,12 +381,12 @@ mod tests {
     use super::{load_run_source, parse_manifest, Dependencies, ProjectManifest};
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn parse_manifest_requires_project_entry() {
         assert_eq!(
-            parse_manifest("[project]\nname = \"demo\"\n"),
+            parse_manifest("[project]\nname = \"demo\"\n", Path::new(".")),
             Err("invalid tonic.toml: missing required key project.entry".to_string())
         );
     }
@@ -385,12 +394,46 @@ mod tests {
     #[test]
     fn parse_manifest_reads_project_entry() {
         assert_eq!(
-            parse_manifest("[project]\nname = \"demo\"\nentry = \"main.tn\"\n"),
+            parse_manifest(
+                "[project]\nname = \"demo\"\nentry = \"main.tn\"\n",
+                Path::new("."),
+            ),
             Ok(ProjectManifest {
                 entry: PathBuf::from("main.tn"),
                 dependencies: Dependencies::default(),
             })
         );
+    }
+
+    #[test]
+    fn parse_manifest_resolves_relative_path_dependencies_from_project_root() {
+        let fixture_root = unique_fixture_root("manifest-relative-path-dependency");
+        let project_root = fixture_root.join("app");
+        let dep_root = fixture_root.join("shared_dep");
+
+        std::fs::create_dir_all(&project_root)
+            .expect("fixture setup should create project root directory");
+        std::fs::create_dir_all(&dep_root)
+            .expect("fixture setup should create dependency directory");
+
+        let manifest = parse_manifest(
+            "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n\n[dependencies]\nshared_dep = { path = \"../shared_dep\" }\n",
+            &project_root,
+        )
+        .expect("manifest should parse with relative path dependency");
+
+        let resolved = manifest
+            .dependencies
+            .path
+            .get("shared_dep")
+            .expect("dependency should be present")
+            .canonicalize()
+            .expect("resolved dependency path should canonicalize");
+        let expected = dep_root
+            .canonicalize()
+            .expect("expected dependency path should canonicalize");
+
+        assert_eq!(resolved, expected);
     }
 
     #[test]
