@@ -459,6 +459,9 @@ pub enum Pattern {
     Pin { name: String },
     Wildcard,
     Integer { value: i64 },
+    Bool { value: bool },
+    Nil,
+    String { value: String },
     Tuple { items: Vec<Pattern> },
     List { items: Vec<Pattern> },
     Map { entries: Vec<MapPatternEntry> },
@@ -1809,6 +1812,30 @@ impl<'a> Parser<'a> {
                 )
             })?;
             return Ok(Pattern::Integer { value });
+        }
+
+        if self.check(TokenKind::True) {
+            self.advance();
+            return Ok(Pattern::Bool { value: true });
+        }
+
+        if self.check(TokenKind::False) {
+            self.advance();
+            return Ok(Pattern::Bool { value: false });
+        }
+
+        if self.check(TokenKind::Nil) {
+            self.advance();
+            return Ok(Pattern::Nil);
+        }
+
+        if self.check(TokenKind::String) {
+            let value = self
+                .advance()
+                .expect("string token should be available")
+                .lexeme()
+                .to_string();
+            return Ok(Pattern::String { value });
         }
 
         if self.match_kind(TokenKind::LBrace) {

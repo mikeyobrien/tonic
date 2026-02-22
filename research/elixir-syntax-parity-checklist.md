@@ -67,6 +67,7 @@ Legend:
 - [x] wildcard pattern (`_`)
 - [x] atom patterns
 - [x] integer patterns
+- [x] boolean/`nil`/string literal patterns
 - [~] tuple patterns (currently narrow runtime support)
 - [x] list patterns
 - [~] map patterns (lowering/runtime support for current single-entry map model)

@@ -89,6 +89,35 @@ fn run_reports_deterministic_bad_match_diagnostics() {
     );
 }
 
+#[test]
+fn run_executes_case_with_bool_nil_and_string_patterns() {
+    let fixture_root = unique_fixture_root("run-case-literal-pattern-variants");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("run_case_literal_patterns.tn"),
+        "defmodule Demo do\n  def classify(value) do\n    case value do\n      true -> 1\n      nil -> 2\n      \"ok\" -> 3\n      _ -> 4\n    end\n  end\n\n  def run() do\n    classify(\"ok\")\n  end\nend\n",
+    )
+    .expect("fixture setup should write literal pattern source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "examples/run_case_literal_patterns.tn"])
+        .output()
+        .expect("run command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected successful run invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert_eq!(stdout, "3\n");
+}
+
 fn unique_fixture_root(test_name: &str) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

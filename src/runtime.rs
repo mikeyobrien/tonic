@@ -562,6 +562,15 @@ fn match_pattern(
             RuntimeValue::Int(v) => v == p_val,
             _ => false,
         },
+        IrPattern::Bool { value: p_val } => match value {
+            RuntimeValue::Bool(v) => v == p_val,
+            _ => false,
+        },
+        IrPattern::Nil => matches!(value, RuntimeValue::Nil),
+        IrPattern::String { value: p_val } => match value {
+            RuntimeValue::String(v) => v == p_val,
+            _ => false,
+        },
         IrPattern::Atom { value: p_val } => match value {
             RuntimeValue::Atom(v) => v == p_val,
             _ => false,

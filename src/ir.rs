@@ -165,6 +165,9 @@ pub(crate) enum IrPattern {
     Pin { name: String },
     Wildcard,
     Integer { value: i64 },
+    Bool { value: bool },
+    Nil,
+    String { value: String },
     Tuple { items: Vec<IrPattern> },
     List { items: Vec<IrPattern> },
     Map { entries: Vec<IrMapPatternEntry> },
@@ -730,6 +733,11 @@ fn lower_expr_pattern(expr: &Expr) -> Result<IrPattern, LoweringError> {
         Expr::Variable { name, .. } if name == "_" => Ok(IrPattern::Wildcard),
         Expr::Variable { name, .. } => Ok(IrPattern::Bind { name: name.clone() }),
         Expr::Int { value, .. } => Ok(IrPattern::Integer { value: *value }),
+        Expr::Bool { value, .. } => Ok(IrPattern::Bool { value: *value }),
+        Expr::Nil { .. } => Ok(IrPattern::Nil),
+        Expr::String { value, .. } => Ok(IrPattern::String {
+            value: value.clone(),
+        }),
         Expr::Tuple { items, offset, .. } => {
             let items = items
                 .iter()
@@ -784,6 +792,11 @@ fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
         Pattern::Pin { name } => Ok(IrPattern::Pin { name: name.clone() }),
         Pattern::Wildcard => Ok(IrPattern::Wildcard),
         Pattern::Integer { value } => Ok(IrPattern::Integer { value: *value }),
+        Pattern::Bool { value } => Ok(IrPattern::Bool { value: *value }),
+        Pattern::Nil => Ok(IrPattern::Nil),
+        Pattern::String { value } => Ok(IrPattern::String {
+            value: value.clone(),
+        }),
         Pattern::Tuple { items } => {
             let items = items
                 .iter()
