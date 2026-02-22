@@ -27,9 +27,9 @@ Legend:
 - [x] integer literals
 - [x] atom literals (`:ok`) as expressions
 - [x] float literals
-- [ ] booleans (`true`/`false`)
-- [ ] `nil`
-- [ ] string literals as expressions (lexer token exists; expression support missing)
+- [x] booleans (`true`/`false`)
+- [x] `nil`
+- [x] string literals as expressions
 - [ ] string interpolation (`"#{expr}"`)
 - [ ] heredocs (`"""..."""`)
 - [ ] sigils (`~r`, `~s`, etc.)
