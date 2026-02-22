@@ -30,6 +30,7 @@ fn verify_run_auto_mode_emits_pass_fail_json() {
         .args(["verify", "run", "step-01", "--mode", "auto"])
         .assert()
         .success()
+        .stderr("")
         .stdout(
             starts_with("{")
                 .and(contains("\"slice_id\":\"step-01\""))

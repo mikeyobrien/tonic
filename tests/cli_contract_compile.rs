@@ -45,6 +45,7 @@ fn compile_single_file_success() {
         .arg("single.tn")
         .assert()
         .success()
+        .stderr("")
         .stdout(contains("compile: ok"))
         .stdout(contains(".tonic/build/single.tir.json"));
 
@@ -78,6 +79,7 @@ fn compile_project_root_success() {
         .arg(".")
         .assert()
         .success()
+        .stderr("")
         .stdout(contains("compile: ok"))
         .stdout(contains(".tonic/build/main.tir.json"));
 
@@ -108,6 +110,7 @@ fn compile_custom_out_path() {
         .arg(custom_out_path.to_str().unwrap())
         .assert()
         .success()
+        .stderr("")
         .stdout(contains("compile: ok"))
         .stdout(contains("my-artifact.json"));
 
@@ -138,6 +141,7 @@ fn compile_artifact_content_is_deterministic() {
         .arg(out_a.to_str().unwrap())
         .assert()
         .success()
+        .stderr("")
         .stdout(contains("compile: ok"));
 
     let mut second = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
@@ -149,6 +153,7 @@ fn compile_artifact_content_is_deterministic() {
         .arg(out_b.to_str().unwrap())
         .assert()
         .success()
+        .stderr("")
         .stdout(contains("compile: ok"));
 
     let first_artifact = fs::read_to_string(out_a).unwrap();
