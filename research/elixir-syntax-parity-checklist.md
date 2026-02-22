@@ -40,14 +40,14 @@ Legend:
 ## 2) Operators & Precedence
 
 - [x] `+`
-- [ ] arithmetic set (`-`, `*`, `/`)
-- [ ] comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
-- [ ] boolean operators (`and`, `or`, `not`)
-- [ ] short-circuit operators (`&&`, `||`, `!`)
-- [ ] concatenation operators (`<>`, `++`, `--`)
-- [ ] membership/range (`in`, `..`)
+- [x] arithmetic set (`-`, `*`, `/`)
+- [x] comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
+- [x] boolean operators (`and`, `or`, `not`)
+- [x] short-circuit operators (`&&`, `||`, `!`)
+- [x] concatenation operators (`<>`, `++`, `--`)
+- [x] membership/range (`in`, `..`)
 - [x] unary operators (`-x`, `+x`, `not x`, `!x`)
-- [ ] precedence/associativity parity with Elixir
+- [~] precedence/associativity parity with Elixir (core operator table covered; exhaustive parity still pending)
 
 ---
 
