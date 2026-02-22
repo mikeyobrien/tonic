@@ -499,12 +499,27 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         Expr::Unary {
             op, value, offset, ..
         } => {
-            lower_expr(value, current_module, ops)?;
-            let ir_op = match op {
-                crate::parser::UnaryOp::Not => IrOp::Not { offset: *offset },
-                crate::parser::UnaryOp::Bang => IrOp::Bang { offset: *offset },
-            };
-            ops.push(ir_op);
+            match op {
+                crate::parser::UnaryOp::Minus => {
+                    ops.push(IrOp::ConstInt {
+                        value: 0,
+                        offset: *offset,
+                    });
+                    lower_expr(value, current_module, ops)?;
+                    ops.push(IrOp::SubInt { offset: *offset });
+                }
+                crate::parser::UnaryOp::Plus => {
+                    lower_expr(value, current_module, ops)?;
+                }
+                crate::parser::UnaryOp::Not => {
+                    lower_expr(value, current_module, ops)?;
+                    ops.push(IrOp::Not { offset: *offset });
+                }
+                crate::parser::UnaryOp::Bang => {
+                    lower_expr(value, current_module, ops)?;
+                    ops.push(IrOp::Bang { offset: *offset });
+                }
+            }
             Ok(())
         }
         Expr::Binary {

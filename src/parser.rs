@@ -658,6 +658,8 @@ impl Expr {
 pub enum UnaryOp {
     Not,
     Bang,
+    Plus,
+    Minus,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -1171,13 +1173,15 @@ impl<'a> Parser<'a> {
 
     fn parse_unary_expression(&mut self) -> Result<Expr, ParserError> {
         if let Some(token) = self.current() {
-            let (is_unary, op, rbp) = match token.kind() {
-                TokenKind::Not => (true, UnaryOp::Not, 110),
-                TokenKind::Bang => (true, UnaryOp::Bang, 110),
-                _ => (false, UnaryOp::Not, 0), // Default not used
+            let unary = match token.kind() {
+                TokenKind::Not => Some((UnaryOp::Not, 110)),
+                TokenKind::Bang => Some((UnaryOp::Bang, 110)),
+                TokenKind::Plus => Some((UnaryOp::Plus, 110)),
+                TokenKind::Minus => Some((UnaryOp::Minus, 110)),
+                _ => None,
             };
 
-            if is_unary {
+            if let Some((op, rbp)) = unary {
                 let offset = self.advance().unwrap().span().start();
                 let expr = self.parse_binary_expression(rbp)?;
                 return Ok(Expr::unary(self.node_ids.next_expr(), offset, op, expr));

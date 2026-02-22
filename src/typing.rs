@@ -310,6 +310,10 @@ fn infer_expression_type(
                     Ok(Type::Bool)
                 }
                 crate::parser::UnaryOp::Bang => Ok(Type::Bool),
+                crate::parser::UnaryOp::Plus | crate::parser::UnaryOp::Minus => {
+                    solver.unify(Type::Int, value_type, Some(value.offset()))?;
+                    Ok(Type::Int)
+                }
             }
         }
         Expr::Binary {

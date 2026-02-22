@@ -46,7 +46,7 @@ Legend:
 - [ ] short-circuit operators (`&&`, `||`, `!`)
 - [ ] concatenation operators (`<>`, `++`, `--`)
 - [ ] membership/range (`in`, `..`)
-- [ ] unary operators (`-x`, `+x`, `not x`, `!x`)
+- [x] unary operators (`-x`, `+x`, `not x`, `!x`)
 - [ ] precedence/associativity parity with Elixir
 
 ---

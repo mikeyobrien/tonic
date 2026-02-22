@@ -278,6 +278,68 @@ fn run_check_rejects_non_int_left_operand_with_type_mismatch() {
     );
 }
 
+#[test]
+fn run_executes_unary_plus_and_minus() {
+    let fixture_root = unique_fixture_root("run-unary-plus-minus");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("unary_plus_minus.tn"),
+        "defmodule Demo do\n  def run() do\n    -5 + +2\n  end\nend\n",
+    )
+    .expect("fixture setup should write unary arithmetic source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "examples/unary_plus_minus.tn"])
+        .output()
+        .expect("run command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected successful run invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "-3\n"
+    );
+}
+
+#[test]
+fn run_check_rejects_unary_minus_on_non_int_operand() {
+    let fixture_root = unique_fixture_root("run-check-unary-minus-bool");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("unary_minus_bool.tn"),
+        "defmodule Demo do\n  def run() do\n    -true\n  end\nend\n",
+    )
+    .expect("fixture setup should write unary bool source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["check", "examples/unary_minus_bool.tn"])
+        .output()
+        .expect("check command should run");
+
+    assert!(
+        !output.status.success(),
+        "expected check to fail for unary minus on bool, got status {:?}",
+        output.status.code()
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert_eq!(
+        stderr,
+        "error: [E2001] type mismatch: expected int, found bool at offset 38\n"
+    );
+}
+
 fn unique_fixture_root(test_name: &str) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
