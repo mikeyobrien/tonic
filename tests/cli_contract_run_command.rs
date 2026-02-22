@@ -7,27 +7,32 @@
 
 use std::fs;
 
-/// Test: run with no arguments shows help and exits successfully
+/// Test: run with no arguments returns usage error
 #[test]
-fn run_no_args_shows_help() {
+fn run_no_args_is_usage_error() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .arg("run")
         .output()
         .expect("run command should execute");
 
-    // No args should show help, exit OK
+    // No args should return usage error (exit 64)
     assert!(
-        output.status.success(),
-        "expected help to exit successfully, got status {:?} with stderr: {}",
+        !output.status.success(),
+        "expected usage error for missing path, got status {:?}",
+        output.status.code()
+    );
+    assert_eq!(
         output.status.code(),
-        String::from_utf8_lossy(&output.stderr)
+        Some(64),
+        "expected exit 64 for usage error, got {:?}",
+        output.status.code()
     );
 
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stdout.contains("Usage:"),
-        "expected usage help in stdout, got: {}",
-        stdout
+        stderr.contains("error: missing required <path>"),
+        "expected usage error about missing path, got: {}",
+        stderr
     );
 }
 

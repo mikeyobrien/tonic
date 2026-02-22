@@ -95,12 +95,17 @@ fn run(args: Vec<String>) -> i32 {
 }
 
 fn handle_run(args: Vec<String>) -> i32 {
-    if matches!(
-        args.first().map(String::as_str),
-        None | Some("-h" | "--help")
-    ) {
+    if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
         print_run_help();
         return EXIT_OK;
+    }
+
+    if args.is_empty() {
+        return CliDiagnostic::usage_with_hint(
+            "missing required <path>",
+            "run `tonic run --help` for usage",
+        )
+        .emit();
     }
 
     let source_path = args[0].clone();
@@ -180,12 +185,17 @@ fn run_placeholder(command: &str) -> i32 {
 }
 
 fn handle_check(args: Vec<String>) -> i32 {
-    if matches!(
-        args.first().map(String::as_str),
-        None | Some("-h" | "--help")
-    ) {
+    if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
         print_check_help();
         return EXIT_OK;
+    }
+
+    if args.is_empty() {
+        return CliDiagnostic::usage_with_hint(
+            "missing required <path>",
+            "run `tonic check --help` for usage",
+        )
+        .emit();
     }
 
     let source_path = args[0].clone();
@@ -285,12 +295,17 @@ fn handle_check(args: Vec<String>) -> i32 {
 }
 
 fn handle_test(args: Vec<String>) -> i32 {
-    if matches!(
-        args.first().map(String::as_str),
-        None | Some("-h" | "--help")
-    ) {
+    if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
         print_test_help();
         return EXIT_OK;
+    }
+
+    if args.is_empty() {
+        return CliDiagnostic::usage_with_hint(
+            "missing required <path>",
+            "run `tonic test --help` for usage",
+        )
+        .emit();
     }
 
     let source_path = args[0].clone();
@@ -308,12 +323,17 @@ fn handle_test(args: Vec<String>) -> i32 {
 }
 
 fn handle_fmt(args: Vec<String>) -> i32 {
-    if matches!(
-        args.first().map(String::as_str),
-        None | Some("-h" | "--help")
-    ) {
+    if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
         print_fmt_help();
         return EXIT_OK;
+    }
+
+    if args.is_empty() {
+        return CliDiagnostic::usage_with_hint(
+            "missing required <path>",
+            "run `tonic fmt --help` for usage",
+        )
+        .emit();
     }
 
     let source_path = args[0].clone();
@@ -345,12 +365,17 @@ fn handle_fmt(args: Vec<String>) -> i32 {
 }
 
 fn handle_compile(args: Vec<String>) -> i32 {
-    if matches!(
-        args.first().map(String::as_str),
-        None | Some("-h" | "--help")
-    ) {
+    if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
         print_compile_help();
         return EXIT_OK;
+    }
+
+    if args.is_empty() {
+        return CliDiagnostic::usage_with_hint(
+            "missing required <path>",
+            "run `tonic compile --help` for usage",
+        )
+        .emit();
     }
 
     let source_path = args[0].clone();
@@ -624,7 +649,7 @@ fn manual_evidence_gate_report(required_paths: &[std::path::PathBuf]) -> (bool, 
 fn handle_deps(args: Vec<String>) -> i32 {
     if matches!(
         args.first().map(String::as_str),
-        None | Some("-h" | "--help" | "help")
+        Some("-h" | "--help" | "help")
     ) {
         print_deps_help();
         return EXIT_OK;
@@ -773,8 +798,15 @@ mod tests {
     use crate::cli_diag::{EXIT_FAILURE, EXIT_USAGE};
 
     #[test]
-    fn known_commands_exit_success() {
-        for command in ["run", "check", "test", "fmt", "compile", "cache", "deps"] {
+    fn known_commands_without_args_exit_usage() {
+        for command in ["run", "check", "test", "fmt", "compile", "deps"] {
+            assert_eq!(run(vec![command.to_string()]), EXIT_USAGE);
+        }
+    }
+
+    #[test]
+    fn known_commands_without_args_exit_success() {
+        for command in ["cache", "verify"] {
             assert_eq!(run(vec![command.to_string()]), EXIT_OK);
         }
     }
