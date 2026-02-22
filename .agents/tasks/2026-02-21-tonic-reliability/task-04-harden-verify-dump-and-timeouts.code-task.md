@@ -70,3 +70,16 @@ Reliable automation needs deterministic introspection (`--dump-*`) and determini
 - **Complexity**: Medium
 - **Labels**: Verify, Dump Modes, Benchmarks, Timeout, Reliability
 - **Required Skills**: CLI validation, structured diagnostics, benchmark gate wiring, deterministic integration testing
+
+## Completion Status
+
+HEARTBEAT_TASK_STATUS=done
+
+- **Completed at**: 2026-02-22T05:37 UTC
+- **Commit**: `4f524d1`
+- **Files changed**:
+  - `tests/check_dump_mutual_exclusivity_combinations.rs` — new: covers `--dump-tokens --dump-ast`, `--dump-tokens --dump-ir`, all-three, and each single-flag success case with JSON validation
+  - `tests/verify_manual_evidence_invalid_json.rs` — new: covers `invalid_payload` path (malformed JSON evidence) and the valid-JSON pass case
+  - `src/main.rs` — added unit tests for `dump_ast`/`dump_ir` serialization failure diagnostics and dump-mode exclusivity error format (deterministic, no external process, no flaky sleeps)
+- **Timeout note**: No external command execution paths exist in `runtime.rs` or `src/main.rs` — no timeout wrappers required; acceptance criterion 5 is N/A.
+- **All gates**: `cargo fmt --all` ✓  `cargo clippy --all-targets --all-features -- -D warnings -A dead_code` ✓  `cargo test` ✓ (all tests pass)
