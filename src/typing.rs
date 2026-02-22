@@ -418,7 +418,8 @@ fn infer_call_type(
     signatures: &BTreeMap<String, FunctionSignature>,
     solver: &mut ConstraintSolver,
 ) -> Result<Type, TypingError> {
-    let mut arg_types = Vec::with_capacity(args.len() + usize::from(piped_value_type.is_some()));
+    let has_piped_value = piped_value_type.is_some();
+    let mut arg_types = Vec::with_capacity(args.len() + usize::from(has_piped_value));
 
     if let Some(piped_value_type) = piped_value_type {
         arg_types.push(piped_value_type);
@@ -432,6 +433,8 @@ fn infer_call_type(
             solver,
         )?);
     }
+
+    validate_host_call_key_type(callee, &arg_types, args, has_piped_value, solver)?;
 
     if let Some(result_type) = infer_builtin_call_type(callee, &arg_types, solver)? {
         return Ok(result_type);
@@ -461,6 +464,38 @@ fn infer_call_type(
     }
 
     Ok(signature.return_type.clone())
+}
+
+fn validate_host_call_key_type(
+    callee: &str,
+    arg_types: &[Type],
+    args: &[Expr],
+    has_piped_value: bool,
+    solver: &mut ConstraintSolver,
+) -> Result<(), TypingError> {
+    if callee != "host_call" || arg_types.is_empty() {
+        return Ok(());
+    }
+
+    let key_type = solver.resolve(arg_types[0].clone());
+    let key_offset = if has_piped_value {
+        None
+    } else {
+        args.first().map(Expr::offset)
+    };
+
+    if matches!(
+        key_type,
+        Type::Int | Type::Bool | Type::Nil | Type::String | Type::Result { .. }
+    ) {
+        return Err(TypingError::type_mismatch(
+            "atom",
+            key_type.label(),
+            key_offset,
+        ));
+    }
+
+    Ok(())
 }
 
 fn infer_builtin_call_type(

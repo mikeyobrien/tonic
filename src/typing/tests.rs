@@ -93,6 +93,30 @@ fn infer_types_accepts_protocol_dispatch_builtin_calls() {
 }
 
 #[test]
+fn infer_types_accepts_host_call_with_atom_key() {
+    let source =
+        "defmodule Demo do\n  def run() do\n    host_call(:sum_ints, 1, 2, 3)\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize host_call fixture");
+    let ast = parse_ast(&tokens).expect("parser should build host_call fixture ast");
+
+    let summary = infer_types(&ast).expect("type inference should accept atom host keys");
+
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
+}
+
+#[test]
+fn infer_types_rejects_host_call_with_non_atom_key() {
+    let source = "defmodule Demo do\n  def run() do\n    host_call(1, 2)\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize host_call mismatch fixture");
+    let ast = parse_ast(&tokens).expect("parser should build host_call mismatch fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject non-atom host keys");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(error.message(), "type mismatch: expected atom, found int");
+}
+
+#[test]
 fn infer_types_threads_pipe_input_into_enum_style_calls() {
     let source = "defmodule Enum do\n  def stage_one(_value) do\n    1\n  end\n\n  def stage_two(_value) do\n    2\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    tuple(1, 2) |> Enum.stage_one() |> Enum.stage_two()\n  end\nend\n";
     let tokens = scan_tokens(source).expect("scanner should tokenize pipe fixture");
