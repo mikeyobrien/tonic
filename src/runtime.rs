@@ -216,6 +216,24 @@ fn evaluate_ops(
             IrOp::ConstBool { value, .. } => stack.push(RuntimeValue::Bool(*value)),
             IrOp::ConstNil { .. } => stack.push(RuntimeValue::Nil),
             IrOp::ConstString { value, .. } => stack.push(RuntimeValue::String(value.clone())),
+            IrOp::ToString { offset } => {
+                let value = pop_value(stack, *offset, "to_string")?;
+                let str_value = match value {
+                    RuntimeValue::String(s) => s,
+                    RuntimeValue::Int(i) => i.to_string(),
+                    RuntimeValue::Float(f) => f.clone(),
+                    RuntimeValue::Bool(b) => b.to_string(),
+                    RuntimeValue::Nil => String::new(),
+                    RuntimeValue::Atom(a) => a,
+                    _ => {
+                        return Err(RuntimeError::at_offset(
+                            "cannot interpolate complex value".to_string(),
+                            *offset,
+                        ))
+                    }
+                };
+                stack.push(RuntimeValue::String(str_value));
+            }
             IrOp::ConstAtom { value, .. } => stack.push(RuntimeValue::Atom(value.clone())),
             IrOp::LoadVariable { name, offset } => {
                 let value = env.get(name).ok_or_else(|| {
@@ -510,6 +528,7 @@ fn ir_op_offset(op: &IrOp) -> usize {
         | IrOp::ConstBool { offset, .. }
         | IrOp::ConstNil { offset }
         | IrOp::ConstString { offset, .. }
+        | IrOp::ToString { offset }
         | IrOp::Call { offset, .. }
         | IrOp::MakeClosure { offset, .. }
         | IrOp::CallValue { offset, .. }

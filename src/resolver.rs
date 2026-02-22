@@ -133,6 +133,14 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
         | Expr::Bool { .. }
         | Expr::Nil { .. }
         | Expr::String { .. } => Ok(()),
+        Expr::InterpolatedString { segments, .. } => {
+            for segment in segments {
+                if let crate::parser::InterpolationSegment::Expr { expr } = segment {
+                    resolve_expr(expr, context)?;
+                }
+            }
+            Ok(())
+        }
         Expr::Tuple { items, .. } | Expr::List { items, .. } => {
             for item in items {
                 resolve_expr(item, context)?;

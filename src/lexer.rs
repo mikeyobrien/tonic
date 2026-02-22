@@ -50,6 +50,11 @@ pub enum TokenKind {
     Integer,
     Float,
     String,
+    StringStart,
+    StringPart,
+    InterpolationStart,
+    InterpolationEnd,
+    StringEnd,
     LParen,
     RParen,
     LBrace,
@@ -145,6 +150,11 @@ impl Token {
             TokenKind::Integer => format!("INT({})", self.lexeme),
             TokenKind::Float => format!("FLOAT({})", self.lexeme),
             TokenKind::String => format!("STRING({})", self.lexeme),
+            TokenKind::StringStart => "STRING_START".to_string(),
+            TokenKind::StringPart => format!("STRING_PART({})", self.lexeme),
+            TokenKind::InterpolationStart => "INTERPOLATION_START".to_string(),
+            TokenKind::InterpolationEnd => "INTERPOLATION_END".to_string(),
+            TokenKind::StringEnd => "STRING_END".to_string(),
             TokenKind::LParen => "LPAREN".to_string(),
             TokenKind::RParen => "RPAREN".to_string(),
             TokenKind::LBrace => "LBRACE".to_string(),
@@ -238,232 +248,414 @@ impl fmt::Display for LexerError {
 
 impl std::error::Error for LexerError {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LexerState {
+    Normal,
+    String {
+        is_heredoc: bool,
+        brace_depth: usize,
+    },
+}
+
 pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
     let chars: Vec<char> = source.chars().collect();
     let mut tokens = Vec::new();
     let mut idx = 0;
 
+    let mut state_stack = vec![LexerState::Normal];
+    let mut current_brace_depth: usize = 0;
+
     while idx < chars.len() {
         let current = chars[idx];
 
-        if current.is_whitespace() {
-            idx += 1;
-            continue;
-        }
+        match state_stack.last().unwrap() {
+            LexerState::Normal => {
+                if current.is_whitespace() {
+                    idx += 1;
+                    continue;
+                }
 
-        match current {
-            '(' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::LParen, Span::new(start, idx)));
-            }
-            ')' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::RParen, Span::new(start, idx)));
-            }
-            '{' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::LBrace, Span::new(start, idx)));
-            }
-            '}' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::RBrace, Span::new(start, idx)));
-            }
-            '[' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::LBracket, Span::new(start, idx)));
-            }
-            ']' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::RBracket, Span::new(start, idx)));
-            }
-            '%' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Percent, Span::new(start, idx)));
-            }
-            '@' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::At, Span::new(start, idx)));
-            }
-            ',' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Comma, Span::new(start, idx)));
-            }
-            '.' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'.') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::DotDot, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Dot, Span::new(start, idx)));
-                }
-            }
-            '^' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
-            }
-            '+' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'+') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::PlusPlus, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Plus, Span::new(start, idx)));
-                }
-            }
-            '-' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'>') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::Arrow, Span::new(start, idx)));
-                } else if chars.get(idx + 1) == Some(&'-') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::MinusMinus, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Minus, Span::new(start, idx)));
-                }
-            }
-            '*' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Star, Span::new(start, idx)));
-            }
-            '/' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
-            }
-            '\\' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'\\') {
-                    idx += 2;
-                    tokens.push(Token::simple(
-                        TokenKind::BackslashBackslash,
-                        Span::new(start, idx),
-                    ));
-                } else {
-                    return Err(LexerError::invalid_token('\\', Span::new(start, start + 1)));
-                }
-            }
-            '=' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'=') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::EqEq, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::MatchEq, Span::new(start, idx)));
-                }
-            }
-            '!' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'=') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::BangEq, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Bang, Span::new(start, idx)));
-                }
-            }
-            '<' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'=') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::LtEq, Span::new(start, idx)));
-                } else if chars.get(idx + 1) == Some(&'-') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::LeftArrow, Span::new(start, idx)));
-                } else if chars.get(idx + 1) == Some(&'>') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::LessGreater, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Lt, Span::new(start, idx)));
-                }
-            }
-            '>' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'=') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::GtEq, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Gt, Span::new(start, idx)));
-                }
-            }
-            '?' => {
-                let start = idx;
-                idx += 1;
-                tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
-            }
-            '|' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'>') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::PipeGt, Span::new(start, idx)));
-                } else if chars.get(idx + 1) == Some(&'|') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::OrOr, Span::new(start, idx)));
-                } else {
-                    return Err(LexerError::invalid_token('|', Span::new(start, start + 1)));
-                }
-            }
-            '&' => {
-                let start = idx;
-                if chars.get(idx + 1) == Some(&'&') {
-                    idx += 2;
-                    tokens.push(Token::simple(TokenKind::AndAnd, Span::new(start, idx)));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Ampersand, Span::new(start, idx)));
-                }
-            }
-            ':' => {
-                let start = idx;
-
-                if chars.get(idx + 1).is_some_and(|next| is_ident_start(*next)) {
-                    idx += 1;
-                    let atom_start = idx;
-                    idx += 1;
-
-                    while idx < chars.len() && is_ident_continue(chars[idx]) {
+                match current {
+                    '(' => {
+                        let start = idx;
                         idx += 1;
+                        tokens.push(Token::simple(TokenKind::LParen, Span::new(start, idx)));
                     }
+                    ')' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::RParen, Span::new(start, idx)));
+                    }
+                    '{' => {
+                        let start = idx;
+                        idx += 1;
+                        current_brace_depth += 1;
+                        tokens.push(Token::simple(TokenKind::LBrace, Span::new(start, idx)));
+                    }
+                    '}' => {
+                        let start = idx;
+                        idx += 1;
+                        current_brace_depth = current_brace_depth.saturating_sub(1);
 
-                    let lexeme: String = chars[atom_start..idx].iter().collect();
-                    tokens.push(Token::with_lexeme(
-                        TokenKind::Atom,
-                        lexeme,
-                        Span::new(start, idx),
-                    ));
-                } else {
-                    idx += 1;
-                    tokens.push(Token::simple(TokenKind::Colon, Span::new(start, idx)));
+                        if state_stack.len() > 1 {
+                            if let LexerState::String { brace_depth, .. } =
+                                state_stack[state_stack.len() - 2]
+                            {
+                                if current_brace_depth == brace_depth {
+                                    state_stack.pop();
+                                    tokens.push(Token::simple(
+                                        TokenKind::InterpolationEnd,
+                                        Span::new(start, idx),
+                                    ));
+                                    continue;
+                                }
+                            }
+                        }
+                        tokens.push(Token::simple(TokenKind::RBrace, Span::new(start, idx)));
+                    }
+                    '[' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::LBracket, Span::new(start, idx)));
+                    }
+                    ']' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::RBracket, Span::new(start, idx)));
+                    }
+                    '%' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::Percent, Span::new(start, idx)));
+                    }
+                    '@' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::At, Span::new(start, idx)));
+                    }
+                    ',' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::Comma, Span::new(start, idx)));
+                    }
+                    '.' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'.') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::DotDot, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Dot, Span::new(start, idx)));
+                        }
+                    }
+                    '^' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
+                    }
+                    '+' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'+') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::PlusPlus, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Plus, Span::new(start, idx)));
+                        }
+                    }
+                    '-' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'>') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::Arrow, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'-') {
+                            idx += 2;
+                            tokens
+                                .push(Token::simple(TokenKind::MinusMinus, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Minus, Span::new(start, idx)));
+                        }
+                    }
+                    '*' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::Star, Span::new(start, idx)));
+                    }
+                    '/' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
+                    }
+                    '\\' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'\\') {
+                            idx += 2;
+                            tokens.push(Token::simple(
+                                TokenKind::BackslashBackslash,
+                                Span::new(start, idx),
+                            ));
+                        } else {
+                            return Err(LexerError::invalid_token(
+                                '\\',
+                                Span::new(start, start + 1),
+                            ));
+                        }
+                    }
+                    '=' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'=') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::EqEq, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::MatchEq, Span::new(start, idx)));
+                        }
+                    }
+                    '!' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'=') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::BangEq, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Bang, Span::new(start, idx)));
+                        }
+                    }
+                    '<' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'=') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::LtEq, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'-') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::LeftArrow, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'>') {
+                            idx += 2;
+                            tokens
+                                .push(Token::simple(TokenKind::LessGreater, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Lt, Span::new(start, idx)));
+                        }
+                    }
+                    '>' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'=') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::GtEq, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Gt, Span::new(start, idx)));
+                        }
+                    }
+                    '?' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
+                    }
+                    '|' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'>') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::PipeGt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'|') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::OrOr, Span::new(start, idx)));
+                        } else {
+                            return Err(LexerError::invalid_token(
+                                '|',
+                                Span::new(start, start + 1),
+                            ));
+                        }
+                    }
+                    '&' => {
+                        let start = idx;
+                        if chars.get(idx + 1) == Some(&'&') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::AndAnd, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Ampersand, Span::new(start, idx)));
+                        }
+                    }
+                    ':' => {
+                        let start = idx;
+
+                        if chars.get(idx + 1).is_some_and(|next| is_ident_start(*next)) {
+                            idx += 1;
+                            let atom_start = idx;
+                            idx += 1;
+
+                            while idx < chars.len() && is_ident_continue(chars[idx]) {
+                                idx += 1;
+                            }
+
+                            let lexeme: String = chars[atom_start..idx].iter().collect();
+                            tokens.push(Token::with_lexeme(
+                                TokenKind::Atom,
+                                lexeme,
+                                Span::new(start, idx),
+                            ));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Colon, Span::new(start, idx)));
+                        }
+                    }
+                    '"' => {
+                        let start = idx;
+                        let is_heredoc =
+                            chars.get(idx + 1) == Some(&'"') && chars.get(idx + 2) == Some(&'"');
+
+                        let mut has_interpolation = false;
+                        let mut temp_idx = if is_heredoc { idx + 3 } else { idx + 1 };
+
+                        if is_heredoc {
+                            while temp_idx < chars.len() {
+                                if chars.get(temp_idx) == Some(&'"')
+                                    && chars.get(temp_idx + 1) == Some(&'"')
+                                    && chars.get(temp_idx + 2) == Some(&'"')
+                                {
+                                    break;
+                                }
+                                if chars.get(temp_idx) == Some(&'#')
+                                    && chars.get(temp_idx + 1) == Some(&'{')
+                                {
+                                    has_interpolation = true;
+                                    break;
+                                }
+                                temp_idx += 1;
+                            }
+                        } else {
+                            while temp_idx < chars.len() {
+                                let peek = chars[temp_idx];
+                                if peek == '"' {
+                                    break;
+                                }
+                                if peek == '#' && chars.get(temp_idx + 1) == Some(&'{') {
+                                    has_interpolation = true;
+                                    break;
+                                }
+                                temp_idx += 1;
+                            }
+                        }
+
+                        if has_interpolation {
+                            let end_idx = if is_heredoc { idx + 3 } else { idx + 1 };
+                            tokens.push(Token::simple(
+                                TokenKind::StringStart,
+                                Span::new(start, end_idx),
+                            ));
+                            state_stack.push(LexerState::String {
+                                is_heredoc,
+                                brace_depth: current_brace_depth,
+                            });
+                            idx = end_idx;
+                        } else {
+                            let mut literal = String::new();
+                            let mut terminated = false;
+
+                            if is_heredoc {
+                                idx += 3;
+
+                                while idx < chars.len() {
+                                    if chars.get(idx) == Some(&'"')
+                                        && chars.get(idx + 1) == Some(&'"')
+                                        && chars.get(idx + 2) == Some(&'"')
+                                    {
+                                        terminated = true;
+                                        idx += 3;
+                                        break;
+                                    }
+
+                                    literal.push(chars[idx]);
+                                    idx += 1;
+                                }
+                            } else {
+                                idx += 1;
+
+                                while idx < chars.len() {
+                                    let peek = chars[idx];
+
+                                    if peek == '"' {
+                                        terminated = true;
+                                        idx += 1;
+                                        break;
+                                    }
+
+                                    literal.push(peek);
+                                    idx += 1;
+                                }
+                            }
+
+                            if !terminated {
+                                return Err(LexerError::unterminated_string(Span::new(
+                                    start,
+                                    chars.len(),
+                                )));
+                            }
+
+                            tokens.push(Token::with_lexeme(
+                                TokenKind::String,
+                                literal,
+                                Span::new(start, idx),
+                            ));
+                        }
+                    }
+                    value if value.is_ascii_digit() => {
+                        let start = idx;
+                        idx += 1;
+
+                        while idx < chars.len() && chars[idx].is_ascii_digit() {
+                            idx += 1;
+                        }
+
+                        let mut kind = TokenKind::Integer;
+                        if idx + 1 < chars.len()
+                            && chars[idx] == '.'
+                            && chars[idx + 1].is_ascii_digit()
+                        {
+                            kind = TokenKind::Float;
+                            idx += 1;
+
+                            while idx < chars.len() && chars[idx].is_ascii_digit() {
+                                idx += 1;
+                            }
+                        }
+
+                        let lexeme: String = chars[start..idx].iter().collect();
+                        tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
+                    }
+                    value if is_ident_start(value) => {
+                        let start = idx;
+                        idx += 1;
+
+                        while idx < chars.len() && is_ident_continue(chars[idx]) {
+                            idx += 1;
+                        }
+
+                        let lexeme: String = chars[start..idx].iter().collect();
+                        let kind = keyword_kind(&lexeme).unwrap_or(TokenKind::Ident);
+                        tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
+                    }
+                    unexpected => {
+                        return Err(LexerError::invalid_token(
+                            unexpected,
+                            Span::new(idx, idx + 1),
+                        ));
+                    }
                 }
             }
-            '"' => {
+            LexerState::String {
+                is_heredoc,
+                brace_depth: _,
+            } => {
                 let start = idx;
-                let is_heredoc =
-                    chars.get(idx + 1) == Some(&'"') && chars.get(idx + 2) == Some(&'"');
-
                 let mut literal = String::new();
                 let mut terminated = false;
+                let mut is_interpolation = false;
 
-                if is_heredoc {
-                    idx += 3;
-
+                if *is_heredoc {
                     while idx < chars.len() {
                         if chars.get(idx) == Some(&'"')
                             && chars.get(idx + 1) == Some(&'"')
@@ -473,13 +665,16 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             idx += 3;
                             break;
                         }
+                        if chars.get(idx) == Some(&'#') && chars.get(idx + 1) == Some(&'{') {
+                            is_interpolation = true;
+                            idx += 2;
+                            break;
+                        }
 
                         literal.push(chars[idx]);
                         idx += 1;
                     }
                 } else {
-                    idx += 1;
-
                     while idx < chars.len() {
                         let peek = chars[idx];
 
@@ -488,63 +683,53 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             idx += 1;
                             break;
                         }
+                        if peek == '#' && chars.get(idx + 1) == Some(&'{') {
+                            is_interpolation = true;
+                            idx += 2;
+                            break;
+                        }
 
                         literal.push(peek);
                         idx += 1;
                     }
                 }
 
-                if !terminated {
+                if !literal.is_empty() {
+                    let end_idx = if is_interpolation {
+                        idx - 2
+                    } else if terminated && *is_heredoc {
+                        idx - 3
+                    } else if terminated {
+                        idx - 1
+                    } else {
+                        idx
+                    };
+                    tokens.push(Token::with_lexeme(
+                        TokenKind::StringPart,
+                        literal,
+                        Span::new(start, end_idx),
+                    ));
+                }
+
+                if terminated {
+                    tokens.push(Token::simple(
+                        TokenKind::StringEnd,
+                        Span::new(idx - if *is_heredoc { 3 } else { 1 }, idx),
+                    ));
+                    state_stack.pop();
+                } else if is_interpolation {
+                    tokens.push(Token::simple(
+                        TokenKind::InterpolationStart,
+                        Span::new(idx - 2, idx),
+                    ));
+                    state_stack.push(LexerState::Normal);
+                    current_brace_depth += 1;
+                } else {
                     return Err(LexerError::unterminated_string(Span::new(
                         start,
                         chars.len(),
                     )));
                 }
-
-                tokens.push(Token::with_lexeme(
-                    TokenKind::String,
-                    literal,
-                    Span::new(start, idx),
-                ));
-            }
-            value if value.is_ascii_digit() => {
-                let start = idx;
-                idx += 1;
-
-                while idx < chars.len() && chars[idx].is_ascii_digit() {
-                    idx += 1;
-                }
-
-                let mut kind = TokenKind::Integer;
-                if idx + 1 < chars.len() && chars[idx] == '.' && chars[idx + 1].is_ascii_digit() {
-                    kind = TokenKind::Float;
-                    idx += 1;
-
-                    while idx < chars.len() && chars[idx].is_ascii_digit() {
-                        idx += 1;
-                    }
-                }
-
-                let lexeme: String = chars[start..idx].iter().collect();
-                tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
-            }
-            value if is_ident_start(value) => {
-                let start = idx;
-                idx += 1;
-
-                while idx < chars.len() && is_ident_continue(chars[idx]) {
-                    idx += 1;
-                }
-
-                let lexeme: String = chars[start..idx].iter().collect();
-                let kind = keyword_kind(&lexeme).unwrap_or(TokenKind::Ident);
-                tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
-            }
-            unexpected => {
-                return Err(LexerError::invalid_token(
-                    unexpected,
-                    Span::new(idx, idx + 1),
-                ));
             }
         }
     }
@@ -910,5 +1095,26 @@ mod tests {
 
         assert_eq!(error.to_string(), "unterminated string literal at offset 0");
         assert_eq!(error.span(), Span::new(0, 5));
+    }
+
+    #[test]
+    fn scan_tokens_supports_string_interpolation() {
+        let labels = dump_labels("\"hello #{1 + 2} world\"");
+
+        assert_eq!(
+            labels,
+            [
+                "STRING_START",
+                "STRING_PART(hello )",
+                "INTERPOLATION_START",
+                "INT(1)",
+                "PLUS",
+                "INT(2)",
+                "INTERPOLATION_END",
+                "STRING_PART( world)",
+                "STRING_END",
+                "EOF",
+            ]
+        );
     }
 }

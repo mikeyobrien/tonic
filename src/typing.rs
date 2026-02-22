@@ -254,6 +254,14 @@ fn infer_expression_type(
         Expr::Bool { .. } => Ok(Type::Bool),
         Expr::Nil { .. } => Ok(Type::Nil),
         Expr::String { .. } => Ok(Type::String),
+        Expr::InterpolatedString { segments, .. } => {
+            for segment in segments {
+                if let crate::parser::InterpolationSegment::Expr { expr } = segment {
+                    infer_expression_type(expr, current_module, signatures, solver)?;
+                }
+            }
+            Ok(Type::String)
+        }
         Expr::Tuple { items, .. } | Expr::List { items, .. } => {
             for item in items {
                 infer_expression_type(item, current_module, signatures, solver)?;

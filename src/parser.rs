@@ -236,6 +236,13 @@ impl Serialize for Parameter {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
+pub enum InterpolationSegment {
+    String { value: String },
+    Expr { expr: Expr },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Expr {
     Int {
         #[serde(skip_serializing)]
@@ -270,6 +277,13 @@ pub enum Expr {
         #[serde(skip_serializing)]
         offset: usize,
         value: String,
+    },
+    InterpolatedString {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        segments: Vec<InterpolationSegment>,
     },
     Tuple {
         #[serde(skip_serializing)]
@@ -514,6 +528,14 @@ impl Expr {
         Self::String { id, offset, value }
     }
 
+    fn interpolated_string(id: NodeId, offset: usize, segments: Vec<InterpolationSegment>) -> Self {
+        Self::InterpolatedString {
+            id,
+            offset,
+            segments,
+        }
+    }
+
     fn tuple(id: NodeId, offset: usize, items: Vec<Expr>) -> Self {
         Self::Tuple { id, offset, items }
     }
@@ -637,6 +659,7 @@ impl Expr {
             | Self::Bool { offset, .. }
             | Self::Nil { offset, .. }
             | Self::String { offset, .. }
+            | Self::InterpolatedString { offset, .. }
             | Self::Tuple { offset, .. }
             | Self::List { offset, .. }
             | Self::Map { offset, .. }
@@ -835,6 +858,13 @@ fn canonicalize_expr_call_targets(
         | Expr::String { .. }
         | Expr::Variable { .. }
         | Expr::Atom { .. } => {}
+        Expr::InterpolatedString { segments, .. } => {
+            for segment in segments {
+                if let InterpolationSegment::Expr { expr } = segment {
+                    canonicalize_expr_call_targets(expr, aliases, imports, local_functions);
+                }
+            }
+        }
     }
 }
 
@@ -1341,6 +1371,45 @@ impl<'a> Parser<'a> {
             let offset = token.span().start();
             let value = token.lexeme().to_string();
             return Ok(Expr::string(self.node_ids.next_expr(), offset, value));
+        }
+
+        if self.check(TokenKind::StringStart) {
+            let start_token = self
+                .advance()
+                .expect("string start token should be available");
+            let offset = start_token.span().start();
+            let mut segments = Vec::new();
+
+            loop {
+                if self.check(TokenKind::StringPart) {
+                    let token = self.advance().unwrap();
+                    segments.push(InterpolationSegment::String {
+                        value: token.lexeme().to_string(),
+                    });
+                } else if self.check(TokenKind::InterpolationStart) {
+                    self.advance().unwrap();
+                    let expr = self.parse_expression()?;
+                    self.expect(
+                        TokenKind::InterpolationEnd,
+                        "expected '}' after interpolated expression",
+                    )?;
+                    segments.push(InterpolationSegment::Expr { expr });
+                } else if self.check(TokenKind::StringEnd) {
+                    self.advance().unwrap();
+                    break;
+                } else {
+                    return Err(ParserError::at_current(
+                        "unexpected token inside string interpolation",
+                        self.peek(0),
+                    ));
+                }
+            }
+
+            return Ok(Expr::interpolated_string(
+                self.node_ids.next_expr(),
+                offset,
+                segments,
+            ));
         }
 
         if self.check(TokenKind::Float) {
@@ -2523,6 +2592,14 @@ mod tests {
             | Expr::Bool { id, .. }
             | Expr::Nil { id, .. }
             | Expr::String { id, .. } => ids.push(id.0.clone()),
+            Expr::InterpolatedString { id, segments, .. } => {
+                ids.push(id.0.clone());
+                for segment in segments {
+                    if let crate::parser::InterpolationSegment::Expr { expr } = segment {
+                        collect_expr_ids(expr, ids);
+                    }
+                }
+            }
             Expr::Tuple { id, items, .. } | Expr::List { id, items, .. } => {
                 ids.push(id.0.clone());
 

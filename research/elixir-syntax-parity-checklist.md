@@ -30,7 +30,7 @@ Legend:
 - [x] booleans (`true`/`false`)
 - [x] `nil`
 - [x] string literals as expressions
-- [ ] string interpolation (`"#{expr}"`)
+- [x] string interpolation (`"#{expr}"`)
 - [x] heredocs (`"""..."""`) baseline triple-quoted multiline strings
 - [ ] sigils (`~r`, `~s`, etc.)
 - [ ] bitstring/binary syntax (`<<>>`)

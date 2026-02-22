@@ -40,6 +40,9 @@ pub(crate) enum IrOp {
         value: String,
         offset: usize,
     },
+    ToString {
+        offset: usize,
+    },
     Call {
         callee: IrCallTarget,
         argc: usize,
@@ -362,6 +365,37 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 value: value.clone(),
                 offset: *offset,
             });
+            Ok(())
+        }
+        Expr::InterpolatedString {
+            segments, offset, ..
+        } => {
+            if segments.is_empty() {
+                ops.push(IrOp::ConstString {
+                    value: String::new(),
+                    offset: *offset,
+                });
+                return Ok(());
+            }
+
+            for (i, segment) in segments.iter().enumerate() {
+                match segment {
+                    crate::parser::InterpolationSegment::String { value } => {
+                        ops.push(IrOp::ConstString {
+                            value: value.clone(),
+                            offset: *offset,
+                        });
+                    }
+                    crate::parser::InterpolationSegment::Expr { expr } => {
+                        lower_expr(expr, current_module, ops)?;
+                        ops.push(IrOp::ToString { offset: *offset });
+                    }
+                }
+
+                if i > 0 {
+                    ops.push(IrOp::Concat { offset: *offset });
+                }
+            }
             Ok(())
         }
         Expr::Tuple { items, offset, .. } => {

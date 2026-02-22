@@ -196,6 +196,12 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
         | Expr::Bool { .. }
         | Expr::Nil { .. }
         | Expr::String { .. } => false,
+        Expr::InterpolatedString { segments, .. } => segments.iter().any(|segment| match segment {
+            crate::parser::InterpolationSegment::Expr { expr } => {
+                expr_references_module(expr, module_name)
+            }
+            _ => false,
+        }),
         Expr::Tuple { items, .. } | Expr::List { items, .. } => items
             .iter()
             .any(|item| expr_references_module(item, module_name)),
