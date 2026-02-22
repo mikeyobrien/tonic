@@ -284,32 +284,62 @@ fn parse_dependencies_from_value(
     for (name, value) in deps_table {
         let table = match value {
             toml::Value::Table(t) => t,
-            _ => continue,
+            _ => {
+                return Err(format!(
+                    "invalid tonic.toml: dependency '{}' must specify either a string 'path' or both string 'git' and 'rev'",
+                    name
+                ));
+            }
         };
 
-        // Check if it's a path dependency
-        if let Some(path_val) = table.get("path") {
-            if let Some(path_str) = path_val.as_str() {
-                let path = Path::new(path_str);
-                let resolved = if path.is_absolute() {
-                    path.to_path_buf()
-                } else {
-                    project_root.join(path)
-                };
+        let has_path = table.contains_key("path");
+        let has_git = table.contains_key("git");
 
-                if !resolved.exists() {
-                    return Err(format!(
-                        "invalid tonic.toml: path dependency '{}' points to non-existent path: {}",
-                        name, path_str
-                    ));
-                }
-                deps.path.insert(name.clone(), resolved);
-                continue;
-            }
+        if has_path && has_git {
+            return Err(format!(
+                "invalid tonic.toml: dependency '{}' cannot declare both 'path' and 'git' sources",
+                name
+            ));
         }
 
-        // Check if it's a git dependency
-        if let Some(git_val) = table.get("git") {
+        if has_path {
+            let Some(path_val) = table.get("path") else {
+                return Err(format!(
+                    "invalid tonic.toml: path dependency '{}' has non-string 'path' value",
+                    name
+                ));
+            };
+            let Some(path_str) = path_val.as_str() else {
+                return Err(format!(
+                    "invalid tonic.toml: path dependency '{}' has non-string 'path' value",
+                    name
+                ));
+            };
+
+            let path = Path::new(path_str);
+            let resolved = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                project_root.join(path)
+            };
+
+            if !resolved.exists() {
+                return Err(format!(
+                    "invalid tonic.toml: path dependency '{}' points to non-existent path: {}",
+                    name, path_str
+                ));
+            }
+            deps.path.insert(name.clone(), resolved);
+            continue;
+        }
+
+        if has_git {
+            let Some(git_val) = table.get("git") else {
+                return Err(format!(
+                    "invalid tonic.toml: git dependency '{}' has non-string 'git' value",
+                    name
+                ));
+            };
             let Some(url) = git_val.as_str() else {
                 return Err(format!(
                     "invalid tonic.toml: git dependency '{}' has non-string 'git' value",
@@ -335,7 +365,13 @@ fn parse_dependencies_from_value(
                     rev: rev.to_string(),
                 },
             );
+            continue;
         }
+
+        return Err(format!(
+            "invalid tonic.toml: dependency '{}' must specify either a string 'path' or both string 'git' and 'rev'",
+            name
+        ));
     }
 
     Ok(deps)
@@ -454,6 +490,34 @@ mod tests {
             .expect("expected dependency path should canonicalize");
 
         assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn parse_manifest_rejects_dependency_without_path_or_git_source() {
+        assert_eq!(
+            parse_manifest(
+                "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n\n[dependencies]\nbroken = { rev = \"abc123\" }\n",
+                Path::new("."),
+            ),
+            Err(
+                "invalid tonic.toml: dependency 'broken' must specify either a string 'path' or both string 'git' and 'rev'"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn parse_manifest_rejects_path_dependency_with_non_string_path_value() {
+        assert_eq!(
+            parse_manifest(
+                "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n\n[dependencies]\nbroken = { path = 42 }\n",
+                Path::new("."),
+            ),
+            Err(
+                "invalid tonic.toml: path dependency 'broken' has non-string 'path' value"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
