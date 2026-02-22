@@ -123,25 +123,29 @@ impl DependencyResolver {
                 continue; // Already cached
             }
 
-            Self::fetch_git_dep(&git_lock.url, &git_lock.rev, &cache_path)?;
+            Self::fetch_git_dep(name, &git_lock.url, &git_lock.rev, &cache_path)?;
         }
 
         lockfile.save(project_root)?;
         Ok(lockfile)
     }
 
-    fn fetch_git_dep(url: &str, rev: &str, target_path: &Path) -> Result<(), String> {
+    fn fetch_git_dep(name: &str, url: &str, rev: &str, target_path: &Path) -> Result<(), String> {
+        let diagnostic = || {
+            format!(
+                "failed to fetch git dependency '{}' from '{}' at rev '{}'; verify the repository URL and revision are reachable",
+                name, url, rev
+            )
+        };
+
         // Use git to fetch the specific revision
         let output = std::process::Command::new("git")
             .args(["clone", "--no-checkout", url, target_path.to_str().unwrap()])
             .output()
-            .map_err(|e| format!("failed to run git: {}", e))?;
+            .map_err(|_| diagnostic())?;
 
         if !output.status.success() {
-            return Err(format!(
-                "git clone failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
+            return Err(diagnostic());
         }
 
         // Checkout specific revision
@@ -149,14 +153,10 @@ impl DependencyResolver {
             .current_dir(target_path)
             .args(["checkout", "--detach", rev])
             .output()
-            .map_err(|e| format!("failed to checkout rev {}: {}", rev, e))?;
+            .map_err(|_| diagnostic())?;
 
         if !output.status.success() {
-            return Err(format!(
-                "git checkout failed for rev {}: {}",
-                rev,
-                String::from_utf8_lossy(&output.stderr)
-            ));
+            return Err(diagnostic());
         }
 
         Ok(())
