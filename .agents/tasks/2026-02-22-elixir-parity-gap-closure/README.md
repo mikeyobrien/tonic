@@ -9,7 +9,7 @@ Goal: close the highest-impact remaining syntax/semantics gaps with small, test-
 1. `01-string-interpolation.code-task.md` — done
 2. `02-map-update-access.code-task.md` — done
 3. `03-comprehensions-for.code-task.md` — done
-4. `04-try-rescue-raise.code-task.md` — pending
+4. `04-try-rescue-raise.code-task.md` — done
 
 ## Done Definition (per task)
 

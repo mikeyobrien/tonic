@@ -227,6 +227,17 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             resolve_expr(body, context)
         }
         Expr::Group { inner, .. } => resolve_expr(inner, context),
+        Expr::Try { body, rescue, .. } => {
+            resolve_expr(body, context)?;
+            for branch in rescue {
+                if let Some(guard) = branch.guard() {
+                    resolve_expr(guard, context)?;
+                }
+                resolve_expr(branch.body(), context)?;
+            }
+            Ok(())
+        }
+        Expr::Raise { error, .. } => resolve_expr(error, context),
         Expr::Variable { .. } | Expr::Atom { .. } => Ok(()),
     }
 }

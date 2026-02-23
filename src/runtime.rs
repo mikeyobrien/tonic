@@ -96,6 +96,7 @@ impl RuntimeValue {
 pub struct RuntimeError {
     message: String,
     offset: Option<usize>,
+    pub raised_value: Option<RuntimeValue>,
 }
 
 impl RuntimeError {
@@ -103,6 +104,7 @@ impl RuntimeError {
         Self {
             message: message.into(),
             offset: None,
+            raised_value: None,
         }
     }
 
@@ -110,6 +112,20 @@ impl RuntimeError {
         Self {
             message: message.into(),
             offset: Some(offset),
+            raised_value: None,
+        }
+    }
+
+    fn raised(value: RuntimeValue, offset: usize) -> Self {
+        let message = match &value {
+            RuntimeValue::String(s) => s.clone(),
+            RuntimeValue::Atom(a) => a.clone(),
+            _ => "exception raised".to_string(),
+        };
+        Self {
+            message,
+            offset: Some(offset),
+            raised_value: Some(value),
         }
     }
 }
@@ -503,6 +519,79 @@ fn evaluate_ops(
                     return Err(RuntimeError::at_offset("no case clause matching", *offset));
                 }
             }
+            IrOp::Try {
+                body_ops,
+                rescue_branches,
+                offset,
+            } => {
+                let mut try_env = env.clone();
+                let mut try_stack = Vec::new();
+
+                match evaluate_ops(program, body_ops, &mut try_env, &mut try_stack) {
+                    Ok(ret) => {
+                        if let Some(v) = ret {
+                            return Ok(Some(v));
+                        }
+                        if let Some(v) = try_stack.pop() {
+                            stack.push(v);
+                        } else {
+                            stack.push(RuntimeValue::Nil);
+                        }
+                    }
+                    Err(err) => {
+                        let err_val = err
+                            .raised_value
+                            .clone()
+                            .unwrap_or_else(|| RuntimeValue::String(err.message.clone()));
+
+                        let mut rescued = false;
+                        for branch in rescue_branches {
+                            let mut bindings = HashMap::new();
+                            if !match_pattern(&err_val, &branch.pattern, env, &mut bindings) {
+                                continue;
+                            }
+
+                            let mut branch_env = env.clone();
+                            for (k, v) in bindings {
+                                branch_env.insert(k, v);
+                            }
+
+                            if let Some(guard_ops) = &branch.guard_ops {
+                                let guard_passed =
+                                    evaluate_guard_ops(program, guard_ops, &mut branch_env)?;
+                                if !guard_passed {
+                                    continue;
+                                }
+                            }
+
+                            let mut branch_stack = Vec::new();
+                            if let Some(ret) = evaluate_ops(
+                                program,
+                                &branch.ops,
+                                &mut branch_env,
+                                &mut branch_stack,
+                            )? {
+                                return Ok(Some(ret));
+                            }
+
+                            let result = branch_stack
+                                .pop()
+                                .unwrap_or_else(|| RuntimeValue::Atom("ok".to_string()));
+                            stack.push(result);
+                            rescued = true;
+                            break;
+                        }
+
+                        if !rescued {
+                            return Err(err);
+                        }
+                    }
+                }
+            }
+            IrOp::Raise { offset } => {
+                let error_val = pop_value(stack, *offset, "raise")?;
+                return Err(RuntimeError::raised(error_val, *offset));
+            }
             IrOp::For {
                 pattern,
                 body_ops,
@@ -590,6 +679,8 @@ fn ir_op_offset(op: &IrOp) -> usize {
         | IrOp::CallValue { offset, .. }
         | IrOp::Question { offset }
         | IrOp::Case { offset, .. }
+        | IrOp::Try { offset, .. }
+        | IrOp::Raise { offset }
         | IrOp::For { offset, .. }
         | IrOp::LoadVariable { offset, .. }
         | IrOp::ConstAtom { offset, .. }
@@ -1120,6 +1211,7 @@ mod tests {
             RuntimeError {
                 message: "missing runtime function: Demo.run".to_string(),
                 offset: None,
+                raised_value: None,
             }
         );
     }

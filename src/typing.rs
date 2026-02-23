@@ -446,6 +446,8 @@ fn infer_expression_type(
         }
         Expr::Variable { .. } => Ok(solver.fresh_var()),
         Expr::Atom { .. } => Ok(Type::Dynamic),
+        Expr::Try { .. } => Ok(Type::Dynamic),
+        Expr::Raise { .. } => Ok(Type::Dynamic),
     }
 }
 

@@ -64,6 +64,14 @@ pub(crate) enum IrOp {
         branches: Vec<IrCaseBranch>,
         offset: usize,
     },
+    Try {
+        body_ops: Vec<IrOp>,
+        rescue_branches: Vec<IrCaseBranch>,
+        offset: usize,
+    },
+    Raise {
+        offset: usize,
+    },
     For {
         pattern: IrPattern,
         body_ops: Vec<IrOp>,
@@ -842,6 +850,49 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 branches: lowered_branches,
                 offset: *offset,
             });
+            Ok(())
+        }
+        Expr::Try {
+            body,
+            rescue,
+            offset,
+            ..
+        } => {
+            let mut body_ops = Vec::new();
+            lower_expr(body, current_module, &mut body_ops)?;
+
+            let rescue_branches = rescue
+                .iter()
+                .map(|branch| {
+                    let mut branch_ops = Vec::new();
+                    lower_expr(branch.body(), current_module, &mut branch_ops)?;
+
+                    let guard_ops = if let Some(guard) = branch.guard() {
+                        let mut guard_ops = Vec::new();
+                        lower_expr(guard, current_module, &mut guard_ops)?;
+                        Some(guard_ops)
+                    } else {
+                        None
+                    };
+
+                    Ok(IrCaseBranch {
+                        pattern: lower_pattern(branch.head())?,
+                        guard_ops,
+                        ops: branch_ops,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+
+            ops.push(IrOp::Try {
+                body_ops,
+                rescue_branches,
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Raise { error, offset, .. } => {
+            lower_expr(error, current_module, ops)?;
+            ops.push(IrOp::Raise { offset: *offset });
             Ok(())
         }
         Expr::For {

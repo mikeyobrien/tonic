@@ -408,6 +408,21 @@ pub enum Expr {
         subject: Box<Expr>,
         branches: Vec<CaseBranch>,
     },
+    Try {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        body: Box<Expr>,
+        rescue: Vec<CaseBranch>,
+    },
+    Raise {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        error: Box<Expr>,
+    },
     For {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -724,6 +739,23 @@ impl Expr {
         }
     }
 
+    fn try_rescue(id: NodeId, offset: usize, body: Expr, rescue: Vec<CaseBranch>) -> Self {
+        Self::Try {
+            id,
+            offset,
+            body: Box::new(body),
+            rescue,
+        }
+    }
+
+    fn raise(id: NodeId, offset: usize, error: Expr) -> Self {
+        Self::Raise {
+            id,
+            offset,
+            error: Box::new(error),
+        }
+    }
+
     fn for_comprehension(
         id: NodeId,
         offset: usize,
@@ -774,6 +806,8 @@ impl Expr {
             | Self::Variable { offset, .. }
             | Self::Atom { offset, .. }
             | Self::Case { offset, .. }
+            | Self::Try { offset, .. }
+            | Self::Raise { offset, .. }
             | Self::For { offset, .. } => *offset,
         }
     }
@@ -969,6 +1003,18 @@ fn canonicalize_expr_call_targets(
         } => {
             canonicalize_expr_call_targets(generator, aliases, imports, local_functions);
             canonicalize_expr_call_targets(body, aliases, imports, local_functions);
+        }
+        Expr::Try { body, rescue, .. } => {
+            canonicalize_expr_call_targets(body, aliases, imports, local_functions);
+            for branch in rescue {
+                if let Some(guard) = branch.guard.as_mut() {
+                    canonicalize_expr_call_targets(guard, aliases, imports, local_functions);
+                }
+                canonicalize_expr_call_targets(&mut branch.body, aliases, imports, local_functions);
+            }
+        }
+        Expr::Raise { error, .. } => {
+            canonicalize_expr_call_targets(error, aliases, imports, local_functions);
         }
         Expr::Int { .. }
         | Expr::Float { .. }
@@ -1473,6 +1519,14 @@ impl<'a> Parser<'a> {
 
         if self.check(TokenKind::Case) {
             return self.parse_case_expression();
+        }
+
+        if self.check(TokenKind::Try) {
+            return self.parse_try_expression();
+        }
+
+        if self.check(TokenKind::Raise) {
+            return self.parse_raise_expression();
         }
 
         if self.check(TokenKind::Fn) {
@@ -2158,6 +2212,57 @@ impl<'a> Parser<'a> {
         let body = self.parse_expression()?;
 
         Ok(CaseBranch::new(pattern, guard, body))
+    }
+
+    fn parse_try_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Try, "try")?.span().start();
+        self.expect(TokenKind::Do, "do")?;
+        let body = self.parse_expression()?;
+
+        if self.match_kind(TokenKind::Catch) {
+            return Err(ParserError::at_current(
+                "catch is out of scope for now",
+                Some(&self.tokens[self.index - 1]),
+            ));
+        }
+
+        if self.match_kind(TokenKind::After) {
+            return Err(ParserError::at_current(
+                "after is out of scope for now",
+                Some(&self.tokens[self.index - 1]),
+            ));
+        }
+
+        self.expect(TokenKind::Rescue, "rescue")?;
+
+        let mut rescue = Vec::new();
+        while !self.check(TokenKind::End) {
+            if self.is_at_end() {
+                return Err(self.expected("rescue branch"));
+            }
+            rescue.push(self.parse_case_branch()?);
+        }
+
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(Expr::try_rescue(
+            self.node_ids.next_expr(),
+            offset,
+            body,
+            rescue,
+        ))
+    }
+
+    fn parse_raise_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Raise, "raise")?.span().start();
+
+        let has_parens = self.match_kind(TokenKind::LParen);
+        let error = self.parse_expression()?;
+        if has_parens {
+            self.expect(TokenKind::RParen, ")")?;
+        }
+
+        Ok(Expr::raise(self.node_ids.next_expr(), offset, error))
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParserError> {
@@ -3257,6 +3362,22 @@ mod tests {
             Expr::Group { id, inner, .. } => {
                 ids.push(id.0.clone());
                 collect_expr_ids(inner, ids);
+            }
+            Expr::Try {
+                id, body, rescue, ..
+            } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(body, ids);
+                for branch in rescue {
+                    if let Some(guard) = &branch.guard {
+                        collect_expr_ids(guard, ids);
+                    }
+                    collect_expr_ids(&branch.body, ids);
+                }
+            }
+            Expr::Raise { id, error, .. } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(error, ids);
             }
             Expr::Variable { id, .. } | Expr::Atom { id, .. } => {
                 ids.push(id.0.clone());

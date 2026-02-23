@@ -1,6 +1,6 @@
 ---
-status: pending
-HEARTBEAT_TASK_STATUS: todo
+status: done
+HEARTBEAT_TASK_STATUS: done
 ---
 
 # Task: `try/rescue` + `raise` Baseline

@@ -259,6 +259,16 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                 || expr_references_module(body, module_name)
         }
         Expr::Group { inner, .. } => expr_references_module(inner, module_name),
+        Expr::Try { body, rescue, .. } => {
+            expr_references_module(body, module_name)
+                || rescue.iter().any(|branch| {
+                    branch
+                        .guard()
+                        .is_some_and(|guard| expr_references_module(guard, module_name))
+                        || expr_references_module(branch.body(), module_name)
+                })
+        }
+        Expr::Raise { error, .. } => expr_references_module(error, module_name),
         Expr::Variable { .. } | Expr::Atom { .. } => false,
     }
 }
