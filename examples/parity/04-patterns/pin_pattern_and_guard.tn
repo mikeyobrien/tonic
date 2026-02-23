@@ -1,0 +1,11 @@
+defmodule Demo do
+  def run() do
+    case 10 do
+      x ->
+        case [10, 20] do
+          [^x, y] when y > 15 -> y
+          _ -> 0
+        end
+    end
+  end
+end

@@ -1,0 +1,8 @@
+defmodule Demo do
+  def run() do
+    with {:ok, v1} <- {:ok, 10},
+         {:ok, v2} <- {:ok, 20} do
+      v1 + v2
+    end
+  end
+end

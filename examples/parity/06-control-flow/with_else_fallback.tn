@@ -1,0 +1,11 @@
+defmodule Demo do
+  def run() do
+    with {:ok, v1} <- {:ok, 10},
+         {:ok, v2} <- {:error, :failed} do
+      v1 + v2
+    else
+      {:error, reason} -> reason
+      _ -> 0
+    end
+  end
+end

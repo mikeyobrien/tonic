@@ -1,0 +1,9 @@
+defmodule Demo do
+  def run() do
+    do_update(%{a: 1})
+  end
+
+  def do_update(m) do
+    %{m | a: 2}
+  end
+end

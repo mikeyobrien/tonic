@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {a, b} = {1, 2}
+  end
+end

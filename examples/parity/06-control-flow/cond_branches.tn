@@ -1,0 +1,16 @@
+defmodule Demo do
+  def run() do
+    case 10 do
+      x ->
+        if x < 5 do
+          1
+        else
+          if x == 10 do
+            2
+          else
+            3
+          end
+        end
+    end
+  end
+end

@@ -1,0 +1,10 @@
+defmodule Demo do
+  def run() do
+    case fn x -> x * 2 end do
+      f ->
+        case &(&1 + 1) do
+          g -> {f.(5), g.(5)}
+        end
+    end
+  end
+end

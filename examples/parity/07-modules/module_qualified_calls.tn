@@ -1,0 +1,11 @@
+defmodule Math do
+  def add(a, b) do
+    a + b
+  end
+end
+
+defmodule Demo do
+  def run() do
+    Math.add(10, 20)
+  end
+end

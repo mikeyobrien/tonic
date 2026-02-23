@@ -1,0 +1,8 @@
+defmodule Demo do
+  def run() do
+    case {1, 2} do
+      {a, b} -> {a, {b, {3, 4}}}
+      _ -> {0, {0, {0, 0}}}
+    end
+  end
+end

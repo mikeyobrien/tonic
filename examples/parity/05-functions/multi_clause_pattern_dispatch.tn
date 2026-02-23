@@ -1,0 +1,13 @@
+defmodule Demo do
+  def run() do
+    {f(:ok), f({:error, 42})}
+  end
+
+  def f(:ok) do
+    1
+  end
+
+  def f({:error, _}) do
+    2
+  end
+end

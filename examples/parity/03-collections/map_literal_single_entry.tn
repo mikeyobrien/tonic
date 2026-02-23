@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    %{ok: 1}
+  end
+end

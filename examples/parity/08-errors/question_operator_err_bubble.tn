@@ -1,0 +1,11 @@
+defmodule Demo do
+  def run() do
+    f()
+  end
+
+  def f() do
+    case err("bubbly")? do
+      _ -> 10
+    end
+  end
+end

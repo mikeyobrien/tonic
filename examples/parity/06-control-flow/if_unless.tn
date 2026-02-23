@@ -1,0 +1,16 @@
+defmodule Demo do
+  def run() do
+    {
+      if true do
+        1
+      else
+        2
+      end,
+      unless false do
+        3
+      else
+        4
+      end
+    }
+  end
+end

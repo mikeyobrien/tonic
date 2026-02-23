@@ -1,0 +1,9 @@
+defmodule Demo do
+  def run() do
+    do_access(%{a: 42})
+  end
+
+  def do_access(m) do
+    {m.a, m[:a]}
+  end
+end

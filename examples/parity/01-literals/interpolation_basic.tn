@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    "hello #{1 + 2}"
+  end
+end

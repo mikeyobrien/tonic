@@ -1,0 +1,8 @@
+defmodule Demo do
+  def run() do
+    case :error do
+      :ok -> 1
+      _ -> 2
+    end
+  end
+end

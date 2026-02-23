@@ -1,0 +1,9 @@
+defmodule Demo do
+  def run() do
+    {f(), f(10)}
+  end
+
+  def f(x \\ 5) do
+    x
+  end
+end

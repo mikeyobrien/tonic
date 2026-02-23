@@ -1,0 +1,10 @@
+defmodule Demo do
+  @moduledoc "This is a demo module."
+
+  @doc "Runs the demo."
+  @answer 42
+
+  def run() do
+    42
+  end
+end

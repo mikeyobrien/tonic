@@ -1,0 +1,13 @@
+defmodule Demo do
+  def run() do
+    {f(5), f(15)}
+  end
+
+  def f(x) when x < 10 do
+    1
+  end
+
+  def f(x) when x >= 10 do
+    2
+  end
+end

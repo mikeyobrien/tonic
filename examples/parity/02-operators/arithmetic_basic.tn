@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {1 + 2, {5 - 3, {4 * 2, 10 / 2}}}
+  end
+end

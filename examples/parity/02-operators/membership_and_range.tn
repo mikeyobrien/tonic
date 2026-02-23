@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {2 in 1..3, {4 in 1..3, 5 in [1, 5, 10]}}
+  end
+end

@@ -1,0 +1,18 @@
+defmodule Math do
+  def helper() do
+    7
+  end
+end
+
+defmodule Logger do
+end
+
+defmodule Demo do
+  alias Math, as: M
+  import Math
+  require Logger
+
+  def run() do
+    M.helper() + helper()
+  end
+end
