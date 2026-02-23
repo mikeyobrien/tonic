@@ -18,7 +18,7 @@ status = "active"
 path = "examples/ergonomics/error_propagation.tn"
 check_exit = 0
 run_exit = 1
-stderr_contains = "error: runtime returned err(404)"
+stderr_contains = '''error: runtime returned err(404)'''
 status = "active"
 
 [[example]]
@@ -42,5 +42,328 @@ path = "examples/ergonomics/pattern_matching.tn"
 check_exit = 0
 run_exit = 0
 stdout = '''4
+'''
+status = "active"
+
+
+[[example]]
+path = "examples/parity/01-literals/atom_expression.tn"
+check_exit = 0
+run_exit = 0
+stdout = ''':ok
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/01-literals/bool_nil_string.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{true, {false, {nil, "hello"}}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/01-literals/float_and_int.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, 3.14}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/01-literals/heredoc_multiline.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"
+    line1
+    line2
+    "
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/01-literals/interpolation_basic.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"hello 3"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/arithmetic_basic.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{3, {2, {8, 5}}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/comparison_set.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{true, {true, {true, {true, {true, true}}}}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/concat_and_list_ops.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{"hello world", {[1, 2, 3, 4], [1, 3]}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/logical_keywords.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{false, {true, false}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/logical_short_circuit.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{false, {true, false}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/membership_and_range.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{true, {false, true}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/03-collections/keyword_literal_single_entry.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[ok: 1]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/03-collections/list_literal.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[1, 2, 3]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/03-collections/map_dot_and_index_access.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{42, 42}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/03-collections/map_literal_single_entry.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''%{:ok => 1}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/03-collections/map_update_single_key.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''%{:a => 2}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/03-collections/tuple_literal_and_match.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, {2, {3, 4}}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/04-patterns/case_atom_and_wildcard.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''2
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/04-patterns/case_list_bind.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''3
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/04-patterns/case_map_arrow_pattern.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/04-patterns/case_tuple_bind.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/04-patterns/match_operator_bindings.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, 2}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/04-patterns/pin_pattern_and_guard.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''20
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/05-functions/anonymous_fn_capture_invoke.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{10, 6}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/05-functions/default_args.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{5, 10}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/05-functions/function_guards_when.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, 2}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/05-functions/multi_clause_pattern_dispatch.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, 2}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/05-functions/private_defp_visibility.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/cond_branches.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''2
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/if_unless.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, 3}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/with_else_fallback.tn"
+check_exit = 0
+run_exit = 0
+stdout = ''':failed
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/with_happy_path.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''30
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/alias_import_use_require.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''14
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/module_attributes_doc.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/module_qualified_calls.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''30
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/project_multifile_pipeline"
+check_exit = 0
+run_exit = 0
+stdout = '''300
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/host_call_and_protocol_dispatch.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"hello interop"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/ok_err_constructors.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{ok(42), err("failed")}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/question_operator_err_bubble.tn"
+check_exit = 0
+run_exit = 1
+stderr_contains = '''error: runtime returned err("bubbly")'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/question_operator_success.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''15
 '''
 status = "active"
