@@ -39,6 +39,7 @@ pub enum TokenKind {
     Case,
     Cond,
     With,
+    For,
     Fn,
     Else,
     True,
@@ -140,6 +141,7 @@ impl Token {
             TokenKind::Case => format!("CASE({})", self.lexeme),
             TokenKind::Cond => format!("COND({})", self.lexeme),
             TokenKind::With => format!("WITH({})", self.lexeme),
+            TokenKind::For => format!("FOR({})", self.lexeme),
             TokenKind::Fn => format!("FN({})", self.lexeme),
             TokenKind::Else => format!("ELSE({})", self.lexeme),
             TokenKind::True => format!("TRUE({})", self.lexeme),
@@ -817,6 +819,7 @@ fn keyword_kind(lexeme: &str) -> Option<TokenKind> {
         "case" => Some(TokenKind::Case),
         "cond" => Some(TokenKind::Cond),
         "with" => Some(TokenKind::With),
+        "for" => Some(TokenKind::For),
         "fn" => Some(TokenKind::Fn),
         "else" => Some(TokenKind::Else),
         "true" => Some(TokenKind::True),
@@ -1029,7 +1032,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_supports_control_form_keywords_and_with_operator() {
-        let labels = dump_labels("if value do 1 else 0 end unless value do 1 end cond do true -> 1 end with x <- 1 do x end");
+        let labels = dump_labels("if value do 1 else 0 end unless value do 1 end cond do true -> 1 end with x <- 1 do x end for x <- list(1, 2) do x end");
 
         assert_eq!(
             labels,
@@ -1056,6 +1059,18 @@ mod tests {
                 "IDENT(x)",
                 "LEFT_ARROW",
                 "INT(1)",
+                "DO(do)",
+                "IDENT(x)",
+                "END(end)",
+                "FOR(for)",
+                "IDENT(x)",
+                "LEFT_ARROW",
+                "IDENT(list)",
+                "LPAREN",
+                "INT(1)",
+                "COMMA",
+                "INT(2)",
+                "RPAREN",
                 "DO(do)",
                 "IDENT(x)",
                 "END(end)",

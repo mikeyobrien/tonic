@@ -252,6 +252,12 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                         || expr_references_module(branch.body(), module_name)
                 })
         }
+        Expr::For {
+            generator, body, ..
+        } => {
+            expr_references_module(generator, module_name)
+                || expr_references_module(body, module_name)
+        }
         Expr::Group { inner, .. } => expr_references_module(inner, module_name),
         Expr::Variable { .. } | Expr::Atom { .. } => false,
     }

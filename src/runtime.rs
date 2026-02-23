@@ -503,6 +503,48 @@ fn evaluate_ops(
                     return Err(RuntimeError::at_offset("no case clause matching", *offset));
                 }
             }
+            IrOp::For {
+                pattern,
+                body_ops,
+                offset,
+            } => {
+                let enumerable = pop_value(stack, *offset, "for generator")?;
+                let values = match enumerable {
+                    RuntimeValue::List(values) => values,
+                    other => {
+                        return Err(RuntimeError::at_offset(
+                            format!("for expects list generator, found {}", other.kind_label()),
+                            *offset,
+                        ));
+                    }
+                };
+
+                let mut results = Vec::new();
+
+                for value in values {
+                    let mut bindings = HashMap::new();
+                    if !match_pattern(&value, pattern, env, &mut bindings) {
+                        continue;
+                    }
+
+                    let mut iteration_env = env.clone();
+                    for (name, bound_value) in bindings {
+                        iteration_env.insert(name, bound_value);
+                    }
+
+                    let mut iteration_stack = Vec::new();
+                    if let Some(ret) =
+                        evaluate_ops(program, body_ops, &mut iteration_env, &mut iteration_stack)?
+                    {
+                        return Ok(Some(ret));
+                    }
+
+                    let body_value = pop_value(&mut iteration_stack, *offset, "for body")?;
+                    results.push(body_value);
+                }
+
+                stack.push(RuntimeValue::List(results));
+            }
         }
     }
 
@@ -548,6 +590,7 @@ fn ir_op_offset(op: &IrOp) -> usize {
         | IrOp::CallValue { offset, .. }
         | IrOp::Question { offset }
         | IrOp::Case { offset, .. }
+        | IrOp::For { offset, .. }
         | IrOp::LoadVariable { offset, .. }
         | IrOp::ConstAtom { offset, .. }
         | IrOp::AddInt { offset }

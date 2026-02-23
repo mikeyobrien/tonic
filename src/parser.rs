@@ -408,6 +408,15 @@ pub enum Expr {
         subject: Box<Expr>,
         branches: Vec<CaseBranch>,
     },
+    For {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        pattern: Pattern,
+        generator: Box<Expr>,
+        body: Box<Expr>,
+    },
     Variable {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -715,6 +724,22 @@ impl Expr {
         }
     }
 
+    fn for_comprehension(
+        id: NodeId,
+        offset: usize,
+        pattern: Pattern,
+        generator: Expr,
+        body: Expr,
+    ) -> Self {
+        Self::For {
+            id,
+            offset,
+            pattern,
+            generator: Box::new(generator),
+            body: Box::new(body),
+        }
+    }
+
     fn variable(id: NodeId, offset: usize, name: String) -> Self {
         Self::Variable { id, offset, name }
     }
@@ -748,7 +773,8 @@ impl Expr {
             | Self::Pipe { offset, .. }
             | Self::Variable { offset, .. }
             | Self::Atom { offset, .. }
-            | Self::Case { offset, .. } => *offset,
+            | Self::Case { offset, .. }
+            | Self::For { offset, .. } => *offset,
         }
     }
 }
@@ -938,6 +964,12 @@ fn canonicalize_expr_call_targets(
                 );
             }
         }
+        Expr::For {
+            generator, body, ..
+        } => {
+            canonicalize_expr_call_targets(generator, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(body, aliases, imports, local_functions);
+        }
         Expr::Int { .. }
         | Expr::Float { .. }
         | Expr::Bool { .. }
@@ -984,6 +1016,7 @@ fn token_can_start_no_paren_arg(kind: TokenKind) -> bool {
             | TokenKind::Case
             | TokenKind::Cond
             | TokenKind::With
+            | TokenKind::For
             | TokenKind::Ampersand
     )
 }
@@ -1434,6 +1467,10 @@ impl<'a> Parser<'a> {
             return self.parse_with_expression();
         }
 
+        if self.check(TokenKind::For) {
+            return self.parse_for_expression();
+        }
+
         if self.check(TokenKind::Case) {
             return self.parse_case_expression();
         }
@@ -1837,6 +1874,47 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::End, "end")?;
 
         Ok(self.lower_with_expression(offset, clauses, body, else_branches))
+    }
+
+    fn parse_for_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::For, "for")?.span().start();
+        let pattern = self.parse_pattern()?;
+        self.expect(TokenKind::LeftArrow, "<-")?;
+        let generator = self.parse_expression()?;
+
+        if self.match_kind(TokenKind::Comma) {
+            if self.check(TokenKind::Ident)
+                && self
+                    .peek(1)
+                    .is_some_and(|token| token.kind() == TokenKind::Colon)
+            {
+                let option_token = self.expect_token(TokenKind::Ident, "for option")?;
+                return Err(ParserError::at_current(
+                    format!(
+                        "unsupported for option '{}'; remove options from for for now",
+                        option_token.lexeme()
+                    ),
+                    Some(option_token),
+                ));
+            }
+
+            return Err(ParserError::at_current(
+                "unsupported for generator chain; use a single generator for now",
+                self.current(),
+            ));
+        }
+
+        self.expect(TokenKind::Do, "do")?;
+        let body = self.parse_expression()?;
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(Expr::for_comprehension(
+            self.node_ids.next_expr(),
+            offset,
+            pattern,
+            generator,
+            body,
+        ))
     }
 
     fn lower_with_expression(
@@ -2837,6 +2915,70 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_for_comprehensions() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2, 3) do\n      x + 1\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"for",
+                "pattern":{"kind":"bind","name":"x"},
+                "generator":{
+                    "kind":"call",
+                    "callee":"list",
+                    "args":[
+                        {"kind":"int","value":1},
+                        {"kind":"int","value":2},
+                        {"kind":"int","value":3}
+                    ]
+                },
+                "body":{
+                    "kind":"binary",
+                    "op":"plus",
+                    "left":{"kind":"variable","name":"x"},
+                    "right":{"kind":"int","value":1}
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_rejects_for_with_multiple_generators() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), y <- list(3, 4) do\n      x + y\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let error = parse_ast(&tokens).expect_err("parser should reject multi-generator for forms");
+
+        assert_eq!(
+            error.to_string(),
+            "unsupported for generator chain; use a single generator for now at offset 58"
+        );
+    }
+
+    #[test]
+    fn parse_ast_rejects_for_with_options() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), into: [] do\n      x\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let error = parse_ast(&tokens).expect_err("parser should reject unsupported for options");
+
+        assert_eq!(
+            error.to_string(),
+            "unsupported for option 'into'; remove options from for for now at offset 58"
+        );
+    }
+
+    #[test]
     fn parse_ast_rejects_non_trailing_default_params() {
         let tokens = scan_tokens(
             "defmodule Demo do\n  def add(value \\\\ 1, other) do\n    value + other\n  end\nend\n",
@@ -3101,6 +3243,16 @@ mod tests {
                     }
                     collect_expr_ids(branch.body(), ids);
                 }
+            }
+            Expr::For {
+                id,
+                generator,
+                body,
+                ..
+            } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(generator, ids);
+                collect_expr_ids(body, ids);
             }
             Expr::Group { id, inner, .. } => {
                 ids.push(id.0.clone());

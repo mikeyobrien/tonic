@@ -64,6 +64,11 @@ pub(crate) enum IrOp {
         branches: Vec<IrCaseBranch>,
         offset: usize,
     },
+    For {
+        pattern: IrPattern,
+        body_ops: Vec<IrOp>,
+        offset: usize,
+    },
     LoadVariable {
         name: String,
         offset: usize,
@@ -839,6 +844,25 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             });
             Ok(())
         }
+        Expr::For {
+            pattern,
+            generator,
+            body,
+            offset,
+            ..
+        } => {
+            lower_expr(generator, current_module, ops)?;
+
+            let mut body_ops = Vec::new();
+            lower_expr(body, current_module, &mut body_ops)?;
+
+            ops.push(IrOp::For {
+                pattern: lower_pattern(pattern)?,
+                body_ops,
+                offset: *offset,
+            });
+            Ok(())
+        }
         Expr::Group { inner, .. } => lower_expr(inner, current_module, ops),
         Expr::Variable { name, offset, .. } => {
             ops.push(IrOp::LoadVariable {
@@ -1195,6 +1219,37 @@ mod tests {
                             "pattern":{"kind":"wildcard"},
                             "ops":[{"op":"const_int","value":3,"offset":78}]
                         }
+                    ],
+                    "offset":37
+                },
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_supports_for_comprehension_ops() {
+        let source = "defmodule Demo do\n  def run() do\n    for x <- list(1, 2) do\n      x + 1\n    end\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize for comprehension fixture");
+        let ast = parse_ast(&tokens).expect("parser should build for comprehension fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support for comprehensions");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_int","value":1,"offset":51},
+                {"op":"const_int","value":2,"offset":54},
+                {"op":"call","callee":{"kind":"builtin","name":"list"},"argc":2,"offset":46},
+                {
+                    "op":"for",
+                    "pattern":{"kind":"bind","name":"x"},
+                    "body_ops":[
+                        {"op":"load_variable","name":"x","offset":66},
+                        {"op":"const_int","value":1,"offset":70},
+                        {"op":"add_int","offset":66}
                     ],
                     "offset":37
                 },
