@@ -367,3 +367,67 @@ run_exit = 0
 stdout = '''15
 '''
 status = "active"
+
+[[example]]
+path = "examples/parity/99-stretch/comments_hash.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Lexer does not handle # comments yet"
+stderr_contains = "error"
+
+[[example]]
+path = "examples/parity/99-stretch/noparen_calls.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Parser does not support no-parens function calls"
+stderr_contains = "error"
+
+[[example]]
+path = "examples/parity/99-stretch/list_cons_pattern.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Parser does not support list cons | syntax"
+stderr_contains = "error"
+
+[[example]]
+path = "examples/parity/99-stretch/map_colon_pattern.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Parser does not support keyword colon syntax in maps"
+stderr_contains = "error"
+
+[[example]]
+path = "examples/parity/99-stretch/multi_entry_map_literal.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Parser does not support multiple entries in map literals"
+stderr_contains = "error"
+
+[[example]]
+path = "examples/parity/99-stretch/multi_entry_keyword_literal.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Parser does not support multiple entries in keyword list literals"
+stderr_contains = "error"
+
+[[example]]
+path = "examples/parity/99-stretch/sigils.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Lexer/Parser does not support sigil ~ syntax"
+stderr_contains = "error"
+
+[[example]]
+path = "examples/parity/99-stretch/bitstring_binary.tn"
+check_exit = 1
+run_exit = 1
+status = "blocked"
+blocked_reason = "Lexer/Parser does not support bitstring <<>> syntax"
+stderr_contains = "error"

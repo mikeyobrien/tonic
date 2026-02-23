@@ -1,0 +1,7 @@
+defmodule M do
+  def f(x) do
+    x
+  end
+end
+
+M.f 1
