@@ -32,8 +32,8 @@ Legend:
 - [x] string literals as expressions
 - [x] string interpolation (`"#{expr}"`)
 - [x] heredocs (`"""..."""`) baseline triple-quoted multiline strings
-- [ ] sigils (`~r`, `~s`, etc.)
-- [ ] bitstring/binary syntax (`<<>>`)
+- [~] sigils (`~r`, `~s`, etc.) — baseline lexer/parser support for `~s`/`~r`; currently lowered as plain strings (no sigil-specific runtime semantics)
+- [~] bitstring/binary syntax (`<<>>`) — baseline literal parsing/eval available; currently lowered to list values
 
 ---
 
@@ -57,8 +57,8 @@ Legend:
 - [x] map construction (`map(k, v)` builtin exists; `%{k: v}` literal syntax supported)
 - [x] keyword construction (`keyword(k, v)` builtin exists; `[k: v]` literal syntax supported)
 - [x] list literals (`[1, 2, 3]`)
-- [ ] map updates (`%{m | k: v}`)
-- [ ] access syntax parity (`map.key`, `map[:key]`) where applicable
+- [x] map updates (`%{m | k: v}`)
+- [x] access syntax parity (`map.key`, `map[:key]`) where applicable
 
 ---
 
@@ -69,8 +69,8 @@ Legend:
 - [x] integer patterns
 - [x] boolean/`nil`/string literal patterns
 - [~] tuple patterns (currently narrow runtime support)
-- [x] list patterns
-- [~] map patterns (lowering/runtime support for current single-entry map model)
+- [x] list patterns (including cons/tail form `[head | tail]`)
+- [~] map patterns (`%{ok: v}` and `%{:ok => v}` forms supported, including multi-entry matching; exhaustive parity still pending)
 - [x] pin operator (`^var`)
 - [~] guards in patterns (`when`) — case branches + function clauses with boolean-expression guard subset
 - [x] match operator (`=`) in general expression/binding contexts
