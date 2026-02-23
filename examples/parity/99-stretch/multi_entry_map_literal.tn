@@ -1,1 +1,5 @@
-%{:a => 1, :b => 2}
+defmodule Demo do
+  def run() do
+    %{a: 1, b: 2}
+  end
+end

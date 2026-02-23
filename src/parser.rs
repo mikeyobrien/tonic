@@ -492,17 +492,37 @@ pub trait BranchHead: Serialize {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Pattern {
-    Atom { value: String },
-    Bind { name: String },
-    Pin { name: String },
+    Atom {
+        value: String,
+    },
+    Bind {
+        name: String,
+    },
+    Pin {
+        name: String,
+    },
     Wildcard,
-    Integer { value: i64 },
-    Bool { value: bool },
+    Integer {
+        value: i64,
+    },
+    Bool {
+        value: bool,
+    },
     Nil,
-    String { value: String },
-    Tuple { items: Vec<Pattern> },
-    List { items: Vec<Pattern> },
-    Map { entries: Vec<MapPatternEntry> },
+    String {
+        value: String,
+    },
+    Tuple {
+        items: Vec<Pattern>,
+    },
+    List {
+        items: Vec<Pattern>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tail: Option<Box<Pattern>>,
+    },
+    Map {
+        entries: Vec<MapPatternEntry>,
+    },
 }
 
 impl BranchHead for Pattern {
@@ -942,6 +962,32 @@ fn is_builtin_call_target(callee: &str) -> bool {
     )
 }
 
+fn token_can_start_no_paren_arg(kind: TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Ident
+            | TokenKind::Atom
+            | TokenKind::Integer
+            | TokenKind::Float
+            | TokenKind::String
+            | TokenKind::StringStart
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::Nil
+            | TokenKind::LParen
+            | TokenKind::LBrace
+            | TokenKind::LBracket
+            | TokenKind::Percent
+            | TokenKind::Fn
+            | TokenKind::If
+            | TokenKind::Unless
+            | TokenKind::Case
+            | TokenKind::Cond
+            | TokenKind::With
+            | TokenKind::Ampersand
+    )
+}
+
 pub fn parse_ast(tokens: &[Token]) -> Result<Ast, ParserError> {
     Parser::new(tokens).parse_program()
 }
@@ -1364,6 +1410,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_atomic_expression(&mut self) -> Result<Expr, ParserError> {
+        if self.check(TokenKind::Lt)
+            && self
+                .peek(1)
+                .is_some_and(|token| token.kind() == TokenKind::Lt)
+        {
+            return self.parse_bitstring_literal_expression();
+        }
+
         if self.check(TokenKind::If) {
             return self.parse_if_expression();
         }
@@ -1559,18 +1613,36 @@ impl<'a> Parser<'a> {
                 .expect("identifier token should be available");
             let offset = callee_token.span().start();
             let mut callee = callee_token.lexeme().to_string();
+            let mut callee_end = callee_token.span().end();
+
+            let has_module_qualifier = callee
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase());
 
             if self.check(TokenKind::Dot)
                 && self
                     .peek(1)
                     .is_some_and(|token| token.kind() == TokenKind::Ident)
-                && self
+            {
+                let should_parse_qualified = self
                     .peek(2)
                     .is_some_and(|token| token.kind() == TokenKind::LParen)
-            {
-                self.advance();
-                let function_name = self.expect_ident("qualified function name")?;
-                callee = format!("{callee}.{function_name}");
+                    || (has_module_qualifier
+                        && self.peek(2).is_some_and(|token| {
+                            token_can_start_no_paren_arg(token.kind())
+                                && self.peek(1).is_some_and(|function| {
+                                    token.span().start() == function.span().end() + 1
+                                })
+                        }));
+
+                if should_parse_qualified {
+                    self.advance();
+                    let function_name_token =
+                        self.expect_token(TokenKind::Ident, "qualified function name")?;
+                    callee_end = function_name_token.span().end();
+                    callee = format!("{callee}.{}", function_name_token.lexeme());
+                }
             }
 
             if self.match_kind(TokenKind::LParen) {
@@ -1579,14 +1651,9 @@ impl<'a> Parser<'a> {
                 return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
             }
 
-            if callee.contains('.') {
-                return Err(ParserError::at_current(
-                    format!(
-                        "qualified names without arguments are not supported: {}",
-                        callee
-                    ),
-                    Some(callee_token),
-                ));
+            if self.current_starts_no_paren_call_arg(callee_end) {
+                let args = self.parse_no_paren_call_args()?;
+                return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
             }
 
             return Ok(Expr::variable(self.node_ids.next_expr(), offset, callee));
@@ -1840,6 +1907,33 @@ impl<'a> Parser<'a> {
         Expr::unary(self.node_ids.next_expr(), offset, UnaryOp::Bang, first_bang)
     }
 
+    fn parse_bitstring_literal_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Lt, "<")?.span().start();
+        self.expect(TokenKind::Lt, "<")?;
+
+        let mut items = Vec::new();
+        if !(self.check(TokenKind::Gt)
+            && self
+                .peek(1)
+                .is_some_and(|token| token.kind() == TokenKind::Gt))
+        {
+            loop {
+                items.push(self.parse_atomic_expression()?);
+
+                if self.match_kind(TokenKind::Comma) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        self.expect(TokenKind::Gt, ">")?;
+        self.expect(TokenKind::Gt, ">")?;
+
+        Ok(Expr::list(self.node_ids.next_expr(), offset, items))
+    }
+
     fn parse_tuple_literal_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::LBrace, "{")?.span().start();
         let items = self.parse_expression_items(TokenKind::RBrace, "}")?;
@@ -2030,13 +2124,19 @@ impl<'a> Parser<'a> {
         }
 
         if self.match_kind(TokenKind::LBrace) {
-            let items = self.parse_pattern_items(TokenKind::RBrace)?;
+            let (items, tail) = self.parse_pattern_items(TokenKind::RBrace)?;
+            if tail.is_some() {
+                return Err(ParserError::at_current(
+                    "tuple patterns do not support tail syntax",
+                    self.current(),
+                ));
+            }
             return Ok(Pattern::Tuple { items });
         }
 
         if self.match_kind(TokenKind::LBracket) {
-            let items = self.parse_pattern_items(TokenKind::RBracket)?;
-            return Ok(Pattern::List { items });
+            let (items, tail) = self.parse_pattern_items(TokenKind::RBracket)?;
+            return Ok(Pattern::List { items, tail });
         }
 
         if self.match_kind(TokenKind::Percent) {
@@ -2069,16 +2169,25 @@ impl<'a> Parser<'a> {
         Err(self.expected("pattern"))
     }
 
-    fn parse_pattern_items(&mut self, closing: TokenKind) -> Result<Vec<Pattern>, ParserError> {
+    fn parse_pattern_items(
+        &mut self,
+        closing: TokenKind,
+    ) -> Result<(Vec<Pattern>, Option<Box<Pattern>>), ParserError> {
         let mut items = Vec::new();
+        let mut tail = None;
 
         if self.check(closing) {
             self.advance();
-            return Ok(items);
+            return Ok((items, tail));
         }
 
         loop {
             items.push(self.parse_pattern()?);
+
+            if self.match_kind(TokenKind::Pipe) {
+                tail = Some(Box::new(self.parse_pattern()?));
+                break;
+            }
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
@@ -2088,7 +2197,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(closing, "pattern terminator")?;
-        Ok(items)
+        Ok((items, tail))
     }
 
     fn parse_map_pattern(&mut self) -> Result<Pattern, ParserError> {
@@ -2097,9 +2206,24 @@ impl<'a> Parser<'a> {
         let mut entries = Vec::new();
         if !self.check(TokenKind::RBrace) {
             loop {
-                let key = self.parse_pattern()?;
-                self.expect(TokenKind::Arrow, "->")?;
-                let value = self.parse_pattern()?;
+                let (key, value) = if self.check(TokenKind::Ident)
+                    && self
+                        .peek(1)
+                        .is_some_and(|token| token.kind() == TokenKind::Colon)
+                {
+                    let key = Pattern::Atom {
+                        value: self.expect_ident("map pattern key")?,
+                    };
+                    self.expect(TokenKind::Colon, ":")?;
+                    let value = self.parse_pattern()?;
+                    (key, value)
+                } else {
+                    let key = self.parse_pattern()?;
+                    self.expect(TokenKind::Arrow, "->")?;
+                    let value = self.parse_pattern()?;
+                    (key, value)
+                };
+
                 entries.push(MapPatternEntry { key, value });
 
                 if self.match_kind(TokenKind::Comma) {
@@ -2146,6 +2270,22 @@ impl<'a> Parser<'a> {
         if self.check(TokenKind::RParen) {
             return Ok(args);
         }
+
+        loop {
+            args.push(self.parse_expression()?);
+
+            if self.match_kind(TokenKind::Comma) {
+                continue;
+            }
+
+            break;
+        }
+
+        Ok(args)
+    }
+
+    fn parse_no_paren_call_args(&mut self) -> Result<Vec<Expr>, ParserError> {
+        let mut args = Vec::new();
 
         loop {
             args.push(self.parse_expression()?);
@@ -2208,6 +2348,22 @@ impl<'a> Parser<'a> {
         self.peek(1)
             .map(|next| next.kind() == TokenKind::Ident)
             .unwrap_or(false)
+    }
+
+    fn current_starts_no_paren_call_arg(&self, callee_end: usize) -> bool {
+        let Some(current) = self.current() else {
+            return false;
+        };
+
+        if current.span().start() != callee_end + 1 {
+            return false;
+        }
+
+        if current.kind() == TokenKind::Ident && current.lexeme() == "_" {
+            return false;
+        }
+
+        token_can_start_no_paren_arg(current.kind())
     }
 
     fn check(&self, kind: TokenKind) -> bool {
@@ -2336,6 +2492,46 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_no_paren_calls() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def helper(value) do\n    value\n  end\n\n  def run() do\n    helper 7\n  end\nend\n",
+        )
+        .expect("scanner should tokenize no-paren call fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[1].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"call",
+                "callee":"helper",
+                "args":[{"kind":"int","value":7}]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_no_paren_module_qualified_calls() {
+        let tokens = scan_tokens(
+            "defmodule Math do\n  def one(value) do\n    value\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.one 7\n  end\nend\n",
+        )
+        .expect("scanner should tokenize no-paren qualified call fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[1].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"call",
+                "callee":"Math.one",
+                "args":[{"kind":"int","value":7}]
+            })
+        );
+    }
+
+    #[test]
     fn parse_ast_supports_postfix_question_operator() {
         let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    value()?\n  end\nend\n")
             .expect("scanner should tokenize parser fixture");
@@ -2348,6 +2544,28 @@ mod tests {
             serde_json::json!({
                 "kind":"question",
                 "value":{"kind":"call","callee":"value","args":[]}
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_bitstring_literals_as_list_values() {
+        let tokens =
+            scan_tokens("defmodule Demo do\n  def run() do\n    <<1, 2, 3>>\n  end\nend\n")
+                .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"list",
+                "items":[
+                    {"kind":"int","value":1},
+                    {"kind":"int","value":2},
+                    {"kind":"int","value":3}
+                ]
             })
         );
     }
@@ -2395,6 +2613,76 @@ mod tests {
                     {
                         "pattern":{"kind":"wildcard"},
                         "body":{"kind":"int","value":4}
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_list_cons_patterns() {
+        let tokens = scan_tokens(
+            "defmodule PatternDemo do\n  def run() do\n    case input() do\n      [head | tail] -> head\n      _ -> 0\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"case",
+                "subject":{"kind":"call","callee":"input","args":[]},
+                "branches":[
+                    {
+                        "pattern":{
+                            "kind":"list",
+                            "items":[{"kind":"bind","name":"head"}],
+                            "tail":{"kind":"bind","name":"tail"}
+                        },
+                        "body":{"kind":"variable","name":"head"}
+                    },
+                    {
+                        "pattern":{"kind":"wildcard"},
+                        "body":{"kind":"int","value":0}
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_map_colon_patterns() {
+        let tokens = scan_tokens(
+            "defmodule PatternDemo do\n  def run() do\n    case input() do\n      %{ok: value} -> value\n      _ -> 0\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"case",
+                "subject":{"kind":"call","callee":"input","args":[]},
+                "branches":[
+                    {
+                        "pattern":{
+                            "kind":"map",
+                            "entries":[
+                                {
+                                    "key":{"kind":"atom","value":"ok"},
+                                    "value":{"kind":"bind","name":"value"}
+                                }
+                            ]
+                        },
+                        "body":{"kind":"variable","name":"value"}
+                    },
+                    {
+                        "pattern":{"kind":"wildcard"},
+                        "body":{"kind":"int","value":0}
                     }
                 ]
             })

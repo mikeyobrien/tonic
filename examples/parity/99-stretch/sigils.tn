@@ -1,1 +1,5 @@
-~s(hello)
+defmodule Demo do
+  def run() do
+    ~s(hello)
+  end
+end

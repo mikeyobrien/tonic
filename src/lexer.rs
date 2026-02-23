@@ -281,6 +281,14 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     continue;
                 }
 
+                if current == '#' {
+                    idx += 1;
+                    while idx < chars.len() && chars[idx] != '\n' {
+                        idx += 1;
+                    }
+                    continue;
+                }
+
                 match current {
                     '(' => {
                         let start = idx;
@@ -505,6 +513,58 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             idx += 1;
                             tokens.push(Token::simple(TokenKind::Colon, Span::new(start, idx)));
                         }
+                    }
+                    '~' => {
+                        let start = idx;
+                        let Some(sigil_kind) = chars.get(idx + 1).copied() else {
+                            return Err(LexerError::invalid_token(
+                                '~',
+                                Span::new(start, start + 1),
+                            ));
+                        };
+
+                        if !matches!(sigil_kind, 's' | 'r') {
+                            return Err(LexerError::invalid_token(
+                                '~',
+                                Span::new(start, start + 1),
+                            ));
+                        }
+
+                        let Some(open_delim) = chars.get(idx + 2).copied() else {
+                            return Err(LexerError::invalid_token(
+                                '~',
+                                Span::new(start, start + 1),
+                            ));
+                        };
+
+                        let close_delim = match open_delim {
+                            '(' => ')',
+                            '[' => ']',
+                            '{' => '}',
+                            '<' => '>',
+                            other => other,
+                        };
+
+                        idx += 3;
+                        let content_start = idx;
+                        while idx < chars.len() && chars[idx] != close_delim {
+                            idx += 1;
+                        }
+
+                        if idx >= chars.len() {
+                            return Err(LexerError::unterminated_string(Span::new(
+                                start,
+                                chars.len(),
+                            )));
+                        }
+
+                        let lexeme: String = chars[content_start..idx].iter().collect();
+                        idx += 1;
+                        tokens.push(Token::with_lexeme(
+                            TokenKind::String,
+                            lexeme,
+                            Span::new(start, idx),
+                        ));
                     }
                     '"' => {
                         let start = idx;
@@ -1086,10 +1146,24 @@ mod tests {
 
     #[test]
     fn scan_tokens_reports_invalid_character() {
-        let error = scan_tokens("~").expect_err("scanner should reject unsupported characters");
+        let error = scan_tokens("$").expect_err("scanner should reject unsupported characters");
 
-        assert_eq!(error.to_string(), "invalid token '~' at offset 0");
+        assert_eq!(error.to_string(), "invalid token '$' at offset 0");
         assert_eq!(error.span(), Span::new(0, 1));
+    }
+
+    #[test]
+    fn scan_tokens_skips_hash_comments() {
+        let labels = dump_labels("1 # trailing comment\n2");
+
+        assert_eq!(labels, ["INT(1)", "INT(2)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_supports_basic_sigils_as_string_literals() {
+        let labels = dump_labels("~s(hello) ~r/world/");
+
+        assert_eq!(labels, ["STRING(hello)", "STRING(world)", "EOF"]);
     }
 
     #[test]

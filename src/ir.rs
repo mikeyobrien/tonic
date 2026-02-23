@@ -163,17 +163,37 @@ pub(crate) struct IrCaseBranch {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub(crate) enum IrPattern {
-    Atom { value: String },
-    Bind { name: String },
-    Pin { name: String },
+    Atom {
+        value: String,
+    },
+    Bind {
+        name: String,
+    },
+    Pin {
+        name: String,
+    },
     Wildcard,
-    Integer { value: i64 },
-    Bool { value: bool },
+    Integer {
+        value: i64,
+    },
+    Bool {
+        value: bool,
+    },
     Nil,
-    String { value: String },
-    Tuple { items: Vec<IrPattern> },
-    List { items: Vec<IrPattern> },
-    Map { entries: Vec<IrMapPatternEntry> },
+    String {
+        value: String,
+    },
+    Tuple {
+        items: Vec<IrPattern>,
+    },
+    List {
+        items: Vec<IrPattern>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tail: Option<Box<IrPattern>>,
+    },
+    Map {
+        entries: Vec<IrMapPatternEntry>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -433,16 +453,23 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         Expr::Map {
             entries, offset, ..
         } => {
-            if entries.len() != 1 {
-                return Err(LoweringError::unsupported("map literal arity", *offset));
+            if entries.is_empty() {
+                ops.push(IrOp::Call {
+                    callee: IrCallTarget::Builtin {
+                        name: "map_empty".to_string(),
+                    },
+                    argc: 0,
+                    offset: *offset,
+                });
+                return Ok(());
             }
 
-            let entry = &entries[0];
+            let first = &entries[0];
             ops.push(IrOp::ConstAtom {
-                value: entry.key.clone(),
+                value: first.key.clone(),
                 offset: *offset,
             });
-            lower_expr(&entry.value, current_module, ops)?;
+            lower_expr(&first.value, current_module, ops)?;
 
             ops.push(IrOp::Call {
                 callee: IrCallTarget::Builtin {
@@ -451,6 +478,22 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 argc: 2,
                 offset: *offset,
             });
+
+            for entry in entries.iter().skip(1) {
+                ops.push(IrOp::ConstAtom {
+                    value: entry.key.clone(),
+                    offset: *offset,
+                });
+                lower_expr(&entry.value, current_module, ops)?;
+                ops.push(IrOp::Call {
+                    callee: IrCallTarget::Builtin {
+                        name: "map_put".to_string(),
+                    },
+                    argc: 3,
+                    offset: *offset,
+                });
+            }
+
             Ok(())
         }
         Expr::MapUpdate {
@@ -459,41 +502,42 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             offset,
             ..
         } => {
-            if updates.len() != 1 {
+            if updates.is_empty() {
                 return Err(LoweringError::unsupported("map update arity", *offset));
             }
 
             lower_expr(base, current_module, ops)?;
 
-            let entry = &updates[0];
-            ops.push(IrOp::ConstAtom {
-                value: entry.key.clone(),
-                offset: *offset,
-            });
-            lower_expr(&entry.value, current_module, ops)?;
+            for entry in updates {
+                ops.push(IrOp::ConstAtom {
+                    value: entry.key.clone(),
+                    offset: *offset,
+                });
+                lower_expr(&entry.value, current_module, ops)?;
 
-            ops.push(IrOp::Call {
-                callee: IrCallTarget::Builtin {
-                    name: "map_update".to_string(),
-                },
-                argc: 3,
-                offset: *offset,
-            });
+                ops.push(IrOp::Call {
+                    callee: IrCallTarget::Builtin {
+                        name: "map_update".to_string(),
+                    },
+                    argc: 3,
+                    offset: *offset,
+                });
+            }
             Ok(())
         }
         Expr::Keyword {
             entries, offset, ..
         } => {
-            if entries.len() != 1 {
+            if entries.is_empty() {
                 return Err(LoweringError::unsupported("keyword literal arity", *offset));
             }
 
-            let entry = &entries[0];
+            let first = &entries[0];
             ops.push(IrOp::ConstAtom {
-                value: entry.key.clone(),
+                value: first.key.clone(),
                 offset: *offset,
             });
-            lower_expr(&entry.value, current_module, ops)?;
+            lower_expr(&first.value, current_module, ops)?;
 
             ops.push(IrOp::Call {
                 callee: IrCallTarget::Builtin {
@@ -502,6 +546,23 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 argc: 2,
                 offset: *offset,
             });
+
+            for entry in entries.iter().skip(1) {
+                ops.push(IrOp::ConstAtom {
+                    value: entry.key.clone(),
+                    offset: *offset,
+                });
+                lower_expr(&entry.value, current_module, ops)?;
+
+                ops.push(IrOp::Call {
+                    callee: IrCallTarget::Builtin {
+                        name: "keyword_append".to_string(),
+                    },
+                    argc: 3,
+                    offset: *offset,
+                });
+            }
+
             Ok(())
         }
         Expr::Call {
@@ -859,7 +920,7 @@ fn lower_expr_pattern(expr: &Expr) -> Result<IrPattern, LoweringError> {
                 .iter()
                 .map(lower_expr_pattern)
                 .collect::<Result<Vec<_>, LoweringError>>()?;
-            Ok(IrPattern::List { items })
+            Ok(IrPattern::List { items, tail: None })
         }
         Expr::Map { entries, .. } => {
             let entries = entries
@@ -908,13 +969,18 @@ fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
 
             Ok(IrPattern::Tuple { items })
         }
-        Pattern::List { items } => {
+        Pattern::List { items, tail } => {
             let items = items
                 .iter()
                 .map(lower_pattern)
                 .collect::<Result<Vec<_>, LoweringError>>()?;
+            let tail = tail
+                .as_ref()
+                .map(|tail| lower_pattern(tail))
+                .transpose()?
+                .map(Box::new);
 
-            Ok(IrPattern::List { items })
+            Ok(IrPattern::List { items, tail })
         }
         Pattern::Map { entries } => {
             let entries = entries

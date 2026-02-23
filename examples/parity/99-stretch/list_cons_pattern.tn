@@ -1,2 +1,8 @@
-[h | t] = [1, 2, 3]
-h
+defmodule Demo do
+  def run() do
+    case [1, 2, 3] do
+      [head | tail] -> {head, tail}
+      _ -> {0, []}
+    end
+  end
+end

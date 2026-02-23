@@ -1,7 +1,9 @@
-defmodule M do
-  def f(x) do
-    x
+defmodule Demo do
+  def inc(value) do
+    value + 1
+  end
+
+  def run() do
+    inc 1
   end
 end
-
-M.f 1

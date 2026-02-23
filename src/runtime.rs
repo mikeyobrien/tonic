@@ -23,8 +23,8 @@ pub enum RuntimeValue {
     ResultOk(Box<RuntimeValue>),
     ResultErr(Box<RuntimeValue>),
     Tuple(Box<RuntimeValue>, Box<RuntimeValue>),
-    Map(Box<RuntimeValue>, Box<RuntimeValue>),
-    Keyword(Box<RuntimeValue>, Box<RuntimeValue>),
+    Map(Vec<(RuntimeValue, RuntimeValue)>),
+    Keyword(Vec<(RuntimeValue, RuntimeValue)>),
     List(Vec<RuntimeValue>),
     Range(i64, i64),
     Closure(Box<RuntimeClosure>),
@@ -42,13 +42,27 @@ impl RuntimeValue {
             Self::ResultOk(value) => format!("ok({})", value.render()),
             Self::ResultErr(value) => format!("err({})", value.render()),
             Self::Tuple(left, right) => format!("{{{}, {}}}", left.render(), right.render()),
-            Self::Map(key, value) => format!("%{{{} => {}}}", key.render(), value.render()),
-            Self::Keyword(key, value) => {
-                let rendered_key = match key.as_ref() {
-                    RuntimeValue::Atom(atom) => atom.clone(),
-                    _ => key.render(),
-                };
-                format!("[{}: {}]", rendered_key, value.render())
+            Self::Map(entries) => {
+                let rendered_entries = entries
+                    .iter()
+                    .map(|(key, value)| format!("{} => {}", key.render(), value.render()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("%{{{rendered_entries}}}")
+            }
+            Self::Keyword(entries) => {
+                let rendered_entries = entries
+                    .iter()
+                    .map(|(key, value)| {
+                        let rendered_key = match key {
+                            RuntimeValue::Atom(atom) => atom.clone(),
+                            _ => key.render(),
+                        };
+                        format!("{rendered_key}: {}", value.render())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("[{rendered_entries}]")
             }
             Self::List(items) => {
                 let items: Vec<String> = items.iter().map(|item| item.render()).collect();
@@ -69,8 +83,8 @@ impl RuntimeValue {
             Self::Atom(_) => "atom",
             Self::ResultOk(_) | Self::ResultErr(_) => "result",
             Self::Tuple(_, _) => "tuple",
-            Self::Map(_, _) => "map",
-            Self::Keyword(_, _) => "keyword",
+            Self::Map(_) => "map",
+            Self::Keyword(_) => "keyword",
             Self::List(_) => "list",
             Self::Range(_, _) => "range",
             Self::Closure(_) => "function",
@@ -601,20 +615,64 @@ fn match_pattern(
             }
             _ => false,
         },
-        IrPattern::List { items } => match value {
-            RuntimeValue::List(values) if values.len() == items.len() => values
-                .iter()
-                .zip(items.iter())
-                .all(|(value, pattern)| match_pattern(value, pattern, env, bindings)),
+        IrPattern::List { items, tail } => match value {
+            RuntimeValue::List(values) => {
+                if values.len() < items.len() {
+                    return false;
+                }
+
+                let prefix_matches = values
+                    .iter()
+                    .take(items.len())
+                    .zip(items.iter())
+                    .all(|(value, pattern)| match_pattern(value, pattern, env, bindings));
+
+                if !prefix_matches {
+                    return false;
+                }
+
+                if let Some(tail_pattern) = tail {
+                    let tail_values = values[items.len()..].to_vec();
+                    match_pattern(
+                        &RuntimeValue::List(tail_values),
+                        tail_pattern,
+                        env,
+                        bindings,
+                    )
+                } else {
+                    values.len() == items.len()
+                }
+            }
             _ => false,
         },
         IrPattern::Map { entries } => match value {
-            RuntimeValue::Map(_, _) if entries.is_empty() => true,
-            RuntimeValue::Map(key, map_value) if entries.len() == 1 => {
-                match_pattern(key, &entries[0].key, env, bindings)
-                    && match_pattern(map_value, &entries[0].value, env, bindings)
+            RuntimeValue::Map(values) => {
+                for entry in entries {
+                    let mut entry_matched = false;
+
+                    for (candidate_key, candidate_value) in values {
+                        let mut candidate_bindings = bindings.clone();
+                        if match_pattern(candidate_key, &entry.key, env, &mut candidate_bindings)
+                            && match_pattern(
+                                candidate_value,
+                                &entry.value,
+                                env,
+                                &mut candidate_bindings,
+                            )
+                        {
+                            *bindings = candidate_bindings;
+                            entry_matched = true;
+                            break;
+                        }
+                    }
+
+                    if !entry_matched {
+                        return false;
+                    }
+                }
+
+                true
             }
-            RuntimeValue::Map(_, _) => false,
             _ => false,
         },
     }
@@ -729,16 +787,50 @@ fn evaluate_builtin_call(
             Ok(RuntimeValue::Tuple(Box::new(left), Box::new(right)))
         }
         "list" => Ok(RuntimeValue::List(args)),
+        "map_empty" => {
+            if !args.is_empty() {
+                return Err(RuntimeError::at_offset(
+                    format!(
+                        "arity mismatch for runtime builtin map_empty: expected 0 args, found {}",
+                        args.len()
+                    ),
+                    offset,
+                ));
+            }
+            Ok(RuntimeValue::Map(Vec::new()))
+        }
         "map" => {
             let (key, value) = expect_pair_builtin_args(name, args, offset)?;
-            Ok(RuntimeValue::Map(Box::new(key), Box::new(value)))
+            Ok(RuntimeValue::Map(vec![(key, value)]))
+        }
+        "map_put" => {
+            let (base, key, value) = expect_triple_builtin_args(name, args, offset)?;
+            match base {
+                RuntimeValue::Map(mut entries) => {
+                    if let Some(existing) =
+                        entries.iter_mut().find(|(entry_key, _)| *entry_key == key)
+                    {
+                        existing.1 = value;
+                    } else {
+                        entries.push((key, value));
+                    }
+                    Ok(RuntimeValue::Map(entries))
+                }
+                _ => Err(RuntimeError::at_offset(
+                    format!("expected map base for put, found {}", base.kind_label()),
+                    offset,
+                )),
+            }
         }
         "map_update" => {
             let (base, key, value) = expect_triple_builtin_args(name, args, offset)?;
             match base {
-                RuntimeValue::Map(base_key, _) => {
-                    if *base_key == key {
-                        Ok(RuntimeValue::Map(base_key, Box::new(value)))
+                RuntimeValue::Map(mut entries) => {
+                    if let Some(existing) =
+                        entries.iter_mut().find(|(entry_key, _)| *entry_key == key)
+                    {
+                        existing.1 = value;
+                        Ok(RuntimeValue::Map(entries))
                     } else {
                         Err(RuntimeError::at_offset(
                             format!("key {} not found in map", key.render()),
@@ -755,13 +847,10 @@ fn evaluate_builtin_call(
         "map_access" => {
             let (base, key) = expect_pair_builtin_args(name, args, offset)?;
             match base {
-                RuntimeValue::Map(base_key, base_value) => {
-                    if *base_key == key {
-                        Ok(*base_value)
-                    } else {
-                        Ok(RuntimeValue::Nil)
-                    }
-                }
+                RuntimeValue::Map(entries) => Ok(entries
+                    .into_iter()
+                    .find_map(|(entry_key, value)| (entry_key == key).then_some(value))
+                    .unwrap_or(RuntimeValue::Nil)),
                 _ => Err(RuntimeError::at_offset(
                     format!("expected map base for access, found {}", base.kind_label()),
                     offset,
@@ -770,7 +859,23 @@ fn evaluate_builtin_call(
         }
         "keyword" => {
             let (key, value) = expect_pair_builtin_args(name, args, offset)?;
-            Ok(RuntimeValue::Keyword(Box::new(key), Box::new(value)))
+            Ok(RuntimeValue::Keyword(vec![(key, value)]))
+        }
+        "keyword_append" => {
+            let (base, key, value) = expect_triple_builtin_args(name, args, offset)?;
+            match base {
+                RuntimeValue::Keyword(mut entries) => {
+                    entries.push((key, value));
+                    Ok(RuntimeValue::Keyword(entries))
+                }
+                _ => Err(RuntimeError::at_offset(
+                    format!(
+                        "expected keyword base for append, found {}",
+                        base.kind_label()
+                    ),
+                    offset,
+                )),
+            }
         }
         "protocol_dispatch" => {
             let value = expect_single_builtin_arg(name, args, offset)?;
