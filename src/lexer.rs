@@ -14,6 +14,10 @@ impl Span {
     pub fn start(self) -> usize {
         self.start
     }
+
+    pub fn end(self) -> usize {
+        self.end
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +88,7 @@ pub enum TokenKind {
     GtEq,
     LessGreater,
     Question,
+    Pipe,
     PipeGt,
     Arrow,
     LeftArrow,
@@ -184,6 +189,7 @@ impl Token {
             TokenKind::GtEq => "GT_EQ".to_string(),
             TokenKind::LessGreater => "LESS_GREATER".to_string(),
             TokenKind::Question => "QUESTION".to_string(),
+            TokenKind::Pipe => "PIPE".to_string(),
             TokenKind::PipeGt => "PIPE_GT".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
             TokenKind::LeftArrow => "LEFT_ARROW".to_string(),
@@ -463,10 +469,8 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::OrOr, Span::new(start, idx)));
                         } else {
-                            return Err(LexerError::invalid_token(
-                                '|',
-                                Span::new(start, start + 1),
-                            ));
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Pipe, Span::new(start, idx)));
                         }
                     }
                     '&' => {

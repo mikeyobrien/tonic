@@ -733,6 +733,41 @@ fn evaluate_builtin_call(
             let (key, value) = expect_pair_builtin_args(name, args, offset)?;
             Ok(RuntimeValue::Map(Box::new(key), Box::new(value)))
         }
+        "map_update" => {
+            let (base, key, value) = expect_triple_builtin_args(name, args, offset)?;
+            match base {
+                RuntimeValue::Map(base_key, _) => {
+                    if *base_key == key {
+                        Ok(RuntimeValue::Map(base_key, Box::new(value)))
+                    } else {
+                        Err(RuntimeError::at_offset(
+                            format!("key {} not found in map", key.render()),
+                            offset,
+                        ))
+                    }
+                }
+                _ => Err(RuntimeError::at_offset(
+                    format!("expected map base for update, found {}", base.kind_label()),
+                    offset,
+                )),
+            }
+        }
+        "map_access" => {
+            let (base, key) = expect_pair_builtin_args(name, args, offset)?;
+            match base {
+                RuntimeValue::Map(base_key, base_value) => {
+                    if *base_key == key {
+                        Ok(*base_value)
+                    } else {
+                        Ok(RuntimeValue::Nil)
+                    }
+                }
+                _ => Err(RuntimeError::at_offset(
+                    format!("expected map base for access, found {}", base.kind_label()),
+                    offset,
+                )),
+            }
+        }
         "keyword" => {
             let (key, value) = expect_pair_builtin_args(name, args, offset)?;
             Ok(RuntimeValue::Keyword(Box::new(key), Box::new(value)))
@@ -846,6 +881,34 @@ fn expect_pair_builtin_args(
         .expect("arity check should guarantee first builtin argument");
 
     Ok((left, right))
+}
+
+fn expect_triple_builtin_args(
+    name: &str,
+    mut args: Vec<RuntimeValue>,
+    offset: usize,
+) -> Result<(RuntimeValue, RuntimeValue, RuntimeValue), RuntimeError> {
+    if args.len() != 3 {
+        return Err(RuntimeError::at_offset(
+            format!(
+                "arity mismatch for runtime builtin {name}: expected 3 args, found {}",
+                args.len()
+            ),
+            offset,
+        ));
+    }
+
+    let third = args
+        .pop()
+        .expect("arity check should guarantee third builtin argument");
+    let second = args
+        .pop()
+        .expect("arity check should guarantee second builtin argument");
+    let first = args
+        .pop()
+        .expect("arity check should guarantee first builtin argument");
+
+    Ok((first, second, third))
 }
 
 fn pop_value(

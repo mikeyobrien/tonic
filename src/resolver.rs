@@ -153,6 +153,18 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             }
             Ok(())
         }
+        Expr::MapUpdate { base, updates, .. } => {
+            resolve_expr(base, context)?;
+            for entry in updates {
+                resolve_expr(&entry.value, context)?;
+            }
+            Ok(())
+        }
+        Expr::FieldAccess { base, .. } => resolve_expr(base, context),
+        Expr::IndexAccess { base, index, .. } => {
+            resolve_expr(base, context)?;
+            resolve_expr(index, context)
+        }
         Expr::Call { callee, args, .. } => {
             match context
                 .module_graph

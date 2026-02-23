@@ -274,6 +274,22 @@ fn infer_expression_type(
             }
             Ok(Type::Dynamic)
         }
+        Expr::MapUpdate { base, updates, .. } => {
+            infer_expression_type(base, current_module, signatures, solver)?;
+            for entry in updates {
+                infer_expression_type(&entry.value, current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
+        Expr::FieldAccess { base, .. } => {
+            infer_expression_type(base, current_module, signatures, solver)?;
+            Ok(solver.fresh_var())
+        }
+        Expr::IndexAccess { base, index, .. } => {
+            infer_expression_type(base, current_module, signatures, solver)?;
+            infer_expression_type(index, current_module, signatures, solver)?;
+            Ok(solver.fresh_var())
+        }
         Expr::Call { callee, args, .. } => {
             infer_call_type(callee, args, None, current_module, signatures, solver)
         }

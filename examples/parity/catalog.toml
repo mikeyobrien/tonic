@@ -1,0 +1,46 @@
+[[example]]
+path = "examples/bools_and_nils.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{true, {false, {nil, "hello world"}}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/ergonomics/budgeting.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''6000
+'''
+status = "active"
+
+[[example]]
+path = "examples/ergonomics/error_propagation.tn"
+check_exit = 0
+run_exit = 1
+stderr_contains = "error: runtime returned err(404)"
+status = "active"
+
+[[example]]
+path = "examples/ergonomics/milestone3.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''1
+'''
+status = "active"
+
+[[example]]
+path = "examples/ergonomics/pipeline"
+check_exit = 0
+run_exit = 0
+stdout = '''1
+'''
+status = "active"
+
+[[example]]
+path = "examples/ergonomics/pattern_matching.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''4
+'''
+status = "active"

@@ -453,6 +453,34 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             });
             Ok(())
         }
+        Expr::MapUpdate {
+            base,
+            updates,
+            offset,
+            ..
+        } => {
+            if updates.len() != 1 {
+                return Err(LoweringError::unsupported("map update arity", *offset));
+            }
+
+            lower_expr(base, current_module, ops)?;
+
+            let entry = &updates[0];
+            ops.push(IrOp::ConstAtom {
+                value: entry.key.clone(),
+                offset: *offset,
+            });
+            lower_expr(&entry.value, current_module, ops)?;
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "map_update".to_string(),
+                },
+                argc: 3,
+                offset: *offset,
+            });
+            Ok(())
+        }
         Expr::Keyword {
             entries, offset, ..
         } => {
@@ -528,6 +556,47 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
 
             ops.push(IrOp::CallValue {
                 argc: args.len(),
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::FieldAccess {
+            base,
+            label,
+            offset,
+            ..
+        } => {
+            lower_expr(base, current_module, ops)?;
+            ops.push(IrOp::ConstAtom {
+                value: label.clone(),
+                offset: *offset,
+            });
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "map_access".to_string(),
+                },
+                argc: 2,
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::IndexAccess {
+            base,
+            index,
+            offset,
+            ..
+        } => {
+            lower_expr(base, current_module, ops)?;
+            lower_expr(index, current_module, ops)?;
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "map_access".to_string(),
+                },
+                argc: 2,
                 offset: *offset,
             });
 

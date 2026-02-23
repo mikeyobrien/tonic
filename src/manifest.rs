@@ -208,6 +208,16 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
         Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => entries
             .iter()
             .any(|entry| expr_references_module(&entry.value, module_name)),
+        Expr::MapUpdate { base, updates, .. } => {
+            expr_references_module(base, module_name)
+                || updates
+                    .iter()
+                    .any(|entry| expr_references_module(&entry.value, module_name))
+        }
+        Expr::FieldAccess { base, .. } => expr_references_module(base, module_name),
+        Expr::IndexAccess { base, index, .. } => {
+            expr_references_module(base, module_name) || expr_references_module(index, module_name)
+        }
         Expr::Call { callee, args, .. } => {
             let calls_module = callee
                 .split_once('.')

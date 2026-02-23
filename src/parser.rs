@@ -306,6 +306,14 @@ pub enum Expr {
         offset: usize,
         entries: Vec<LabelExprEntry>,
     },
+    MapUpdate {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        base: Box<Expr>,
+        updates: Vec<LabelExprEntry>,
+    },
     Keyword {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -320,6 +328,22 @@ pub enum Expr {
         offset: usize,
         callee: String,
         args: Vec<Expr>,
+    },
+    FieldAccess {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        base: Box<Expr>,
+        label: String,
+    },
+    IndexAccess {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        base: Box<Expr>,
+        index: Box<Expr>,
     },
     Fn {
         #[serde(skip_serializing)]
@@ -552,6 +576,15 @@ impl Expr {
         }
     }
 
+    fn map_update(id: NodeId, offset: usize, base: Expr, updates: Vec<LabelExprEntry>) -> Self {
+        Self::MapUpdate {
+            id,
+            offset,
+            base: Box::new(base),
+            updates,
+        }
+    }
+
     fn keyword(id: NodeId, offset: usize, entries: Vec<LabelExprEntry>) -> Self {
         Self::Keyword {
             id,
@@ -566,6 +599,24 @@ impl Expr {
             offset,
             callee,
             args,
+        }
+    }
+
+    fn field_access(id: NodeId, offset: usize, base: Expr, label: String) -> Self {
+        Self::FieldAccess {
+            id,
+            offset,
+            base: Box::new(base),
+            label,
+        }
+    }
+
+    fn index_access(id: NodeId, offset: usize, base: Expr, index: Expr) -> Self {
+        Self::IndexAccess {
+            id,
+            offset,
+            base: Box::new(base),
+            index: Box::new(index),
         }
     }
 
@@ -663,8 +714,11 @@ impl Expr {
             | Self::Tuple { offset, .. }
             | Self::List { offset, .. }
             | Self::Map { offset, .. }
+            | Self::MapUpdate { offset, .. }
             | Self::Keyword { offset, .. }
             | Self::Call { offset, .. }
+            | Self::FieldAccess { offset, .. }
+            | Self::IndexAccess { offset, .. }
             | Self::Fn { offset, .. }
             | Self::Invoke { offset, .. }
             | Self::Question { offset, .. }
@@ -796,6 +850,19 @@ fn canonicalize_expr_call_targets(
             for entry in entries {
                 canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
             }
+        }
+        Expr::MapUpdate { base, updates, .. } => {
+            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
+            for entry in updates {
+                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+            }
+        }
+        Expr::FieldAccess { base, .. } => {
+            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
+        }
+        Expr::IndexAccess { base, index, .. } => {
+            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(index, aliases, imports, local_functions);
         }
         Expr::Call { callee, args, .. } => {
             for arg in args {
@@ -1238,20 +1305,55 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            if self.check(TokenKind::Dot)
-                && self
+            if self.check(TokenKind::Dot) {
+                if self
                     .peek(1)
                     .is_some_and(|token| token.kind() == TokenKind::LParen)
-            {
+                {
+                    let offset = self
+                        .advance()
+                        .expect("dot token should be available")
+                        .span()
+                        .start();
+                    self.expect(TokenKind::LParen, "(")?;
+                    let args = self.parse_call_args()?;
+                    self.expect(TokenKind::RParen, ")")?;
+                    expression = Expr::invoke(self.node_ids.next_expr(), offset, expression, args);
+                    continue;
+                } else if self
+                    .peek(1)
+                    .is_some_and(|token| token.kind() == TokenKind::Ident)
+                {
+                    let offset = self
+                        .advance()
+                        .expect("dot token should be available")
+                        .span()
+                        .start();
+                    let label = self.expect_ident("field access label")?;
+                    expression =
+                        Expr::field_access(self.node_ids.next_expr(), offset, expression, label);
+                    continue;
+                }
+            }
+
+            if self.check(TokenKind::LBracket) {
+                let has_space_before = self.index > 0
+                    && self.tokens[self.index - 1].span().end()
+                        < self.current().unwrap().span().start();
+
+                if has_space_before {
+                    break;
+                }
+
                 let offset = self
                     .advance()
-                    .expect("dot token should be available")
+                    .expect("lbracket token should be available")
                     .span()
                     .start();
-                self.expect(TokenKind::LParen, "(")?;
-                let args = self.parse_call_args()?;
-                self.expect(TokenKind::RParen, ")")?;
-                expression = Expr::invoke(self.node_ids.next_expr(), offset, expression, args);
+                let index = self.parse_expression()?;
+                self.expect(TokenKind::RBracket, "]")?;
+                expression =
+                    Expr::index_access(self.node_ids.next_expr(), offset, expression, index);
                 continue;
             }
 
@@ -1462,6 +1564,9 @@ impl<'a> Parser<'a> {
                 && self
                     .peek(1)
                     .is_some_and(|token| token.kind() == TokenKind::Ident)
+                && self
+                    .peek(2)
+                    .is_some_and(|token| token.kind() == TokenKind::LParen)
             {
                 self.advance();
                 let function_name = self.expect_ident("qualified function name")?;
@@ -1762,14 +1867,31 @@ impl<'a> Parser<'a> {
         let offset = self.expect_token(TokenKind::Percent, "%")?.span().start();
         self.expect(TokenKind::LBrace, "{")?;
 
-        let entries = if self.check(TokenKind::RBrace) {
-            self.advance();
-            Vec::new()
-        } else {
-            self.parse_label_entries(TokenKind::RBrace, "map key")?
-        };
+        if self.match_kind(TokenKind::RBrace) {
+            return Ok(Expr::map(self.node_ids.next_expr(), offset, Vec::new()));
+        }
 
-        Ok(Expr::map(self.node_ids.next_expr(), offset, entries))
+        if self.starts_keyword_literal_entry() {
+            let entries = self.parse_label_entries(TokenKind::RBrace, "map key")?;
+            return Ok(Expr::map(self.node_ids.next_expr(), offset, entries));
+        }
+
+        let base = self.parse_expression()?;
+
+        if self.match_kind(TokenKind::Pipe) {
+            let entries = self.parse_label_entries(TokenKind::RBrace, "map update key")?;
+            return Ok(Expr::map_update(
+                self.node_ids.next_expr(),
+                offset,
+                base,
+                entries,
+            ));
+        }
+
+        Err(ParserError::at_current(
+            "expected map update pipe `|` or label entry",
+            self.current(),
+        ))
     }
 
     fn starts_keyword_literal_entry(&self) -> bool {
@@ -2613,6 +2735,26 @@ mod tests {
                 for entry in entries {
                     collect_expr_ids(&entry.value, ids);
                 }
+            }
+            Expr::MapUpdate {
+                id, base, updates, ..
+            } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(base, ids);
+                for entry in updates {
+                    collect_expr_ids(&entry.value, ids);
+                }
+            }
+            Expr::FieldAccess { id, base, .. } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(base, ids);
+            }
+            Expr::IndexAccess {
+                id, base, index, ..
+            } => {
+                ids.push(id.0.clone());
+                collect_expr_ids(base, ids);
+                collect_expr_ids(index, ids);
             }
             Expr::Call { id, args, .. } => {
                 ids.push(id.0.clone());
