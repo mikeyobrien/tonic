@@ -428,8 +428,7 @@ pub enum Expr {
         id: NodeId,
         #[serde(skip_serializing)]
         offset: usize,
-        pattern: Pattern,
-        generator: Box<Expr>,
+        generators: Vec<(Pattern, Expr)>,
         body: Box<Expr>,
     },
     Variable {
@@ -759,15 +758,13 @@ impl Expr {
     fn for_comprehension(
         id: NodeId,
         offset: usize,
-        pattern: Pattern,
-        generator: Expr,
+        generators: Vec<(Pattern, Expr)>,
         body: Expr,
     ) -> Self {
         Self::For {
             id,
             offset,
-            pattern,
-            generator: Box::new(generator),
+            generators,
             body: Box::new(body),
         }
     }
@@ -999,9 +996,11 @@ fn canonicalize_expr_call_targets(
             }
         }
         Expr::For {
-            generator, body, ..
+            generators, body, ..
         } => {
-            canonicalize_expr_call_targets(generator, aliases, imports, local_functions);
+            for (_, generator) in generators {
+                canonicalize_expr_call_targets(generator, aliases, imports, local_functions);
+            }
             canonicalize_expr_call_targets(body, aliases, imports, local_functions);
         }
         Expr::Try { body, rescue, .. } => {
@@ -1934,30 +1933,33 @@ impl<'a> Parser<'a> {
 
     fn parse_for_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::For, "for")?.span().start();
-        let pattern = self.parse_pattern()?;
-        self.expect(TokenKind::LeftArrow, "<-")?;
-        let generator = self.parse_expression()?;
 
-        if self.match_kind(TokenKind::Comma) {
-            if self.check(TokenKind::Ident)
-                && self
-                    .peek(1)
-                    .is_some_and(|token| token.kind() == TokenKind::Colon)
-            {
-                let option_token = self.expect_token(TokenKind::Ident, "for option")?;
-                return Err(ParserError::at_current(
-                    format!(
-                        "unsupported for option '{}'; remove options from for for now",
-                        option_token.lexeme()
-                    ),
-                    Some(option_token),
-                ));
+        let mut generators = Vec::new();
+        loop {
+            let pattern = self.parse_pattern()?;
+            self.expect(TokenKind::LeftArrow, "<-")?;
+            let generator = self.parse_expression()?;
+            generators.push((pattern, generator));
+
+            if self.match_kind(TokenKind::Comma) {
+                if self.check(TokenKind::Ident)
+                    && self
+                        .peek(1)
+                        .is_some_and(|token| token.kind() == TokenKind::Colon)
+                {
+                    let option_token = self.expect_token(TokenKind::Ident, "for option")?;
+                    return Err(ParserError::at_current(
+                        format!(
+                            "unsupported for option '{}'; remove options from for for now",
+                            option_token.lexeme()
+                        ),
+                        Some(option_token),
+                    ));
+                }
+
+                continue;
             }
-
-            return Err(ParserError::at_current(
-                "unsupported for generator chain; use a single generator for now",
-                self.current(),
-            ));
+            break;
         }
 
         self.expect(TokenKind::Do, "do")?;
@@ -1967,8 +1969,7 @@ impl<'a> Parser<'a> {
         Ok(Expr::for_comprehension(
             self.node_ids.next_expr(),
             offset,
-            pattern,
-            generator,
+            generators,
             body,
         ))
     }
@@ -3065,16 +3066,20 @@ mod tests {
                 .expect("expression should serialize"),
             serde_json::json!({
                 "kind":"for",
-                "pattern":{"kind":"bind","name":"x"},
-                "generator":{
-                    "kind":"call",
-                    "callee":"list",
-                    "args":[
-                        {"kind":"int","value":1},
-                        {"kind":"int","value":2},
-                        {"kind":"int","value":3}
+                "generators":[
+                    [
+                        {"kind":"bind","name":"x"},
+                        {
+                            "kind":"call",
+                            "callee":"list",
+                            "args":[
+                                {"kind":"int","value":1},
+                                {"kind":"int","value":2},
+                                {"kind":"int","value":3}
+                            ]
+                        }
                     ]
-                },
+                ],
                 "body":{
                     "kind":"binary",
                     "op":"plus",
@@ -3086,18 +3091,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_ast_rejects_for_with_multiple_generators() {
+    fn parse_ast_supports_for_with_multiple_generators() {
         let tokens = scan_tokens(
             "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), y <- list(3, 4) do\n      x + y\n    end\n  end\nend\n",
         )
         .expect("scanner should tokenize parser fixture");
 
-        let error = parse_ast(&tokens).expect_err("parser should reject multi-generator for forms");
+        let ast = parse_ast(&tokens).expect("parser should not reject multi-generator for forms");
 
-        assert_eq!(
-            error.to_string(),
-            "unsupported for generator chain; use a single generator for now at offset 58"
-        );
+        let body_json = serde_json::to_value(&ast.modules[0].functions[0].body).unwrap();
+        assert_eq!(body_json["kind"], "for");
+        assert_eq!(body_json["generators"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -3383,12 +3387,14 @@ mod tests {
             }
             Expr::For {
                 id,
-                generator,
+                generators,
                 body,
                 ..
             } => {
                 ids.push(id.0.clone());
-                collect_expr_ids(generator, ids);
+                for (_, generator) in generators {
+                    collect_expr_ids(generator, ids);
+                }
                 collect_expr_ids(body, ids);
             }
             Expr::Group { id, inner, .. } => {

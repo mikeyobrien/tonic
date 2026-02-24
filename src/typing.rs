@@ -435,9 +435,11 @@ fn infer_expression_type(
             Ok(inferred_case_type.unwrap_or(Type::Dynamic))
         }
         Expr::For {
-            generator, body, ..
+            generators, body, ..
         } => {
-            infer_expression_type(generator, current_module, signatures, solver)?;
+            for (_, generator) in generators {
+                infer_expression_type(generator, current_module, signatures, solver)?;
+            }
             infer_expression_type(body, current_module, signatures, solver)?;
             Ok(Type::Dynamic)
         }

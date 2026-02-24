@@ -253,9 +253,11 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                 })
         }
         Expr::For {
-            generator, body, ..
+            generators, body, ..
         } => {
-            expr_references_module(generator, module_name)
+            generators
+                .iter()
+                .any(|(_, generator)| expr_references_module(generator, module_name))
                 || expr_references_module(body, module_name)
         }
         Expr::Group { inner, .. } => expr_references_module(inner, module_name),

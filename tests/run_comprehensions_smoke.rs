@@ -60,6 +60,35 @@ fn run_executes_for_with_pattern_filtering() {
 }
 
 #[test]
+fn run_executes_for_multi_generator_comprehension() {
+    let fixture_root = common::unique_fixture_root("run-comprehensions-multi-generator");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("for_multi_generator.tn"),
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), y <- list(3, 4) do\n      list(x, y)\n    end\n  end\nend\n",
+    )
+    .expect("fixture setup should write for multi generator source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "examples/for_multi_generator.tn"])
+        .output()
+        .expect("run command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected successful run invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert_eq!(stdout, "[[1, 3], [1, 4], [2, 3], [2, 4]]\n");
+}
+
+#[test]
 fn run_reports_deterministic_error_for_non_list_generator() {
     let fixture_root = common::unique_fixture_root("run-comprehensions-non-list-generator");
     let examples_dir = fixture_root.join("examples");

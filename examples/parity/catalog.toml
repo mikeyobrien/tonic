@@ -441,10 +441,11 @@ stdout = '''[2, 4, 6]
 status = "active"
 
 [[example]]
-path = "examples/parity/06-control-flow/for_multi_generator_fail.tn"
-check_exit = 1
-run_exit = 1
-stderr_contains = '''error: unsupported for generator chain; use a single generator for now'''
+path = "examples/parity/06-control-flow/for_multi_generator.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[{1, 3}, {1, 4}, {2, 3}, {2, 4}]
+'''
 status = "active"
 
 [[example]]

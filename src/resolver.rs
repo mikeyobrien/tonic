@@ -221,9 +221,11 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             Ok(())
         }
         Expr::For {
-            generator, body, ..
+            generators, body, ..
         } => {
-            resolve_expr(generator, context)?;
+            for (_, generator) in generators {
+                resolve_expr(generator, context)?;
+            }
             resolve_expr(body, context)
         }
         Expr::Group { inner, .. } => resolve_expr(inner, context),

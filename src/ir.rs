@@ -73,7 +73,7 @@ pub(crate) enum IrOp {
         offset: usize,
     },
     For {
-        pattern: IrPattern,
+        generators: Vec<(IrPattern, Vec<IrOp>)>,
         body_ops: Vec<IrOp>,
         offset: usize,
     },
@@ -896,19 +896,23 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             Ok(())
         }
         Expr::For {
-            pattern,
-            generator,
+            generators,
             body,
             offset,
             ..
         } => {
-            lower_expr(generator, current_module, ops)?;
+            let mut ir_generators = Vec::new();
+            for (pattern, generator) in generators {
+                let mut gen_ops = Vec::new();
+                lower_expr(generator, current_module, &mut gen_ops)?;
+                ir_generators.push((lower_pattern(pattern)?, gen_ops));
+            }
 
             let mut body_ops = Vec::new();
             lower_expr(body, current_module, &mut body_ops)?;
 
             ops.push(IrOp::For {
-                pattern: lower_pattern(pattern)?,
+                generators: ir_generators,
                 body_ops,
                 offset: *offset,
             });
@@ -1291,12 +1295,18 @@ mod tests {
         assert_eq!(
             json["functions"][0]["ops"],
             serde_json::json!([
-                {"op":"const_int","value":1,"offset":51},
-                {"op":"const_int","value":2,"offset":54},
-                {"op":"call","callee":{"kind":"builtin","name":"list"},"argc":2,"offset":46},
                 {
                     "op":"for",
-                    "pattern":{"kind":"bind","name":"x"},
+                    "generators":[
+                        [
+                            {"kind":"bind","name":"x"},
+                            [
+                                {"op":"const_int","value":1,"offset":51},
+                                {"op":"const_int","value":2,"offset":54},
+                                {"op":"call","callee":{"kind":"builtin","name":"list"},"argc":2,"offset":46}
+                            ]
+                        ]
+                    ],
                     "body_ops":[
                         {"op":"load_variable","name":"x","offset":66},
                         {"op":"const_int","value":1,"offset":70},

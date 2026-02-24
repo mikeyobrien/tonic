@@ -593,43 +593,86 @@ fn evaluate_ops(
                 return Err(RuntimeError::raised(error_val, *offset));
             }
             IrOp::For {
-                pattern,
+                generators,
                 body_ops,
                 offset,
             } => {
-                let enumerable = pop_value(stack, *offset, "for generator")?;
-                let values = match enumerable {
-                    RuntimeValue::List(values) => values,
-                    other => {
-                        return Err(RuntimeError::at_offset(
-                            format!("for expects list generator, found {}", other.kind_label()),
-                            *offset,
-                        ));
-                    }
-                };
-
                 let mut results = Vec::new();
 
-                for value in values {
-                    let mut bindings = HashMap::new();
-                    if !match_pattern(&value, pattern, env, &mut bindings) {
-                        continue;
+                fn evaluate_generators(
+                    program: &IrProgram,
+                    generators: &[(IrPattern, Vec<IrOp>)],
+                    gen_idx: usize,
+                    env: &mut HashMap<String, RuntimeValue>,
+                    body_ops: &[IrOp],
+                    offset: usize,
+                    results: &mut Vec<RuntimeValue>,
+                ) -> Result<Option<RuntimeValue>, RuntimeError> {
+                    if gen_idx >= generators.len() {
+                        let mut iteration_stack = Vec::new();
+                        if let Some(ret) =
+                            evaluate_ops(program, body_ops, env, &mut iteration_stack)?
+                        {
+                            return Ok(Some(ret));
+                        }
+                        let body_value = pop_value(&mut iteration_stack, offset, "for body")?;
+                        results.push(body_value);
+                        return Ok(None);
                     }
 
-                    let mut iteration_env = env.clone();
-                    for (name, bound_value) in bindings {
-                        iteration_env.insert(name, bound_value);
-                    }
-
-                    let mut iteration_stack = Vec::new();
-                    if let Some(ret) =
-                        evaluate_ops(program, body_ops, &mut iteration_env, &mut iteration_stack)?
-                    {
+                    let (pattern, gen_ops) = &generators[gen_idx];
+                    let mut gen_stack = Vec::new();
+                    if let Some(ret) = evaluate_ops(program, gen_ops, env, &mut gen_stack)? {
                         return Ok(Some(ret));
                     }
+                    let enumerable = pop_value(&mut gen_stack, offset, "for generator")?;
+                    let values = match enumerable {
+                        RuntimeValue::List(values) => values,
+                        other => {
+                            return Err(RuntimeError::at_offset(
+                                format!("for expects list generator, found {}", other.kind_label()),
+                                offset,
+                            ));
+                        }
+                    };
 
-                    let body_value = pop_value(&mut iteration_stack, *offset, "for body")?;
-                    results.push(body_value);
+                    for value in values {
+                        let mut bindings = HashMap::new();
+                        if !match_pattern(&value, pattern, env, &mut bindings) {
+                            continue;
+                        }
+
+                        let mut iteration_env = env.clone();
+                        for (name, bound_value) in bindings {
+                            iteration_env.insert(name, bound_value);
+                        }
+
+                        if let Some(ret) = evaluate_generators(
+                            program,
+                            generators,
+                            gen_idx + 1,
+                            &mut iteration_env,
+                            body_ops,
+                            offset,
+                            results,
+                        )? {
+                            return Ok(Some(ret));
+                        }
+                    }
+
+                    Ok(None)
+                }
+
+                if let Some(ret) = evaluate_generators(
+                    program,
+                    generators,
+                    0,
+                    env,
+                    body_ops,
+                    *offset,
+                    &mut results,
+                )? {
+                    return Ok(Some(ret));
                 }
 
                 stack.push(RuntimeValue::List(results));
