@@ -7,6 +7,10 @@ fn default_mode() -> String {
     "warm".to_string()
 }
 
+fn default_workload_target() -> String {
+    DEFAULT_TARGET_NAME.to_string()
+}
+
 fn default_workload_weight() -> f64 {
     1.0
 }
@@ -47,9 +51,14 @@ pub struct SuiteManifest {
 #[derive(Debug, Deserialize)]
 pub struct Workload {
     pub name: String,
+    #[serde(default)]
     pub command: Vec<String>,
     #[serde(default = "default_mode")]
     pub mode: String,
+    #[serde(default = "default_workload_target")]
+    pub target: String,
+    #[serde(default)]
+    pub source: Option<String>,
     pub threshold_p50_ms: u64,
     pub threshold_p95_ms: u64,
     #[serde(default)]
@@ -73,6 +82,9 @@ pub struct WorkloadReport {
     pub name: String,
     pub command: Vec<String>,
     pub mode: String,
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     pub status: String,
     pub threshold_p50_ms: u64,
     pub threshold_p95_ms: u64,
@@ -480,6 +492,30 @@ mod tests {
         let suite: SuiteManifest = toml::from_str(fixture).expect("manifest should parse");
         assert_eq!(suite.workload[0].weight, 1.0);
         assert_eq!(suite.workload[0].mode, "warm");
+        assert_eq!(suite.workload[0].target, DEFAULT_TARGET_NAME);
+        assert!(suite.workload[0].source.is_none());
+    }
+
+    #[test]
+    fn parse_manifest_supports_compiled_target_workloads() {
+        let fixture = r#"
+        [[workload]]
+        name = "run_native_budgeting"
+        mode = "warm"
+        target = "compiled"
+        source = "examples/ergonomics/budgeting.tn"
+        threshold_p50_ms = 10
+        threshold_p95_ms = 20
+        "#;
+
+        let suite: SuiteManifest = toml::from_str(fixture).expect("manifest should parse");
+        assert_eq!(suite.workload.len(), 1);
+        assert_eq!(suite.workload[0].target, "compiled");
+        assert_eq!(
+            suite.workload[0].source.as_deref(),
+            Some("examples/ergonomics/budgeting.tn")
+        );
+        assert!(suite.workload[0].command.is_empty());
     }
 
     #[test]

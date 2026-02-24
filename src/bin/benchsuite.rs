@@ -84,7 +84,10 @@ fn main() {
     let mut has_failures = false;
 
     for workload in &suite.workload {
-        println!("running workload: {} ({})", workload.name, workload.mode);
+        println!(
+            "running workload: {} (target={}, mode={})",
+            workload.name, workload.target, workload.mode
+        );
 
         let report = match run_workload(&args.bin_path, workload, args.runs, args.warmup_runs) {
             Ok(stats) => {
@@ -113,6 +116,8 @@ fn main() {
                     name: workload.name.clone(),
                     command: workload.command.clone(),
                     mode: workload.mode.clone(),
+                    target: workload.target.clone(),
+                    source: workload.source.clone(),
                     status: if args.calibrate {
                         "calibrated".to_string()
                     } else if p50_exceeded || p95_exceeded || rss_exceeded == Some(true) {

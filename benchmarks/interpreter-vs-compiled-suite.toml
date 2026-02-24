@@ -1,0 +1,82 @@
+# Interpreter vs compiled runtime benchmark suite.
+#
+# This suite benchmarks the same workload in two execution targets:
+# - target = "interpreter": run through `tonic run <source>`
+# - target = "compiled": compile via `tonic compile --backend llvm --out ...`
+#   and then execute the produced native binary directly.
+
+[[workload]]
+name = "interp_budgeting"
+command = ["run", "examples/ergonomics/budgeting.tn"]
+mode = "warm"
+threshold_p50_ms = 20
+threshold_p95_ms = 40
+threshold_rss_kb = 65536
+category = "runtime"
+
+[[workload]]
+name = "compiled_budgeting"
+target = "compiled"
+source = "examples/ergonomics/budgeting.tn"
+mode = "warm"
+threshold_p50_ms = 20
+threshold_p95_ms = 40
+threshold_rss_kb = 65536
+category = "runtime"
+
+[[workload]]
+name = "interp_private_defp_visibility"
+command = ["run", "examples/parity/05-functions/private_defp_visibility.tn"]
+mode = "warm"
+threshold_p50_ms = 20
+threshold_p95_ms = 40
+threshold_rss_kb = 65536
+category = "runtime"
+
+[[workload]]
+name = "compiled_private_defp_visibility"
+target = "compiled"
+source = "examples/parity/05-functions/private_defp_visibility.tn"
+mode = "warm"
+threshold_p50_ms = 20
+threshold_p95_ms = 40
+threshold_rss_kb = 65536
+category = "runtime"
+
+[[workload]]
+name = "interp_module_qualified_calls"
+command = ["run", "examples/parity/07-modules/module_qualified_calls.tn"]
+mode = "warm"
+threshold_p50_ms = 20
+threshold_p95_ms = 40
+threshold_rss_kb = 65536
+category = "runtime"
+
+[[workload]]
+name = "compiled_module_qualified_calls"
+target = "compiled"
+source = "examples/parity/07-modules/module_qualified_calls.tn"
+mode = "warm"
+threshold_p50_ms = 20
+threshold_p95_ms = 40
+threshold_rss_kb = 65536
+category = "runtime"
+
+[[workload]]
+name = "interp_project_multifile_pipeline"
+command = ["run", "examples/parity/07-modules/project_multifile_pipeline"]
+mode = "cold"
+threshold_p50_ms = 30
+threshold_p95_ms = 60
+threshold_rss_kb = 65536
+category = "module_load"
+
+[[workload]]
+name = "compiled_project_multifile_pipeline"
+target = "compiled"
+source = "examples/parity/07-modules/project_multifile_pipeline"
+mode = "cold"
+threshold_p50_ms = 30
+threshold_p95_ms = 60
+threshold_rss_kb = 65536
+category = "module_load"

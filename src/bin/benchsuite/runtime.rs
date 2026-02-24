@@ -1,7 +1,7 @@
 use crate::model::{HostMetadata, RunStats, SuiteReport, Workload, WorkloadReport};
 use std::cmp::Ordering;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
@@ -36,7 +36,13 @@ pub fn clear_cache() {
     let _ = fs::remove_dir_all(".tonic/cache");
 }
 
-pub fn measure_rss(binary_path: &Path, workload: &Workload) -> Option<u64> {
+#[derive(Debug, Clone)]
+struct PreparedWorkload {
+    executable: PathBuf,
+    args: Vec<String>,
+}
+
+fn measure_rss(prepared: &PreparedWorkload, workload: &Workload) -> Option<u64> {
     if !Path::new("/usr/bin/time").exists() {
         return None;
     }
@@ -47,8 +53,8 @@ pub fn measure_rss(binary_path: &Path, workload: &Workload) -> Option<u64> {
 
     let output = Command::new("/usr/bin/time")
         .arg("-v")
-        .arg(binary_path)
-        .args(&workload.command)
+        .arg(&prepared.executable)
+        .args(&prepared.args)
         .output()
         .ok()?;
 
@@ -65,24 +71,128 @@ pub fn measure_rss(binary_path: &Path, workload: &Workload) -> Option<u64> {
     None
 }
 
+fn prepare_workload(binary_path: &Path, workload: &Workload) -> Result<PreparedWorkload, String> {
+    match workload.target.as_str() {
+        "interpreter" => {
+            if workload.command.is_empty() {
+                return Err(format!(
+                    "workload '{}' target=interpreter requires a non-empty command",
+                    workload.name
+                ));
+            }
+
+            Ok(PreparedWorkload {
+                executable: binary_path.to_path_buf(),
+                args: workload.command.clone(),
+            })
+        }
+        "compiled" => {
+            let Some(source) = workload.source.as_ref() else {
+                return Err(format!(
+                    "workload '{}' target=compiled requires a source path",
+                    workload.name
+                ));
+            };
+
+            let executable = compiled_workload_output_path(workload);
+            if let Some(parent) = executable.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!(
+                        "failed to create compiled workload directory {}: {error}",
+                        parent.display()
+                    )
+                })?;
+            }
+
+            let output = Command::new(binary_path)
+                .args(["compile", source, "--backend", "llvm", "--out"])
+                .arg(&executable)
+                .output()
+                .map_err(|error| {
+                    format!(
+                        "failed to prepare compiled workload '{}' via {}: {error}",
+                        workload.name,
+                        binary_path.display()
+                    )
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                return Err(format!(
+                    "workload '{}' failed during compile preparation: {}{}{}",
+                    workload.name,
+                    stderr.trim(),
+                    if stderr.trim().is_empty() || stdout.trim().is_empty() {
+                        ""
+                    } else {
+                        " | "
+                    },
+                    stdout.trim()
+                ));
+            }
+
+            Ok(PreparedWorkload {
+                executable,
+                args: workload.command.clone(),
+            })
+        }
+        other => Err(format!(
+            "workload '{}' has unsupported target '{}' (expected interpreter or compiled)",
+            workload.name, other
+        )),
+    }
+}
+
+fn compiled_workload_output_path(workload: &Workload) -> PathBuf {
+    let mut path = PathBuf::from(".tonic/bench-compiled");
+    path.push(sanitize_workload_name(&workload.name));
+
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+
+    path
+}
+
+fn sanitize_workload_name(name: &str) -> String {
+    let mut sanitized = String::with_capacity(name.len());
+
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            sanitized.push(ch);
+        } else {
+            sanitized.push('_');
+        }
+    }
+
+    if sanitized.is_empty() {
+        "workload".to_string()
+    } else {
+        sanitized
+    }
+}
+
 pub fn run_workload(
     binary_path: &Path,
     workload: &Workload,
     runs: usize,
     warmup_runs: usize,
 ) -> Result<RunStats, String> {
+    let prepared = prepare_workload(binary_path, workload)?;
+
     for _ in 0..warmup_runs {
         if requires_cache_clear(&workload.mode) {
             clear_cache();
         }
-        let output = Command::new(binary_path)
-            .args(&workload.command)
+        let output = Command::new(&prepared.executable)
+            .args(&prepared.args)
             .output()
             .map_err(|error| {
                 format!(
                     "failed to execute workload '{}' via {}: {error}",
                     workload.name,
-                    binary_path.display()
+                    prepared.executable.display()
                 )
             })?;
 
@@ -102,14 +212,14 @@ pub fn run_workload(
             clear_cache();
         }
         let start = Instant::now();
-        let output = Command::new(binary_path)
-            .args(&workload.command)
+        let output = Command::new(&prepared.executable)
+            .args(&prepared.args)
             .output()
             .map_err(|error| {
                 format!(
                     "failed to execute workload '{}' via {}: {error}",
                     workload.name,
-                    binary_path.display()
+                    prepared.executable.display()
                 )
             })?;
 
@@ -126,7 +236,7 @@ pub fn run_workload(
         samples_ms.push(elapsed_ms);
     }
 
-    let peak_rss_kb = measure_rss(binary_path, workload);
+    let peak_rss_kb = measure_rss(&prepared, workload);
 
     Ok(RunStats {
         p50_ms: compute_percentile(samples_ms.clone(), 50.0),
@@ -191,13 +301,15 @@ pub fn write_markdown_report(path: &Path, report: &SuiteReport) -> Result<(), St
     }
     markdown.push('\n');
 
-    markdown.push_str("| Workload | Mode | Status | p50 (ms) | p95 (ms) | p50 threshold | p95 threshold | RSS (KB) | RSS threshold (KB) |\n");
-    markdown.push_str("|---|---|---:|---:|---:|---:|---:|---:|---:|\n");
+    markdown.push_str("| Workload | Target | Source | Mode | Status | p50 (ms) | p95 (ms) | p50 threshold | p95 threshold | RSS (KB) | RSS threshold (KB) |\n");
+    markdown.push_str("|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|\n");
 
     for workload in &report.workloads {
         markdown.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             workload.name,
+            workload.target,
+            workload.source.as_deref().unwrap_or("-"),
             workload.mode,
             workload.status,
             workload
@@ -288,6 +400,8 @@ pub fn workload_report_from_error(workload: &Workload, error: String) -> Workloa
         name: workload.name.clone(),
         command: workload.command.clone(),
         mode: workload.mode.clone(),
+        target: workload.target.clone(),
+        source: workload.source.clone(),
         status: "error".to_string(),
         threshold_p50_ms: workload.threshold_p50_ms,
         threshold_p95_ms: workload.threshold_p95_ms,
@@ -326,6 +440,8 @@ mod tests {
             name: "w".to_string(),
             command: vec!["run".to_string(), "examples/sample.tn".to_string()],
             mode: "warm".to_string(),
+            target: "interpreter".to_string(),
+            source: None,
             threshold_p50_ms: 100,
             threshold_p95_ms: 200,
             threshold_rss_kb: Some(12_000),
@@ -360,5 +476,31 @@ mod tests {
         assert_eq!(calculate_calibrated_threshold(50.5, 10), 57);
         assert_eq!(calculate_calibrated_threshold(10.0, 0), 11);
         assert_eq!(calculate_calibrated_threshold(200.0, 150), 501);
+    }
+
+    #[test]
+    fn compiled_output_path_is_deterministic_and_sanitized() {
+        let workload = Workload {
+            name: "run compiled: budgeting".to_string(),
+            command: Vec::new(),
+            mode: "warm".to_string(),
+            target: "compiled".to_string(),
+            source: Some("examples/ergonomics/budgeting.tn".to_string()),
+            threshold_p50_ms: 10,
+            threshold_p95_ms: 20,
+            threshold_rss_kb: None,
+            weight: 1.0,
+            category: None,
+        };
+
+        let path = compiled_workload_output_path(&workload);
+        assert!(
+            path.starts_with(std::path::Path::new(".tonic/bench-compiled")),
+            "compiled bench output should be under .tonic/bench-compiled"
+        );
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("run_compiled__budgeting")
+        );
     }
 }

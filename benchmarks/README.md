@@ -5,13 +5,18 @@ This suite profiles representative Tonic workloads and can enforce latency/perfo
 ## Inputs
 
 - Legacy suite manifest: `benchmarks/suite.toml`
+- Interpreter vs compiled suite: `benchmarks/interpreter-vs-compiled-suite.toml`
 - Native compiler contract suite: `benchmarks/native-compiler-suite.toml`
 - Rust/Go baseline data: `benchmarks/native-compiler-baselines.json`
 - Runner: `src/bin/benchsuite.rs`
 
 Each workload defines:
 - `name`
-- `command` (argv passed to `tonic`)
+- `target` (`interpreter` default, or `compiled`)
+- `command`
+  - for `target = "interpreter"`: argv passed to `tonic`
+  - for `target = "compiled"`: argv passed to the compiled executable (optional)
+- `source` (required for `target = "compiled"`: source/project path to compile)
 - `mode` (`warm` or `cold`, default `warm`; cold mode clears `.tonic/cache`)
 - `threshold_p50_ms`
 - `threshold_p95_ms`
@@ -36,6 +41,26 @@ Run the legacy suite:
 
 ```bash
 cargo run --bin benchsuite -- --bin target/release/tonic
+```
+
+Run interpreter vs compiled target comparison suite:
+
+```bash
+cargo run --bin benchsuite -- \
+  --bin target/release/tonic \
+  --manifest benchmarks/interpreter-vs-compiled-suite.toml \
+  --json-out benchmarks/interpreter-vs-compiled-summary.json \
+  --markdown-out benchmarks/interpreter-vs-compiled-summary.md
+```
+
+`target = "compiled"` workloads are prepared by compiling each source with
+`tonic compile --backend llvm --out .tonic/bench-compiled/<workload-name>` and then
+executing the produced binary directly.
+
+Wrapper script (recommended):
+
+```bash
+./scripts/bench-interpreter-vs-compiled.sh
 ```
 
 Run the native compiler contract suite (includes weighted Rust/Go comparisons):
