@@ -484,3 +484,27 @@ check_exit = 1
 run_exit = 1
 stderr_contains = '''undefined symbol 'missing''''
 status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/try_catch_success.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"caught oops"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/try_after_success.tn"
+check_exit = 0
+run_exit = 0
+stdout = ''':ok
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/try_rescue_catch_after_success.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"caught fallback"
+'''
+status = "active"

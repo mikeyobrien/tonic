@@ -1,0 +1,9 @@
+defmodule Demo do
+  def run() do
+    try do
+      :ok
+    after
+      :cleanup
+    end
+  end
+end

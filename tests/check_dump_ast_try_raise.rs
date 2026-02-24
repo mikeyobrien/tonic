@@ -47,19 +47,21 @@ end
 }
 
 #[test]
-fn check_try_catch_unsupported_diagnostic() {
-    let fixture_root = common::unique_fixture_root("check-try-catch-unsupported");
+fn check_try_catch_after_supported() {
+    let fixture_root = common::unique_fixture_root("check-try-catch-after-supported");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("try_catch.tn"),
+        examples_dir.join("try_catch_after.tn"),
         "defmodule Demo do
   def run() do
     try do
       :ok
     catch
       _ -> :ok
+    after
+      :cleanup
     end
   end
 end
@@ -69,31 +71,33 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["check", "examples/try_catch.tn"])
+        .args(["check", "examples/try_catch_after.tn", "--dump-ast"])
         .output()
         .expect("check command should run");
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stderr.contains("catch is out of scope for now"),
-        "should report unsupported catch"
+        stdout.contains(r#""catch""#),
+        "AST output should contain catch array"
+    );
+    assert!(
+        stdout.contains(r#""after""#),
+        "AST output should contain after block"
     );
 }
 
 #[test]
-fn check_try_after_unsupported_diagnostic() {
-    let fixture_root = common::unique_fixture_root("check-try-after-unsupported");
+fn check_try_missing_clauses_diagnostic() {
+    let fixture_root = common::unique_fixture_root("check-try-missing-clauses");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("try_after.tn"),
+        examples_dir.join("try_missing.tn"),
         "defmodule Demo do
   def run() do
     try do
-      :ok
-    after
       :ok
     end
   end
@@ -104,14 +108,14 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["check", "examples/try_after.tn"])
+        .args(["check", "examples/try_missing.tn"])
         .output()
         .expect("check command should run");
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("after is out of scope for now"),
-        "should report unsupported after"
+        stderr.contains("try must be followed by rescue, catch, or after"),
+        "should report missing try clauses"
     );
 }

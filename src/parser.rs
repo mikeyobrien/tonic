@@ -415,6 +415,8 @@ pub enum Expr {
         offset: usize,
         body: Box<Expr>,
         rescue: Vec<CaseBranch>,
+        catch: Vec<CaseBranch>,
+        after: Option<Box<Expr>>,
     },
     Raise {
         #[serde(skip_serializing)]
@@ -739,12 +741,21 @@ impl Expr {
         }
     }
 
-    fn try_rescue(id: NodeId, offset: usize, body: Expr, rescue: Vec<CaseBranch>) -> Self {
+    fn try_expr(
+        id: NodeId,
+        offset: usize,
+        body: Expr,
+        rescue: Vec<CaseBranch>,
+        catch: Vec<CaseBranch>,
+        after: Option<Expr>,
+    ) -> Self {
         Self::Try {
             id,
             offset,
             body: Box::new(body),
             rescue,
+            catch,
+            after: after.map(Box::new),
         }
     }
 
@@ -1012,13 +1023,28 @@ fn canonicalize_expr_call_targets(
             }
             canonicalize_expr_call_targets(body, aliases, imports, local_functions);
         }
-        Expr::Try { body, rescue, .. } => {
+        Expr::Try {
+            body,
+            rescue,
+            catch,
+            after,
+            ..
+        } => {
             canonicalize_expr_call_targets(body, aliases, imports, local_functions);
             for branch in rescue {
                 if let Some(guard) = branch.guard.as_mut() {
                     canonicalize_expr_call_targets(guard, aliases, imports, local_functions);
                 }
                 canonicalize_expr_call_targets(&mut branch.body, aliases, imports, local_functions);
+            }
+            for branch in catch {
+                if let Some(guard) = branch.guard.as_mut() {
+                    canonicalize_expr_call_targets(guard, aliases, imports, local_functions);
+                }
+                canonicalize_expr_call_targets(&mut branch.body, aliases, imports, local_functions);
+            }
+            if let Some(after) = after {
+                canonicalize_expr_call_targets(after, aliases, imports, local_functions);
             }
         }
         Expr::Raise { error, .. } => {
@@ -2244,37 +2270,51 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Do, "do")?;
         let body = self.parse_expression()?;
 
-        if self.match_kind(TokenKind::Catch) {
-            return Err(ParserError::at_current(
-                "catch is out of scope for now",
-                Some(&self.tokens[self.index - 1]),
-            ));
-        }
-
-        if self.match_kind(TokenKind::After) {
-            return Err(ParserError::at_current(
-                "after is out of scope for now",
-                Some(&self.tokens[self.index - 1]),
-            ));
-        }
-
-        self.expect(TokenKind::Rescue, "rescue")?;
-
         let mut rescue = Vec::new();
-        while !self.check(TokenKind::End) {
-            if self.is_at_end() {
-                return Err(self.expected("rescue branch"));
+        if self.match_kind(TokenKind::Rescue) {
+            while !self.check(TokenKind::Catch)
+                && !self.check(TokenKind::After)
+                && !self.check(TokenKind::End)
+            {
+                if self.is_at_end() {
+                    return Err(self.expected("rescue branch, catch branch, after block, or end"));
+                }
+                rescue.push(self.parse_case_branch()?);
             }
-            rescue.push(self.parse_case_branch()?);
+        }
+
+        let mut catch = Vec::new();
+        if self.match_kind(TokenKind::Catch) {
+            while !self.check(TokenKind::After) && !self.check(TokenKind::End) {
+                if self.is_at_end() {
+                    return Err(self.expected("catch branch, after block, or end"));
+                }
+                catch.push(self.parse_case_branch()?);
+            }
+        }
+
+        let after = if self.match_kind(TokenKind::After) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        if rescue.is_empty() && catch.is_empty() && after.is_none() {
+            return Err(ParserError::at_current(
+                "try must be followed by rescue, catch, or after",
+                Some(&self.tokens[self.index - 1]),
+            ));
         }
 
         self.expect(TokenKind::End, "end")?;
 
-        Ok(Expr::try_rescue(
+        Ok(Expr::try_expr(
             self.node_ids.next_expr(),
             offset,
             body,
             rescue,
+            catch,
+            after,
         ))
     }
 
@@ -3429,7 +3469,12 @@ mod tests {
                 collect_expr_ids(inner, ids);
             }
             Expr::Try {
-                id, body, rescue, ..
+                id,
+                body,
+                rescue,
+                catch,
+                after,
+                ..
             } => {
                 ids.push(id.0.clone());
                 collect_expr_ids(body, ids);
@@ -3438,6 +3483,15 @@ mod tests {
                         collect_expr_ids(guard, ids);
                     }
                     collect_expr_ids(&branch.body, ids);
+                }
+                for branch in catch {
+                    if let Some(guard) = &branch.guard {
+                        collect_expr_ids(guard, ids);
+                    }
+                    collect_expr_ids(&branch.body, ids);
+                }
+                if let Some(after) = after {
+                    collect_expr_ids(after, ids);
                 }
             }
             Expr::Raise { id, error, .. } => {

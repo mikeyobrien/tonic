@@ -100,7 +100,7 @@ Legend:
 - [x] `cond`
 - [~] `with` (supports `<-` chaining with pattern mismatch fallback via optional `else` clauses)
 - [~] comprehensions (`for`) — baseline single-generator list comprehensions (`for pattern <- list do expr end`) are supported; multi-generator and options (`into:` etc.) are pending
-- [x] `try/rescue/catch/after` (baseline try/rescue supported, catch/after deterministically unsupported)
+- [x] `try/rescue/catch/after` (baseline try/rescue/catch/after fully supported)
 - [x] `raise`/exception forms (baseline raise)
 
 ---

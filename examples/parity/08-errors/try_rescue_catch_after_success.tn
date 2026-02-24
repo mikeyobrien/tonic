@@ -1,0 +1,13 @@
+defmodule Demo do
+  def run() do
+    try do
+      raise("fallback")
+    rescue
+      "handled" -> "rescued"
+    catch
+      "fallback" -> "caught fallback"
+    after
+      "done"
+    end
+  end
+end

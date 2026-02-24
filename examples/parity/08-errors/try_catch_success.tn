@@ -1,0 +1,10 @@
+defmodule Demo do
+  def run() do
+    try do
+      raise("oops")
+    catch
+      "oops" -> "caught oops"
+      _ -> "caught something else"
+    end
+  end
+end

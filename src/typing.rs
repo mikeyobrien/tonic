@@ -454,10 +454,22 @@ fn infer_expression_type(
         }
         Expr::Variable { .. } => Ok(solver.fresh_var()),
         Expr::Atom { .. } => Ok(Type::Dynamic),
-        Expr::Try { body, rescue, .. } => {
+        Expr::Try {
+            body,
+            rescue,
+            catch,
+            after,
+            ..
+        } => {
             infer_expression_type(body, current_module, signatures, solver)?;
             for branch in rescue {
                 infer_expression_type(branch.body(), current_module, signatures, solver)?;
+            }
+            for branch in catch {
+                infer_expression_type(branch.body(), current_module, signatures, solver)?;
+            }
+            if let Some(after) = after {
+                infer_expression_type(after, current_module, signatures, solver)?;
             }
             Ok(Type::Dynamic)
         }

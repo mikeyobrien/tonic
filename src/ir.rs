@@ -67,6 +67,8 @@ pub(crate) enum IrOp {
     Try {
         body_ops: Vec<IrOp>,
         rescue_branches: Vec<IrCaseBranch>,
+        catch_branches: Vec<IrCaseBranch>,
+        after_ops: Option<Vec<IrOp>>,
         offset: usize,
     },
     Raise {
@@ -856,6 +858,8 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         Expr::Try {
             body,
             rescue,
+            catch,
+            after,
             offset,
             ..
         } => {
@@ -884,9 +888,41 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 })
                 .collect::<Result<Vec<_>, LoweringError>>()?;
 
+            let catch_branches = catch
+                .iter()
+                .map(|branch| {
+                    let mut branch_ops = Vec::new();
+                    lower_expr(branch.body(), current_module, &mut branch_ops)?;
+
+                    let guard_ops = if let Some(guard) = branch.guard() {
+                        let mut guard_ops = Vec::new();
+                        lower_expr(guard, current_module, &mut guard_ops)?;
+                        Some(guard_ops)
+                    } else {
+                        None
+                    };
+
+                    Ok(IrCaseBranch {
+                        pattern: lower_pattern(branch.head())?,
+                        guard_ops,
+                        ops: branch_ops,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+
+            let after_ops = if let Some(after_expr) = after {
+                let mut ops = Vec::new();
+                lower_expr(after_expr, current_module, &mut ops)?;
+                Some(ops)
+            } else {
+                None
+            };
+
             ops.push(IrOp::Try {
                 body_ops,
                 rescue_branches,
+                catch_branches,
+                after_ops,
                 offset: *offset,
             });
             Ok(())

@@ -522,17 +522,21 @@ fn evaluate_ops(
             IrOp::Try {
                 body_ops,
                 rescue_branches,
+                catch_branches,
+                after_ops,
                 offset,
             } => {
                 let mut try_env = env.clone();
                 let mut try_stack = Vec::new();
 
+                let mut early_return = None;
+                let mut final_err = None;
+
                 match evaluate_ops(program, body_ops, &mut try_env, &mut try_stack) {
                     Ok(ret) => {
                         if let Some(v) = ret {
-                            return Ok(Some(v));
-                        }
-                        if let Some(v) = try_stack.pop() {
+                            early_return = Some(v);
+                        } else if let Some(v) = try_stack.pop() {
                             stack.push(v);
                         } else {
                             stack.push(RuntimeValue::Nil);
@@ -544,7 +548,7 @@ fn evaluate_ops(
                             .clone()
                             .unwrap_or_else(|| RuntimeValue::String(err.message.clone()));
 
-                        let mut rescued = false;
+                        let mut handled = false;
                         for branch in rescue_branches {
                             let mut bindings = HashMap::new();
                             if !match_pattern(&err_val, &branch.pattern, env, &mut bindings) {
@@ -565,27 +569,99 @@ fn evaluate_ops(
                             }
 
                             let mut branch_stack = Vec::new();
-                            if let Some(ret) = evaluate_ops(
+                            match evaluate_ops(
                                 program,
                                 &branch.ops,
                                 &mut branch_env,
                                 &mut branch_stack,
-                            )? {
-                                return Ok(Some(ret));
+                            ) {
+                                Ok(ret) => {
+                                    if let Some(v) = ret {
+                                        early_return = Some(v);
+                                    } else {
+                                        let result = branch_stack.pop().unwrap_or_else(|| {
+                                            RuntimeValue::Atom("ok".to_string())
+                                        });
+                                        stack.push(result);
+                                    }
+                                }
+                                Err(e) => final_err = Some(e),
                             }
-
-                            let result = branch_stack
-                                .pop()
-                                .unwrap_or_else(|| RuntimeValue::Atom("ok".to_string()));
-                            stack.push(result);
-                            rescued = true;
+                            handled = true;
                             break;
                         }
 
-                        if !rescued {
-                            return Err(err);
+                        if !handled {
+                            for branch in catch_branches {
+                                let mut bindings = HashMap::new();
+                                if !match_pattern(&err_val, &branch.pattern, env, &mut bindings) {
+                                    continue;
+                                }
+
+                                let mut branch_env = env.clone();
+                                for (k, v) in bindings {
+                                    branch_env.insert(k, v);
+                                }
+
+                                if let Some(guard_ops) = &branch.guard_ops {
+                                    let guard_passed =
+                                        evaluate_guard_ops(program, guard_ops, &mut branch_env)?;
+                                    if !guard_passed {
+                                        continue;
+                                    }
+                                }
+
+                                let mut branch_stack = Vec::new();
+                                match evaluate_ops(
+                                    program,
+                                    &branch.ops,
+                                    &mut branch_env,
+                                    &mut branch_stack,
+                                ) {
+                                    Ok(ret) => {
+                                        if let Some(v) = ret {
+                                            early_return = Some(v);
+                                        } else {
+                                            let result = branch_stack.pop().unwrap_or_else(|| {
+                                                RuntimeValue::Atom("ok".to_string())
+                                            });
+                                            stack.push(result);
+                                        }
+                                    }
+                                    Err(e) => final_err = Some(e),
+                                }
+                                handled = true;
+                                break;
+                            }
+                        }
+
+                        if !handled {
+                            final_err = Some(err);
                         }
                     }
+                }
+
+                if let Some(after) = after_ops {
+                    let mut after_env = env.clone();
+                    let mut after_stack = Vec::new();
+                    match evaluate_ops(program, after, &mut after_env, &mut after_stack) {
+                        Ok(ret) => {
+                            if let Some(v) = ret {
+                                return Ok(Some(v));
+                            }
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
+                }
+
+                if let Some(err) = final_err {
+                    return Err(err);
+                }
+
+                if let Some(ret) = early_return {
+                    return Ok(Some(ret));
                 }
             }
             IrOp::Raise { offset } => {
