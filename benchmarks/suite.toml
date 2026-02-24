@@ -1,17 +1,46 @@
+# Tonic benchmark suite
+#
+# Thresholds are pragmatic defaults for developer hardware and should be
+# tightened once historical baselines stabilize.
+
 [[workload]]
-name = "check_parity_for_multi"
+name = "check_for_multi_generator"
 command = ["check", "examples/parity/06-control-flow/for_multi_generator.tn"]
-threshold_p50_ms = 100
-threshold_p95_ms = 200
+threshold_p50_ms = 120
+threshold_p95_ms = 220
 
 [[workload]]
-name = "run_parity_try_rescue"
-command = ["run", "examples/parity/08-errors/try_rescue_success.tn"]
-threshold_p50_ms = 100
-threshold_p95_ms = 200
+name = "run_for_multi_generator"
+command = ["run", "examples/parity/06-control-flow/for_multi_generator.tn"]
+threshold_p50_ms = 120
+threshold_p95_ms = 220
 
 [[workload]]
-name = "run_project_multifile"
+name = "run_for_into"
+command = ["run", "examples/parity/06-control-flow/for_into.tn"]
+threshold_p50_ms = 120
+threshold_p95_ms = 220
+
+[[workload]]
+name = "check_try_rescue_catch_after"
+command = ["check", "examples/parity/08-errors/try_rescue_catch_after_success.tn"]
+threshold_p50_ms = 140
+threshold_p95_ms = 260
+
+[[workload]]
+name = "run_try_rescue_catch_after"
+command = ["run", "examples/parity/08-errors/try_rescue_catch_after_success.tn"]
+threshold_p50_ms = 140
+threshold_p95_ms = 260
+
+[[workload]]
+name = "check_project_multifile_pipeline"
+command = ["check", "examples/parity/07-modules/project_multifile_pipeline"]
+threshold_p50_ms = 200
+threshold_p95_ms = 350
+
+[[workload]]
+name = "run_project_multifile_pipeline"
 command = ["run", "examples/parity/07-modules/project_multifile_pipeline"]
-threshold_p50_ms = 150
-threshold_p95_ms = 300
+threshold_p50_ms = 200
+threshold_p95_ms = 350

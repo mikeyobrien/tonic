@@ -1,54 +1,70 @@
-# Tonic Benchmarking Suite
+# Tonic Benchmark Suite
 
-This directory contains the benchmarking suite for the Tonic language. It's designed to profile key workloads and enforce performance thresholds.
+This suite profiles representative Tonic workloads and can enforce latency thresholds.
 
-## Workloads
-The suite loads its configuration from `suite.toml`. Each workload defines a Tonic command (e.g., `check`, `run`) and the target file.
+## Inputs
 
-## Usage
+- Suite manifest: `benchmarks/suite.toml`
+- Runner: `src/bin/benchsuite.rs`
 
-### Run the Benchmark Suite
+Each workload defines:
+- `name`
+- `command` (argv passed to `tonic`)
+- `threshold_p50_ms`
+- `threshold_p95_ms`
 
-To execute the benchmarking suite and see performance results:
+## Run
+
+Build a release binary first:
+
+```bash
+cargo build --release
+```
+
+Run the suite (JSON printed to stdout + written to file):
 
 ```bash
 cargo run --bin benchsuite -- --bin target/release/tonic
 ```
 
-The suite performs warmup runs followed by measured runs, computing the p50 and p95 latency for each workload. It outputs the results to stdout and saves a JSON report at `benchmarks/summary.json`.
+Custom run count / warmup + markdown output:
 
-### Enforce Mode (CI/CD)
+```bash
+cargo run --bin benchsuite -- \
+  --bin target/release/tonic \
+  --runs 25 \
+  --warmup 5 \
+  --json-out benchmarks/summary.json \
+  --markdown-out benchmarks/summary.md
+```
 
-To run the suite in "enforce" mode, which will fail with a non-zero exit code if any workload exceeds its defined p50 or p95 thresholds:
+## Enforce performance requirements
+
+Fail non-zero if any workload exceeds p50/p95 thresholds:
 
 ```bash
 cargo run --bin benchsuite -- --bin target/release/tonic --enforce
 ```
 
-## Profiling Hotspots
+This is suitable for CI perf-gate checks.
 
-If a workload is failing its performance thresholds or you want to analyze its execution, use `perf` and `flamegraph`:
+## Profiling hotspots
 
-1.  **Install tools:**
-    ```bash
-    cargo install flamegraph
-    ```
+If a workload regresses, profile the specific command:
 
-2.  **Generate a Flamegraph:**
-    ```bash
-    cargo flamegraph --bin tonic -- run examples/parity/06-control-flow/for_multi_generator.tn
-    ```
-    This will generate a `flamegraph.svg` file that visualizes CPU usage across the Tonic codebase during the execution of that specific workload.
+```bash
+cargo flamegraph --release --bin tonic -- run examples/parity/06-control-flow/for_multi_generator.tn
+```
 
-3.  **Use Perf Directly:**
-    ```bash
-    perf record -g target/release/tonic run examples/parity/06-control-flow/for_multi_generator.tn
-    perf report
-    ```
+Or with `perf`:
 
-## Performance Requirements
+```bash
+perf record -g target/release/tonic run examples/parity/06-control-flow/for_multi_generator.tn
+perf report
+```
 
-The benchmarking suite maps directly to Tonic's performance requirements:
-- Ensure the core parsing/checking pipelines stay consistently fast for typical files.
-- Prevent regressions in bytecode generation and execution speed for loops (`for`), exception handling (`try`/`rescue`), and project evaluation.
-- The thresholds in `suite.toml` are considered the upper bound of acceptable latency for an average developer machine.
+## Mapping to performance requirements
+
+- p50: typical developer experience latency
+- p95: tail latency and worst-case responsiveness
+- Thresholds in `suite.toml` are explicit contracts; tune downward as perf improves.
