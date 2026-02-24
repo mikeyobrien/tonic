@@ -107,3 +107,12 @@ Or with `perf`:
 perf record -g target/release/tonic run examples/parity/06-control-flow/for_multi_generator.tn
 perf report
 ```
+
+For built-in phase timing (frontend/codegen/runtime), set a profile sink:
+
+```bash
+TONIC_PROFILE_OUT=benchmarks/phase-profile.jsonl \
+  target/release/tonic compile examples/parity/06-control-flow/for_multi_generator.tn --backend llvm --emit object
+```
+
+Each command appends one JSON line with `command`, `total_ms`, and per-phase `elapsed_ms` so regressions can be localized before full flamegraph runs.

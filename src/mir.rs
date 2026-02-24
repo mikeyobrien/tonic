@@ -1,4 +1,5 @@
 mod lower;
+mod optimize;
 #[cfg(test)]
 mod tests;
 
@@ -8,6 +9,10 @@ use std::fmt;
 
 pub(crate) fn lower_ir_to_mir(ir: &IrProgram) -> Result<MirProgram, MirLoweringError> {
     lower::lower_ir_to_mir_impl(ir)
+}
+
+pub(crate) fn optimize_for_native_backend(mir: MirProgram) -> MirProgram {
+    optimize::optimize_for_native_backend(mir)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

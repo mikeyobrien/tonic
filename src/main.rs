@@ -13,6 +13,7 @@ pub mod native_abi;
 mod native_artifact;
 pub mod native_runtime;
 mod parser;
+mod profiling;
 mod resolver;
 mod resolver_diag;
 mod runtime;
@@ -28,7 +29,7 @@ use formatter::{format_path, FormatMode};
 use ir::{lower_ast_to_ir, IrProgram};
 use lexer::scan_tokens;
 use manifest::load_run_source;
-use mir::lower_ir_to_mir;
+use mir::{lower_ir_to_mir, optimize_for_native_backend};
 use parser::parse_ast;
 use resolver::resolve_ast;
 use runtime::{evaluate_entrypoint, RuntimeValue};
@@ -193,11 +194,15 @@ fn handle_run(args: Vec<String>) -> i32 {
         return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
     }
 
+    let mut profiler = profiling::PhaseProfiler::from_env("run");
+
     if native_artifact::is_native_artifact_path(&source_path) {
-        return handle_run_native_artifact(&source_path);
+        return handle_run_native_artifact(&source_path, &mut profiler);
     }
 
-    let source = match load_run_source(&source_path) {
+    let source = match profiling::profile_phase(&mut profiler, "run.load_source", || {
+        load_run_source(&source_path)
+    }) {
         Ok(source) => source,
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
@@ -216,18 +221,22 @@ fn handle_run(args: Vec<String>) -> i32 {
     let cache_key = build_run_cache_key(&source, &project_root);
     let mut cache_status = "miss";
 
-    let ir = match load_cached_ir(&cache_key) {
+    let ir = match profiling::profile_phase(&mut profiler, "run.cache_lookup", || {
+        load_cached_ir(&cache_key)
+    }) {
         Ok(Some(cached_ir)) => {
             cache_status = "hit";
             cached_ir
         }
         Ok(None) | Err(_) => {
-            let compiled_ir = match compile_source_to_ir(&source) {
+            let compiled_ir = match compile_source_to_ir(&source, &mut profiler) {
                 Ok(ir) => ir,
                 Err(error) => return CliDiagnostic::failure(error).emit(),
             };
 
-            if let Err(error) = store_cached_ir(&cache_key, &compiled_ir) {
+            if let Err(error) = profiling::profile_phase(&mut profiler, "run.cache_store", || {
+                store_cached_ir(&cache_key, &compiled_ir)
+            }) {
                 eprintln!("warning: {}", error);
             }
             compiled_ir
@@ -238,7 +247,9 @@ fn handle_run(args: Vec<String>) -> i32 {
         trace_cache_status(cache_status);
     }
 
-    let value = match evaluate_entrypoint(&ir) {
+    let value = match profiling::profile_phase(&mut profiler, "run.evaluate_entrypoint", || {
+        evaluate_entrypoint(&ir)
+    }) {
         Ok(value) => value,
         Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
     };
@@ -254,23 +265,31 @@ fn handle_run(args: Vec<String>) -> i32 {
     }
 }
 
-fn handle_run_native_artifact(path: &str) -> i32 {
+fn handle_run_native_artifact(path: &str, profiler: &mut Option<profiling::PhaseProfiler>) -> i32 {
     let manifest_path = std::path::Path::new(path);
-    let manifest = match native_artifact::load_manifest(manifest_path) {
+    let manifest = match profiling::profile_phase(profiler, "run.native.load_manifest", || {
+        native_artifact::load_manifest(manifest_path)
+    }) {
         Ok(manifest) => manifest,
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
-    if let Err(error) = native_artifact::validate_manifest_for_host(&manifest) {
+    if let Err(error) = profiling::profile_phase(profiler, "run.native.validate_manifest", || {
+        native_artifact::validate_manifest_for_host(&manifest)
+    }) {
         return CliDiagnostic::failure(error).emit();
     }
 
-    let ir = match native_artifact::load_ir_from_manifest(manifest_path, &manifest) {
+    let ir = match profiling::profile_phase(profiler, "run.native.load_ir", || {
+        native_artifact::load_ir_from_manifest(manifest_path, &manifest)
+    }) {
         Ok(ir) => ir,
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
-    let value = match evaluate_entrypoint(&ir) {
+    let value = match profiling::profile_phase(profiler, "run.evaluate_entrypoint", || {
+        evaluate_entrypoint(&ir)
+    }) {
         Ok(value) => value,
         Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
     };
@@ -286,15 +305,24 @@ fn handle_run_native_artifact(path: &str) -> i32 {
     }
 }
 
-fn compile_source_to_ir(source: &str) -> Result<IrProgram, String> {
-    let tokens = scan_tokens(source).map_err(|error| error.to_string())?;
-    let ast = parse_ast(&tokens).map_err(|error| error.to_string())?;
+fn compile_source_to_ir(
+    source: &str,
+    profiler: &mut Option<profiling::PhaseProfiler>,
+) -> Result<IrProgram, String> {
+    let tokens = profiling::profile_phase(profiler, "frontend.scan_tokens", || scan_tokens(source))
+        .map_err(|error| error.to_string())?;
+    let ast = profiling::profile_phase(profiler, "frontend.parse_ast", || parse_ast(&tokens))
+        .map_err(|error| error.to_string())?;
 
-    resolve_ast(&ast).map_err(|error| error.to_string())?;
-    let type_summary = infer_types(&ast).map_err(|error| error.to_string())?;
+    profiling::profile_phase(profiler, "frontend.resolve_ast", || resolve_ast(&ast))
+        .map_err(|error| error.to_string())?;
+    let type_summary =
+        profiling::profile_phase(profiler, "frontend.infer_types", || infer_types(&ast))
+            .map_err(|error| error.to_string())?;
     maybe_trace_type_summary(type_summary.len());
 
-    lower_ast_to_ir(&ast).map_err(|error| error.to_string())
+    profiling::profile_phase(profiler, "frontend.lower_ir", || lower_ast_to_ir(&ast))
+        .map_err(|error| error.to_string())
 }
 
 fn maybe_trace_type_summary(signature_count: usize) {
@@ -598,20 +626,25 @@ fn handle_compile(args: Vec<String>) -> i32 {
         return CliDiagnostic::usage(message).emit();
     }
 
+    let mut profiler = profiling::PhaseProfiler::from_env("compile");
     let is_project_root_path = std::path::Path::new(&source_path).is_dir();
 
-    let source = match load_run_source(&source_path) {
+    let source = match profiling::profile_phase(&mut profiler, "compile.load_source", || {
+        load_run_source(&source_path)
+    }) {
         Ok(source) => source,
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
-    let ir = match compile_source_to_ir(&source) {
+    let ir = match compile_source_to_ir(&source, &mut profiler) {
         Ok(ir) => ir,
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
 
     if dump_mir {
-        let mir = match lower_ir_to_mir(&ir) {
+        let mir = match profiling::profile_phase(&mut profiler, "backend.lower_mir", || {
+            lower_ir_to_mir(&ir)
+        }) {
             Ok(mir) => mir,
             Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
         };
@@ -654,7 +687,9 @@ fn handle_compile(args: Vec<String>) -> i32 {
                 }
             };
 
-            if let Err(error) = crate::cache::write_atomic(&artifact_path, &serialized) {
+            if let Err(error) = profiling::profile_phase(&mut profiler, "backend.write_ir", || {
+                crate::cache::write_atomic(&artifact_path, &serialized)
+            }) {
                 return CliDiagnostic::failure(format!(
                     "failed to write compile artifact to {}: {}",
                     artifact_path.display(),
@@ -667,15 +702,25 @@ fn handle_compile(args: Vec<String>) -> i32 {
             EXIT_OK
         }
         CompileBackend::Llvm => {
-            let mir = match lower_ir_to_mir(&ir) {
+            let mir = match profiling::profile_phase(&mut profiler, "backend.lower_mir", || {
+                lower_ir_to_mir(&ir)
+            }) {
                 Ok(mir) => mir,
                 Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
             };
 
-            let llvm_ir = match llvm_backend::lower_mir_subset_to_llvm_ir(&mir) {
-                Ok(llvm_ir) => llvm_ir,
-                Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
-            };
+            let optimized_mir =
+                profiling::profile_phase(&mut profiler, "backend.optimize_mir", || {
+                    optimize_for_native_backend(mir)
+                });
+
+            let llvm_ir =
+                match profiling::profile_phase(&mut profiler, "backend.lower_llvm", || {
+                    llvm_backend::lower_mir_subset_to_llvm_ir(&optimized_mir)
+                }) {
+                    Ok(llvm_ir) => llvm_ir,
+                    Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+                };
 
             let artifact_base = llvm_artifact_base_path(out_path, &artifact_stem);
 
@@ -686,7 +731,11 @@ fn handle_compile(args: Vec<String>) -> i32 {
                         return CliDiagnostic::failure(message).emit();
                     }
 
-                    if let Err(error) = crate::cache::write_atomic(&ll_path, &llvm_ir) {
+                    if let Err(error) =
+                        profiling::profile_phase(&mut profiler, "backend.write_llvm_ir", || {
+                            crate::cache::write_atomic(&ll_path, &llvm_ir)
+                        })
+                    {
                         return CliDiagnostic::failure(format!(
                             "failed to write llvm ir artifact to {}: {}",
                             ll_path.display(),
@@ -711,7 +760,9 @@ fn handle_compile(args: Vec<String>) -> i32 {
                     }
 
                     if let Err(error) =
-                        llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
+                        profiling::profile_phase(&mut profiler, "backend.write_object", || {
+                            llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
+                        })
                     {
                         return CliDiagnostic::failure(error.to_string()).emit();
                     }
@@ -736,7 +787,9 @@ fn handle_compile(args: Vec<String>) -> i32 {
                     }
 
                     if let Err(error) =
-                        llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
+                        profiling::profile_phase(&mut profiler, "backend.write_object", || {
+                            llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
+                        })
                     {
                         return CliDiagnostic::failure(error.to_string()).emit();
                     }
@@ -751,7 +804,11 @@ fn handle_compile(args: Vec<String>) -> i32 {
                         }
                     };
 
-                    if let Err(error) = crate::cache::write_atomic(&ir_path, &serialized_ir) {
+                    if let Err(error) =
+                        profiling::profile_phase(&mut profiler, "backend.write_ir", || {
+                            crate::cache::write_atomic(&ir_path, &serialized_ir)
+                        })
+                    {
                         return CliDiagnostic::failure(format!(
                             "failed to write compile artifact to {}: {}",
                             ir_path.display(),
@@ -767,7 +824,11 @@ fn handle_compile(args: Vec<String>) -> i32 {
                         &object_path,
                         &ir_path,
                     );
-                    if let Err(error) = native_artifact::write_manifest(&manifest_path, &manifest) {
+                    if let Err(error) =
+                        profiling::profile_phase(&mut profiler, "backend.write_manifest", || {
+                            native_artifact::write_manifest(&manifest_path, &manifest)
+                        })
+                    {
                         return CliDiagnostic::failure(error).emit();
                     }
 
