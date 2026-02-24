@@ -6,6 +6,7 @@ mod formatter;
 mod interop;
 mod ir;
 mod lexer;
+mod llvm_backend;
 mod manifest;
 mod mir;
 pub mod native_abi;
@@ -31,6 +32,22 @@ use parser::parse_ast;
 use resolver::resolve_ast;
 use runtime::{evaluate_entrypoint, RuntimeValue};
 use typing::infer_types;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompileBackend {
+    Interp,
+    Llvm,
+}
+
+impl CompileBackend {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "interp" => Some(Self::Interp),
+            "llvm" => Some(Self::Llvm),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerifyMode {
@@ -418,12 +435,28 @@ fn handle_compile(args: Vec<String>) -> i32 {
     }
 
     let source_path = args[0].clone();
+    let mut backend = CompileBackend::Interp;
     let mut out_path = None;
     let mut dump_mir = false;
     let mut idx = 1;
 
     while idx < args.len() {
         match args[idx].as_str() {
+            "--backend" => {
+                idx += 1;
+                if idx >= args.len() {
+                    return CliDiagnostic::usage("--backend requires a value").emit();
+                }
+
+                let candidate = &args[idx];
+                let Some(parsed_backend) = CompileBackend::parse(candidate) else {
+                    return CliDiagnostic::usage(format!("unsupported backend '{candidate}'"))
+                        .emit();
+                };
+
+                backend = parsed_backend;
+                idx += 1;
+            }
             "--out" => {
                 idx += 1;
                 if idx >= args.len() {
@@ -475,65 +508,134 @@ fn handle_compile(args: Vec<String>) -> i32 {
         return EXIT_OK;
     }
 
-    let artifact_path = match out_path {
-        Some(path) => std::path::PathBuf::from(path),
-        None => {
-            let stem = if is_project_root_path {
-                manifest::load_project_manifest(std::path::Path::new(&source_path))
-                    .ok()
-                    .and_then(|m| {
-                        m.entry
-                            .file_stem()
-                            .map(|s| s.to_string_lossy().into_owned())
-                    })
-                    .unwrap_or_else(|| "out".to_string())
-            } else {
-                std::path::Path::new(&source_path)
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "out".to_string())
+    let artifact_stem = compile_artifact_stem(&source_path, is_project_root_path);
+
+    match backend {
+        CompileBackend::Interp => {
+            let artifact_path = match out_path {
+                Some(path) => std::path::PathBuf::from(path),
+                None => {
+                    let mut p = default_compile_build_dir();
+                    p.push(format!("{}.tir.json", artifact_stem));
+                    p
+                }
             };
 
-            let mut p = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            p.push(".tonic");
-            p.push("build");
-            p.push(format!("{}.tir.json", stem));
-            p
+            if let Err(message) = ensure_artifact_parent(&artifact_path) {
+                return CliDiagnostic::failure(message).emit();
+            }
+
+            let serialized = match serde_json::to_string(&ir) {
+                Ok(s) => s,
+                Err(error) => {
+                    return CliDiagnostic::failure(format!(
+                        "failed to serialize compile artifact: {error}"
+                    ))
+                    .emit();
+                }
+            };
+
+            if let Err(error) = crate::cache::write_atomic(&artifact_path, &serialized) {
+                return CliDiagnostic::failure(format!(
+                    "failed to write compile artifact to {}: {}",
+                    artifact_path.display(),
+                    error
+                ))
+                .emit();
+            }
+
+            println!("compile: ok {}", artifact_path.display());
+            EXIT_OK
+        }
+        CompileBackend::Llvm => {
+            let mir = match lower_ir_to_mir(&ir) {
+                Ok(mir) => mir,
+                Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+            };
+
+            let llvm_ir = match llvm_backend::lower_mir_subset_to_llvm_ir(&mir) {
+                Ok(llvm_ir) => llvm_ir,
+                Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+            };
+
+            let (ll_path, object_path) = llvm_artifact_paths(out_path, &artifact_stem);
+
+            if let Err(message) = ensure_artifact_parent(&ll_path) {
+                return CliDiagnostic::failure(message).emit();
+            }
+
+            if let Err(message) = ensure_artifact_parent(&object_path) {
+                return CliDiagnostic::failure(message).emit();
+            }
+
+            if let Err(error) = llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
+            {
+                return CliDiagnostic::failure(error.to_string()).emit();
+            }
+
+            println!(
+                "compile: ok {} {}",
+                ll_path.display(),
+                object_path.display()
+            );
+            EXIT_OK
+        }
+    }
+}
+
+fn compile_artifact_stem(source_path: &str, is_project_root_path: bool) -> String {
+    if is_project_root_path {
+        manifest::load_project_manifest(std::path::Path::new(source_path))
+            .ok()
+            .and_then(|m| {
+                m.entry
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| "out".to_string())
+    } else {
+        std::path::Path::new(source_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "out".to_string())
+    }
+}
+
+fn default_compile_build_dir() -> std::path::PathBuf {
+    let mut path = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    path.push(".tonic");
+    path.push("build");
+    path
+}
+
+fn llvm_artifact_paths(
+    out_path: Option<String>,
+    artifact_stem: &str,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let base = match out_path {
+        Some(path) => std::path::PathBuf::from(path),
+        None => {
+            let mut default_base = default_compile_build_dir();
+            default_base.push(artifact_stem);
+            default_base
         }
     };
 
-    if let Some(parent) = artifact_path.parent() {
-        if let Err(error) = std::fs::create_dir_all(parent) {
-            return CliDiagnostic::failure(format!(
+    (base.with_extension("ll"), base.with_extension("o"))
+}
+
+fn ensure_artifact_parent(path: &std::path::Path) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
                 "failed to create artifact directory {}: {}",
                 parent.display(),
                 error
-            ))
-            .emit();
-        }
+            )
+        })?;
     }
 
-    let serialized = match serde_json::to_string(&ir) {
-        Ok(s) => s,
-        Err(error) => {
-            return CliDiagnostic::failure(format!(
-                "failed to serialize compile artifact: {error}"
-            ))
-            .emit();
-        }
-    };
-
-    if let Err(error) = crate::cache::write_atomic(&artifact_path, &serialized) {
-        return CliDiagnostic::failure(format!(
-            "failed to write compile artifact to {}: {}",
-            artifact_path.display(),
-            error
-        ))
-        .emit();
-    }
-
-    println!("compile: ok {}", artifact_path.display());
-    EXIT_OK
+    Ok(())
 }
 
 fn handle_verify(args: Vec<String>) -> i32 {
@@ -880,7 +982,9 @@ fn print_fmt_help() {
 }
 
 fn print_compile_help() {
-    println!("Usage:\n  tonic compile <path> [--out <artifact-path>|--dump-mir]\n");
+    println!(
+        "Usage:\n  tonic compile <path> [--backend <interp|llvm>] [--out <artifact-path>|--dump-mir]\n"
+    );
 }
 
 fn print_verify_help() {
