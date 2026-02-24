@@ -449,10 +449,25 @@ stdout = '''[{1, 3}, {1, 4}, {2, 3}, {2, 4}]
 status = "active"
 
 [[example]]
-path = "examples/parity/06-control-flow/for_into_fail.tn"
+path = "examples/parity/06-control-flow/for_into.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[0, 2, 4]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_into_runtime_fail.tn"
+check_exit = 0
+run_exit = 1
+stderr_contains = '''error: for into destination must be a list, found map'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_reduce_fail.tn"
 check_exit = 1
 run_exit = 1
-stderr_contains = '''error: unsupported for option 'into'; remove options from for for now'''
+stderr_contains = '''error: unsupported for option 'reduce'; remove options from for for now'''
 status = "active"
 
 [[example]]

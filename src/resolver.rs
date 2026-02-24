@@ -221,10 +221,16 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             Ok(())
         }
         Expr::For {
-            generators, body, ..
+            generators,
+            into,
+            body,
+            ..
         } => {
             for (_, generator) in generators {
                 resolve_expr(generator, context)?;
+            }
+            if let Some(into_expr) = into {
+                resolve_expr(into_expr, context)?;
             }
             resolve_expr(body, context)
         }

@@ -90,7 +90,7 @@ fn check_rejects_unsupported_for_options_with_deterministic_hint() {
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
         examples_dir.join("for_options.tn"),
-        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), into: [] do\n      x\n    end\n  end\nend\n",
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), reduce: [] do\n      x\n    end\n  end\nend\n",
     )
     .expect("fixture setup should write unsupported for option source file");
 
@@ -109,7 +109,7 @@ fn check_rejects_unsupported_for_options_with_deterministic_hint() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("unsupported for option 'into'; remove options from for for now"),
+        stderr.contains("unsupported for option 'reduce'; remove options from for for now"),
         "expected deterministic unsupported option diagnostic, stderr was: {stderr}"
     );
 }

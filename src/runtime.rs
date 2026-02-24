@@ -594,10 +594,31 @@ fn evaluate_ops(
             }
             IrOp::For {
                 generators,
+                into_ops,
                 body_ops,
                 offset,
             } => {
-                let mut results = Vec::new();
+                let mut results = if let Some(ops) = into_ops {
+                    let mut into_stack = Vec::new();
+                    if let Some(ret) = evaluate_ops(program, ops, env, &mut into_stack)? {
+                        return Ok(Some(ret));
+                    }
+                    let into_val = pop_value(&mut into_stack, *offset, "into")?;
+                    match into_val {
+                        RuntimeValue::List(values) => values,
+                        other => {
+                            return Err(RuntimeError::at_offset(
+                                format!(
+                                    "for into destination must be a list, found {}",
+                                    other.kind_label()
+                                ),
+                                *offset,
+                            ));
+                        }
+                    }
+                } else {
+                    Vec::new()
+                };
 
                 fn evaluate_generators(
                     program: &IrProgram,

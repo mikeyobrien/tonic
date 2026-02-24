@@ -429,6 +429,7 @@ pub enum Expr {
         #[serde(skip_serializing)]
         offset: usize,
         generators: Vec<(Pattern, Expr)>,
+        into: Option<Box<Expr>>,
         body: Box<Expr>,
     },
     Variable {
@@ -759,12 +760,14 @@ impl Expr {
         id: NodeId,
         offset: usize,
         generators: Vec<(Pattern, Expr)>,
+        into: Option<Expr>,
         body: Expr,
     ) -> Self {
         Self::For {
             id,
             offset,
             generators,
+            into: into.map(Box::new),
             body: Box::new(body),
         }
     }
@@ -996,10 +999,16 @@ fn canonicalize_expr_call_targets(
             }
         }
         Expr::For {
-            generators, body, ..
+            generators,
+            into,
+            body,
+            ..
         } => {
             for (_, generator) in generators {
                 canonicalize_expr_call_targets(generator, aliases, imports, local_functions);
+            }
+            if let Some(into_expr) = into {
+                canonicalize_expr_call_targets(into_expr, aliases, imports, local_functions);
             }
             canonicalize_expr_call_targets(body, aliases, imports, local_functions);
         }
@@ -1935,19 +1944,19 @@ impl<'a> Parser<'a> {
         let offset = self.expect_token(TokenKind::For, "for")?.span().start();
 
         let mut generators = Vec::new();
+        let mut into_expr = None;
         loop {
-            let pattern = self.parse_pattern()?;
-            self.expect(TokenKind::LeftArrow, "<-")?;
-            let generator = self.parse_expression()?;
-            generators.push((pattern, generator));
+            if self.check(TokenKind::Ident)
+                && self
+                    .peek(1)
+                    .is_some_and(|token| token.kind() == TokenKind::Colon)
+            {
+                let option_token = self.expect_token(TokenKind::Ident, "for option")?;
+                self.expect(TokenKind::Colon, ":")?;
 
-            if self.match_kind(TokenKind::Comma) {
-                if self.check(TokenKind::Ident)
-                    && self
-                        .peek(1)
-                        .is_some_and(|token| token.kind() == TokenKind::Colon)
-                {
-                    let option_token = self.expect_token(TokenKind::Ident, "for option")?;
+                if option_token.lexeme() == "into" {
+                    into_expr = Some(self.parse_expression()?);
+                } else {
                     return Err(ParserError::at_current(
                         format!(
                             "unsupported for option '{}'; remove options from for for now",
@@ -1957,6 +1966,18 @@ impl<'a> Parser<'a> {
                     ));
                 }
 
+                if self.match_kind(TokenKind::Comma) {
+                    continue;
+                }
+                break;
+            }
+
+            let pattern = self.parse_pattern()?;
+            self.expect(TokenKind::LeftArrow, "<-")?;
+            let generator = self.parse_expression()?;
+            generators.push((pattern, generator));
+
+            if self.match_kind(TokenKind::Comma) {
                 continue;
             }
             break;
@@ -1970,6 +1991,7 @@ impl<'a> Parser<'a> {
             self.node_ids.next_expr(),
             offset,
             generators,
+            into_expr,
             body,
         ))
     }
@@ -3066,6 +3088,7 @@ mod tests {
                 .expect("expression should serialize"),
             serde_json::json!({
                 "kind":"for",
+                "into": null,
                 "generators":[
                     [
                         {"kind":"bind","name":"x"},
@@ -3107,7 +3130,7 @@ mod tests {
     #[test]
     fn parse_ast_rejects_for_with_options() {
         let tokens = scan_tokens(
-            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), into: [] do\n      x\n    end\n  end\nend\n",
+            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), reduce: [] do\n      x\n    end\n  end\nend\n",
         )
         .expect("scanner should tokenize parser fixture");
 
@@ -3115,7 +3138,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "unsupported for option 'into'; remove options from for for now at offset 58"
+            "unsupported for option 'reduce'; remove options from for for now at offset 58"
         );
     }
 
@@ -3388,12 +3411,16 @@ mod tests {
             Expr::For {
                 id,
                 generators,
+                into,
                 body,
                 ..
             } => {
                 ids.push(id.0.clone());
                 for (_, generator) in generators {
                     collect_expr_ids(generator, ids);
+                }
+                if let Some(into_expr) = into {
+                    collect_expr_ids(into_expr, ids);
                 }
                 collect_expr_ids(body, ids);
             }

@@ -74,6 +74,7 @@ pub(crate) enum IrOp {
     },
     For {
         generators: Vec<(IrPattern, Vec<IrOp>)>,
+        into_ops: Option<Vec<IrOp>>,
         body_ops: Vec<IrOp>,
         offset: usize,
     },
@@ -897,6 +898,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         }
         Expr::For {
             generators,
+            into,
             body,
             offset,
             ..
@@ -911,8 +913,18 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             let mut body_ops = Vec::new();
             lower_expr(body, current_module, &mut body_ops)?;
 
+            let into_ops = match into {
+                Some(into_expr) => {
+                    let mut ops = Vec::new();
+                    lower_expr(into_expr, current_module, &mut ops)?;
+                    Some(ops)
+                }
+                None => None,
+            };
+
             ops.push(IrOp::For {
                 generators: ir_generators,
+                into_ops,
                 body_ops,
                 offset: *offset,
             });
@@ -1297,6 +1309,7 @@ mod tests {
             serde_json::json!([
                 {
                     "op":"for",
+                    "into_ops": null,
                     "generators":[
                         [
                             {"kind":"bind","name":"x"},

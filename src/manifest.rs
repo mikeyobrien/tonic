@@ -253,11 +253,17 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                 })
         }
         Expr::For {
-            generators, body, ..
+            generators,
+            into,
+            body,
+            ..
         } => {
             generators
                 .iter()
                 .any(|(_, generator)| expr_references_module(generator, module_name))
+                || into
+                    .as_ref()
+                    .is_some_and(|into_expr| expr_references_module(into_expr, module_name))
                 || expr_references_module(body, module_name)
         }
         Expr::Group { inner, .. } => expr_references_module(inner, module_name),
