@@ -697,3 +697,14 @@ Template:
 - **Reasoning:** The objective explicitly calls out required manual evidence and mixed-mode failure behavior. A mode-scoped contract keeps the slice narrow while forcing real verify-run enforcement, not just metadata parsing.
 - **Reversibility:** High — acceptance key shape and report fields are localized to verify contracts and can be adjusted with coordinated fixture updates.
 - **Timestamp (UTC ISO 8601):** 2026-02-21T03:59:17Z
+
+## DEC-060
+- **Decision:** How to scope Task 02 MIR lowering so we get explicit CFG foundations now without blocking on full control-form lowering semantics.
+- **Chosen Option:** Lower all existing IR into a new MIR with deterministic basic blocks/terminators and typed value categories, implement explicit CFG edges for `case` and short-circuit ops, and represent complex ops (`try`, `for`) as typed legacy MIR instructions for this increment.
+- **Confidence (0-100):** 78
+- **Alternatives Considered:**
+  - Fully lower every IR control form (`try`, `for`, etc.) into explicit MIR CFG in this task.
+  - Add a minimal MIR wrapper with one block per function and no branch terminators.
+- **Reasoning:** The roadmap requires MIR architecture with explicit control flow and typed lowering boundaries now, but fully modeling every control form would over-scope one atomic task. This option establishes stable CFG + merge semantics and a typed operation surface that future LLVM tasks can extend incrementally.
+- **Reversibility:** High — legacy instruction variants are additive and can be replaced by richer CFG lowering in later roadmap tasks without breaking CLI dump contracts.
+- **Timestamp (UTC ISO 8601):** 2026-02-24T15:43:00Z

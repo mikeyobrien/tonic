@@ -835,3 +835,30 @@
   - `ralph tools task list --status open` → no open tasks.
 - Conclusion: runtime task queue for this objective is fully closed; no additional work items to enqueue.
 - Next action: emit `LOOP_COMPLETE` to terminate the loop cleanly.
+
+## 2026-02-24T15:43:00Z — Builder Task 02 complete (MIR CFG + typed lowering boundaries)
+
+Handled pending `task.complete` handoff from Task 01 and executed roadmap Task 02 as one atomic increment. Added a new MIR layer (`src/mir.rs` + `src/mir/lower.rs` + `src/mir/lower/ops.rs`) that lowers existing IR into deterministic function/block CFG form with explicit terminators:
+- `match` terminator for `case` lowering with deterministic arm/block ordering
+- short-circuit terminator (`and/andalso/or/orelse`) with explicit RHS/short-circuit edges
+- block merge semantics via block arguments (pre-SSA-style phi boundary)
+- typed MIR value categories (`int/float/bool/nil/string/atom/result/closure/dynamic`)
+
+Wired CLI dump path support:
+- `tonic check <path> --dump-mir`
+- `tonic compile <path> --dump-mir`
+- dump-mode exclusivity now includes `--dump-mir`; compile rejects `--out` with `--dump-mir`
+
+Added coverage:
+- `tests/check_dump_mir_smoke.rs`
+- `tests/compile_dump_mir_smoke.rs`
+- updated `tests/check_dump_mutual_exclusivity_combinations.rs` for `--dump-mir`
+- updated compile help contract in `tests/cli_contract_compile.rs`
+- MIR unit tests in `src/mir/tests.rs` for deterministic CFG shape + typed builtin boundary
+
+Verification gate run complete and green:
+- `cargo fmt --all`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+
+Task file `02-mir-cfg-and-typed-lowering.code-task.md` marked completed (started/completed 2026-02-24).

@@ -7,6 +7,7 @@ mod interop;
 mod ir;
 mod lexer;
 mod manifest;
+mod mir;
 mod parser;
 mod resolver;
 mod resolver_diag;
@@ -23,6 +24,7 @@ use formatter::{format_path, FormatMode};
 use ir::{lower_ast_to_ir, IrProgram};
 use lexer::scan_tokens;
 use manifest::load_run_source;
+use mir::lower_ir_to_mir;
 use parser::parse_ast;
 use resolver::resolve_ast;
 use runtime::{evaluate_entrypoint, RuntimeValue};
@@ -212,26 +214,28 @@ fn handle_check(args: Vec<String>) -> i32 {
     let mut dump_tokens = false;
     let mut dump_ast = false;
     let mut dump_ir = false;
+    let mut dump_mir = false;
 
     for argument in args.iter().skip(1) {
         match argument.as_str() {
             "--dump-tokens" => dump_tokens = true,
             "--dump-ast" => dump_ast = true,
             "--dump-ir" => dump_ir = true,
+            "--dump-mir" => dump_mir = true,
             other => {
                 return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
             }
         }
     }
 
-    let dump_mode_count = [dump_tokens, dump_ast, dump_ir]
+    let dump_mode_count = [dump_tokens, dump_ast, dump_ir, dump_mir]
         .into_iter()
         .filter(|enabled| *enabled)
         .count();
 
     if dump_mode_count > 1 {
         return CliDiagnostic::usage(
-            "--dump-tokens, --dump-ast, and --dump-ir cannot be used together",
+            "--dump-tokens, --dump-ast, --dump-ir, and --dump-mir cannot be used together",
         )
         .emit();
     }
@@ -291,6 +295,28 @@ fn handle_check(args: Vec<String>) -> i32 {
             Ok(value) => value,
             Err(_) => {
                 return CliDiagnostic::failure("failed to serialize ir".to_string()).emit();
+            }
+        };
+
+        println!("{json}");
+        return EXIT_OK;
+    }
+
+    if dump_mir {
+        let ir = match lower_ast_to_ir(&ast) {
+            Ok(ir) => ir,
+            Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+        };
+
+        let mir = match lower_ir_to_mir(&ir) {
+            Ok(mir) => mir,
+            Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+        };
+
+        let json = match serde_json::to_string(&mir) {
+            Ok(value) => value,
+            Err(_) => {
+                return CliDiagnostic::failure("failed to serialize mir".to_string()).emit();
             }
         };
 
@@ -391,6 +417,7 @@ fn handle_compile(args: Vec<String>) -> i32 {
 
     let source_path = args[0].clone();
     let mut out_path = None;
+    let mut dump_mir = false;
     let mut idx = 1;
 
     while idx < args.len() {
@@ -403,10 +430,18 @@ fn handle_compile(args: Vec<String>) -> i32 {
                 out_path = Some(args[idx].clone());
                 idx += 1;
             }
+            "--dump-mir" => {
+                dump_mir = true;
+                idx += 1;
+            }
             other => {
                 return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
             }
         }
+    }
+
+    if dump_mir && out_path.is_some() {
+        return CliDiagnostic::usage("--out cannot be used with --dump-mir").emit();
     }
 
     let is_project_root_path = std::path::Path::new(&source_path).is_dir();
@@ -420,6 +455,23 @@ fn handle_compile(args: Vec<String>) -> i32 {
         Ok(ir) => ir,
         Err(error) => return CliDiagnostic::failure(error).emit(),
     };
+
+    if dump_mir {
+        let mir = match lower_ir_to_mir(&ir) {
+            Ok(mir) => mir,
+            Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+        };
+
+        let json = match serde_json::to_string(&mir) {
+            Ok(value) => value,
+            Err(_) => {
+                return CliDiagnostic::failure("failed to serialize mir".to_string()).emit();
+            }
+        };
+
+        println!("{json}");
+        return EXIT_OK;
+    }
 
     let artifact_path = match out_path {
         Some(path) => std::path::PathBuf::from(path),
@@ -814,7 +866,7 @@ fn print_run_help() {
 }
 
 fn print_check_help() {
-    println!("Usage:\n  tonic check <path> [--dump-tokens|--dump-ast|--dump-ir]\n");
+    println!("Usage:\n  tonic check <path> [--dump-tokens|--dump-ast|--dump-ir|--dump-mir]\n");
 }
 
 fn print_test_help() {
@@ -826,7 +878,7 @@ fn print_fmt_help() {
 }
 
 fn print_compile_help() {
-    println!("Usage:\n  tonic compile <path> [--out <artifact-path>]\n");
+    println!("Usage:\n  tonic compile <path> [--out <artifact-path>|--dump-mir]\n");
 }
 
 fn print_verify_help() {
@@ -944,13 +996,13 @@ mod tests {
     #[test]
     fn dump_mode_exclusivity_error_uses_usage_exit_code() {
         let diagnostic = crate::cli_diag::CliDiagnostic::usage(
-            "--dump-tokens, --dump-ast, and --dump-ir cannot be used together",
+            "--dump-tokens, --dump-ast, --dump-ir, and --dump-mir cannot be used together",
         );
         assert_eq!(diagnostic.exit_code(), EXIT_USAGE);
         assert_eq!(
             diagnostic.lines(),
             [
-                "error: --dump-tokens, --dump-ast, and --dump-ir cannot be used together"
+                "error: --dump-tokens, --dump-ast, --dump-ir, and --dump-mir cannot be used together"
                     .to_string()
             ]
         );

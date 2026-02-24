@@ -11,7 +11,9 @@ fn compile_help_lists_usage() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(contains("tonic compile <path> [--out <artifact-path>]"));
+        .stdout(contains(
+            "tonic compile <path> [--out <artifact-path>|--dump-mir]",
+        ));
 }
 
 #[test]
