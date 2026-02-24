@@ -215,3 +215,39 @@ Parity delta:
 - Task 07 target fixtures now all match catalog output/exit in compiled mode.
 
 Task file updated to completed (`07-runtime-closures-bindings-and-interop.code-task.md`). Confidence: 89/100.
+
+## 2026-02-24T23:07:38Z — Builder completed Task 08 runtime results/errors/try parity
+Implemented one-task scope for `.agents/tasks/2026-02-24-llvm-catalog-parity/08-runtime-results-errors-and-try.code-task.md`.
+
+What shipped:
+- Added RED→GREEN compiled-runtime regression suite `tests/runtime_llvm_results_errors_try.rs` covering:
+  - success fixtures (`ok_err_constructors`, `question_operator_success`, `try_rescue_success`, `try_catch_success`, `try_after_success`, `try_rescue_catch_after_success`),
+  - deterministic failure fixtures (`error_propagation`, `question_operator_err_bubble`).
+- Extended native C runtime object model in `src/c_backend/stubs.rs` with `TN_OBJ_RESULT` rendering/equality/kind support (`ok(...)` / `err(...)`).
+- Implemented native helpers:
+  - `tn_runtime_make_ok`
+  - `tn_runtime_make_err`
+  - `tn_runtime_question` (unwrap ok, deterministic `error: runtime returned err(...)` on err)
+  - `tn_runtime_raise` (deterministic uncaught raise failure)
+- Implemented generated `tn_runtime_try` dispatch in `src/c_backend/stubs.rs`:
+  - collects MIR `IrOp::Try` legacy ops,
+  - emits hash-dispatched compiled try-case helpers,
+  - supports body/rescue/catch/after evaluation for active fixture op subset,
+  - preserves deterministic failure behavior for unhandled raises.
+- Updated `src/c_backend/runtime_patterns.rs` pattern collection to include patterns embedded in legacy IR ops (notably `try` rescue/catch branches), enabling compiled `tn_runtime_pattern_matches` during try dispatch.
+
+Verification run this iteration:
+- `cargo test --test runtime_llvm_results_errors_try` (RED then GREEN)
+- `cargo test --test compile_llvm_backend_error_semantics`
+- `cargo test --test runtime_llvm_core_values_collections --test runtime_llvm_patterns_control_flow --test runtime_llvm_closures_bindings_interop --test runtime_llvm_results_errors_try`
+- `cargo test --test compile_aot_artifacts_cli`
+- `cargo fmt --all -- --check` (after `cargo fmt --all`)
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo run --quiet --bin llvm_catalog_parity -- --catalog examples/parity/catalog.toml --report-json /tmp/llvm-parity-task08.json --report-md /tmp/llvm-parity-task08.md`
+
+Parity delta:
+- Compile parity remains `64/64`.
+- Runtime parity improved from `48/62` to `56/62`.
+- Remaining runtime mismatches are now outside Task 08 scope (`interpolation_basic`, `concat_and_list_ops`, and `for_*` fixtures).
+
+Task file updated to completed (`08-runtime-results-errors-and-try.code-task.md`). Confidence: 90/100.

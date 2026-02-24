@@ -1,4 +1,4 @@
-use crate::ir::IrPattern;
+use crate::ir::{IrOp, IrPattern};
 use crate::mir::{MirInstruction, MirProgram, MirTerminator};
 use std::collections::BTreeMap;
 
@@ -163,8 +163,14 @@ fn collect_patterns(mir: &MirProgram) -> Result<BTreeMap<i64, IrPattern>, CBacke
 
         for block in &function.blocks {
             for instruction in &block.instructions {
-                if let MirInstruction::MatchPattern { pattern, .. } = instruction {
-                    register_pattern(pattern, &mut patterns)?;
+                match instruction {
+                    MirInstruction::MatchPattern { pattern, .. } => {
+                        register_pattern(pattern, &mut patterns)?;
+                    }
+                    MirInstruction::Legacy { source, .. } => {
+                        register_patterns_from_op(source, &mut patterns)?;
+                    }
+                    _ => {}
                 }
             }
 
@@ -177,6 +183,100 @@ fn collect_patterns(mir: &MirProgram) -> Result<BTreeMap<i64, IrPattern>, CBacke
     }
 
     Ok(patterns)
+}
+
+fn register_patterns_from_op(
+    op: &IrOp,
+    patterns: &mut BTreeMap<i64, IrPattern>,
+) -> Result<(), CBackendError> {
+    match op {
+        IrOp::Match { pattern, .. } => {
+            register_pattern(pattern, patterns)?;
+        }
+        IrOp::Case { branches, .. } => {
+            for branch in branches {
+                register_pattern(&branch.pattern, patterns)?;
+                if let Some(guard_ops) = &branch.guard_ops {
+                    for guard_op in guard_ops {
+                        register_patterns_from_op(guard_op, patterns)?;
+                    }
+                }
+                for branch_op in &branch.ops {
+                    register_patterns_from_op(branch_op, patterns)?;
+                }
+            }
+        }
+        IrOp::Try {
+            body_ops,
+            rescue_branches,
+            catch_branches,
+            after_ops,
+            ..
+        } => {
+            for body_op in body_ops {
+                register_patterns_from_op(body_op, patterns)?;
+            }
+            for branch in rescue_branches {
+                register_pattern(&branch.pattern, patterns)?;
+                if let Some(guard_ops) = &branch.guard_ops {
+                    for guard_op in guard_ops {
+                        register_patterns_from_op(guard_op, patterns)?;
+                    }
+                }
+                for branch_op in &branch.ops {
+                    register_patterns_from_op(branch_op, patterns)?;
+                }
+            }
+            for branch in catch_branches {
+                register_pattern(&branch.pattern, patterns)?;
+                if let Some(guard_ops) = &branch.guard_ops {
+                    for guard_op in guard_ops {
+                        register_patterns_from_op(guard_op, patterns)?;
+                    }
+                }
+                for branch_op in &branch.ops {
+                    register_patterns_from_op(branch_op, patterns)?;
+                }
+            }
+            if let Some(after_ops) = after_ops {
+                for after_op in after_ops {
+                    register_patterns_from_op(after_op, patterns)?;
+                }
+            }
+        }
+        IrOp::For {
+            generators,
+            into_ops,
+            body_ops,
+            ..
+        } => {
+            for (pattern, generator_ops) in generators {
+                register_pattern(pattern, patterns)?;
+                for generator_op in generator_ops {
+                    register_patterns_from_op(generator_op, patterns)?;
+                }
+            }
+            if let Some(into_ops) = into_ops {
+                for into_op in into_ops {
+                    register_patterns_from_op(into_op, patterns)?;
+                }
+            }
+            for body_op in body_ops {
+                register_patterns_from_op(body_op, patterns)?;
+            }
+        }
+        IrOp::AndAnd { right_ops, .. }
+        | IrOp::OrOr { right_ops, .. }
+        | IrOp::And { right_ops, .. }
+        | IrOp::Or { right_ops, .. } => {
+            for right_op in right_ops {
+                register_patterns_from_op(right_op, patterns)?;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 fn register_pattern(

@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 
 use super::{
     error::CBackendError,
-    hash::{closure_capture_names, hash_closure_descriptor_i64, hash_text_i64},
+    hash::{
+        closure_capture_names, hash_closure_descriptor_i64, hash_ir_op_i64, hash_pattern_i64,
+        hash_text_i64,
+    },
     runtime_patterns::emit_runtime_pattern_helpers,
 };
 
@@ -45,6 +48,7 @@ typedef enum {
   TN_OBJ_MAP,
   TN_OBJ_KEYWORD,
   TN_OBJ_RANGE,
+  TN_OBJ_RESULT,
   TN_OBJ_CLOSURE
 } TnObjKind;
 
@@ -76,6 +80,10 @@ typedef struct TnObj {
       TnVal start;
       TnVal end;
     } range;
+    struct {
+      int is_ok;
+      TnVal value;
+    } result;
     struct {
       TnVal descriptor_hash;
       TnVal param_count;
@@ -110,6 +118,7 @@ static TnVal tn_make_box(size_t id) {
 static int tn_runtime_is_truthy(TnVal value);
 static int tn_runtime_value_equal(TnVal left, TnVal right);
 static const char *tn_runtime_value_kind(TnVal value);
+static void tn_render_value(FILE *out, TnVal value);
 
 static TnVal tn_runtime_fail(const char *message) {
   fprintf(stderr, "error: %s\n", message);
@@ -335,6 +344,9 @@ static int tn_runtime_value_equal(TnVal left, TnVal right) {
     case TN_OBJ_RANGE:
       return left_obj->as.range.start == right_obj->as.range.start &&
              left_obj->as.range.end == right_obj->as.range.end;
+    case TN_OBJ_RESULT:
+      return left_obj->as.result.is_ok == right_obj->as.result.is_ok &&
+             tn_runtime_value_equal(left_obj->as.result.value, right_obj->as.result.value);
     default:
       return 0;
   }
@@ -371,6 +383,8 @@ static const char *tn_runtime_value_kind(TnVal value) {
       return "keyword";
     case TN_OBJ_RANGE:
       return "range";
+    case TN_OBJ_RESULT:
+      return "result";
     case TN_OBJ_CLOSURE:
       return "function";
     default:
@@ -627,6 +641,11 @@ static void tn_render_value(FILE *out, TnVal value) {
       fputs("..", out);
       tn_render_value(out, obj->as.range.end);
       return;
+    case TN_OBJ_RESULT:
+      fputs(obj->as.result.is_ok ? "ok(" : "err(", out);
+      tn_render_value(out, obj->as.result.value);
+      fputc(')', out);
+      return;
     case TN_OBJ_CLOSURE:
       fprintf(out, "#Function<%" PRId64 ">", (int64_t)obj->as.closure.param_count);
       return;
@@ -763,6 +782,45 @@ static void tn_runtime_println(TnVal value) {
     out.push_str("  return result;\n");
     out.push_str("}\n\n");
 
+    out.push_str("static TnVal tn_runtime_make_ok(TnVal value) {\n");
+    out.push_str("  TnObj *obj = tn_new_obj(TN_OBJ_RESULT);\n");
+    out.push_str("  obj->as.result.is_ok = 1;\n");
+    out.push_str("  obj->as.result.value = value;\n");
+    out.push_str("  return tn_heap_store(obj);\n");
+    out.push_str("}\n\n");
+
+    out.push_str("static TnVal tn_runtime_make_err(TnVal value) {\n");
+    out.push_str("  TnObj *obj = tn_new_obj(TN_OBJ_RESULT);\n");
+    out.push_str("  obj->as.result.is_ok = 0;\n");
+    out.push_str("  obj->as.result.value = value;\n");
+    out.push_str("  return tn_heap_store(obj);\n");
+    out.push_str("}\n\n");
+
+    out.push_str("static TnVal tn_runtime_question(TnVal value) {\n");
+    out.push_str("  TnObj *obj = tn_get_obj(value);\n");
+    out.push_str("  if (obj == NULL || obj->kind != TN_OBJ_RESULT) {\n");
+    out.push_str("    return tn_runtime_failf(\"question expects result value, found %s\", tn_runtime_value_kind(value));\n");
+    out.push_str("  }\n");
+    out.push_str("  if (obj->as.result.is_ok != 0) {\n");
+    out.push_str("    return obj->as.result.value;\n");
+    out.push_str("  }\n\n");
+    out.push_str("  fprintf(stderr, \"error: runtime returned \" );\n");
+    out.push_str("  tn_render_value(stderr, value);\n");
+    out.push_str("  fputc('\\n', stderr);\n");
+    out.push_str("  exit(1);\n");
+    out.push_str("}\n\n");
+
+    out.push_str("static TnVal tn_runtime_raise(TnVal error_value) {\n");
+    out.push_str("  TnObj *obj = tn_get_obj(error_value);\n");
+    out.push_str("  if (obj != NULL && obj->kind == TN_OBJ_STRING) {\n");
+    out.push_str("    return tn_runtime_fail(obj->as.text.text);\n");
+    out.push_str("  }\n");
+    out.push_str("  if (obj != NULL && obj->kind == TN_OBJ_ATOM) {\n");
+    out.push_str("    return tn_runtime_fail(obj->as.text.text);\n");
+    out.push_str("  }\n");
+    out.push_str("  return tn_runtime_fail(\"exception raised\");\n");
+    out.push_str("}\n\n");
+
     // Zero-arg stubs
     for name in &[
         "tn_runtime_error_no_matching_clause",
@@ -777,11 +835,6 @@ static void tn_runtime_println(TnVal value) {
 
     // Single-arg stubs
     for name in &[
-        "tn_runtime_make_ok",
-        "tn_runtime_make_err",
-        "tn_runtime_question",
-        "tn_runtime_raise",
-        "tn_runtime_try",
         "tn_runtime_for",
         "tn_runtime_to_string",
         "tn_runtime_not",
@@ -806,6 +859,7 @@ static void tn_runtime_println(TnVal value) {
     out.push('\n');
 
     emit_runtime_pattern_helpers(mir, out)?;
+    emit_runtime_try_helpers(mir, out)?;
     emit_compiled_closure_helpers(mir, out)?;
     Ok(())
 }
@@ -815,6 +869,329 @@ struct ClosureSpec {
     hash: i64,
     params: Vec<String>,
     ops: Vec<IrOp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TrySpec {
+    hash: i64,
+    op: IrOp,
+}
+
+fn emit_runtime_try_helpers(mir: &MirProgram, out: &mut String) -> Result<(), CBackendError> {
+    let try_specs = collect_try_specs(mir)?;
+
+    out.push_str("/* compiled try helpers */\n");
+    for (index, try_spec) in try_specs.iter().enumerate() {
+        emit_runtime_try_case(index, try_spec, out)?;
+    }
+
+    out.push_str("static TnVal tn_runtime_try(TnVal op_hash) {\n");
+    if try_specs.is_empty() {
+        out.push_str("  return tn_stub_abort(\"tn_runtime_try\");\n");
+    } else {
+        out.push_str("  switch (op_hash) {\n");
+        for (index, try_spec) in try_specs.iter().enumerate() {
+            out.push_str(&format!(
+                "    case (TnVal){}LL: return tn_runtime_try_case_{index}();\n",
+                try_spec.hash
+            ));
+        }
+        out.push_str("    default:\n");
+        out.push_str("      return tn_stub_abort(\"tn_runtime_try\");\n");
+        out.push_str("  }\n");
+    }
+    out.push_str("}\n\n");
+
+    Ok(())
+}
+
+fn collect_try_specs(mir: &MirProgram) -> Result<Vec<TrySpec>, CBackendError> {
+    let mut by_hash = BTreeMap::<i64, IrOp>::new();
+
+    for function in &mir.functions {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let MirInstruction::Legacy { source, .. } = instruction else {
+                    continue;
+                };
+
+                if !matches!(source, IrOp::Try { .. }) {
+                    continue;
+                }
+
+                let hash = hash_ir_op_i64(source)?;
+                if let Some(existing) = by_hash.get(&hash) {
+                    if existing != source {
+                        return Err(CBackendError::new(format!(
+                            "c backend try hash collision for hash {hash}"
+                        )));
+                    }
+                } else {
+                    by_hash.insert(hash, source.clone());
+                }
+            }
+        }
+    }
+
+    Ok(by_hash
+        .into_iter()
+        .map(|(hash, op)| TrySpec { hash, op })
+        .collect())
+}
+
+fn emit_runtime_try_case(
+    index: usize,
+    try_spec: &TrySpec,
+    out: &mut String,
+) -> Result<(), CBackendError> {
+    let IrOp::Try {
+        body_ops,
+        rescue_branches,
+        catch_branches,
+        after_ops,
+        ..
+    } = &try_spec.op
+    else {
+        return Err(CBackendError::new(
+            "c backend internal error: try case source was not IrOp::Try",
+        ));
+    };
+
+    out.push_str(&format!(
+        "static TnVal tn_runtime_try_case_{index}(void) {{\n"
+    ));
+    out.push_str("  int tn_try_raised = 0;\n");
+    out.push_str("  TnVal tn_try_error = tn_runtime_const_nil();\n");
+    out.push_str("  TnVal tn_try_result = tn_runtime_const_nil();\n");
+
+    emit_try_ops(
+        body_ops,
+        "tn_try_result",
+        "tn_try_raised",
+        "tn_try_error",
+        &format!("tn_try_case_{index}_body"),
+        "  ",
+        out,
+    )?;
+
+    out.push_str("  if (tn_try_raised != 0) {\n");
+    out.push_str("    int tn_try_handled = 0;\n");
+
+    for (branch_index, branch) in rescue_branches.iter().enumerate() {
+        if branch.guard_ops.is_some() {
+            return Err(CBackendError::new(format!(
+                "c backend try helper does not support rescue guard ops (case {index}, branch {branch_index})"
+            )));
+        }
+        let pattern_hash = hash_pattern_i64(&branch.pattern)?;
+        out.push_str(&format!(
+            "    if (tn_try_handled == 0 && tn_runtime_pattern_matches(tn_try_error, (TnVal){pattern_hash}LL)) {{\n"
+        ));
+        out.push_str("      int tn_branch_raised = 0;\n");
+        out.push_str("      TnVal tn_branch_error = tn_runtime_const_nil();\n");
+        out.push_str("      TnVal tn_branch_result = tn_runtime_const_nil();\n");
+        emit_try_ops(
+            &branch.ops,
+            "tn_branch_result",
+            "tn_branch_raised",
+            "tn_branch_error",
+            &format!("tn_try_case_{index}_rescue_{branch_index}"),
+            "      ",
+            out,
+        )?;
+        out.push_str("      if (tn_branch_raised != 0) {\n");
+        out.push_str("        tn_try_raised = 1;\n");
+        out.push_str("        tn_try_error = tn_branch_error;\n");
+        out.push_str("      } else {\n");
+        out.push_str("        tn_try_raised = 0;\n");
+        out.push_str("        tn_try_result = tn_branch_result;\n");
+        out.push_str("        tn_try_handled = 1;\n");
+        out.push_str("      }\n");
+        out.push_str("    }\n");
+    }
+
+    for (branch_index, branch) in catch_branches.iter().enumerate() {
+        if branch.guard_ops.is_some() {
+            return Err(CBackendError::new(format!(
+                "c backend try helper does not support catch guard ops (case {index}, branch {branch_index})"
+            )));
+        }
+        let pattern_hash = hash_pattern_i64(&branch.pattern)?;
+        out.push_str(&format!(
+            "    if (tn_try_raised != 0 && tn_try_handled == 0 && tn_runtime_pattern_matches(tn_try_error, (TnVal){pattern_hash}LL)) {{\n"
+        ));
+        out.push_str("      int tn_branch_raised = 0;\n");
+        out.push_str("      TnVal tn_branch_error = tn_runtime_const_nil();\n");
+        out.push_str("      TnVal tn_branch_result = tn_runtime_const_nil();\n");
+        emit_try_ops(
+            &branch.ops,
+            "tn_branch_result",
+            "tn_branch_raised",
+            "tn_branch_error",
+            &format!("tn_try_case_{index}_catch_{branch_index}"),
+            "      ",
+            out,
+        )?;
+        out.push_str("      if (tn_branch_raised != 0) {\n");
+        out.push_str("        tn_try_raised = 1;\n");
+        out.push_str("        tn_try_error = tn_branch_error;\n");
+        out.push_str("      } else {\n");
+        out.push_str("        tn_try_raised = 0;\n");
+        out.push_str("        tn_try_result = tn_branch_result;\n");
+        out.push_str("        tn_try_handled = 1;\n");
+        out.push_str("      }\n");
+        out.push_str("    }\n");
+    }
+
+    out.push_str("  }\n");
+
+    if let Some(after_ops) = after_ops {
+        out.push_str("  int tn_after_raised = 0;\n");
+        out.push_str("  TnVal tn_after_error = tn_runtime_const_nil();\n");
+        out.push_str("  TnVal tn_after_result = tn_runtime_const_nil();\n");
+        emit_try_ops(
+            after_ops,
+            "tn_after_result",
+            "tn_after_raised",
+            "tn_after_error",
+            &format!("tn_try_case_{index}_after"),
+            "  ",
+            out,
+        )?;
+        out.push_str("  if (tn_after_raised != 0) {\n");
+        out.push_str("    tn_try_raised = 1;\n");
+        out.push_str("    tn_try_error = tn_after_error;\n");
+        out.push_str("  }\n");
+    }
+
+    out.push_str("  if (tn_try_raised != 0) {\n");
+    out.push_str("    TnObj *err_obj = tn_get_obj(tn_try_error);\n");
+    out.push_str("    if (err_obj != NULL && err_obj->kind == TN_OBJ_STRING) {\n");
+    out.push_str("      return tn_runtime_fail(err_obj->as.text.text);\n");
+    out.push_str("    }\n");
+    out.push_str("    if (err_obj != NULL && err_obj->kind == TN_OBJ_ATOM) {\n");
+    out.push_str("      return tn_runtime_fail(err_obj->as.text.text);\n");
+    out.push_str("    }\n");
+    out.push_str("    return tn_runtime_fail(\"exception raised\");\n");
+    out.push_str("  }\n");
+
+    out.push_str("  return tn_try_result;\n");
+    out.push_str("}\n\n");
+
+    Ok(())
+}
+
+fn emit_try_ops(
+    ops: &[IrOp],
+    result_var: &str,
+    raised_flag_var: &str,
+    raised_value_var: &str,
+    label: &str,
+    indent: &str,
+    out: &mut String,
+) -> Result<(), CBackendError> {
+    out.push_str(&format!("{indent}do {{\n"));
+
+    let mut stack = Vec::<String>::new();
+    let mut temp_index = 0usize;
+    let mut terminated = false;
+
+    for op in ops {
+        match op {
+            IrOp::ConstInt { value, .. } => {
+                let temp = format!("{label}_tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!("{indent}  TnVal {temp} = (TnVal){value}LL;\n"));
+                stack.push(temp);
+            }
+            IrOp::ConstBool { value, .. } => {
+                let temp = format!("{label}_tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!(
+                    "{indent}  TnVal {temp} = tn_runtime_const_bool((TnVal){});\n",
+                    if *value { 1 } else { 0 }
+                ));
+                stack.push(temp);
+            }
+            IrOp::ConstNil { .. } => {
+                let temp = format!("{label}_tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!(
+                    "{indent}  TnVal {temp} = tn_runtime_const_nil();\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::ConstString { value, .. } => {
+                let temp = format!("{label}_tmp_{temp_index}");
+                temp_index += 1;
+                let escaped = c_string_literal(value);
+                out.push_str(&format!(
+                    "{indent}  TnVal {temp} = tn_runtime_const_string((TnVal)(intptr_t){escaped});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::ConstAtom { value, .. } => {
+                let temp = format!("{label}_tmp_{temp_index}");
+                temp_index += 1;
+                let escaped = c_string_literal(value);
+                out.push_str(&format!(
+                    "{indent}  TnVal {temp} = tn_runtime_const_atom((TnVal)(intptr_t){escaped});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::ConstFloat { value, .. } => {
+                let temp = format!("{label}_tmp_{temp_index}");
+                temp_index += 1;
+                let escaped = c_string_literal(value);
+                out.push_str(&format!(
+                    "{indent}  TnVal {temp} = tn_runtime_const_float((TnVal)(intptr_t){escaped});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::LoadVariable { name, .. } => {
+                let temp = format!("{label}_tmp_{temp_index}");
+                temp_index += 1;
+                let binding_hash = hash_text_i64(name);
+                out.push_str(&format!(
+                    "{indent}  TnVal {temp} = tn_runtime_load_binding((TnVal){binding_hash}LL);\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::Raise { .. } => {
+                let error_value = pop_stack_value(&mut stack, "try raise input")?;
+                out.push_str(&format!("{indent}  {raised_flag_var} = 1;\n"));
+                out.push_str(&format!("{indent}  {raised_value_var} = {error_value};\n"));
+                out.push_str(&format!("{indent}  break;\n"));
+                terminated = true;
+                break;
+            }
+            IrOp::Return { .. } => {
+                let return_value = pop_stack_value(&mut stack, "try return value")?;
+                out.push_str(&format!("{indent}  {result_var} = {return_value};\n"));
+                out.push_str(&format!("{indent}  break;\n"));
+                terminated = true;
+                break;
+            }
+            other => {
+                return Err(CBackendError::new(format!(
+                    "c backend try helper unsupported op: {other:?}"
+                )));
+            }
+        }
+    }
+
+    if !terminated {
+        if let Some(value) = stack.pop() {
+            out.push_str(&format!("{indent}  {result_var} = {value};\n"));
+        } else {
+            out.push_str(&format!(
+                "{indent}  {result_var} = tn_runtime_const_nil();\n"
+            ));
+        }
+    }
+
+    out.push_str(&format!("{indent}}} while (0);\n"));
+    Ok(())
 }
 
 fn emit_compiled_closure_helpers(mir: &MirProgram, out: &mut String) -> Result<(), CBackendError> {
