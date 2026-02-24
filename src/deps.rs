@@ -25,7 +25,6 @@ pub(crate) struct GitDepLock {
     pub(crate) rev: String,
 }
 
-#[allow(dead_code)]
 impl Lockfile {
     pub(crate) fn generate(
         dependencies: &Dependencies,
@@ -92,14 +91,6 @@ impl Lockfile {
     pub(crate) fn deps_dir(project_root: &Path) -> PathBuf {
         project_root.join(DEPS_CACHE_DIR)
     }
-
-    pub(crate) fn resolved_git_dep(&self, name: &str) -> Option<&GitDepLock> {
-        self.git_deps.get(name)
-    }
-
-    pub(crate) fn resolved_path_dep(&self, name: &str) -> Option<&PathDepLock> {
-        self.path_deps.get(name)
-    }
 }
 
 pub(crate) struct DependencyResolver;
@@ -160,19 +151,6 @@ impl DependencyResolver {
         }
 
         Ok(())
-    }
-
-    /// Check if dependencies are available for offline use
-    pub(crate) fn can_run_offline(lockfile: &Lockfile, project_root: &Path) -> bool {
-        let deps_dir = Lockfile::deps_dir(project_root);
-
-        for name in lockfile.git_deps.keys() {
-            if !deps_dir.join(name).exists() {
-                return false;
-            }
-        }
-
-        true
     }
 }
 

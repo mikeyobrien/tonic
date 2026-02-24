@@ -145,10 +145,6 @@ impl Function {
         self.guard.as_ref()
     }
 
-    pub fn visibility(&self) -> FunctionVisibility {
-        self.visibility
-    }
-
     pub fn is_private(&self) -> bool {
         matches!(self.visibility, FunctionVisibility::Private)
     }

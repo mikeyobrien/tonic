@@ -79,12 +79,6 @@ impl HostRegistry {
         function(args)
     }
 
-    /// Check if a host function exists
-    pub fn contains(&self, key: &str) -> bool {
-        let functions = self.functions.lock().unwrap();
-        functions.contains_key(key)
-    }
-
     /// Register sample host functions for testing
     fn register_sample_functions(&self) {
         // :identity - returns its single argument unchanged

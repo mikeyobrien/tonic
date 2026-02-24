@@ -9,8 +9,8 @@ fi
 printf '%s\n' "[pre-push] Running cargo fmt --all -- --check..."
 cargo fmt --all -- --check
 
-printf '%s\n' "[pre-push] Running cargo clippy --all-targets --all-features -- -D warnings -A dead_code..."
-cargo clippy --all-targets --all-features -- -D warnings -A dead_code
+printf '%s\n' "[pre-push] Running cargo clippy --all-targets --all-features -- -D warnings..."
+cargo clippy --all-targets --all-features -- -D warnings
 
 printf '%s\n' "[pre-push] Running cargo test..."
 cargo test

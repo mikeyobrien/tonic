@@ -10,8 +10,13 @@ pub struct TypeSummary {
 }
 
 impl TypeSummary {
+    #[cfg(test)]
     pub fn signature(&self, name: &str) -> Option<&str> {
         self.signatures.get(name).map(String::as_str)
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.signatures.len()
     }
 }
 

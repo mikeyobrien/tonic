@@ -1,5 +1,6 @@
 use crate::deps::Lockfile;
 use crate::ir::IrProgram;
+#[cfg(test)]
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -169,17 +170,20 @@ fn stable_content_hash(content: &str) -> String {
     format!("{hash:016x}")
 }
 
+#[cfg(test)]
 pub(crate) trait CacheStorage {
     fn lookup(&self, key: &CacheKey) -> Option<&str>;
     fn store(&mut self, key: CacheKey, payload: String);
     fn len(&self) -> usize;
 }
 
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct CompileCache {
     entries: HashMap<CacheKey, String>,
 }
 
+#[cfg(test)]
 impl CacheStorage for CompileCache {
     fn lookup(&self, key: &CacheKey) -> Option<&str> {
         self.entries.get(key).map(String::as_str)
@@ -194,6 +198,7 @@ impl CacheStorage for CompileCache {
     }
 }
 
+#[cfg(test)]
 impl CompileCache {
     pub(crate) fn lookup(&self, key: &CacheKey) -> Option<&str> {
         CacheStorage::lookup(self, key)

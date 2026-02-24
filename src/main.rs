@@ -176,9 +176,16 @@ fn compile_source_to_ir(source: &str) -> Result<IrProgram, String> {
     let ast = parse_ast(&tokens).map_err(|error| error.to_string())?;
 
     resolve_ast(&ast).map_err(|error| error.to_string())?;
-    infer_types(&ast).map_err(|error| error.to_string())?;
+    let type_summary = infer_types(&ast).map_err(|error| error.to_string())?;
+    maybe_trace_type_summary(type_summary.len());
 
     lower_ast_to_ir(&ast).map_err(|error| error.to_string())
+}
+
+fn maybe_trace_type_summary(signature_count: usize) {
+    if std::env::var_os("TONIC_DEBUG_TYPES").is_some() {
+        eprintln!("type-signatures {signature_count}");
+    }
 }
 
 fn run_placeholder(command: &str) -> i32 {
@@ -268,9 +275,11 @@ fn handle_check(args: Vec<String>) -> i32 {
         return CliDiagnostic::failure(error.to_string()).emit();
     }
 
-    if let Err(error) = infer_types(&ast) {
-        return CliDiagnostic::failure(error.to_string()).emit();
-    }
+    let type_summary = match infer_types(&ast) {
+        Ok(summary) => summary,
+        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+    };
+    maybe_trace_type_summary(type_summary.len());
 
     if dump_ir {
         let ir = match lower_ast_to_ir(&ast) {
