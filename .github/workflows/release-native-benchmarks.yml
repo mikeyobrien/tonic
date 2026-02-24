@@ -1,0 +1,34 @@
+name: release-native-benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_label:
+        description: "Release candidate label (e.g. rc-2026-02-24)"
+        required: true
+        default: "manual-candidate"
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  native-release-candidate-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run native benchmark contract (artifact mode)
+        env:
+          TONIC_BENCH_JSON_OUT: .tonic/release/native-compiler-summary.json
+          TONIC_BENCH_MARKDOWN_OUT: .tonic/release/native-compiler-summary.md
+          TONIC_BENCH_ENFORCE: "0"
+        run: ./scripts/bench-native-contract-enforce.sh
+      - name: Evaluate regression policy (strict)
+        run: ./scripts/native-regression-policy.sh .tonic/release/native-compiler-summary.json --mode strict
+      - name: Upload release benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-native-${{ github.ref_name }}-${{ github.event.inputs.candidate_label || 'tag' }}
+          path: .tonic/release/

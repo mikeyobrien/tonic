@@ -15,4 +15,21 @@ cargo clippy --all-targets --all-features -- -D warnings
 printf '%s\n' "[pre-push] Running cargo test..."
 cargo test
 
+if [[ "${RUN_NATIVE_GATES:-0}" == "1" ]]; then
+  native_artifact_dir=".tonic/native-gates/pre-push"
+  mkdir -p "$native_artifact_dir"
+
+  printf '%s\n' "[pre-push] RUN_NATIVE_GATES=1, running differential + native benchmark policy gates..."
+  ./scripts/differential-enforce.sh
+
+  TONIC_BENCH_JSON_OUT="$native_artifact_dir/native-compiler-summary.json" \
+  TONIC_BENCH_MARKDOWN_OUT="$native_artifact_dir/native-compiler-summary.md" \
+  TONIC_BENCH_ENFORCE=0 \
+  ./scripts/bench-native-contract-enforce.sh
+
+  ./scripts/native-regression-policy.sh "$native_artifact_dir/native-compiler-summary.json" --mode strict
+else
+  printf '%s\n' "[pre-push] Skipping native benchmark gates (set RUN_NATIVE_GATES=1 to enable)."
+fi
+
 printf '%s\n' "[pre-push] All checks passed."

@@ -81,6 +81,31 @@ In contract mode, enforce checks:
 - native SLO thresholds
 - deterministic failure reasons in JSON/Markdown reports
 
+## Native CI/Repro Gate Commands
+
+Run the exact local gate sequence used by CI:
+
+```bash
+./scripts/native-gates.sh
+```
+
+Benchmark + policy gate only:
+
+```bash
+TONIC_BENCH_ENFORCE=0 \
+TONIC_BENCH_JSON_OUT=.tonic/native-gates/native-compiler-summary.json \
+TONIC_BENCH_MARKDOWN_OUT=.tonic/native-gates/native-compiler-summary.md \
+./scripts/bench-native-contract-enforce.sh
+
+./scripts/native-regression-policy.sh \
+  .tonic/native-gates/native-compiler-summary.json --mode strict
+```
+
+Policy verdicts:
+- `pass` (exit 0)
+- `quarantine` (exit 2)
+- `rollback` (exit 3)
+
 ## Reproducibility metadata
 
 Runner output now persists host metadata in every report:

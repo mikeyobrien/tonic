@@ -39,6 +39,7 @@ When adding a new command or a significant feature:
 2. **Add CLI Contract Tests:** If you add a new command, add its signature to `cli_contract_common.rs` to ensure it gracefully handles missing/extra arguments and returns exit code 64.
 3. **Verify Edge Cases:** Specifically test permission denials, missing files, and unparseable configurations to ensure the system does not panic but returns a controlled error state.
 4. **Run Differential Gate for Backend Changes:** Execute `scripts/differential-enforce.sh` (or `cargo test --test differential_backends -- --nocapture`) when touching codegen/runtime paths to block semantic regressions.
+5. **Run Native Competitive Gate Before Release Work:** Execute `scripts/native-gates.sh` (or benchmark + `scripts/native-regression-policy.sh --mode strict`) when touching compile/runtime hot paths to preserve Rust/Go comparative contracts.
 
 ### 4. Non-Goals
 Remember that Tonic v0 is designed for CLI scripting and small applications:
