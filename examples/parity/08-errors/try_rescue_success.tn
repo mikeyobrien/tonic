@@ -1,0 +1,9 @@
+defmodule Demo do
+  def run() do
+    try do
+      raise "oops"
+    rescue
+      e -> e
+    end
+  end
+end

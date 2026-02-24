@@ -1,0 +1,7 @@
+defmodule Demo do
+  def run() do
+    for x <- [1, 2], into: %{} do
+      {x, x}
+    end
+  end
+end

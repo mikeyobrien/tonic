@@ -431,3 +431,40 @@ run_exit = 0
 stdout = '''[1, 2, 3]
 '''
 status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_single_generator.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[2, 4, 6]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_multi_generator_fail.tn"
+check_exit = 1
+run_exit = 1
+stderr_contains = '''error: unsupported for generator chain; use a single generator for now'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_into_fail.tn"
+check_exit = 1
+run_exit = 1
+stderr_contains = '''error: unsupported for option 'into'; remove options from for for now'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/try_rescue_success.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"oops"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/08-errors/raise_fail.tn"
+check_exit = 0
+run_exit = 1
+stderr_contains = '''error: boom'''
+status = "active"
