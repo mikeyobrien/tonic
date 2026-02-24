@@ -44,6 +44,8 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "declare i64 @tn_runtime_question(i64)".to_string(),
         "declare i64 @tn_runtime_raise(i64)".to_string(),
         "declare i64 @tn_runtime_try(i64)".to_string(),
+        "declare i64 @tn_runtime_make_closure(i64, i64, i64)".to_string(),
+        "declare i64 (i64, i64, ...) @tn_runtime_call_closure".to_string(),
         "declare i64 @tn_runtime_const_atom(i64)".to_string(),
         "declare i64 @tn_runtime_load_binding(i64)".to_string(),
         "declare i64 @tn_runtime_match_operator(i64, i64)".to_string(),
@@ -562,6 +564,35 @@ fn emit_instructions(
                     ));
                 }
             }
+            MirInstruction::MakeClosure {
+                dest, params, ops, ..
+            } => {
+                let capture_names = closure_capture_names(params, ops);
+                let descriptor_hash = hash_closure_descriptor_i64(params, ops, &capture_names)?;
+                lines.push(format!(
+                    "  {} = call i64 @tn_runtime_make_closure(i64 {descriptor_hash}, i64 {}, i64 {})",
+                    value_register(*dest),
+                    params.len(),
+                    capture_names.len()
+                ));
+            }
+            MirInstruction::CallValue {
+                dest, callee, args, ..
+            } => {
+                let mut rendered_args = vec![
+                    format!("i64 {}", value_register(*callee)),
+                    format!("i64 {}", args.len()),
+                ];
+                rendered_args.extend(
+                    args.iter()
+                        .map(|arg| format!("i64 {}", value_register(*arg))),
+                );
+                lines.push(format!(
+                    "  {} = call i64 (i64, i64, ...) @tn_runtime_call_closure({})",
+                    value_register(*dest),
+                    rendered_args.join(", ")
+                ));
+            }
             MirInstruction::Binary {
                 dest,
                 kind,
@@ -1031,6 +1062,121 @@ fn hash_ir_op_i64(op: &IrOp) -> Result<i64, LlvmBackendError> {
         ))
     })?;
     Ok(hash_bytes_i64(serialized.as_bytes()))
+}
+
+fn hash_closure_descriptor_i64(
+    params: &[String],
+    ops: &[IrOp],
+    capture_names: &[String],
+) -> Result<i64, LlvmBackendError> {
+    let serialized = serde_json::to_string(&(params, ops, capture_names)).map_err(|error| {
+        LlvmBackendError::new(format!(
+            "llvm backend failed to serialize closure descriptor hash input: {error}"
+        ))
+    })?;
+
+    Ok(hash_bytes_i64(serialized.as_bytes()))
+}
+
+fn closure_capture_names(params: &[String], ops: &[IrOp]) -> Vec<String> {
+    let mut captures = BTreeSet::new();
+    let param_names = params.iter().cloned().collect::<BTreeSet<_>>();
+    collect_capture_names_from_ops(ops, &param_names, &mut captures);
+    captures.into_iter().collect()
+}
+
+fn collect_capture_names_from_ops(
+    ops: &[IrOp],
+    params: &BTreeSet<String>,
+    captures: &mut BTreeSet<String>,
+) {
+    for op in ops {
+        match op {
+            IrOp::LoadVariable { name, .. } => {
+                if !params.contains(name) {
+                    captures.insert(name.clone());
+                }
+            }
+            IrOp::AndAnd { right_ops, .. }
+            | IrOp::OrOr { right_ops, .. }
+            | IrOp::And { right_ops, .. }
+            | IrOp::Or { right_ops, .. } => {
+                collect_capture_names_from_ops(right_ops, params, captures);
+            }
+            IrOp::Case { branches, .. } => {
+                for branch in branches {
+                    if let Some(guard_ops) = &branch.guard_ops {
+                        collect_capture_names_from_ops(guard_ops, params, captures);
+                    }
+                    collect_capture_names_from_ops(&branch.ops, params, captures);
+                }
+            }
+            IrOp::Try {
+                body_ops,
+                rescue_branches,
+                catch_branches,
+                after_ops,
+                ..
+            } => {
+                collect_capture_names_from_ops(body_ops, params, captures);
+                for branch in rescue_branches {
+                    if let Some(guard_ops) = &branch.guard_ops {
+                        collect_capture_names_from_ops(guard_ops, params, captures);
+                    }
+                    collect_capture_names_from_ops(&branch.ops, params, captures);
+                }
+                for branch in catch_branches {
+                    if let Some(guard_ops) = &branch.guard_ops {
+                        collect_capture_names_from_ops(guard_ops, params, captures);
+                    }
+                    collect_capture_names_from_ops(&branch.ops, params, captures);
+                }
+                if let Some(after_ops) = after_ops {
+                    collect_capture_names_from_ops(after_ops, params, captures);
+                }
+            }
+            IrOp::For {
+                generators,
+                into_ops,
+                body_ops,
+                ..
+            } => {
+                for (_, generator_ops) in generators {
+                    collect_capture_names_from_ops(generator_ops, params, captures);
+                }
+                if let Some(into_ops) = into_ops {
+                    collect_capture_names_from_ops(into_ops, params, captures);
+                }
+                collect_capture_names_from_ops(body_ops, params, captures);
+            }
+            IrOp::MakeClosure { .. }
+            | IrOp::ConstInt { .. }
+            | IrOp::ConstFloat { .. }
+            | IrOp::ConstBool { .. }
+            | IrOp::ConstNil { .. }
+            | IrOp::ConstString { .. }
+            | IrOp::ToString { .. }
+            | IrOp::Call { .. }
+            | IrOp::CallValue { .. }
+            | IrOp::Question { .. }
+            | IrOp::Raise { .. }
+            | IrOp::ConstAtom { .. }
+            | IrOp::AddInt { .. }
+            | IrOp::SubInt { .. }
+            | IrOp::MulInt { .. }
+            | IrOp::DivInt { .. }
+            | IrOp::CmpInt { .. }
+            | IrOp::Not { .. }
+            | IrOp::Bang { .. }
+            | IrOp::Concat { .. }
+            | IrOp::In { .. }
+            | IrOp::PlusPlus { .. }
+            | IrOp::MinusMinus { .. }
+            | IrOp::Range { .. }
+            | IrOp::Match { .. }
+            | IrOp::Return { .. } => {}
+        }
+    }
 }
 
 fn hash_bytes_i64(bytes: &[u8]) -> i64 {

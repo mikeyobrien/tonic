@@ -512,3 +512,71 @@ fn lower_mir_subset_emits_error_flow_runtime_helpers() {
     assert!(llvm_ir.contains("call i64 @tn_runtime_raise"));
     assert!(llvm_ir.contains("call i64 @tn_runtime_try"));
 }
+
+#[test]
+fn lower_mir_subset_emits_closure_runtime_helpers() {
+    let mir = MirProgram {
+        functions: vec![MirFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            entry_block: 0,
+            blocks: vec![MirBlock {
+                id: 0,
+                args: vec![],
+                instructions: vec![
+                    MirInstruction::ConstInt {
+                        dest: 0,
+                        value: 4,
+                        offset: 10,
+                        value_type: MirType::Int,
+                    },
+                    MirInstruction::MakeClosure {
+                        dest: 1,
+                        params: vec!["value".to_string()],
+                        ops: vec![
+                            IrOp::LoadVariable {
+                                name: "value".to_string(),
+                                offset: 11,
+                            },
+                            IrOp::LoadVariable {
+                                name: "base".to_string(),
+                                offset: 12,
+                            },
+                            IrOp::AddInt { offset: 13 },
+                            IrOp::Return { offset: 14 },
+                        ],
+                        offset: 11,
+                        value_type: MirType::Closure,
+                    },
+                    MirInstruction::ConstInt {
+                        dest: 2,
+                        value: 3,
+                        offset: 15,
+                        value_type: MirType::Int,
+                    },
+                    MirInstruction::CallValue {
+                        dest: 3,
+                        callee: 1,
+                        args: vec![2],
+                        offset: 16,
+                        value_type: MirType::Dynamic,
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: 3,
+                    offset: 17,
+                },
+            }],
+        }],
+    };
+
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("closure helpers should lower");
+
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_make_closure(i64, i64, i64)"));
+    assert!(llvm_ir.contains("declare i64 (i64, i64, ...) @tn_runtime_call_closure"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_make_closure"));
+    assert!(llvm_ir.contains("i64 1, i64 1)"));
+    assert!(llvm_ir.contains("call i64 (i64, i64, ...) @tn_runtime_call_closure"));
+}

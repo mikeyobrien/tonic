@@ -3,7 +3,10 @@ use super::{
     tvalue_to_runtime, validate_tvalue, AbiErrorCode, TCallContext, TCallStatus, TValue, TValueTag,
     TONIC_RUNTIME_ABI_VERSION,
 };
-use crate::runtime::RuntimeValue;
+use crate::ir::lower_ast_to_ir;
+use crate::lexer::scan_tokens;
+use crate::parser::parse_ast;
+use crate::runtime::{evaluate_entrypoint, RuntimeValue};
 
 #[test]
 fn tvalue_layout_is_stable_for_ffi() {
@@ -36,6 +39,22 @@ fn runtime_roundtrip_supports_collections_and_results() {
     let decoded = tvalue_to_runtime(abi).expect("roundtrip fixture should decode from abi");
 
     assert_eq!(decoded, value);
+}
+
+#[test]
+fn runtime_roundtrip_supports_closure_handles() {
+    let closure = closure_runtime_value_fixture();
+    let abi = runtime_to_tvalue(closure.clone()).expect("closure should encode to abi");
+
+    assert_eq!(
+        abi.try_tag().expect("closure tag should decode"),
+        TValueTag::Closure
+    );
+
+    let decoded = tvalue_to_runtime(abi).expect("closure should decode from abi");
+    assert_eq!(decoded, closure);
+
+    release_tvalue(abi).expect("closure handle cleanup should succeed");
 }
 
 #[test]
@@ -102,4 +121,14 @@ fn runtime_boundary_catches_panics_and_returns_error_status() {
     let result = invoke_runtime_boundary(&ctx, |_args| panic!("boom"));
 
     assert_eq!(result.status, TCallStatus::Panic);
+}
+
+fn closure_runtime_value_fixture() -> RuntimeValue {
+    let source = "defmodule Demo do\n  def make_adder(base) do\n    fn value -> value + base end\n  end\n\n  def run() do\n    make_adder(4)\n  end\nend\n";
+
+    let tokens = scan_tokens(source).expect("scanner should tokenize closure fixture");
+    let ast = parse_ast(&tokens).expect("parser should build closure fixture ast");
+    let ir = lower_ast_to_ir(&ast).expect("lowering should support closure fixture");
+
+    evaluate_entrypoint(&ir).expect("runtime should produce closure fixture value")
 }

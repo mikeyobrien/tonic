@@ -42,3 +42,13 @@ All three route through `native_abi::invoke_runtime_boundary`, so they inherit:
 Helpers return deterministic messages that mirror existing runtime semantics, including
 source offset attachment when provided by caller (e.g. `"division by zero at offset 44"`,
 `"badarg at offset <n>"`, map key/update contract errors).
+
+## LLVM closure helper contract (Task 09)
+
+LLVM lowering now reserves runtime helper symbols for closure semantics:
+
+- `tn_runtime_make_closure(i64 descriptor_hash, i64 arity, i64 capture_count)`
+- `tn_runtime_call_closure(i64 closure_value, i64 argc, ...)`
+
+These symbols preserve deterministic compile-time contracts for anonymous function creation,
+lexical capture metadata, and function-value invocation in the native backend.

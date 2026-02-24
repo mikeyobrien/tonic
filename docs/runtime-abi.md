@@ -30,6 +30,11 @@ Immediate payloads:
 Heap payloads (refcounted handle IDs):
 - `Float`, `String`, `Atom`, `List`, `Map`, `Keyword`, `Tuple2`, `ResultOk`, `ResultErr`, `Closure`, `Range`
 
+Closure handle representation (`Closure` tag):
+- payload references a refcounted runtime closure cell
+- closure cell contains parameter names, lowered body ops, and captured lexical environment snapshot
+- `retain_tvalue` / `release_tvalue` govern closure lifetime across call boundaries
+
 ## Memory policy
 
 v1 uses deterministic handle-based reference counting:
