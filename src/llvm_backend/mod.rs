@@ -2,7 +2,7 @@ mod codegen;
 #[cfg(test)]
 mod tests;
 
-use crate::ir::{IrOp, IrPattern};
+use crate::ir::IrOp;
 use crate::mir::{MirInstruction, MirProgram};
 use std::fmt;
 
@@ -28,13 +28,6 @@ impl LlvmBackendError {
         let op = instruction_name(instruction);
         Self::new(format!(
             "llvm backend unsupported instruction {op} in function {function} at offset {offset}"
-        ))
-    }
-
-    pub(crate) fn unsupported_pattern(function: &str, pattern: &IrPattern, offset: usize) -> Self {
-        let kind = pattern_name(pattern);
-        Self::new(format!(
-            "llvm backend unsupported pattern {kind} in function {function} at offset {offset}"
         ))
     }
 
@@ -148,22 +141,6 @@ pub(crate) fn instruction_offset(instruction: &MirInstruction) -> usize {
         | MirInstruction::Question { offset, .. }
         | MirInstruction::MatchPattern { offset, .. }
         | MirInstruction::Legacy { offset, .. } => *offset,
-    }
-}
-
-fn pattern_name(pattern: &IrPattern) -> &'static str {
-    match pattern {
-        IrPattern::Atom { .. } => "atom",
-        IrPattern::Bind { .. } => "bind",
-        IrPattern::Pin { .. } => "pin",
-        IrPattern::Wildcard => "wildcard",
-        IrPattern::Integer { .. } => "integer",
-        IrPattern::Bool { .. } => "bool",
-        IrPattern::Nil => "nil",
-        IrPattern::String { .. } => "string",
-        IrPattern::Tuple { .. } => "tuple",
-        IrPattern::List { .. } => "list",
-        IrPattern::Map { .. } => "map",
     }
 }
 

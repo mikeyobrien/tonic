@@ -37,7 +37,26 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "target triple = \"x86_64-unknown-linux-gnu\"".to_string(),
         String::new(),
         "declare i64 @tn_runtime_error_no_matching_clause()".to_string(),
+        "declare i64 @tn_runtime_error_bad_match()".to_string(),
         "declare i64 @tn_runtime_error_arity_mismatch()".to_string(),
+        "declare i64 @tn_runtime_const_atom(i64)".to_string(),
+        "declare i64 @tn_runtime_load_binding(i64)".to_string(),
+        "declare i64 @tn_runtime_match_operator(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_make_tuple(i64, i64)".to_string(),
+        "declare i64 (i64, ...) @tn_runtime_make_list".to_string(),
+        "declare i64 @tn_runtime_map_empty()".to_string(),
+        "declare i64 @tn_runtime_make_map(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_map_put(i64, i64, i64)".to_string(),
+        "declare i64 @tn_runtime_map_update(i64, i64, i64)".to_string(),
+        "declare i64 @tn_runtime_map_access(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_make_keyword(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_keyword_append(i64, i64, i64)".to_string(),
+        "declare i64 @tn_runtime_concat(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_in(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_list_concat(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_list_subtract(i64, i64)".to_string(),
+        "declare i64 @tn_runtime_range(i64, i64)".to_string(),
+        "declare i1 @tn_runtime_pattern_matches(i64, i64)".to_string(),
         String::new(),
     ];
 
@@ -459,29 +478,35 @@ fn emit_instructions(
             MirInstruction::ConstNil { dest, .. } => {
                 lines.push(format!("  {} = add i64 0, 0", value_register(*dest)));
             }
-            MirInstruction::LoadVariable {
-                dest, name, offset, ..
-            } => {
-                let Some(param_index) =
-                    function.params.iter().position(|param| param.name == *name)
-                else {
-                    return Err(LlvmBackendError::new(format!(
-                        "llvm backend unsupported load_variable {name} in function {} at offset {offset}",
-                        function.name
-                    )));
-                };
-
+            MirInstruction::ConstAtom { dest, value, .. } => {
+                let atom_hash = hash_text_i64(value);
                 lines.push(format!(
-                    "  {} = add i64 0, %arg{param_index}",
+                    "  {} = call i64 @tn_runtime_const_atom(i64 {atom_hash})",
                     value_register(*dest)
                 ));
+            }
+            MirInstruction::LoadVariable { dest, name, .. } => {
+                if let Some(param_index) =
+                    function.params.iter().position(|param| param.name == *name)
+                {
+                    lines.push(format!(
+                        "  {} = add i64 0, %arg{param_index}",
+                        value_register(*dest)
+                    ));
+                } else {
+                    let binding_hash = hash_text_i64(name);
+                    lines.push(format!(
+                        "  {} = call i64 @tn_runtime_load_binding(i64 {binding_hash})",
+                        value_register(*dest)
+                    ));
+                }
             }
             MirInstruction::Binary {
                 dest,
                 kind,
                 left,
                 right,
-                offset,
+                offset: _,
                 ..
             } => match kind {
                 MirBinaryKind::AddInt
@@ -529,11 +554,24 @@ fn emit_instructions(
                         value_register(*dest)
                     ));
                 }
-                _ => {
-                    return Err(LlvmBackendError::unsupported_instruction(
-                        &function.name,
-                        instruction,
-                        *offset,
+                MirBinaryKind::Concat
+                | MirBinaryKind::In
+                | MirBinaryKind::PlusPlus
+                | MirBinaryKind::MinusMinus
+                | MirBinaryKind::Range => {
+                    let helper = match kind {
+                        MirBinaryKind::Concat => "tn_runtime_concat",
+                        MirBinaryKind::In => "tn_runtime_in",
+                        MirBinaryKind::PlusPlus => "tn_runtime_list_concat",
+                        MirBinaryKind::MinusMinus => "tn_runtime_list_subtract",
+                        MirBinaryKind::Range => "tn_runtime_range",
+                        _ => unreachable!(),
+                    };
+                    lines.push(format!(
+                        "  {} = call i64 @{helper}(i64 {}, i64 {})",
+                        value_register(*dest),
+                        value_register(*left),
+                        value_register(*right)
                     ));
                 }
             },
@@ -543,44 +581,61 @@ fn emit_instructions(
                 args,
                 offset,
                 ..
-            } => {
-                let IrCallTarget::Function { name } = callee else {
-                    return Err(LlvmBackendError::unsupported_instruction(
+            } => match callee {
+                IrCallTarget::Builtin { name } => {
+                    emit_builtin_call_from_value_ids(
+                        *dest,
+                        name,
+                        args,
                         &function.name,
-                        instruction,
                         *offset,
-                    ));
-                };
-
-                let key = (name.clone(), args.len());
-                if let Some(symbol) = callable_symbols.get(&key) {
-                    let rendered_args = args
-                        .iter()
-                        .map(|id| format!("i64 {}", value_register(*id)))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    lines.push(format!(
-                        "  {} = call i64 @{symbol}({rendered_args})",
-                        value_register(*dest)
-                    ));
-                    continue;
+                        lines,
+                    )?;
                 }
+                IrCallTarget::Function { name } => {
+                    let key = (name.clone(), args.len());
+                    if let Some(symbol) = callable_symbols.get(&key) {
+                        let rendered_args = args
+                            .iter()
+                            .map(|id| format!("i64 {}", value_register(*id)))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        lines.push(format!(
+                            "  {} = call i64 @{symbol}({rendered_args})",
+                            value_register(*dest)
+                        ));
+                        continue;
+                    }
 
-                if callable_symbols
-                    .keys()
-                    .any(|(candidate, _)| candidate == name)
-                {
-                    lines.push(format!(
-                        "  {} = call i64 @tn_runtime_error_arity_mismatch()",
-                        value_register(*dest)
-                    ));
-                    continue;
+                    if callable_symbols
+                        .keys()
+                        .any(|(candidate, _)| candidate == name)
+                    {
+                        lines.push(format!(
+                            "  {} = call i64 @tn_runtime_error_arity_mismatch()",
+                            value_register(*dest)
+                        ));
+                        continue;
+                    }
+
+                    return Err(LlvmBackendError::new(format!(
+                        "llvm backend unknown function call target {name} in function {} at offset {offset}",
+                        function.name
+                    )));
                 }
-
-                return Err(LlvmBackendError::new(format!(
-                    "llvm backend unknown function call target {name} in function {} at offset {offset}",
-                    function.name
-                )));
+            },
+            MirInstruction::MatchPattern {
+                dest,
+                input,
+                pattern,
+                ..
+            } => {
+                let pattern_hash = hash_pattern_i64(pattern)?;
+                lines.push(format!(
+                    "  {} = call i64 @tn_runtime_match_operator(i64 {}, i64 {pattern_hash})",
+                    value_register(*dest),
+                    value_register(*input),
+                ));
             }
             _ => {
                 return Err(LlvmBackendError::unsupported_instruction(
@@ -589,6 +644,141 @@ fn emit_instructions(
                     instruction_offset(instruction),
                 ));
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn emit_builtin_call_from_value_ids(
+    dest: u32,
+    builtin: &str,
+    args: &[u32],
+    function_name: &str,
+    offset: usize,
+    lines: &mut Vec<String>,
+) -> Result<(), LlvmBackendError> {
+    let rendered_args = args
+        .iter()
+        .map(|id| format!("i64 {}", value_register(*id)))
+        .collect::<Vec<_>>();
+
+    emit_builtin_call_from_registers(
+        value_register(dest),
+        builtin,
+        rendered_args,
+        function_name,
+        offset,
+        lines,
+    )
+}
+
+fn emit_builtin_call_from_registers(
+    dest: String,
+    builtin: &str,
+    rendered_args: Vec<String>,
+    function_name: &str,
+    offset: usize,
+    lines: &mut Vec<String>,
+) -> Result<(), LlvmBackendError> {
+    match builtin {
+        "tuple" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin tuple arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_make_tuple({}, {})",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "list" => {
+            let mut call_args = vec![format!("i64 {}", rendered_args.len())];
+            call_args.extend(rendered_args);
+            lines.push(format!(
+                "  {dest} = call i64 (i64, ...) @tn_runtime_make_list({})",
+                call_args.join(", ")
+            ));
+        }
+        "map_empty" => {
+            if !rendered_args.is_empty() {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin map_empty arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!("  {dest} = call i64 @tn_runtime_map_empty()"));
+        }
+        "map" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin map arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_make_map({}, {})",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "map_put" => {
+            if rendered_args.len() != 3 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin map_put arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_map_put({}, {}, {})",
+                rendered_args[0], rendered_args[1], rendered_args[2]
+            ));
+        }
+        "map_update" => {
+            if rendered_args.len() != 3 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin map_update arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_map_update({}, {}, {})",
+                rendered_args[0], rendered_args[1], rendered_args[2]
+            ));
+        }
+        "map_access" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin map_access arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_map_access({}, {})",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "keyword" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin keyword arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_make_keyword({}, {})",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "keyword_append" => {
+            if rendered_args.len() != 3 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin keyword_append arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_keyword_append({}, {}, {})",
+                rendered_args[0], rendered_args[1], rendered_args[2]
+            ));
+        }
+        other => {
+            return Err(LlvmBackendError::new(format!(
+                "llvm backend unsupported builtin call target {other} in function {function_name} at offset {offset}"
+            )));
         }
     }
 
@@ -738,8 +928,31 @@ fn emit_match_terminator(
     Ok(())
 }
 
+fn hash_text_i64(value: &str) -> i64 {
+    hash_bytes_i64(value.as_bytes())
+}
+
+fn hash_pattern_i64(pattern: &IrPattern) -> Result<i64, LlvmBackendError> {
+    let serialized = serde_json::to_string(pattern).map_err(|error| {
+        LlvmBackendError::new(format!(
+            "llvm backend failed to serialize pattern hash input: {error}"
+        ))
+    })?;
+    Ok(hash_bytes_i64(serialized.as_bytes()))
+}
+
+fn hash_bytes_i64(bytes: &[u8]) -> i64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+
+    i64::from_ne_bytes(hash.to_ne_bytes())
+}
+
 fn emit_pattern_condition(
-    function_name: &str,
+    _function_name: &str,
     operand: &str,
     pattern: &IrPattern,
     label: &str,
@@ -765,11 +978,14 @@ fn emit_pattern_condition(
             lines.push(format!("  {register} = icmp eq i64 {operand}, 0"));
             Ok(register)
         }
-        other => Err(LlvmBackendError::unsupported_pattern(
-            function_name,
-            other,
-            0,
-        )),
+        _ => {
+            let pattern_hash = hash_pattern_i64(pattern)?;
+            let register = format!("%{label}_complex");
+            lines.push(format!(
+                "  {register} = call i1 @tn_runtime_pattern_matches(i64 {operand}, i64 {pattern_hash})"
+            ));
+            Ok(register)
+        }
     }
 }
 
@@ -785,13 +1001,17 @@ fn emit_guard_condition(
 
     for (index, op) in guard_ops.iter().enumerate() {
         match op {
-            IrOp::LoadVariable { name, offset } => {
-                let Some(param_index) = params.iter().position(|param| &param.name == name) else {
-                    return Err(LlvmBackendError::new(format!(
-                        "llvm backend unsupported guard variable {name} in function {function_name} at offset {offset}"
-                    )));
-                };
-                stack.push(format!("%arg{param_index}"));
+            IrOp::LoadVariable { name, .. } => {
+                if let Some(param_index) = params.iter().position(|param| &param.name == name) {
+                    stack.push(format!("%arg{param_index}"));
+                } else {
+                    let register = format!("%{label}_load_binding_{index}");
+                    let binding_hash = hash_text_i64(name);
+                    lines.push(format!(
+                        "  {register} = call i64 @tn_runtime_load_binding(i64 {binding_hash})"
+                    ));
+                    stack.push(register);
+                }
             }
             IrOp::ConstInt { value, .. } => {
                 let register = format!("%{label}_const_int_{index}");
@@ -827,31 +1047,37 @@ fn emit_guard_condition(
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                let IrCallTarget::Function { name } = callee else {
-                    return Err(LlvmBackendError::unsupported_guard_op(
-                        function_name,
-                        op,
-                        *offset,
-                    ));
-                };
-
-                let target_key = (name.clone(), *argc);
                 let result_register = format!("%{label}_call_{index}");
-                if let Some(symbol) = callable_symbols.get(&target_key) {
-                    lines.push(format!(
-                        "  {result_register} = call i64 @{symbol}({rendered_args})"
-                    ));
-                } else if callable_symbols
-                    .keys()
-                    .any(|(candidate, _)| candidate == name)
-                {
-                    lines.push(format!(
-                        "  {result_register} = call i64 @tn_runtime_error_arity_mismatch()"
-                    ));
-                } else {
-                    return Err(LlvmBackendError::new(format!(
-                        "llvm backend unknown guard call target {name} in function {function_name} at offset {offset}"
-                    )));
+                match callee {
+                    IrCallTarget::Function { name } => {
+                        let target_key = (name.clone(), *argc);
+                        if let Some(symbol) = callable_symbols.get(&target_key) {
+                            lines.push(format!(
+                                "  {result_register} = call i64 @{symbol}({rendered_args})"
+                            ));
+                        } else if callable_symbols
+                            .keys()
+                            .any(|(candidate, _)| candidate == name)
+                        {
+                            lines.push(format!(
+                                "  {result_register} = call i64 @tn_runtime_error_arity_mismatch()"
+                            ));
+                        } else {
+                            return Err(LlvmBackendError::new(format!(
+                                "llvm backend unknown guard call target {name} in function {function_name} at offset {offset}"
+                            )));
+                        }
+                    }
+                    IrCallTarget::Builtin { name } => {
+                        emit_builtin_call_from_registers(
+                            result_register.clone(),
+                            name,
+                            call_args,
+                            function_name,
+                            *offset,
+                            lines,
+                        )?;
+                    }
                 }
 
                 stack.push(result_register);

@@ -305,3 +305,107 @@ fn lower_mir_subset_emits_dispatcher_symbols_for_duplicate_function_clauses() {
     assert!(llvm_ir.contains("call i64 @tn_Demo_choose__arity1(i64 %v0)"));
     assert!(llvm_ir.contains("call i64 @tn_runtime_error_no_matching_clause()"));
 }
+
+#[test]
+fn lower_mir_subset_emits_collection_and_pattern_runtime_helpers() {
+    let mir = MirProgram {
+        functions: vec![MirFunction {
+            name: "Demo.classify".to_string(),
+            params: vec![MirTypedName {
+                name: "expected".to_string(),
+                value_type: MirType::Dynamic,
+            }],
+            param_patterns: None,
+            guard_ops: None,
+            entry_block: 0,
+            blocks: vec![MirBlock {
+                id: 0,
+                args: vec![],
+                instructions: vec![
+                    MirInstruction::ConstInt {
+                        dest: 0,
+                        value: 8,
+                        offset: 10,
+                        value_type: MirType::Int,
+                    },
+                    MirInstruction::LoadVariable {
+                        dest: 1,
+                        name: "expected".to_string(),
+                        offset: 11,
+                        value_type: MirType::Dynamic,
+                    },
+                    MirInstruction::Call {
+                        dest: 2,
+                        callee: IrCallTarget::Builtin {
+                            name: "list".to_string(),
+                        },
+                        args: vec![1, 0],
+                        offset: 12,
+                        value_type: MirType::Dynamic,
+                    },
+                    MirInstruction::ConstAtom {
+                        dest: 3,
+                        value: "ok".to_string(),
+                        offset: 13,
+                        value_type: MirType::Atom,
+                    },
+                    MirInstruction::Call {
+                        dest: 4,
+                        callee: IrCallTarget::Builtin {
+                            name: "map".to_string(),
+                        },
+                        args: vec![3, 2],
+                        offset: 14,
+                        value_type: MirType::Dynamic,
+                    },
+                    MirInstruction::MatchPattern {
+                        dest: 5,
+                        input: 4,
+                        pattern: crate::ir::IrPattern::Map {
+                            entries: vec![crate::ir::IrMapPatternEntry {
+                                key: crate::ir::IrPattern::Atom {
+                                    value: "ok".to_string(),
+                                },
+                                value: crate::ir::IrPattern::List {
+                                    items: vec![
+                                        crate::ir::IrPattern::Pin {
+                                            name: "expected".to_string(),
+                                        },
+                                        crate::ir::IrPattern::Bind {
+                                            name: "value".to_string(),
+                                        },
+                                    ],
+                                    tail: None,
+                                },
+                            }],
+                        },
+                        offset: 15,
+                        value_type: MirType::Dynamic,
+                    },
+                    MirInstruction::LoadVariable {
+                        dest: 6,
+                        name: "value".to_string(),
+                        offset: 16,
+                        value_type: MirType::Dynamic,
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: 6,
+                    offset: 17,
+                },
+            }],
+        }],
+    };
+
+    let llvm_ir =
+        lower_mir_subset_to_llvm_ir(&mir).expect("collections and pattern helpers should lower");
+
+    assert!(llvm_ir.contains("declare i64 (i64, ...) @tn_runtime_make_list"));
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_make_map(i64, i64)"));
+    assert!(llvm_ir.contains("declare i1 @tn_runtime_pattern_matches(i64, i64)"));
+    assert!(llvm_ir.contains("call i64 (i64, ...) @tn_runtime_make_list"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_make_map"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_const_atom"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_match_operator"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_load_binding"));
+}
