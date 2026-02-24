@@ -524,7 +524,7 @@ fn evaluate_ops(
                 rescue_branches,
                 catch_branches,
                 after_ops,
-                offset,
+                offset: _,
             } => {
                 let mut try_env = env.clone();
                 let mut try_stack = Vec::new();

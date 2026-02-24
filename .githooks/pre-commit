@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Only run rustfmt when Rust files are staged for commit.
+if [[ "${SKIP_GIT_HOOKS:-0}" == "1" ]]; then
+  printf '%s\n' "[pre-commit] SKIP_GIT_HOOKS=1, skipping checks"
+  exit 0
+fi
+
+# Only run Rust checks when Rust files are staged for commit.
 if ! git diff --cached --name-only --diff-filter=ACMR | grep -E '\.rs$' >/dev/null; then
   exit 0
 fi
@@ -15,4 +20,7 @@ while IFS= read -r file; do
   git add "$file"
 done < <(git ls-files -m '*.rs')
 
-printf '%s\n' "[pre-commit] rustfmt complete."
+printf '%s\n' "[pre-commit] Running cargo clippy --all-targets --all-features -- -D warnings -A dead_code..."
+cargo clippy --all-targets --all-features -- -D warnings -A dead_code
+
+printf '%s\n' "[pre-commit] rustfmt + clippy checks passed."
