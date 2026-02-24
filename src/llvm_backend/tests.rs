@@ -125,7 +125,50 @@ fn lower_mir_subset_emits_deterministic_llvm_ir_for_int_bool_calls() {
 }
 
 #[test]
-fn lower_mir_subset_rejects_out_of_subset_instruction() {
+fn lower_mir_subset_lowers_string_and_float_constants_to_runtime_helpers() {
+    let mir = MirProgram {
+        functions: vec![MirFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            entry_block: 0,
+            blocks: vec![MirBlock {
+                id: 0,
+                args: vec![],
+                instructions: vec![
+                    MirInstruction::ConstString {
+                        dest: 0,
+                        value: "hello".to_string(),
+                        offset: 21,
+                        value_type: MirType::String,
+                    },
+                    MirInstruction::ConstFloat {
+                        dest: 1,
+                        value: "3.14".to_string(),
+                        offset: 22,
+                        value_type: MirType::Float,
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: 1,
+                    offset: 23,
+                },
+            }],
+        }],
+    };
+
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir)
+        .expect("const string/float should lower to runtime helpers");
+
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_const_string(i64)"));
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_const_float(i64)"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_const_string(i64"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_const_float(i64"));
+}
+
+#[test]
+fn lower_mir_subset_rejects_unsupported_legacy_instruction() {
     let mir = MirProgram {
         functions: vec![MirFunction {
             name: "Unsupported.run".to_string(),
@@ -136,11 +179,16 @@ fn lower_mir_subset_rejects_out_of_subset_instruction() {
             blocks: vec![MirBlock {
                 id: 0,
                 args: vec![],
-                instructions: vec![MirInstruction::ConstString {
-                    dest: 0,
-                    value: "hello".to_string(),
+                instructions: vec![MirInstruction::Legacy {
+                    dest: None,
+                    source: IrOp::For {
+                        generators: vec![],
+                        into_ops: None,
+                        body_ops: vec![],
+                        offset: 21,
+                    },
                     offset: 21,
-                    value_type: MirType::String,
+                    value_type: None,
                 }],
                 terminator: MirTerminator::Return {
                     value: 0,
@@ -151,11 +199,11 @@ fn lower_mir_subset_rejects_out_of_subset_instruction() {
     };
 
     let error = lower_mir_subset_to_llvm_ir(&mir)
-        .expect_err("const_string should be rejected by llvm mvp backend");
+        .expect_err("unsupported legacy instruction should keep deterministic diagnostics");
 
     assert_eq!(
         error.to_string(),
-        "llvm backend unsupported instruction const_string in function Unsupported.run at offset 21"
+        "llvm backend unsupported instruction legacy in function Unsupported.run at offset 21"
     );
 }
 

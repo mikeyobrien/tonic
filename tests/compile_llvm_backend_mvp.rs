@@ -71,7 +71,7 @@ fn compile_llvm_backend_rejects_unsupported_ops_with_deterministic_diagnostic() 
     let source_path = temp_dir.join("unsupported.tn");
     fs::write(
         &source_path,
-        "defmodule Unsupported do\n  def run() do\n    \"hello\"\n  end\nend\n",
+        "defmodule Unsupported do\n  def run() do\n    for x <- [1, 2, 3] do\n      x\n    end\n  end\nend\n",
     )
     .unwrap();
 
@@ -81,7 +81,7 @@ fn compile_llvm_backend_rejects_unsupported_ops_with_deterministic_diagnostic() 
         .assert()
         .failure()
         .stderr(contains(
-            "error: llvm backend unsupported instruction const_string in function Unsupported.run",
+            "error: llvm backend unsupported instruction legacy in function Unsupported.run",
         ));
 }
 

@@ -51,21 +51,19 @@ pub(super) fn emit_c_instructions(
                 }
             }
             MirInstruction::Unary {
-                dest,
-                kind,
-                input,
-                offset,
-                ..
+                dest, kind, input, ..
             } => match kind {
                 crate::mir::MirUnaryKind::Raise => {
                     out.push_str(&format!("  v{dest} = tn_runtime_raise(v{input});\n"));
                 }
-                _ => {
-                    return Err(CBackendError::unsupported_instruction(
-                        &function.name,
-                        instruction,
-                        *offset,
-                    ));
+                crate::mir::MirUnaryKind::ToString => {
+                    out.push_str(&format!("  v{dest} = tn_runtime_to_string(v{input});\n"));
+                }
+                crate::mir::MirUnaryKind::Not => {
+                    out.push_str(&format!("  v{dest} = tn_runtime_not(v{input});\n"));
+                }
+                crate::mir::MirUnaryKind::Bang => {
+                    out.push_str(&format!("  v{dest} = tn_runtime_bang(v{input});\n"));
                 }
             },
             MirInstruction::Question { dest, input, .. } => {

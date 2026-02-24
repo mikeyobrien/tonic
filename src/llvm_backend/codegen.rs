@@ -1,7 +1,4 @@
-use super::{
-    instruction_offset, mangle_function_name, value_register, LlvmBackendError,
-    LLVM_COMPATIBILITY_VERSION,
-};
+use super::{mangle_function_name, value_register, LlvmBackendError, LLVM_COMPATIBILITY_VERSION};
 use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern};
 use crate::mir::{MirBinaryKind, MirBlock, MirFunction, MirInstruction, MirProgram, MirTerminator};
 use std::collections::{BTreeMap, BTreeSet};
@@ -47,6 +44,11 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "declare i64 @tn_runtime_make_closure(i64, i64, i64)".to_string(),
         "declare i64 (i64, i64, ...) @tn_runtime_call_closure".to_string(),
         "declare i64 @tn_runtime_const_atom(i64)".to_string(),
+        "declare i64 @tn_runtime_const_string(i64)".to_string(),
+        "declare i64 @tn_runtime_const_float(i64)".to_string(),
+        "declare i64 @tn_runtime_to_string(i64)".to_string(),
+        "declare i64 @tn_runtime_not(i64)".to_string(),
+        "declare i64 @tn_runtime_bang(i64)".to_string(),
         "declare i64 @tn_runtime_load_binding(i64)".to_string(),
         "declare i64 @tn_runtime_match_operator(i64, i64)".to_string(),
         "declare i64 @tn_runtime_make_tuple(i64, i64)".to_string(),
@@ -494,6 +496,20 @@ fn emit_instructions(
                     value_register(*dest)
                 ));
             }
+            MirInstruction::ConstString { dest, value, .. } => {
+                let string_hash = hash_text_i64(value);
+                lines.push(format!(
+                    "  {} = call i64 @tn_runtime_const_string(i64 {string_hash})",
+                    value_register(*dest)
+                ));
+            }
+            MirInstruction::ConstFloat { dest, value, .. } => {
+                let float_hash = hash_text_i64(value);
+                lines.push(format!(
+                    "  {} = call i64 @tn_runtime_const_float(i64 {float_hash})",
+                    value_register(*dest)
+                ));
+            }
             MirInstruction::LoadVariable { dest, name, .. } => {
                 if let Some(param_index) =
                     function.params.iter().position(|param| param.name == *name)
@@ -511,11 +527,7 @@ fn emit_instructions(
                 }
             }
             MirInstruction::Unary {
-                dest,
-                kind,
-                input,
-                offset,
-                ..
+                dest, kind, input, ..
             } => match kind {
                 crate::mir::MirUnaryKind::Raise => {
                     lines.push(format!(
@@ -524,11 +536,25 @@ fn emit_instructions(
                         value_register(*input)
                     ));
                 }
-                _ => {
-                    return Err(LlvmBackendError::unsupported_instruction(
-                        &function.name,
-                        instruction,
-                        *offset,
+                crate::mir::MirUnaryKind::ToString => {
+                    lines.push(format!(
+                        "  {} = call i64 @tn_runtime_to_string(i64 {})",
+                        value_register(*dest),
+                        value_register(*input)
+                    ));
+                }
+                crate::mir::MirUnaryKind::Not => {
+                    lines.push(format!(
+                        "  {} = call i64 @tn_runtime_not(i64 {})",
+                        value_register(*dest),
+                        value_register(*input)
+                    ));
+                }
+                crate::mir::MirUnaryKind::Bang => {
+                    lines.push(format!(
+                        "  {} = call i64 @tn_runtime_bang(i64 {})",
+                        value_register(*dest),
+                        value_register(*input)
                     ));
                 }
             },
@@ -729,13 +755,6 @@ fn emit_instructions(
                     "  {} = call i64 @tn_runtime_match_operator(i64 {}, i64 {pattern_hash})",
                     value_register(*dest),
                     value_register(*input),
-                ));
-            }
-            _ => {
-                return Err(LlvmBackendError::unsupported_instruction(
-                    &function.name,
-                    instruction,
-                    instruction_offset(instruction),
                 ));
             }
         }

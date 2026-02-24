@@ -45,6 +45,9 @@ pub(super) fn emit_runtime_stubs(out: &mut String) {
         "tn_runtime_raise",
         "tn_runtime_try",
         "tn_runtime_const_atom",
+        "tn_runtime_to_string",
+        "tn_runtime_not",
+        "tn_runtime_bang",
         "tn_runtime_load_binding",
         "tn_runtime_protocol_dispatch",
     ] {
@@ -60,6 +63,7 @@ pub(super) fn emit_runtime_stubs(out: &mut String) {
         "tn_runtime_make_tuple",
         "tn_runtime_make_map",
         "tn_runtime_make_keyword",
+        "tn_runtime_map_access",
         "tn_runtime_concat",
         "tn_runtime_in",
         "tn_runtime_list_concat",
@@ -77,7 +81,6 @@ pub(super) fn emit_runtime_stubs(out: &mut String) {
         "tn_runtime_make_closure",
         "tn_runtime_map_put",
         "tn_runtime_map_update",
-        "tn_runtime_map_access",
         "tn_runtime_keyword_append",
     ] {
         out.push_str(&format!(

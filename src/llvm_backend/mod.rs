@@ -86,26 +86,6 @@ pub(crate) fn instruction_name(instruction: &MirInstruction) -> &'static str {
     }
 }
 
-pub(crate) fn instruction_offset(instruction: &MirInstruction) -> usize {
-    match instruction {
-        MirInstruction::ConstInt { offset, .. }
-        | MirInstruction::ConstFloat { offset, .. }
-        | MirInstruction::ConstBool { offset, .. }
-        | MirInstruction::ConstNil { offset, .. }
-        | MirInstruction::ConstString { offset, .. }
-        | MirInstruction::ConstAtom { offset, .. }
-        | MirInstruction::LoadVariable { offset, .. }
-        | MirInstruction::Unary { offset, .. }
-        | MirInstruction::Binary { offset, .. }
-        | MirInstruction::Call { offset, .. }
-        | MirInstruction::CallValue { offset, .. }
-        | MirInstruction::MakeClosure { offset, .. }
-        | MirInstruction::Question { offset, .. }
-        | MirInstruction::MatchPattern { offset, .. }
-        | MirInstruction::Legacy { offset, .. } => *offset,
-    }
-}
-
 fn ir_op_name(op: &IrOp) -> &'static str {
     match op {
         IrOp::ConstInt { .. } => "const_int",
