@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod differential;
+
 use std::path::PathBuf;
 
 pub fn unique_fixture_root(test_name: &str) -> PathBuf {

@@ -15,6 +15,7 @@ The following table maps our critical failure classes to the concrete tests that
 | **Command Contracts** | CLI usage errors, invalid arguments, missing files, expected exit codes (0 for success, 1 for runtime error, 64 for usage). | `cli_contract_common.rs`, `cli_contract_compile.rs`, `cli_contract_run_command.rs` |
 | **Manifest / Loader** | Missing manifests, unresolvable module dependencies, duplicate module conflicts, and deterministic lockfile generation. | `run_manifest_validation.rs`, `run_dependency_duplicate_module_conflict.rs`, `deps_lockfile_determinism.rs`, `deps_manifest_dependency_diagnostics.rs` |
 | **Cache / Artifacts** | Missing cache directories, corrupt cache artifacts, permission denied errors, offline cache hits, and cache path conflicts. | `run_cache_corruption_recovery_smoke.rs`, `run_cache_permission_denied_smoke.rs`, `run_cache_path_conflict_smoke.rs`, `run_dependency_offline_warm_cache.rs` |
+| **Backend Differential Correctness** | Semantic drift between interpreter and native LLVM/AOT execution paths, including generated-program regressions. | `differential_backends.rs` |
 | **Verify / Dump** | Verification commands failing to find files, invalid AST/IR dumps, and mode-specific verification issues. | `check_dump_ast_*.rs`, `check_dump_ir_*.rs`, `verify_auto_mode_json.rs`, `verify_manual_evidence_*.rs` |
 
 ## Contributor Guidance: Preserving Command Contracts
@@ -37,6 +38,7 @@ When adding a new command or a significant feature:
 1. **Reuse Fixture Helpers:** Use the consolidated `tests/common/mod.rs` utilities (like `common::unique_fixture_root`) rather than creating ad-hoc test directories.
 2. **Add CLI Contract Tests:** If you add a new command, add its signature to `cli_contract_common.rs` to ensure it gracefully handles missing/extra arguments and returns exit code 64.
 3. **Verify Edge Cases:** Specifically test permission denials, missing files, and unparseable configurations to ensure the system does not panic but returns a controlled error state.
+4. **Run Differential Gate for Backend Changes:** Execute `scripts/differential-enforce.sh` (or `cargo test --test differential_backends -- --nocapture`) when touching codegen/runtime paths to block semantic regressions.
 
 ### 4. Non-Goals
 Remember that Tonic v0 is designed for CLI scripting and small applications:
