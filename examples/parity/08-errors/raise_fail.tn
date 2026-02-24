@@ -1,5 +1,5 @@
 defmodule Demo do
   def run() do
-    raise "boom"
+    raise(missing())
   end
 end

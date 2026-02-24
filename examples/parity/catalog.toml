@@ -464,7 +464,7 @@ status = "active"
 
 [[example]]
 path = "examples/parity/08-errors/raise_fail.tn"
-check_exit = 0
+check_exit = 1
 run_exit = 1
-stderr_contains = '''error: boom'''
+stderr_contains = '''undefined symbol 'missing''''
 status = "active"
