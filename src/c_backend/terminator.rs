@@ -135,7 +135,7 @@ pub(super) fn emit_c_pattern_condition(
     out: &mut String,
 ) -> Result<String, CBackendError> {
     match pattern {
-        IrPattern::Wildcard | IrPattern::Bind { .. } => Ok("1".to_string()),
+        IrPattern::Wildcard => Ok("1".to_string()),
         IrPattern::Integer { value } => Ok(format!("({scrutinee_expr} == {value}LL)")),
         IrPattern::Bool { value } => Ok(format!(
             "tn_runtime_value_equal({scrutinee_expr}, tn_runtime_const_bool((TnVal){}))",

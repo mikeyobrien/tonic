@@ -1,3 +1,7 @@
+use crate::mir::MirProgram;
+
+use super::{error::CBackendError, runtime_patterns::emit_runtime_pattern_helpers};
+
 /// Emit the C file preamble: include directives and typedef.
 pub(super) fn emit_header(out: &mut String) {
     out.push_str("/* tonic c backend - generated file */\n");
@@ -16,7 +20,7 @@ pub(super) fn emit_header(out: &mut String) {
 ///
 /// Task 05 helpers are implemented inline; unsupported helpers remain explicit
 /// abort stubs so failures stay deterministic.
-pub(super) fn emit_runtime_stubs(out: &mut String) {
+pub(super) fn emit_runtime_stubs(mir: &MirProgram, out: &mut String) -> Result<(), CBackendError> {
     out.push_str(
         r###"/* runtime helpers */
 static TnVal tn_stub_abort(const char *name) {
@@ -594,7 +598,6 @@ static void tn_runtime_println(TnVal value) {
         "tn_runtime_to_string",
         "tn_runtime_not",
         "tn_runtime_bang",
-        "tn_runtime_load_binding",
         "tn_runtime_protocol_dispatch",
     ] {
         out.push_str(&format!(
@@ -605,7 +608,6 @@ static void tn_runtime_println(TnVal value) {
 
     // Two-arg stubs
     for name in &[
-        "tn_runtime_match_operator",
         "tn_runtime_concat",
         "tn_runtime_list_concat",
         "tn_runtime_list_subtract",
@@ -621,8 +623,10 @@ static void tn_runtime_println(TnVal value) {
     out.push('\n');
 
     // Pattern + varargs stubs
-    out.push_str("static int tn_runtime_pattern_matches(TnVal _v, TnVal _p) { (void)tn_stub_abort(\"tn_runtime_pattern_matches\"); return 0; }\n");
     out.push_str("static TnVal tn_runtime_host_call_varargs(TnVal _count, ...) { return tn_stub_abort(\"tn_runtime_host_call\"); }\n");
     out.push_str("static TnVal tn_runtime_call_closure_varargs(TnVal _closure, TnVal _count, ...) { return tn_stub_abort(\"tn_runtime_call_closure\"); }\n");
     out.push('\n');
+
+    emit_runtime_pattern_helpers(mir, out)?;
+    Ok(())
 }

@@ -1306,7 +1306,7 @@ fn emit_pattern_condition(
     lines: &mut Vec<String>,
 ) -> Result<String, LlvmBackendError> {
     match pattern {
-        IrPattern::Wildcard | IrPattern::Bind { .. } => Ok("true".to_string()),
+        IrPattern::Wildcard => Ok("true".to_string()),
         IrPattern::Integer { value } => {
             let register = format!("%{label}_int");
             lines.push(format!("  {register} = icmp eq i64 {operand}, {value}"));

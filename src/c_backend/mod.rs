@@ -5,6 +5,7 @@ mod funcs;
 mod groups;
 mod hash;
 mod ops;
+mod runtime_patterns;
 mod stubs;
 mod terminator;
 
@@ -53,7 +54,7 @@ pub(crate) fn lower_mir_to_c(mir: &MirProgram) -> Result<String, CBackendError> 
     let mut out = String::new();
 
     emit_header(&mut out);
-    emit_runtime_stubs(&mut out);
+    emit_runtime_stubs(mir, &mut out)?;
     emit_forward_declarations(&groups, mir, &clause_symbols, &callable_symbols, &mut out);
 
     for group in &groups {
