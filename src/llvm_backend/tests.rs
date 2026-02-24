@@ -1,8 +1,8 @@
 use super::{lower_mir_subset_to_llvm_ir, LLVM_COMPATIBILITY_VERSION};
-use crate::ir::{CmpKind, IrCallTarget, IrOp};
+use crate::ir::{CmpKind, IrCallTarget, IrCaseBranch, IrOp, IrPattern};
 use crate::mir::{
     MirBinaryKind, MirBlock, MirFunction, MirInstruction, MirProgram, MirTerminator, MirType,
-    MirTypedName,
+    MirTypedName, MirUnaryKind,
 };
 
 #[test]
@@ -408,4 +408,107 @@ fn lower_mir_subset_emits_collection_and_pattern_runtime_helpers() {
     assert!(llvm_ir.contains("call i64 @tn_runtime_const_atom"));
     assert!(llvm_ir.contains("call i64 @tn_runtime_match_operator"));
     assert!(llvm_ir.contains("call i64 @tn_runtime_load_binding"));
+}
+
+#[test]
+fn lower_mir_subset_emits_error_flow_runtime_helpers() {
+    let mir = MirProgram {
+        functions: vec![MirFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            entry_block: 0,
+            blocks: vec![MirBlock {
+                id: 0,
+                args: vec![],
+                instructions: vec![
+                    MirInstruction::ConstAtom {
+                        dest: 0,
+                        value: "ok".to_string(),
+                        offset: 10,
+                        value_type: MirType::Atom,
+                    },
+                    MirInstruction::Call {
+                        dest: 1,
+                        callee: IrCallTarget::Builtin {
+                            name: "ok".to_string(),
+                        },
+                        args: vec![0],
+                        offset: 11,
+                        value_type: MirType::Result,
+                    },
+                    MirInstruction::ConstAtom {
+                        dest: 2,
+                        value: "boom".to_string(),
+                        offset: 12,
+                        value_type: MirType::Atom,
+                    },
+                    MirInstruction::Call {
+                        dest: 3,
+                        callee: IrCallTarget::Builtin {
+                            name: "err".to_string(),
+                        },
+                        args: vec![2],
+                        offset: 13,
+                        value_type: MirType::Result,
+                    },
+                    MirInstruction::Question {
+                        dest: 4,
+                        input: 3,
+                        offset: 14,
+                        value_type: MirType::Dynamic,
+                    },
+                    MirInstruction::Unary {
+                        dest: 5,
+                        kind: MirUnaryKind::Raise,
+                        input: 2,
+                        offset: 15,
+                        value_type: MirType::Dynamic,
+                    },
+                    MirInstruction::Legacy {
+                        dest: Some(6),
+                        source: IrOp::Try {
+                            body_ops: vec![IrOp::ConstAtom {
+                                value: "boom".to_string(),
+                                offset: 16,
+                            }],
+                            rescue_branches: vec![IrCaseBranch {
+                                pattern: IrPattern::Atom {
+                                    value: "boom".to_string(),
+                                },
+                                guard_ops: None,
+                                ops: vec![IrOp::ConstAtom {
+                                    value: "rescued".to_string(),
+                                    offset: 17,
+                                }],
+                            }],
+                            catch_branches: vec![],
+                            after_ops: None,
+                            offset: 18,
+                        },
+                        offset: 18,
+                        value_type: Some(MirType::Dynamic),
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: 6,
+                    offset: 19,
+                },
+            }],
+        }],
+    };
+
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("error helpers should lower");
+
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_make_ok(i64)"));
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_make_err(i64)"));
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_question(i64)"));
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_raise(i64)"));
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_try(i64)"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_make_ok"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_make_err"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_question"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_raise"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_try"));
 }

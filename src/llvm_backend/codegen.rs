@@ -39,6 +39,11 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "declare i64 @tn_runtime_error_no_matching_clause()".to_string(),
         "declare i64 @tn_runtime_error_bad_match()".to_string(),
         "declare i64 @tn_runtime_error_arity_mismatch()".to_string(),
+        "declare i64 @tn_runtime_make_ok(i64)".to_string(),
+        "declare i64 @tn_runtime_make_err(i64)".to_string(),
+        "declare i64 @tn_runtime_question(i64)".to_string(),
+        "declare i64 @tn_runtime_raise(i64)".to_string(),
+        "declare i64 @tn_runtime_try(i64)".to_string(),
         "declare i64 @tn_runtime_const_atom(i64)".to_string(),
         "declare i64 @tn_runtime_load_binding(i64)".to_string(),
         "declare i64 @tn_runtime_match_operator(i64, i64)".to_string(),
@@ -501,6 +506,62 @@ fn emit_instructions(
                     ));
                 }
             }
+            MirInstruction::Unary {
+                dest,
+                kind,
+                input,
+                offset,
+                ..
+            } => match kind {
+                crate::mir::MirUnaryKind::Raise => {
+                    lines.push(format!(
+                        "  {} = call i64 @tn_runtime_raise(i64 {})",
+                        value_register(*dest),
+                        value_register(*input)
+                    ));
+                }
+                _ => {
+                    return Err(LlvmBackendError::unsupported_instruction(
+                        &function.name,
+                        instruction,
+                        *offset,
+                    ));
+                }
+            },
+            MirInstruction::Question { dest, input, .. } => {
+                lines.push(format!(
+                    "  {} = call i64 @tn_runtime_question(i64 {})",
+                    value_register(*dest),
+                    value_register(*input)
+                ));
+            }
+            MirInstruction::Legacy {
+                dest,
+                source,
+                offset,
+                ..
+            } => {
+                if let IrOp::Try { .. } = source {
+                    let try_hash = hash_ir_op_i64(source)?;
+                    let Some(dest) = dest else {
+                        return Err(LlvmBackendError::new(format!(
+                            "llvm backend missing legacy destination in function {} at offset {}",
+                            function.name, offset
+                        )));
+                    };
+
+                    lines.push(format!(
+                        "  {} = call i64 @tn_runtime_try(i64 {try_hash})",
+                        value_register(*dest)
+                    ));
+                } else {
+                    return Err(LlvmBackendError::unsupported_instruction(
+                        &function.name,
+                        instruction,
+                        *offset,
+                    ));
+                }
+            }
             MirInstruction::Binary {
                 dest,
                 kind,
@@ -682,6 +743,28 @@ fn emit_builtin_call_from_registers(
     lines: &mut Vec<String>,
 ) -> Result<(), LlvmBackendError> {
     match builtin {
+        "ok" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin ok arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_make_ok({})",
+                rendered_args[0]
+            ));
+        }
+        "err" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin err arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_make_err({})",
+                rendered_args[0]
+            ));
+        }
         "tuple" => {
             if rendered_args.len() != 2 {
                 return Err(LlvmBackendError::new(format!(
@@ -936,6 +1019,15 @@ fn hash_pattern_i64(pattern: &IrPattern) -> Result<i64, LlvmBackendError> {
     let serialized = serde_json::to_string(pattern).map_err(|error| {
         LlvmBackendError::new(format!(
             "llvm backend failed to serialize pattern hash input: {error}"
+        ))
+    })?;
+    Ok(hash_bytes_i64(serialized.as_bytes()))
+}
+
+fn hash_ir_op_i64(op: &IrOp) -> Result<i64, LlvmBackendError> {
+    let serialized = serde_json::to_string(op).map_err(|error| {
+        LlvmBackendError::new(format!(
+            "llvm backend failed to serialize ir op hash input: {error}"
         ))
     })?;
     Ok(hash_bytes_i64(serialized.as_bytes()))
