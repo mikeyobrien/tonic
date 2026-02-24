@@ -1,4 +1,4 @@
-use super::{collections, ops, NativeRuntimeError, NativeRuntimeErrorCode};
+use super::{collections, interop, ops, NativeRuntimeError, NativeRuntimeErrorCode};
 use crate::ir::CmpKind;
 use crate::native_abi::{
     invoke_runtime_boundary, AbiError, AbiErrorCode, TCallContext, TCallResult,
@@ -27,6 +27,35 @@ pub extern "C" fn tonic_rt_map_put(ctx: TCallContext) -> TCallResult {
         let (base, key, value) = expect_triple_args("tonic_rt_map_put", args)?;
         collections::map_put(base, key, value, 0).map_err(map_error)
     })
+}
+
+#[no_mangle]
+pub extern "C" fn tonic_rt_host_call(ctx: TCallContext) -> TCallResult {
+    invoke_runtime_boundary(&ctx, |args| {
+        interop::evaluate_host_call(args.to_vec(), 0).map_err(map_error)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tonic_rt_protocol_dispatch(ctx: TCallContext) -> TCallResult {
+    invoke_runtime_boundary(&ctx, |args| {
+        let value = expect_single_arg("tonic_rt_protocol_dispatch", args)?;
+        interop::evaluate_protocol_dispatch(value, 0).map_err(map_error)
+    })
+}
+
+fn expect_single_arg(helper: &str, args: &[RuntimeValue]) -> Result<RuntimeValue, AbiError> {
+    if args.len() != 1 {
+        return Err(AbiError::new(
+            AbiErrorCode::InvalidCallFrame,
+            format!(
+                "arity mismatch for native runtime helper {helper}: expected 1 args, found {}",
+                args.len()
+            ),
+        ));
+    }
+
+    Ok(args[0].clone())
 }
 
 fn expect_pair_args(

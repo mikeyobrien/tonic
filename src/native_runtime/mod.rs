@@ -1,11 +1,11 @@
 pub(crate) mod boundary;
 pub(crate) mod collections;
+pub(crate) mod interop;
 pub(crate) mod ops;
 pub(crate) mod pattern;
 #[cfg(test)]
 mod tests;
 
-use crate::interop::{HostError, HOST_REGISTRY};
 use crate::runtime::RuntimeValue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,9 +120,9 @@ pub(crate) fn evaluate_builtin_call(
         }
         "protocol_dispatch" => {
             let value = expect_single_builtin_arg(name, args, offset)?;
-            evaluate_protocol_dispatch(value, offset)
+            interop::evaluate_protocol_dispatch(value, offset)
         }
-        "host_call" => evaluate_host_call(args, offset),
+        "host_call" => interop::evaluate_host_call(args, offset),
         _ => Err(NativeRuntimeError::at_offset(
             NativeRuntimeErrorCode::UnsupportedBuiltin,
             format!("unsupported builtin call in runtime evaluator: {name}"),
@@ -147,63 +147,6 @@ pub(crate) fn runtime_value_kind(value: &RuntimeValue) -> &'static str {
         RuntimeValue::Range(_, _) => "range",
         RuntimeValue::Closure(_) => "function",
     }
-}
-
-const PROTOCOL_DISPATCH_TABLE: &[(&str, i64)] = &[("tuple", 1), ("map", 2)];
-
-fn evaluate_protocol_dispatch(
-    value: RuntimeValue,
-    offset: usize,
-) -> Result<RuntimeValue, NativeRuntimeError> {
-    let implementation = PROTOCOL_DISPATCH_TABLE
-        .iter()
-        .find_map(|(kind, implementation)| {
-            (runtime_value_kind(&value) == *kind).then_some(*implementation)
-        })
-        .ok_or_else(|| {
-            NativeRuntimeError::at_offset(
-                NativeRuntimeErrorCode::BadArg,
-                format!(
-                    "protocol_dispatch has no implementation for {}",
-                    runtime_value_kind(&value)
-                ),
-                offset,
-            )
-        })?;
-
-    Ok(RuntimeValue::Int(implementation))
-}
-
-fn evaluate_host_call(
-    mut args: Vec<RuntimeValue>,
-    offset: usize,
-) -> Result<RuntimeValue, NativeRuntimeError> {
-    if args.is_empty() {
-        return Err(NativeRuntimeError::at_offset(
-            NativeRuntimeErrorCode::ArityMismatch,
-            "host_call requires at least 1 argument (host function key)",
-            offset,
-        ));
-    }
-
-    let key = args.remove(0);
-    let key_str = match key {
-        RuntimeValue::Atom(s) => s,
-        other => {
-            return Err(NativeRuntimeError::at_offset(
-                NativeRuntimeErrorCode::BadArg,
-                format!(
-                    "host_call first argument must be an atom (host key), found {}",
-                    runtime_value_kind(&other)
-                ),
-                offset,
-            ));
-        }
-    };
-
-    HOST_REGISTRY.call(&key_str, &args).map_err(|e: HostError| {
-        NativeRuntimeError::at_offset(NativeRuntimeErrorCode::BadArg, e.to_string(), offset)
-    })
 }
 
 fn expect_single_builtin_arg(

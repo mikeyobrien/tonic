@@ -580,3 +580,69 @@ fn lower_mir_subset_emits_closure_runtime_helpers() {
     assert!(llvm_ir.contains("i64 1, i64 1)"));
     assert!(llvm_ir.contains("call i64 (i64, i64, ...) @tn_runtime_call_closure"));
 }
+
+#[test]
+fn lower_mir_subset_emits_host_interop_runtime_helpers() {
+    let mir = MirProgram {
+        functions: vec![MirFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            entry_block: 0,
+            blocks: vec![MirBlock {
+                id: 0,
+                args: vec![],
+                instructions: vec![
+                    MirInstruction::ConstAtom {
+                        dest: 0,
+                        value: "sum_ints".to_string(),
+                        offset: 10,
+                        value_type: MirType::Atom,
+                    },
+                    MirInstruction::ConstInt {
+                        dest: 1,
+                        value: 20,
+                        offset: 11,
+                        value_type: MirType::Int,
+                    },
+                    MirInstruction::ConstInt {
+                        dest: 2,
+                        value: 22,
+                        offset: 12,
+                        value_type: MirType::Int,
+                    },
+                    MirInstruction::Call {
+                        dest: 3,
+                        callee: IrCallTarget::Builtin {
+                            name: "host_call".to_string(),
+                        },
+                        args: vec![0, 1, 2],
+                        offset: 13,
+                        value_type: MirType::Dynamic,
+                    },
+                    MirInstruction::Call {
+                        dest: 4,
+                        callee: IrCallTarget::Builtin {
+                            name: "protocol_dispatch".to_string(),
+                        },
+                        args: vec![3],
+                        offset: 14,
+                        value_type: MirType::Dynamic,
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: 4,
+                    offset: 15,
+                },
+            }],
+        }],
+    };
+
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("host interop helpers should lower");
+
+    assert!(llvm_ir.contains("declare i64 (i64, ...) @tn_runtime_host_call"));
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_protocol_dispatch(i64)"));
+    assert!(llvm_ir.contains("call i64 (i64, ...) @tn_runtime_host_call"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_protocol_dispatch"));
+}

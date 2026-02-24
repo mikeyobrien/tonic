@@ -58,6 +58,8 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "declare i64 @tn_runtime_map_access(i64, i64)".to_string(),
         "declare i64 @tn_runtime_make_keyword(i64, i64)".to_string(),
         "declare i64 @tn_runtime_keyword_append(i64, i64, i64)".to_string(),
+        "declare i64 (i64, ...) @tn_runtime_host_call".to_string(),
+        "declare i64 @tn_runtime_protocol_dispatch(i64)".to_string(),
         "declare i64 @tn_runtime_concat(i64, i64)".to_string(),
         "declare i64 @tn_runtime_in(i64, i64)".to_string(),
         "declare i64 @tn_runtime_list_concat(i64, i64)".to_string(),
@@ -887,6 +889,30 @@ fn emit_builtin_call_from_registers(
             lines.push(format!(
                 "  {dest} = call i64 @tn_runtime_keyword_append({}, {}, {})",
                 rendered_args[0], rendered_args[1], rendered_args[2]
+            ));
+        }
+        "host_call" => {
+            if rendered_args.is_empty() {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin host_call arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            let mut call_args = vec![format!("i64 {}", rendered_args.len())];
+            call_args.extend(rendered_args);
+            lines.push(format!(
+                "  {dest} = call i64 (i64, ...) @tn_runtime_host_call({})",
+                call_args.join(", ")
+            ));
+        }
+        "protocol_dispatch" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin protocol_dispatch arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_protocol_dispatch({})",
+                rendered_args[0]
             ));
         }
         other => {

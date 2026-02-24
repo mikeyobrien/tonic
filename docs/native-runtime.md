@@ -13,6 +13,8 @@ current interpreter behavior.
   - constructors and mutation helpers for tuple/list/map/keyword values
 - `src/native_runtime/pattern.rs`
   - `match_pattern` and `select_case_branch` for `case`/match primitive checks
+- `src/native_runtime/interop.rs`
+  - host interop adapter helpers (`host_call`, `protocol_dispatch`) and ABI version constant
 - `src/native_runtime/boundary.rs`
   - ABI-callable exported helper entrypoints
 
@@ -29,8 +31,10 @@ Exported symbols:
 - `tonic_rt_add_int`
 - `tonic_rt_cmp_int_eq`
 - `tonic_rt_map_put`
+- `tonic_rt_host_call`
+- `tonic_rt_protocol_dispatch`
 
-All three route through `native_abi::invoke_runtime_boundary`, so they inherit:
+All entrypoints route through `native_abi::invoke_runtime_boundary`, so they inherit:
 
 - ABI version checking
 - `TValue` decoding/validation
@@ -52,3 +56,18 @@ LLVM lowering now reserves runtime helper symbols for closure semantics:
 
 These symbols preserve deterministic compile-time contracts for anonymous function creation,
 lexical capture metadata, and function-value invocation in the native backend.
+
+## LLVM host interop helper contract (Task 10)
+
+LLVM lowering now reserves host interop helper symbols for native backend calls:
+
+- `tn_runtime_host_call(i64 argc, ...)`
+- `tn_runtime_protocol_dispatch(i64 value)`
+
+`host_call` preserves existing atom-key validation and deterministic host-registry error
+messages through the runtime interop adapter. `protocol_dispatch` preserves tuple/map
+implementation mapping behavior used by interpreter mode.
+
+Host interop ABI policy constant:
+
+- `TONIC_HOST_INTEROP_ABI_VERSION = 1`

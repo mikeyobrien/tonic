@@ -63,6 +63,20 @@ v1 uses deterministic handle-based reference counting:
 - catches panics (`catch_unwind`) and returns `Panic` status instead of unwinding across boundary
 - maps helper/runtime ABI failures to deterministic `Err` result
 
+## Host interop ABI policy (Task 10)
+
+Host interop introduces a separate compatibility marker for host-function contracts:
+
+- `TONIC_HOST_INTEROP_ABI_VERSION = 1`
+
+Boundary entrypoints for host interop continue to use the same core call ABI:
+
+- `tonic_rt_host_call: extern "C" fn(TCallContext) -> TCallResult`
+- `tonic_rt_protocol_dispatch: extern "C" fn(TCallContext) -> TCallResult`
+
+Errors from unknown host functions, key-type mismatch, and arity mismatch are returned as
+`TCallStatus::Err` with deterministic string payloads in `TCallResult.error`.
+
 ## Conversion helpers
 
 - `runtime_to_tvalue(RuntimeValue) -> Result<TValue, AbiError>`

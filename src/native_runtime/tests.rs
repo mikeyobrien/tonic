@@ -1,11 +1,19 @@
 use super::{
-    boundary::{tonic_rt_add_int, tonic_rt_cmp_int_eq, tonic_rt_map_put},
-    collections, evaluate_builtin_call, ops, pattern,
+    boundary::{
+        tonic_rt_add_int, tonic_rt_cmp_int_eq, tonic_rt_host_call, tonic_rt_map_put,
+        tonic_rt_protocol_dispatch,
+    },
+    collections, evaluate_builtin_call, interop, ops, pattern,
 };
 use crate::ir::{CmpKind, IrMapPatternEntry, IrPattern};
 use crate::native_abi::{runtime_to_tvalue, tvalue_to_runtime, TCallContext, TCallStatus};
 use crate::runtime::RuntimeValue;
 use std::collections::HashMap;
+
+#[test]
+fn host_interop_abi_version_is_v1() {
+    assert_eq!(interop::TONIC_HOST_INTEROP_ABI_VERSION, 1);
+}
 
 #[test]
 fn ops_cover_numeric_logical_and_comparisons() {
@@ -199,6 +207,10 @@ fn boundary_entrypoints_are_callable_via_abi() {
         tonic_rt_cmp_int_eq;
     let _map_put_sig: extern "C" fn(TCallContext) -> crate::native_abi::TCallResult =
         tonic_rt_map_put;
+    let _host_call_sig: extern "C" fn(TCallContext) -> crate::native_abi::TCallResult =
+        tonic_rt_host_call;
+    let _protocol_dispatch_sig: extern "C" fn(TCallContext) -> crate::native_abi::TCallResult =
+        tonic_rt_protocol_dispatch;
 
     let add_args = [
         runtime_to_tvalue(RuntimeValue::Int(20)).expect("encode arg"),
@@ -238,5 +250,40 @@ fn boundary_entrypoints_are_callable_via_abi() {
             .expect("decode map result")
             .render(),
         "%{:name => 2}"
+    );
+
+    let host_args = [
+        runtime_to_tvalue(RuntimeValue::Atom("sum_ints".to_string())).expect("encode host key"),
+        runtime_to_tvalue(RuntimeValue::Int(20)).expect("encode host arg"),
+        runtime_to_tvalue(RuntimeValue::Int(22)).expect("encode host arg"),
+    ];
+    let host_result = tonic_rt_host_call(TCallContext::from_slice(&host_args));
+    assert_eq!(host_result.status, TCallStatus::Ok);
+    assert_eq!(
+        tvalue_to_runtime(host_result.value).expect("decode host result"),
+        RuntimeValue::Int(42)
+    );
+
+    let protocol_args = [runtime_to_tvalue(RuntimeValue::Tuple(
+        Box::new(RuntimeValue::Int(1)),
+        Box::new(RuntimeValue::Int(2)),
+    ))
+    .expect("encode protocol value")];
+    let protocol_result = tonic_rt_protocol_dispatch(TCallContext::from_slice(&protocol_args));
+    assert_eq!(protocol_result.status, TCallStatus::Ok);
+    assert_eq!(
+        tvalue_to_runtime(protocol_result.value).expect("decode protocol result"),
+        RuntimeValue::Int(1)
+    );
+
+    let unknown_host_args =
+        [runtime_to_tvalue(RuntimeValue::Atom("missing".to_string())).expect("encode host key")];
+    let unknown_host_result = tonic_rt_host_call(TCallContext::from_slice(&unknown_host_args));
+    assert_eq!(unknown_host_result.status, TCallStatus::Err);
+    assert_eq!(
+        tvalue_to_runtime(unknown_host_result.error)
+            .expect("decode host error")
+            .render(),
+        "\"host error: unknown host function: missing at offset 0\""
     );
 }

@@ -1,6 +1,8 @@
 ---
-status: pending
-HEARTBEAT_TASK_STATUS: todo
+status: completed
+HEARTBEAT_TASK_STATUS: done
+started: 2026-02-24
+completed: 2026-02-24
 ---
 
 # Task: Define and Implement Host Interop ABI for Native Backend
