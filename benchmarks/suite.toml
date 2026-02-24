@@ -1,0 +1,17 @@
+[[workload]]
+name = "check_parity_for_multi"
+command = ["check", "examples/parity/06-control-flow/for_multi_generator.tn"]
+threshold_p50_ms = 100
+threshold_p95_ms = 200
+
+[[workload]]
+name = "run_parity_try_rescue"
+command = ["run", "examples/parity/08-errors/try_rescue_success.tn"]
+threshold_p50_ms = 100
+threshold_p95_ms = 200
+
+[[workload]]
+name = "run_project_multifile"
+command = ["run", "examples/parity/07-modules/project_multifile_pipeline"]
+threshold_p50_ms = 150
+threshold_p95_ms = 300
