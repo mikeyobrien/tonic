@@ -13,6 +13,21 @@ This test target runs two suites:
 1. **Parity subset differential** over curated active fixtures from `examples/parity/catalog.toml`.
 2. **Seeded generator differential** over deterministic generated programs.
 
+## LLVM catalog parity gate (enforced)
+
+Run the full catalog parity harness in enforce mode:
+
+```bash
+./scripts/llvm-catalog-parity-enforce.sh
+```
+
+This command fails non-zero on any compile/runtime mismatch and writes reports to:
+
+- `.tonic/parity/llvm-catalog-parity.json`
+- `.tonic/parity/llvm-catalog-parity.md`
+
+CI runs the same script in `native-gates` and uploads `.tonic/parity/` for triage.
+
 ## Reproducible fuzz seeds
 
 Run a single seed:

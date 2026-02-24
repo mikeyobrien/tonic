@@ -20,6 +20,9 @@ cargo test
 printf '%s\n' '[native-gates] scripts/differential-enforce.sh'
 ./scripts/differential-enforce.sh
 
+printf '%s\n' '[native-gates] scripts/llvm-catalog-parity-enforce.sh'
+./scripts/llvm-catalog-parity-enforce.sh
+
 printf '%s\n' '[native-gates] scripts/bench-native-contract-enforce.sh'
 TONIC_BENCH_JSON_OUT="$summary_json" \
 TONIC_BENCH_MARKDOWN_OUT="$summary_md" \
