@@ -12,8 +12,54 @@ fn compile_help_lists_usage() {
         .assert()
         .success()
         .stdout(contains(
-            "tonic compile <path> [--backend <interp|llvm>] [--emit <ir|llvm-ir|object|executable>] [--out <artifact-path>|--dump-mir]",
+            "tonic compile <path> [--backend <interp|llvm>] [--out <artifact-path>|--dump-mir]",
         ));
+}
+
+#[test]
+fn compile_emit_flag_fails_with_usage_error() {
+    let temp_dir = common::unique_temp_dir("compile-emit-rejected");
+    let source_path = temp_dir.join("hello.tn");
+    fs::write(
+        &source_path,
+        "defmodule Hello do\n  def run() do\n    1\n  end\nend\n",
+    )
+    .unwrap();
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
+    cmd.current_dir(&temp_dir);
+
+    // --emit is not part of the compile CLI contract; any value must fail
+    cmd.arg("compile")
+        .arg("hello.tn")
+        .arg("--emit")
+        .arg("executable")
+        .assert()
+        .failure()
+        .stderr(contains("error: unexpected argument '--emit'"));
+}
+
+#[test]
+fn compile_emit_any_value_fails_with_usage_error() {
+    let temp_dir = common::unique_temp_dir("compile-emit-any-value");
+    let source_path = temp_dir.join("hello.tn");
+    fs::write(
+        &source_path,
+        "defmodule Hello do\n  def run() do\n    1\n  end\nend\n",
+    )
+    .unwrap();
+
+    for emit_value in &["ir", "llvm-ir", "object", "executable"] {
+        let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
+        cmd.current_dir(&temp_dir);
+        cmd.arg("compile")
+            .arg("hello.tn")
+            .arg("--emit")
+            .arg(emit_value)
+            .assert()
+            .failure()
+            .stderr(contains("error: unexpected argument '--emit'"));
+    }
 }
 
 #[test]

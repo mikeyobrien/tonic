@@ -49,63 +49,6 @@ impl CompileBackend {
             _ => None,
         }
     }
-
-    fn default_emit(self) -> CompileEmit {
-        match self {
-            Self::Interp => CompileEmit::Ir,
-            Self::Llvm => CompileEmit::Object,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Interp => "interp",
-            Self::Llvm => "llvm",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CompileEmit {
-    Ir,
-    LlvmIr,
-    Object,
-    Executable,
-}
-
-impl CompileEmit {
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "ir" => Some(Self::Ir),
-            "llvm-ir" => Some(Self::LlvmIr),
-            "object" => Some(Self::Object),
-            "executable" => Some(Self::Executable),
-            _ => None,
-        }
-    }
-
-    fn validate_for_backend(self, backend: CompileBackend) -> Result<(), String> {
-        match (backend, self) {
-            (CompileBackend::Interp, CompileEmit::Ir)
-            | (CompileBackend::Llvm, CompileEmit::LlvmIr)
-            | (CompileBackend::Llvm, CompileEmit::Object)
-            | (CompileBackend::Llvm, CompileEmit::Executable) => Ok(()),
-            _ => Err(format!(
-                "emit mode '{}' is not supported for backend '{}'",
-                self.as_str(),
-                backend.as_str()
-            )),
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Ir => "ir",
-            Self::LlvmIr => "llvm-ir",
-            Self::Object => "object",
-            Self::Executable => "executable",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -558,7 +501,6 @@ fn handle_compile(args: Vec<String>) -> i32 {
 
     let source_path = args[0].clone();
     let mut backend = CompileBackend::Interp;
-    let mut emit_mode = None;
     let mut out_path = None;
     let mut dump_mir = false;
     let mut idx = 1;
@@ -578,21 +520,6 @@ fn handle_compile(args: Vec<String>) -> i32 {
                 };
 
                 backend = parsed_backend;
-                idx += 1;
-            }
-            "--emit" => {
-                idx += 1;
-                if idx >= args.len() {
-                    return CliDiagnostic::usage("--emit requires a value").emit();
-                }
-
-                let candidate = &args[idx];
-                let Some(parsed_emit_mode) = CompileEmit::parse(candidate) else {
-                    return CliDiagnostic::usage(format!("unsupported emit mode '{candidate}'"))
-                        .emit();
-                };
-
-                emit_mode = Some(parsed_emit_mode);
                 idx += 1;
             }
             "--out" => {
@@ -615,15 +542,6 @@ fn handle_compile(args: Vec<String>) -> i32 {
 
     if dump_mir && out_path.is_some() {
         return CliDiagnostic::usage("--out cannot be used with --dump-mir").emit();
-    }
-
-    if dump_mir && emit_mode.is_some() {
-        return CliDiagnostic::usage("--emit cannot be used with --dump-mir").emit();
-    }
-
-    let emit_mode = emit_mode.unwrap_or_else(|| backend.default_emit());
-    if let Err(message) = emit_mode.validate_for_backend(backend) {
-        return CliDiagnostic::usage(message).emit();
     }
 
     let mut profiler = profiling::PhaseProfiler::from_env("compile");
@@ -723,123 +641,63 @@ fn handle_compile(args: Vec<String>) -> i32 {
                 };
 
             let artifact_base = llvm_artifact_base_path(out_path, &artifact_stem);
+            let ll_path = artifact_base.with_extension("ll");
+            let object_path = artifact_base.with_extension("o");
+            let ir_path = artifact_base.with_extension("tir.json");
+            let manifest_path = artifact_base.with_extension("tnx.json");
 
-            match emit_mode {
-                CompileEmit::LlvmIr => {
-                    let ll_path = artifact_base.with_extension("ll");
-                    if let Err(message) = ensure_artifact_parent(&ll_path) {
-                        return CliDiagnostic::failure(message).emit();
-                    }
-
-                    if let Err(error) =
-                        profiling::profile_phase(&mut profiler, "backend.write_llvm_ir", || {
-                            crate::cache::write_atomic(&ll_path, &llvm_ir)
-                        })
-                    {
-                        return CliDiagnostic::failure(format!(
-                            "failed to write llvm ir artifact to {}: {}",
-                            ll_path.display(),
-                            error
-                        ))
-                        .emit();
-                    }
-
-                    println!("compile: ok {}", ll_path.display());
-                    EXIT_OK
-                }
-                CompileEmit::Object => {
-                    let ll_path = artifact_base.with_extension("ll");
-                    let object_path = artifact_base.with_extension("o");
-
-                    if let Err(message) = ensure_artifact_parent(&ll_path) {
-                        return CliDiagnostic::failure(message).emit();
-                    }
-
-                    if let Err(message) = ensure_artifact_parent(&object_path) {
-                        return CliDiagnostic::failure(message).emit();
-                    }
-
-                    if let Err(error) =
-                        profiling::profile_phase(&mut profiler, "backend.write_object", || {
-                            llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
-                        })
-                    {
-                        return CliDiagnostic::failure(error.to_string()).emit();
-                    }
-
-                    println!(
-                        "compile: ok {} {}",
-                        ll_path.display(),
-                        object_path.display()
-                    );
-                    EXIT_OK
-                }
-                CompileEmit::Executable => {
-                    let ll_path = artifact_base.with_extension("ll");
-                    let object_path = artifact_base.with_extension("o");
-                    let ir_path = artifact_base.with_extension("tir.json");
-                    let manifest_path = artifact_base.with_extension("tnx.json");
-
-                    for path in [&ll_path, &object_path, &ir_path, &manifest_path] {
-                        if let Err(message) = ensure_artifact_parent(path) {
-                            return CliDiagnostic::failure(message).emit();
-                        }
-                    }
-
-                    if let Err(error) =
-                        profiling::profile_phase(&mut profiler, "backend.write_object", || {
-                            llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
-                        })
-                    {
-                        return CliDiagnostic::failure(error.to_string()).emit();
-                    }
-
-                    let serialized_ir = match serde_json::to_string(&ir) {
-                        Ok(s) => s,
-                        Err(error) => {
-                            return CliDiagnostic::failure(format!(
-                                "failed to serialize compile artifact: {error}"
-                            ))
-                            .emit();
-                        }
-                    };
-
-                    if let Err(error) =
-                        profiling::profile_phase(&mut profiler, "backend.write_ir", || {
-                            crate::cache::write_atomic(&ir_path, &serialized_ir)
-                        })
-                    {
-                        return CliDiagnostic::failure(format!(
-                            "failed to write compile artifact to {}: {}",
-                            ir_path.display(),
-                            error
-                        ))
-                        .emit();
-                    }
-
-                    let manifest = native_artifact::build_executable_manifest(
-                        &source,
-                        &manifest_path,
-                        &ll_path,
-                        &object_path,
-                        &ir_path,
-                    );
-                    if let Err(error) =
-                        profiling::profile_phase(&mut profiler, "backend.write_manifest", || {
-                            native_artifact::write_manifest(&manifest_path, &manifest)
-                        })
-                    {
-                        return CliDiagnostic::failure(error).emit();
-                    }
-
-                    println!("compile: ok {}", manifest_path.display());
-                    EXIT_OK
-                }
-                CompileEmit::Ir => {
-                    CliDiagnostic::usage("emit mode 'ir' is not supported for backend 'llvm'")
-                        .emit()
+            for path in [&ll_path, &object_path, &ir_path, &manifest_path] {
+                if let Err(message) = ensure_artifact_parent(path) {
+                    return CliDiagnostic::failure(message).emit();
                 }
             }
+
+            if let Err(error) =
+                profiling::profile_phase(&mut profiler, "backend.write_object", || {
+                    llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
+                })
+            {
+                return CliDiagnostic::failure(error.to_string()).emit();
+            }
+
+            let serialized_ir = match serde_json::to_string(&ir) {
+                Ok(s) => s,
+                Err(error) => {
+                    return CliDiagnostic::failure(format!(
+                        "failed to serialize compile artifact: {error}"
+                    ))
+                    .emit();
+                }
+            };
+
+            if let Err(error) = profiling::profile_phase(&mut profiler, "backend.write_ir", || {
+                crate::cache::write_atomic(&ir_path, &serialized_ir)
+            }) {
+                return CliDiagnostic::failure(format!(
+                    "failed to write compile artifact to {}: {}",
+                    ir_path.display(),
+                    error
+                ))
+                .emit();
+            }
+
+            let manifest = native_artifact::build_executable_manifest(
+                &source,
+                &manifest_path,
+                &ll_path,
+                &object_path,
+                &ir_path,
+            );
+            if let Err(error) =
+                profiling::profile_phase(&mut profiler, "backend.write_manifest", || {
+                    native_artifact::write_manifest(&manifest_path, &manifest)
+                })
+            {
+                return CliDiagnostic::failure(error).emit();
+            }
+
+            println!("compile: ok {}", manifest_path.display());
+            EXIT_OK
         }
     }
 }
@@ -1217,7 +1075,7 @@ fn benchmark_thresholds_report() -> serde_json::Value {
 
 fn print_help() {
     println!(
-        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  compile  Compile source to IR artifact\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n"
+        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  compile  Compile source to executable artifact\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n"
     );
 }
 
@@ -1239,7 +1097,7 @@ fn print_fmt_help() {
 
 fn print_compile_help() {
     println!(
-        "Usage:\n  tonic compile <path> [--backend <interp|llvm>] [--emit <ir|llvm-ir|object|executable>] [--out <artifact-path>|--dump-mir]\n"
+        "Usage:\n  tonic compile <path> [--backend <interp|llvm>] [--out <artifact-path>|--dump-mir]\n"
     );
 }
 

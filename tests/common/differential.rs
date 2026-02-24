@@ -179,8 +179,6 @@ fn run_native_path(tonic_bin: &Path, cwd: &Path, fixture: &str) -> Result<Comman
             fixture.to_string(),
             "--backend".to_string(),
             "llvm".to_string(),
-            "--emit".to_string(),
-            "executable".to_string(),
         ],
         "compile",
     )?;

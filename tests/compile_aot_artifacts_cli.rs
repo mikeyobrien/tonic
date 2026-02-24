@@ -16,14 +16,7 @@ fn compile_llvm_emit_executable_writes_manifest_and_native_artifacts() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args([
-            "compile",
-            "native.tn",
-            "--backend",
-            "llvm",
-            "--emit",
-            "executable",
-        ])
+        .args(["compile", "native.tn", "--backend", "llvm"])
         .output()
         .expect("compile command should execute");
 
@@ -83,14 +76,7 @@ fn run_executes_native_artifact_manifest_with_interpreter_compatible_output() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args([
-            "compile",
-            "native_run.tn",
-            "--backend",
-            "llvm",
-            "--emit",
-            "executable",
-        ])
+        .args(["compile", "native_run.tn", "--backend", "llvm"])
         .assert()
         .success();
 
@@ -104,8 +90,8 @@ fn run_executes_native_artifact_manifest_with_interpreter_compatible_output() {
 }
 
 #[test]
-fn compile_rejects_unknown_emit_mode() {
-    let temp_dir = common::unique_temp_dir("compile-unknown-emit");
+fn compile_rejects_emit_flag_as_unexpected_argument() {
+    let temp_dir = common::unique_temp_dir("compile-emit-unexpected");
     let source_path = temp_dir.join("emit.tn");
     fs::write(
         &source_path,
@@ -113,12 +99,13 @@ fn compile_rejects_unknown_emit_mode() {
     )
     .unwrap();
 
+    // --emit is no longer part of the compile CLI contract; any value must fail
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "emit.tn", "--emit", "nope"])
+        .args(["compile", "emit.tn", "--emit", "executable"])
         .assert()
         .failure()
-        .stderr(contains("error: unsupported emit mode 'nope'"));
+        .stderr(contains("error: unexpected argument '--emit'"));
 }
 
 #[test]
@@ -133,14 +120,7 @@ fn run_native_artifact_rejects_target_mismatch_with_deterministic_diagnostic() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args([
-            "compile",
-            "native_target.tn",
-            "--backend",
-            "llvm",
-            "--emit",
-            "executable",
-        ])
+        .args(["compile", "native_target.tn", "--backend", "llvm"])
         .assert()
         .success();
 

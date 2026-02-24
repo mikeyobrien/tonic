@@ -4,7 +4,7 @@ use std::fs;
 mod common;
 
 #[test]
-fn compile_llvm_backend_emits_ll_and_object_artifacts_for_subset_program() {
+fn compile_llvm_backend_emits_executable_artifact_for_subset_program() {
     let temp_dir = common::unique_temp_dir("compile-llvm-subset");
     let source_path = temp_dir.join("math.tn");
     fs::write(
@@ -27,8 +27,7 @@ fn compile_llvm_backend_emits_ll_and_object_artifacts_for_subset_program() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(stdout.contains("compile: ok"));
-    assert!(stdout.contains(".tonic/build/math.ll"));
-    assert!(stdout.contains(".tonic/build/math.o"));
+    assert!(stdout.contains(".tonic/build/math.tnx.json"));
 
     let ll_path = temp_dir.join(".tonic/build/math.ll");
     let object_path = temp_dir.join(".tonic/build/math.o");
