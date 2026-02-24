@@ -1,9 +1,9 @@
+mod codegen;
 #[cfg(test)]
 mod tests;
 
-use crate::ir::IrCallTarget;
-use crate::mir::{MirBinaryKind, MirInstruction, MirProgram, MirTerminator};
-use std::collections::BTreeMap;
+use crate::ir::{IrOp, IrPattern};
+use crate::mir::{MirInstruction, MirProgram};
 use std::fmt;
 
 pub(crate) const LLVM_COMPATIBILITY_VERSION: &str = "18.1.8";
@@ -14,13 +14,13 @@ pub(crate) struct LlvmBackendError {
 }
 
 impl LlvmBackendError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
         }
     }
 
-    fn unsupported_instruction(
+    pub(crate) fn unsupported_instruction(
         function: &str,
         instruction: &MirInstruction,
         offset: usize,
@@ -31,10 +31,17 @@ impl LlvmBackendError {
         ))
     }
 
-    fn unsupported_terminator(function: &str, terminator: &MirTerminator, offset: usize) -> Self {
-        let kind = terminator_name(terminator);
+    pub(crate) fn unsupported_pattern(function: &str, pattern: &IrPattern, offset: usize) -> Self {
+        let kind = pattern_name(pattern);
         Self::new(format!(
-            "llvm backend unsupported terminator {kind} in function {function} at offset {offset}"
+            "llvm backend unsupported pattern {kind} in function {function} at offset {offset}"
+        ))
+    }
+
+    pub(crate) fn unsupported_guard_op(function: &str, op: &IrOp, offset: usize) -> Self {
+        let op_name = ir_op_name(op);
+        Self::new(format!(
+            "llvm backend unsupported guard op {op_name} in function {function} at offset {offset}"
         ))
     }
 }
@@ -48,230 +55,7 @@ impl fmt::Display for LlvmBackendError {
 impl std::error::Error for LlvmBackendError {}
 
 pub(crate) fn lower_mir_subset_to_llvm_ir(mir: &MirProgram) -> Result<String, LlvmBackendError> {
-    let mut symbols = BTreeMap::new();
-    for function in &mir.functions {
-        symbols.insert(function.name.clone(), mangle_function_name(&function.name));
-    }
-
-    let mut lines = vec![
-        "; tonic llvm backend mvp".to_string(),
-        format!("; llvm_compatibility={LLVM_COMPATIBILITY_VERSION}"),
-        "target triple = \"x86_64-unknown-linux-gnu\"".to_string(),
-        String::new(),
-    ];
-
-    for function in &mir.functions {
-        let symbol = symbols
-            .get(&function.name)
-            .expect("symbol table should include all function names");
-
-        let params = function
-            .params
-            .iter()
-            .enumerate()
-            .map(|(index, _)| format!("i64 %arg{index}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        lines.push(format!("define i64 @{symbol}({params}) {{"));
-
-        let Some(block) = function
-            .blocks
-            .iter()
-            .find(|block| block.id == function.entry_block)
-        else {
-            return Err(LlvmBackendError::new(format!(
-                "llvm backend missing entry block {} in function {}",
-                function.entry_block, function.name
-            )));
-        };
-
-        if !block.args.is_empty() {
-            return Err(LlvmBackendError::unsupported_terminator(
-                &function.name,
-                &block.terminator,
-                terminator_offset(&block.terminator),
-            ));
-        }
-
-        lines.push("entry:".to_string());
-
-        let mut values = BTreeMap::<u32, String>::new();
-
-        for instruction in &block.instructions {
-            match instruction {
-                MirInstruction::ConstInt { dest, value, .. } => {
-                    let name = value_register(*dest);
-                    lines.push(format!("  {name} = add i64 0, {value}"));
-                    values.insert(*dest, name);
-                }
-                MirInstruction::ConstBool { dest, value, .. } => {
-                    let encoded = i64::from(*value);
-                    let name = value_register(*dest);
-                    lines.push(format!("  {name} = add i64 0, {encoded}"));
-                    values.insert(*dest, name);
-                }
-                MirInstruction::LoadVariable {
-                    dest, name, offset, ..
-                } => {
-                    let Some(param_index) =
-                        function.params.iter().position(|param| &param.name == name)
-                    else {
-                        return Err(LlvmBackendError::new(format!(
-                            "llvm backend unsupported load_variable {name} in function {} at offset {offset}",
-                            function.name
-                        )));
-                    };
-
-                    values.insert(*dest, format!("%arg{param_index}"));
-                }
-                MirInstruction::Binary {
-                    dest,
-                    kind,
-                    left,
-                    right,
-                    offset,
-                    ..
-                } => {
-                    let Some(left_operand) = values.get(left) else {
-                        return Err(LlvmBackendError::new(format!(
-                            "llvm backend missing lhs value %{left} in function {} at offset {offset}",
-                            function.name
-                        )));
-                    };
-                    let Some(right_operand) = values.get(right) else {
-                        return Err(LlvmBackendError::new(format!(
-                            "llvm backend missing rhs value %{right} in function {} at offset {offset}",
-                            function.name
-                        )));
-                    };
-
-                    match kind {
-                        MirBinaryKind::AddInt
-                        | MirBinaryKind::SubInt
-                        | MirBinaryKind::MulInt
-                        | MirBinaryKind::DivInt => {
-                            let op = match kind {
-                                MirBinaryKind::AddInt => "add",
-                                MirBinaryKind::SubInt => "sub",
-                                MirBinaryKind::MulInt => "mul",
-                                MirBinaryKind::DivInt => "sdiv",
-                                _ => unreachable!(),
-                            };
-
-                            let name = value_register(*dest);
-                            lines.push(format!(
-                                "  {name} = {op} i64 {left_operand}, {right_operand}"
-                            ));
-                            values.insert(*dest, name);
-                        }
-                        MirBinaryKind::CmpIntEq
-                        | MirBinaryKind::CmpIntNotEq
-                        | MirBinaryKind::CmpIntLt
-                        | MirBinaryKind::CmpIntLte
-                        | MirBinaryKind::CmpIntGt
-                        | MirBinaryKind::CmpIntGte => {
-                            let predicate = match kind {
-                                MirBinaryKind::CmpIntEq => "eq",
-                                MirBinaryKind::CmpIntNotEq => "ne",
-                                MirBinaryKind::CmpIntLt => "slt",
-                                MirBinaryKind::CmpIntLte => "sle",
-                                MirBinaryKind::CmpIntGt => "sgt",
-                                MirBinaryKind::CmpIntGte => "sge",
-                                _ => unreachable!(),
-                            };
-
-                            let cmp_name = format!("%cmp_{dest}");
-                            let value_name = value_register(*dest);
-                            lines.push(format!(
-                                "  {cmp_name} = icmp {predicate} i64 {left_operand}, {right_operand}"
-                            ));
-                            lines.push(format!("  {value_name} = zext i1 {cmp_name} to i64"));
-                            values.insert(*dest, value_name);
-                        }
-                        _ => {
-                            return Err(LlvmBackendError::unsupported_instruction(
-                                &function.name,
-                                instruction,
-                                *offset,
-                            ));
-                        }
-                    }
-                }
-                MirInstruction::Call {
-                    dest,
-                    callee,
-                    args,
-                    offset,
-                    ..
-                } => {
-                    let IrCallTarget::Function { name } = callee else {
-                        return Err(LlvmBackendError::unsupported_instruction(
-                            &function.name,
-                            instruction,
-                            *offset,
-                        ));
-                    };
-
-                    let Some(callee_symbol) = symbols.get(name) else {
-                        return Err(LlvmBackendError::new(format!(
-                            "llvm backend unknown function call target {name} in function {} at offset {offset}",
-                            function.name
-                        )));
-                    };
-
-                    let mut rendered_args = Vec::with_capacity(args.len());
-                    for arg in args {
-                        let Some(operand) = values.get(arg) else {
-                            return Err(LlvmBackendError::new(format!(
-                                "llvm backend missing call argument %{arg} in function {} at offset {offset}",
-                                function.name
-                            )));
-                        };
-                        rendered_args.push(format!("i64 {operand}"));
-                    }
-
-                    let name = value_register(*dest);
-                    lines.push(format!(
-                        "  {name} = call i64 @{callee_symbol}({})",
-                        rendered_args.join(", ")
-                    ));
-                    values.insert(*dest, name);
-                }
-                _ => {
-                    return Err(LlvmBackendError::unsupported_instruction(
-                        &function.name,
-                        instruction,
-                        instruction_offset(instruction),
-                    ));
-                }
-            }
-        }
-
-        match &block.terminator {
-            MirTerminator::Return { value, .. } => {
-                let Some(operand) = values.get(value) else {
-                    return Err(LlvmBackendError::new(format!(
-                        "llvm backend missing return value %{value} in function {}",
-                        function.name
-                    )));
-                };
-                lines.push(format!("  ret i64 {operand}"));
-            }
-            other => {
-                return Err(LlvmBackendError::unsupported_terminator(
-                    &function.name,
-                    other,
-                    terminator_offset(other),
-                ));
-            }
-        }
-
-        lines.push("}".to_string());
-        lines.push(String::new());
-    }
-
-    Ok(lines.join("\n"))
+    codegen::lower_mir_subset_to_llvm_ir_impl(mir)
 }
 
 pub(crate) fn write_llvm_artifacts(
@@ -312,8 +96,8 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     hash
 }
 
-fn mangle_function_name(name: &str) -> String {
-    format!("tn_{}", sanitize_identifier(name))
+pub(crate) fn mangle_function_name(name: &str, arity: usize) -> String {
+    format!("tn_{}__arity{arity}", sanitize_identifier(name))
 }
 
 fn sanitize_identifier(input: &str) -> String {
@@ -323,11 +107,11 @@ fn sanitize_identifier(input: &str) -> String {
         .collect()
 }
 
-fn value_register(id: u32) -> String {
+pub(crate) fn value_register(id: u32) -> String {
     format!("%v{id}")
 }
 
-fn instruction_name(instruction: &MirInstruction) -> &'static str {
+pub(crate) fn instruction_name(instruction: &MirInstruction) -> &'static str {
     match instruction {
         MirInstruction::ConstInt { .. } => "const_int",
         MirInstruction::ConstFloat { .. } => "const_float",
@@ -347,16 +131,7 @@ fn instruction_name(instruction: &MirInstruction) -> &'static str {
     }
 }
 
-fn terminator_name(terminator: &MirTerminator) -> &'static str {
-    match terminator {
-        MirTerminator::Return { .. } => "return",
-        MirTerminator::Jump { .. } => "jump",
-        MirTerminator::Match { .. } => "match",
-        MirTerminator::ShortCircuit { .. } => "short_circuit",
-    }
-}
-
-fn instruction_offset(instruction: &MirInstruction) -> usize {
+pub(crate) fn instruction_offset(instruction: &MirInstruction) -> usize {
     match instruction {
         MirInstruction::ConstInt { offset, .. }
         | MirInstruction::ConstFloat { offset, .. }
@@ -376,11 +151,57 @@ fn instruction_offset(instruction: &MirInstruction) -> usize {
     }
 }
 
-fn terminator_offset(terminator: &MirTerminator) -> usize {
-    match terminator {
-        MirTerminator::Return { offset, .. }
-        | MirTerminator::Match { offset, .. }
-        | MirTerminator::ShortCircuit { offset, .. } => *offset,
-        MirTerminator::Jump { .. } => 0,
+fn pattern_name(pattern: &IrPattern) -> &'static str {
+    match pattern {
+        IrPattern::Atom { .. } => "atom",
+        IrPattern::Bind { .. } => "bind",
+        IrPattern::Pin { .. } => "pin",
+        IrPattern::Wildcard => "wildcard",
+        IrPattern::Integer { .. } => "integer",
+        IrPattern::Bool { .. } => "bool",
+        IrPattern::Nil => "nil",
+        IrPattern::String { .. } => "string",
+        IrPattern::Tuple { .. } => "tuple",
+        IrPattern::List { .. } => "list",
+        IrPattern::Map { .. } => "map",
+    }
+}
+
+fn ir_op_name(op: &IrOp) -> &'static str {
+    match op {
+        IrOp::ConstInt { .. } => "const_int",
+        IrOp::ConstFloat { .. } => "const_float",
+        IrOp::ConstBool { .. } => "const_bool",
+        IrOp::ConstNil { .. } => "const_nil",
+        IrOp::ConstString { .. } => "const_string",
+        IrOp::ToString { .. } => "to_string",
+        IrOp::Call { .. } => "call",
+        IrOp::MakeClosure { .. } => "make_closure",
+        IrOp::CallValue { .. } => "call_value",
+        IrOp::Question { .. } => "question",
+        IrOp::Case { .. } => "case",
+        IrOp::Try { .. } => "try",
+        IrOp::Raise { .. } => "raise",
+        IrOp::For { .. } => "for",
+        IrOp::LoadVariable { .. } => "load_variable",
+        IrOp::ConstAtom { .. } => "const_atom",
+        IrOp::AddInt { .. } => "add_int",
+        IrOp::SubInt { .. } => "sub_int",
+        IrOp::MulInt { .. } => "mul_int",
+        IrOp::DivInt { .. } => "div_int",
+        IrOp::CmpInt { .. } => "cmp_int",
+        IrOp::Not { .. } => "not",
+        IrOp::Bang { .. } => "bang",
+        IrOp::AndAnd { .. } => "and_and",
+        IrOp::OrOr { .. } => "or_or",
+        IrOp::And { .. } => "and",
+        IrOp::Or { .. } => "or",
+        IrOp::Concat { .. } => "concat",
+        IrOp::In { .. } => "in",
+        IrOp::PlusPlus { .. } => "plus_plus",
+        IrOp::MinusMinus { .. } => "minus_minus",
+        IrOp::Range { .. } => "range",
+        IrOp::Match { .. } => "match",
+        IrOp::Return { .. } => "return",
     }
 }

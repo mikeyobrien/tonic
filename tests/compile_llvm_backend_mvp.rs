@@ -46,10 +46,11 @@ fn compile_llvm_backend_emits_ll_and_object_artifacts_for_subset_program() {
 
     let llvm_ir = fs::read_to_string(&ll_path).expect("llvm ir artifact should be readable");
     assert!(llvm_ir.contains("; tonic llvm backend mvp"));
-    assert!(llvm_ir.contains("define i64 @tn_Math_add(i64 %arg0, i64 %arg1)"));
-    assert!(llvm_ir.contains("define i64 @tn_Math_run()"));
-    assert!(llvm_ir.contains("call i64 @tn_Math_add"));
+    assert!(llvm_ir.contains("define i64 @tn_Math_add__arity2(i64 %arg0, i64 %arg1)"));
+    assert!(llvm_ir.contains("define i64 @tn_Math_run__arity0()"));
+    assert!(llvm_ir.contains("call i64 @tn_Math_add__arity2"));
     assert!(llvm_ir.contains("icmp sgt i64"));
+    assert!(llvm_ir.contains("define i64 @main()"));
 
     let object = fs::read(&object_path).expect("object artifact should be readable");
     assert!(

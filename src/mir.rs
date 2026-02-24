@@ -19,6 +19,10 @@ pub(crate) struct MirProgram {
 pub(crate) struct MirFunction {
     pub(crate) name: String,
     pub(crate) params: Vec<MirTypedName>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) param_patterns: Option<Vec<IrPattern>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) guard_ops: Option<Vec<IrOp>>,
     pub(crate) entry_block: u32,
     pub(crate) blocks: Vec<MirBlock>,
 }

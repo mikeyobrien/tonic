@@ -10,7 +10,12 @@ pub(crate) fn lower_ir_to_mir_impl(ir: &IrProgram) -> Result<MirProgram, MirLowe
     let mut functions = Vec::with_capacity(ir.functions.len());
 
     for function in &ir.functions {
-        let lowerer = FunctionLowerer::new(function.name.clone(), function.params.clone());
+        let lowerer = FunctionLowerer::new(
+            function.name.clone(),
+            function.params.clone(),
+            function.param_patterns.clone(),
+            function.guard_ops.clone(),
+        );
         functions.push(lowerer.lower(&function.ops)?);
     }
 
@@ -33,12 +38,19 @@ pub(super) struct BlockBuilder {
 pub(super) struct FunctionLowerer {
     pub(super) name: String,
     pub(super) params: Vec<MirTypedName>,
+    pub(super) param_patterns: Option<Vec<crate::ir::IrPattern>>,
+    pub(super) guard_ops: Option<Vec<IrOp>>,
     pub(super) blocks: Vec<BlockBuilder>,
     pub(super) next_value: u32,
 }
 
 impl FunctionLowerer {
-    fn new(name: String, params: Vec<String>) -> Self {
+    fn new(
+        name: String,
+        params: Vec<String>,
+        param_patterns: Option<Vec<crate::ir::IrPattern>>,
+        guard_ops: Option<Vec<IrOp>>,
+    ) -> Self {
         let mut lowerer = Self {
             name,
             params: params
@@ -48,6 +60,8 @@ impl FunctionLowerer {
                     value_type: MirType::Dynamic,
                 })
                 .collect(),
+            param_patterns,
+            guard_ops,
             blocks: Vec::new(),
             next_value: 0,
         };
@@ -85,6 +99,8 @@ impl FunctionLowerer {
         Ok(MirFunction {
             name: self.name,
             params: self.params,
+            param_patterns: self.param_patterns,
+            guard_ops: self.guard_ops,
             entry_block: 0,
             blocks,
         })
