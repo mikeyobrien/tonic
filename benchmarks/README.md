@@ -10,6 +10,7 @@ This suite profiles representative Tonic workloads and can enforce latency thres
 Each workload defines:
 - `name`
 - `command` (argv passed to `tonic`)
+- `mode` (`warm` or `cold`, default `warm`. Cold mode clears `.tonic/cache` before each run)
 - `threshold_p50_ms`
 - `threshold_p95_ms`
 
@@ -27,6 +28,12 @@ Run the suite (JSON printed to stdout + written to file):
 cargo run --bin benchsuite -- --bin target/release/tonic
 ```
 
+Calibrate thresholds to suggest new limits based on current baseline:
+
+```bash
+cargo run --bin benchsuite -- --bin target/release/tonic --calibrate --calibrate-margin-pct 20
+```
+
 Custom run count / warmup + markdown output:
 
 ```bash
@@ -41,6 +48,12 @@ cargo run --bin benchsuite -- \
 ## Enforce performance requirements
 
 Fail non-zero if any workload exceeds p50/p95 thresholds:
+
+```bash
+./scripts/bench-enforce.sh
+```
+
+Or manually:
 
 ```bash
 cargo run --bin benchsuite -- --bin target/release/tonic --enforce

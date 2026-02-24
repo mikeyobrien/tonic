@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
+fn default_mode() -> String {
+    "warm".to_string()
+}
+
 #[derive(Debug, Deserialize)]
 struct Suite {
     workload: Vec<Workload>,
@@ -15,6 +19,8 @@ struct Suite {
 struct Workload {
     name: String,
     command: Vec<String>,
+    #[serde(default = "default_mode")]
+    mode: String,
     threshold_p50_ms: u64,
     threshold_p95_ms: u64,
 }
@@ -24,12 +30,14 @@ struct RunStats {
     p50_ms: f64,
     p95_ms: f64,
     samples_ms: Vec<f64>,
+    peak_rss_kb: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
 struct WorkloadReport {
     name: String,
     command: Vec<String>,
+    mode: String,
     status: String,
     threshold_p50_ms: u64,
     threshold_p95_ms: u64,
@@ -37,6 +45,12 @@ struct WorkloadReport {
     p95_ms: Option<f64>,
     p50_exceeded: bool,
     p95_exceeded: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggested_threshold_p50_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggested_threshold_p95_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    peak_rss_kb: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -60,6 +74,8 @@ struct CliArgs {
     runs: usize,
     warmup_runs: usize,
     enforce: bool,
+    calibrate: bool,
+    calibrate_margin_pct: u64,
     json_out: PathBuf,
     markdown_out: Option<PathBuf>,
 }
@@ -73,6 +89,8 @@ where
     let mut runs: usize = 15;
     let mut warmup_runs: usize = 3;
     let mut enforce = false;
+    let mut calibrate = false;
+    let mut calibrate_margin_pct: u64 = 20;
     let mut json_out = PathBuf::from("benchmarks/summary.json");
     let mut markdown_out: Option<PathBuf> = None;
 
@@ -110,6 +128,14 @@ where
                     .parse::<usize>()
                     .map_err(|_| format!("invalid --warmup value '{value}' (expected integer)"))?;
             }
+            "--calibrate-margin-pct" => {
+                let Some(value) = iter.next() else {
+                    return Err("--calibrate-margin-pct requires a value".to_string());
+                };
+                calibrate_margin_pct = value.parse::<u64>().map_err(|_| {
+                    format!("invalid --calibrate-margin-pct value '{value}' (expected integer)")
+                })?;
+            }
             "--json-out" => {
                 let Some(value) = iter.next() else {
                     return Err("--json-out requires a value".to_string());
@@ -123,6 +149,7 @@ where
                 markdown_out = Some(PathBuf::from(value));
             }
             "--enforce" => enforce = true,
+            "--calibrate" => calibrate = true,
             "-h" | "--help" => {
                 print_help();
                 std::process::exit(0);
@@ -137,6 +164,8 @@ where
         runs,
         warmup_runs,
         enforce,
+        calibrate,
+        calibrate_margin_pct,
         json_out,
         markdown_out,
     })
@@ -144,8 +173,8 @@ where
 
 fn print_help() {
     println!(
-        "Usage:\n  benchsuite [--bin <path>] [--manifest <path>] [--runs <n>] [--warmup <n>] [--json-out <path>] [--markdown-out <path>] [--enforce]\n\
-\nDefaults:\n  --bin target/release/tonic\n  --manifest benchmarks/suite.toml\n  --runs 15\n  --warmup 3\n  --json-out benchmarks/summary.json\n"
+        "Usage:\n  benchsuite [--bin <path>] [--manifest <path>] [--runs <n>] [--warmup <n>] [--json-out <path>] [--markdown-out <path>] [--enforce] [--calibrate] [--calibrate-margin-pct <percent>]\n\
+\nDefaults:\n  --bin target/release/tonic\n  --manifest benchmarks/suite.toml\n  --runs 15\n  --warmup 3\n  --calibrate-margin-pct 20\n  --json-out benchmarks/summary.json\n"
     );
 }
 
@@ -167,6 +196,48 @@ fn compute_percentile(mut samples: Vec<f64>, percentile: f64) -> f64 {
     samples[idx]
 }
 
+fn requires_cache_clear(mode: &str) -> bool {
+    mode == "cold"
+}
+
+fn calculate_calibrated_threshold(value: f64, margin_pct: u64) -> u64 {
+    let margin_multiplier = 1.0 + (margin_pct as f64 / 100.0);
+    (value * margin_multiplier).ceil() as u64 + 1
+}
+
+fn clear_cache() {
+    let _ = fs::remove_dir_all(".tonic/cache");
+}
+
+fn measure_rss(binary_path: &Path, workload: &Workload) -> Option<u64> {
+    if !Path::new("/usr/bin/time").exists() {
+        return None;
+    }
+
+    if requires_cache_clear(&workload.mode) {
+        clear_cache();
+    }
+
+    let output = Command::new("/usr/bin/time")
+        .arg("-v")
+        .arg(binary_path)
+        .args(&workload.command)
+        .output()
+        .ok()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for line in stderr.lines() {
+        if line.contains("Maximum resident set size (kbytes):") {
+            if let Some(val_str) = line.split(':').nth(1) {
+                if let Ok(val) = val_str.trim().parse::<u64>() {
+                    return Some(val);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn run_workload(
     binary_path: &Path,
     workload: &Workload,
@@ -174,6 +245,9 @@ fn run_workload(
     warmup_runs: usize,
 ) -> Result<RunStats, String> {
     for _ in 0..warmup_runs {
+        if requires_cache_clear(&workload.mode) {
+            clear_cache();
+        }
         let output = Command::new(binary_path)
             .args(&workload.command)
             .output()
@@ -197,6 +271,9 @@ fn run_workload(
 
     let mut samples_ms = Vec::with_capacity(runs);
     for _ in 0..runs {
+        if requires_cache_clear(&workload.mode) {
+            clear_cache();
+        }
         let start = Instant::now();
         let output = Command::new(binary_path)
             .args(&workload.command)
@@ -222,10 +299,13 @@ fn run_workload(
         samples_ms.push(elapsed_ms);
     }
 
+    let peak_rss_kb = measure_rss(binary_path, workload);
+
     Ok(RunStats {
         p50_ms: compute_percentile(samples_ms.clone(), 50.0),
         p95_ms: compute_percentile(samples_ms.clone(), 95.0),
         samples_ms,
+        peak_rss_kb,
     })
 }
 
@@ -262,13 +342,14 @@ fn write_markdown_report(path: &Path, report: &SuiteReport) -> Result<(), String
     ));
 
     markdown
-        .push_str("| Workload | Status | p50 (ms) | p95 (ms) | p50 threshold | p95 threshold |\n");
-    markdown.push_str("|---|---:|---:|---:|---:|---:|\n");
+        .push_str("| Workload | Mode | Status | p50 (ms) | p95 (ms) | p50 threshold | p95 threshold | Peak RSS (KB) |\n");
+    markdown.push_str("|---|---|---:|---:|---:|---:|---:|---:|\n");
 
     for workload in &report.workloads {
         markdown.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} |\n",
             workload.name,
+            workload.mode,
             workload.status,
             workload
                 .p50_ms
@@ -280,6 +361,10 @@ fn write_markdown_report(path: &Path, report: &SuiteReport) -> Result<(), String
                 .unwrap_or_else(|| "-".to_string()),
             workload.threshold_p50_ms,
             workload.threshold_p95_ms,
+            workload
+                .peak_rss_kb
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "-".to_string()),
         ));
     }
 
@@ -345,19 +430,37 @@ fn main() {
     let mut has_failures = false;
 
     for workload in &suite.workload {
-        println!("running workload: {}", workload.name);
+        println!("running workload: {} ({})", workload.name, workload.mode);
 
         let report = match run_workload(&args.bin_path, workload, args.runs, args.warmup_runs) {
             Ok(stats) => {
                 let (p50_exceeded, p95_exceeded) = evaluate_thresholds(&stats, workload);
-                if p50_exceeded || p95_exceeded {
+                if !args.calibrate && (p50_exceeded || p95_exceeded) {
                     has_failures = true;
                 }
+
+                let (suggested_p50, suggested_p95) = if args.calibrate {
+                    (
+                        Some(calculate_calibrated_threshold(
+                            stats.p50_ms,
+                            args.calibrate_margin_pct,
+                        )),
+                        Some(calculate_calibrated_threshold(
+                            stats.p95_ms,
+                            args.calibrate_margin_pct,
+                        )),
+                    )
+                } else {
+                    (None, None)
+                };
 
                 WorkloadReport {
                     name: workload.name.clone(),
                     command: workload.command.clone(),
-                    status: if p50_exceeded || p95_exceeded {
+                    mode: workload.mode.clone(),
+                    status: if args.calibrate {
+                        "calibrated".to_string()
+                    } else if p50_exceeded || p95_exceeded {
                         "threshold_exceeded".to_string()
                     } else {
                         "pass".to_string()
@@ -366,8 +469,11 @@ fn main() {
                     threshold_p95_ms: workload.threshold_p95_ms,
                     p50_ms: Some(stats.p50_ms),
                     p95_ms: Some(stats.p95_ms),
-                    p50_exceeded,
-                    p95_exceeded,
+                    p50_exceeded: if args.calibrate { false } else { p50_exceeded },
+                    p95_exceeded: if args.calibrate { false } else { p95_exceeded },
+                    suggested_threshold_p50_ms: suggested_p50,
+                    suggested_threshold_p95_ms: suggested_p95,
+                    peak_rss_kb: stats.peak_rss_kb,
                     error: None,
                     samples_ms: Some(stats.samples_ms),
                 }
@@ -377,6 +483,7 @@ fn main() {
                 WorkloadReport {
                     name: workload.name.clone(),
                     command: workload.command.clone(),
+                    mode: workload.mode.clone(),
                     status: "error".to_string(),
                     threshold_p50_ms: workload.threshold_p50_ms,
                     threshold_p95_ms: workload.threshold_p95_ms,
@@ -384,6 +491,9 @@ fn main() {
                     p95_ms: None,
                     p50_exceeded: false,
                     p95_exceeded: false,
+                    suggested_threshold_p50_ms: None,
+                    suggested_threshold_p95_ms: None,
+                    peak_rss_kb: None,
                     error: Some(error),
                     samples_ms: None,
                 }
@@ -395,6 +505,15 @@ fn main() {
         }
         if let Some(p95) = report.p95_ms {
             println!("  p95={p95:.2}ms (threshold {}ms)", report.threshold_p95_ms);
+        }
+        if let Some(rss) = report.peak_rss_kb {
+            println!("  rss={rss} KB");
+        }
+        if let (Some(s_p50), Some(s_p95)) = (
+            report.suggested_threshold_p50_ms,
+            report.suggested_threshold_p95_ms,
+        ) {
+            println!("  suggested: p50={s_p50}ms, p95={s_p95}ms");
         }
         if let Some(error) = &report.error {
             println!("  error={error}");
@@ -410,6 +529,8 @@ fn main() {
         warmup_runs: args.warmup_runs,
         status: if has_failures {
             "fail".to_string()
+        } else if args.calibrate {
+            "calibrated".to_string()
         } else {
             "pass".to_string()
         },
@@ -460,6 +581,7 @@ mod tests {
         [[workload]]
         name = "run_sample"
         command = ["run", "examples/sample.tn"]
+        mode = "cold"
         threshold_p50_ms = 100
         threshold_p95_ms = 250
         "#;
@@ -468,8 +590,23 @@ mod tests {
         assert_eq!(suite.workload.len(), 1);
         assert_eq!(suite.workload[0].name, "run_sample");
         assert_eq!(suite.workload[0].command, vec!["run", "examples/sample.tn"]);
+        assert_eq!(suite.workload[0].mode, "cold");
         assert_eq!(suite.workload[0].threshold_p50_ms, 100);
         assert_eq!(suite.workload[0].threshold_p95_ms, 250);
+    }
+
+    #[test]
+    fn parse_manifest_defaults_to_warm_mode() {
+        let fixture = r#"
+        [[workload]]
+        name = "run_sample"
+        command = ["run", "examples/sample.tn"]
+        threshold_p50_ms = 100
+        threshold_p95_ms = 250
+        "#;
+
+        let suite: Suite = toml::from_str(fixture).expect("manifest should parse");
+        assert_eq!(suite.workload[0].mode, "warm");
     }
 
     #[test]
@@ -477,6 +614,7 @@ mod tests {
         let workload = Workload {
             name: "w".to_string(),
             command: vec!["run".to_string(), "examples/sample.tn".to_string()],
+            mode: "warm".to_string(),
             threshold_p50_ms: 100,
             threshold_p95_ms: 200,
         };
@@ -485,6 +623,7 @@ mod tests {
             p50_ms: 120.0,
             p95_ms: 190.0,
             samples_ms: vec![120.0],
+            peak_rss_kb: None,
         };
 
         let (p50_exceeded, p95_exceeded) = evaluate_thresholds(&stats, &workload);
@@ -508,6 +647,9 @@ mod tests {
             "--markdown-out".to_string(),
             "benchmarks/out.md".to_string(),
             "--enforce".to_string(),
+            "--calibrate".to_string(),
+            "--calibrate-margin-pct".to_string(),
+            "15".to_string(),
         ];
 
         let parsed = parse_cli_args(args).expect("args should parse");
@@ -516,10 +658,86 @@ mod tests {
         assert_eq!(parsed.runs, 9);
         assert_eq!(parsed.warmup_runs, 2);
         assert!(parsed.enforce);
+        assert!(parsed.calibrate);
+        assert_eq!(parsed.calibrate_margin_pct, 15);
         assert_eq!(parsed.json_out, PathBuf::from("benchmarks/out.json"));
         assert_eq!(
             parsed.markdown_out,
             Some(PathBuf::from("benchmarks/out.md"))
         );
+    }
+
+    #[test]
+    fn test_requires_cache_clear() {
+        assert!(requires_cache_clear("cold"));
+        assert!(!requires_cache_clear("warm"));
+        assert!(!requires_cache_clear("hot"));
+        assert!(!requires_cache_clear(""));
+    }
+
+    #[test]
+    fn test_calculate_calibrated_threshold() {
+        // Base value + 20% margin
+        assert_eq!(calculate_calibrated_threshold(100.0, 20), 121); // (100 * 1.2).ceil() + 1 = 120 + 1
+        assert_eq!(calculate_calibrated_threshold(50.5, 10), 57); // (50.5 * 1.1).ceil() + 1 = 56 + 1
+
+        // 0% margin
+        assert_eq!(calculate_calibrated_threshold(10.0, 0), 11); // 10 + 1
+
+        // High margin
+        assert_eq!(calculate_calibrated_threshold(200.0, 150), 501); // (200 * 2.5).ceil() + 1
+    }
+
+    #[test]
+    fn test_json_schema_presence_for_enforce_and_calibrate() {
+        let enforce_report = WorkloadReport {
+            name: "test".to_string(),
+            command: vec![],
+            mode: "warm".to_string(),
+            status: "pass".to_string(),
+            threshold_p50_ms: 10,
+            threshold_p95_ms: 20,
+            p50_ms: Some(5.0),
+            p95_ms: Some(15.0),
+            p50_exceeded: false,
+            p95_exceeded: false,
+            suggested_threshold_p50_ms: None,
+            suggested_threshold_p95_ms: None,
+            peak_rss_kb: None,
+            error: None,
+            samples_ms: None,
+        };
+        let enforce_json = serde_json::to_value(&enforce_report).unwrap();
+        assert!(enforce_json.get("suggested_threshold_p50_ms").is_none());
+        assert!(enforce_json.get("suggested_threshold_p95_ms").is_none());
+        assert!(enforce_json.get("peak_rss_kb").is_none());
+        assert!(enforce_json.get("error").is_none());
+        assert!(enforce_json.get("samples_ms").is_none());
+        assert!(enforce_json.get("p50_exceeded").is_some());
+
+        let calibrate_report = WorkloadReport {
+            name: "test".to_string(),
+            command: vec![],
+            mode: "warm".to_string(),
+            status: "calibrated".to_string(),
+            threshold_p50_ms: 10,
+            threshold_p95_ms: 20,
+            p50_ms: Some(5.0),
+            p95_ms: Some(15.0),
+            p50_exceeded: false,
+            p95_exceeded: false,
+            suggested_threshold_p50_ms: Some(10),
+            suggested_threshold_p95_ms: Some(25),
+            peak_rss_kb: Some(100),
+            error: None,
+            samples_ms: Some(vec![5.0]),
+        };
+        let calibrate_json = serde_json::to_value(&calibrate_report).unwrap();
+        assert!(calibrate_json.get("suggested_threshold_p50_ms").is_some());
+        assert!(calibrate_json.get("suggested_threshold_p95_ms").is_some());
+        assert!(calibrate_json.get("peak_rss_kb").is_some());
+        assert!(calibrate_json.get("error").is_none());
+        assert!(calibrate_json.get("samples_ms").is_some());
+        assert!(calibrate_json.get("p50_exceeded").is_some());
     }
 }
