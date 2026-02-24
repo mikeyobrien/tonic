@@ -234,6 +234,52 @@ fn compile_llvm_out_flag_writes_executable_at_specified_path() {
     assert_eq!(stdout.trim_end(), "7", "output should be 10 - 3 = 7");
 }
 
+/// `--out ./someexe` should honor the exact relative output path and support
+/// idiomatic direct execution as `./someexe` from the working directory.
+#[test]
+fn compile_llvm_out_relative_path_supports_dot_slash_execution_contract() {
+    let temp_dir = common::unique_temp_dir("compile-llvm-out-relative-dot-slash");
+    let source_path = temp_dir.join("dot_out.tn");
+    fs::write(
+        &source_path,
+        "defmodule Demo do\n  def run() do\n    6 * 7\n  end\nend\n",
+    )
+    .unwrap();
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            "dot_out.tn",
+            "--backend",
+            "llvm",
+            "--out",
+            "./someexe",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok ./someexe"));
+
+    let exe_path = temp_dir.join("someexe");
+    assert!(
+        exe_path.exists(),
+        "ELF should be written exactly at working-dir-relative ./someexe"
+    );
+
+    let run_output = std::process::Command::new("./someexe")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("./someexe should execute directly");
+
+    assert!(run_output.status.success(), "./someexe should exit 0");
+    let stdout = String::from_utf8(run_output.stdout).unwrap();
+    assert_eq!(
+        stdout.trim_end(),
+        "42",
+        "./someexe output should be correct"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Toolchain failure diagnostics
 // ---------------------------------------------------------------------------
