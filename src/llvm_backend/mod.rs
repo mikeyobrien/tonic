@@ -51,44 +51,6 @@ pub(crate) fn lower_mir_subset_to_llvm_ir(mir: &MirProgram) -> Result<String, Ll
     codegen::lower_mir_subset_to_llvm_ir_impl(mir)
 }
 
-pub(crate) fn write_llvm_artifacts(
-    llvm_ir: &str,
-    ll_path: &std::path::Path,
-    object_path: &std::path::Path,
-) -> Result<(), LlvmBackendError> {
-    if let Err(error) = crate::cache::write_atomic(ll_path, llvm_ir) {
-        return Err(LlvmBackendError::new(format!(
-            "failed to write llvm ir artifact to {}: {}",
-            ll_path.display(),
-            error
-        )));
-    }
-
-    let checksum = fnv1a64(llvm_ir.as_bytes());
-    let object_payload = format!(
-        "TONICOBJ\nllvm_compatibility={LLVM_COMPATIBILITY_VERSION}\nll_fnv1a64={checksum:016x}\n"
-    );
-
-    if let Err(error) = crate::cache::write_atomic(object_path, &object_payload) {
-        return Err(LlvmBackendError::new(format!(
-            "failed to write llvm object artifact to {}: {}",
-            object_path.display(),
-            error
-        )));
-    }
-
-    Ok(())
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf29ce484222325_u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
-
 pub(crate) fn mangle_function_name(name: &str, arity: usize) -> String {
     format!("tn_{}__arity{arity}", sanitize_identifier(name))
 }

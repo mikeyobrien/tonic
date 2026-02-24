@@ -43,8 +43,9 @@ fn llvm_compile_profiles_phases_and_folds_constant_int_ops() {
         String::from_utf8_lossy(&compile_output.stderr)
     );
 
-    let llvm_ir = fs::read_to_string(artifact_base.with_extension("ll"))
-        .expect("llvm ir artifact should exist");
+    // Sidecar artifacts always land in .tonic/build/ regardless of --out path.
+    let llvm_ir = fs::read_to_string(temp_dir.join(".tonic/build/demo.ll"))
+        .expect("llvm ir sidecar should exist at default build location");
 
     assert!(
         llvm_ir.contains("%v2 = add i64 0, 3"),

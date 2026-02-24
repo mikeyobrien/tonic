@@ -1,4 +1,5 @@
 mod acceptance;
+mod c_backend;
 mod cache;
 mod cli_diag;
 mod deps;
@@ -6,6 +7,7 @@ mod formatter;
 mod interop;
 mod ir;
 mod lexer;
+mod linker;
 mod llvm_backend;
 mod manifest;
 mod mir;
@@ -632,6 +634,31 @@ fn handle_compile(args: Vec<String>) -> i32 {
                     optimize_for_native_backend(mir)
                 });
 
+            // Sidecar artifacts always land in the default build directory.
+            let sidecar_base = {
+                let mut p = default_compile_build_dir();
+                p.push(&artifact_stem);
+                p
+            };
+            let ll_path = sidecar_base.with_extension("ll");
+            let c_path = sidecar_base.with_extension("c");
+            let ir_path = sidecar_base.with_extension("tir.json");
+            let manifest_path = sidecar_base.with_extension("tnx.json");
+
+            // The executable is written to --out if given, otherwise to the
+            // default build dir with no extension (idiomatic Linux binary).
+            let exe_path = match out_path {
+                Some(ref path) => std::path::PathBuf::from(path),
+                None => sidecar_base.clone(),
+            };
+
+            for path in [&ll_path, &c_path, &ir_path, &manifest_path, &exe_path] {
+                if let Err(message) = ensure_artifact_parent(path) {
+                    return CliDiagnostic::failure(message).emit();
+                }
+            }
+
+            // --- LLVM IR sidecar (.ll) ---
             let llvm_ir =
                 match profiling::profile_phase(&mut profiler, "backend.lower_llvm", || {
                     llvm_backend::lower_mir_subset_to_llvm_ir(&optimized_mir)
@@ -640,26 +667,19 @@ fn handle_compile(args: Vec<String>) -> i32 {
                     Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
                 };
 
-            let artifact_base = llvm_artifact_base_path(out_path, &artifact_stem);
-            let ll_path = artifact_base.with_extension("ll");
-            let object_path = artifact_base.with_extension("o");
-            let ir_path = artifact_base.with_extension("tir.json");
-            let manifest_path = artifact_base.with_extension("tnx.json");
-
-            for path in [&ll_path, &object_path, &ir_path, &manifest_path] {
-                if let Err(message) = ensure_artifact_parent(path) {
-                    return CliDiagnostic::failure(message).emit();
-                }
-            }
-
             if let Err(error) =
-                profiling::profile_phase(&mut profiler, "backend.write_object", || {
-                    llvm_backend::write_llvm_artifacts(&llvm_ir, &ll_path, &object_path)
+                profiling::profile_phase(&mut profiler, "backend.write_llvm_ir", || {
+                    crate::cache::write_atomic(&ll_path, &llvm_ir)
                 })
             {
-                return CliDiagnostic::failure(error.to_string()).emit();
+                return CliDiagnostic::failure(format!(
+                    "failed to write llvm ir sidecar to {}: {error}",
+                    ll_path.display()
+                ))
+                .emit();
             }
 
+            // --- IR sidecar (.tir.json) ---
             let serialized_ir = match serde_json::to_string(&ir) {
                 Ok(s) => s,
                 Err(error) => {
@@ -674,18 +694,18 @@ fn handle_compile(args: Vec<String>) -> i32 {
                 crate::cache::write_atomic(&ir_path, &serialized_ir)
             }) {
                 return CliDiagnostic::failure(format!(
-                    "failed to write compile artifact to {}: {}",
-                    ir_path.display(),
-                    error
+                    "failed to write ir sidecar to {}: {error}",
+                    ir_path.display()
                 ))
                 .emit();
             }
 
+            // --- Manifest sidecar (.tnx.json) for backward-compat tonic run ---
             let manifest = native_artifact::build_executable_manifest(
                 &source,
                 &manifest_path,
                 &ll_path,
-                &object_path,
+                &exe_path,
                 &ir_path,
             );
             if let Err(error) =
@@ -696,7 +716,36 @@ fn handle_compile(args: Vec<String>) -> i32 {
                 return CliDiagnostic::failure(error).emit();
             }
 
-            println!("compile: ok {}", manifest_path.display());
+            // --- C code generation ---
+            let c_source = match profiling::profile_phase(&mut profiler, "backend.lower_c", || {
+                c_backend::lower_mir_to_c(&optimized_mir)
+            }) {
+                Ok(src) => src,
+                Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+            };
+
+            if let Err(error) =
+                profiling::profile_phase(&mut profiler, "backend.write_c_source", || {
+                    crate::cache::write_atomic(&c_path, &c_source)
+                })
+            {
+                return CliDiagnostic::failure(format!(
+                    "failed to write c source to {}: {error}",
+                    c_path.display()
+                ))
+                .emit();
+            }
+
+            // --- Compile C to native executable ---
+            if let Err(error) =
+                profiling::profile_phase(&mut profiler, "backend.link_executable", || {
+                    linker::compile_c_to_executable(&c_path, &exe_path)
+                })
+            {
+                return CliDiagnostic::failure(error.to_string()).emit();
+            }
+
+            println!("compile: ok {}", exe_path.display());
             EXIT_OK
         }
     }
@@ -725,17 +774,6 @@ fn default_compile_build_dir() -> std::path::PathBuf {
     path.push(".tonic");
     path.push("build");
     path
-}
-
-fn llvm_artifact_base_path(out_path: Option<String>, artifact_stem: &str) -> std::path::PathBuf {
-    match out_path {
-        Some(path) => std::path::PathBuf::from(path),
-        None => {
-            let mut default_base = default_compile_build_dir();
-            default_base.push(artifact_stem);
-            default_base
-        }
-    }
 }
 
 fn ensure_artifact_parent(path: &std::path::Path) -> Result<(), String> {
@@ -1097,7 +1135,14 @@ fn print_fmt_help() {
 
 fn print_compile_help() {
     println!(
-        "Usage:\n  tonic compile <path> [--backend <interp|llvm>] [--out <artifact-path>|--dump-mir]\n"
+        "Usage:\n  tonic compile <path> [--backend <interp|llvm>] [--out <artifact-path>|--dump-mir]\n\n\
+         Backends:\n\
+         \x20 interp  Compile to IR artifact (.tir.json) for interpreter execution\n\
+         \x20 llvm    Compile to a native executable (ELF on Linux) via C codegen\n\n\
+         With --backend llvm:\n\
+         \x20 Default output: .tonic/build/<name>  (runnable as ./.tonic/build/<name>)\n\
+         \x20 --out <path>   Write executable to <path> directly\n\
+         \x20 Requires: cc, gcc, or clang in PATH\n"
     );
 }
 

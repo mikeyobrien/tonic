@@ -27,35 +27,42 @@ fn compile_llvm_backend_emits_executable_artifact_for_subset_program() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(stdout.contains("compile: ok"));
-    assert!(stdout.contains(".tonic/build/math.tnx.json"));
+    // compile: ok must report the executable (no extension), not the manifest
+    assert!(
+        stdout.contains(".tonic/build/math"),
+        "expected executable path in stdout: {stdout}"
+    );
+    assert!(
+        !stdout.trim_end().ends_with(".tnx.json"),
+        "compile: ok must point to executable, not manifest: {stdout}"
+    );
 
+    // Real ELF binary at the reported path
+    let exe_path = temp_dir.join(".tonic/build/math");
+    assert!(exe_path.exists(), "ELF executable should exist");
+
+    let elf_bytes = fs::read(&exe_path).expect("should read ELF binary");
+    assert_eq!(
+        &elf_bytes[..4],
+        b"\x7fELF",
+        "output must be a real ELF binary"
+    );
+
+    // LLVM IR sidecar is still generated
     let ll_path = temp_dir.join(".tonic/build/math.ll");
-    let object_path = temp_dir.join(".tonic/build/math.o");
-
     assert!(
         ll_path.exists(),
-        "expected .ll artifact at {}",
+        "expected .ll sidecar at {}",
         ll_path.display()
     );
-    assert!(
-        object_path.exists(),
-        "expected .o artifact at {}",
-        object_path.display()
-    );
 
-    let llvm_ir = fs::read_to_string(&ll_path).expect("llvm ir artifact should be readable");
+    let llvm_ir = fs::read_to_string(&ll_path).expect("llvm ir sidecar should be readable");
     assert!(llvm_ir.contains("; tonic llvm backend mvp"));
     assert!(llvm_ir.contains("define i64 @tn_Math_add__arity2(i64 %arg0, i64 %arg1)"));
     assert!(llvm_ir.contains("define i64 @tn_Math_run__arity0()"));
     assert!(llvm_ir.contains("call i64 @tn_Math_add__arity2"));
     assert!(llvm_ir.contains("icmp sgt i64"));
     assert!(llvm_ir.contains("define i64 @main()"));
-
-    let object = fs::read(&object_path).expect("object artifact should be readable");
-    assert!(
-        object.starts_with(b"TONICOBJ"),
-        "expected deterministic object placeholder header"
-    );
 }
 
 #[test]
