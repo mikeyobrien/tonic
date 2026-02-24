@@ -1,5 +1,5 @@
-use crate::interop::{HostError, HOST_REGISTRY};
-use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern, IrProgram};
+use crate::ir::{IrCallTarget, IrOp, IrPattern, IrProgram};
+use crate::native_runtime;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -292,15 +292,13 @@ fn evaluate_ops(
             }
             IrOp::Not { offset } => {
                 let value = pop_value(stack, *offset, "not")?;
-                match value {
-                    RuntimeValue::Bool(flag) => stack.push(RuntimeValue::Bool(!flag)),
-                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
-                }
+                let result = native_runtime::ops::strict_not(value, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::Bang { offset } => {
                 let value = pop_value(stack, *offset, "!")?;
-                let truthy = !matches!(value, RuntimeValue::Nil | RuntimeValue::Bool(false));
-                stack.push(RuntimeValue::Bool(!truthy));
+                stack.push(native_runtime::ops::truthy_bang(value));
             }
             IrOp::AndAnd { right_ops, offset } => {
                 let value = pop_value(stack, *offset, "&&")?;
@@ -355,96 +353,72 @@ fn evaluate_ops(
             IrOp::Concat { offset } => {
                 let right = pop_value(stack, *offset, "<>")?;
                 let left = pop_value(stack, *offset, "<>")?;
-                match (left, right) {
-                    (RuntimeValue::String(l), RuntimeValue::String(r)) => {
-                        stack.push(RuntimeValue::String(l + &r))
-                    }
-                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
-                }
+                let result = native_runtime::ops::concat(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::In { offset } => {
                 let right = pop_value(stack, *offset, "in")?;
                 let left = pop_value(stack, *offset, "in")?;
-
-                let found = match right {
-                    RuntimeValue::List(items) => items.contains(&left),
-                    RuntimeValue::Range(start, end) => {
-                        if let RuntimeValue::Int(val) = left {
-                            val >= start && val <= end
-                        } else {
-                            false
-                        }
-                    }
-                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
-                };
-                stack.push(RuntimeValue::Bool(found));
+                let result = native_runtime::ops::in_operator(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::PlusPlus { offset } => {
                 let right = pop_value(stack, *offset, "++")?;
                 let left = pop_value(stack, *offset, "++")?;
-                match (left, right) {
-                    (RuntimeValue::List(mut l), RuntimeValue::List(mut r)) => {
-                        l.append(&mut r);
-                        stack.push(RuntimeValue::List(l));
-                    }
-                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
-                }
+                let result = native_runtime::ops::list_concat(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::MinusMinus { offset } => {
                 let right = pop_value(stack, *offset, "--")?;
                 let left = pop_value(stack, *offset, "--")?;
-                match (left, right) {
-                    (RuntimeValue::List(mut l), RuntimeValue::List(r)) => {
-                        for item in r {
-                            if let Some(pos) = l.iter().position(|x| x == &item) {
-                                l.remove(pos);
-                            }
-                        }
-                        stack.push(RuntimeValue::List(l));
-                    }
-                    _ => return Err(RuntimeError::at_offset("badarg".to_string(), *offset)),
-                }
+                let result = native_runtime::ops::list_subtract(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::Range { offset } => {
-                let right = pop_int(stack, *offset)?;
-                let left = pop_int(stack, *offset)?;
-                stack.push(RuntimeValue::Range(left, right));
+                let right = pop_value(stack, *offset, "range")?;
+                let left = pop_value(stack, *offset, "range")?;
+                let result = native_runtime::ops::range(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::AddInt { offset } => {
-                let right = pop_int(stack, *offset)?;
-                let left = pop_int(stack, *offset)?;
-                stack.push(RuntimeValue::Int(left + right));
+                let right = pop_value(stack, *offset, "+")?;
+                let left = pop_value(stack, *offset, "+")?;
+                let result = native_runtime::ops::add_int(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::SubInt { offset } => {
-                let right = pop_int(stack, *offset)?;
-                let left = pop_int(stack, *offset)?;
-                stack.push(RuntimeValue::Int(left - right));
+                let right = pop_value(stack, *offset, "-")?;
+                let left = pop_value(stack, *offset, "-")?;
+                let result = native_runtime::ops::sub_int(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::MulInt { offset } => {
-                let right = pop_int(stack, *offset)?;
-                let left = pop_int(stack, *offset)?;
-                stack.push(RuntimeValue::Int(left * right));
+                let right = pop_value(stack, *offset, "*")?;
+                let left = pop_value(stack, *offset, "*")?;
+                let result = native_runtime::ops::mul_int(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::DivInt { offset } => {
-                let right = pop_int(stack, *offset)?;
-                let left = pop_int(stack, *offset)?;
-                if right == 0 {
-                    return Err(RuntimeError::at_offset("division by zero", *offset));
-                }
-                stack.push(RuntimeValue::Int(left / right));
+                let right = pop_value(stack, *offset, "/")?;
+                let left = pop_value(stack, *offset, "/")?;
+                let result = native_runtime::ops::div_int(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::CmpInt { kind, offset } => {
-                let right = pop_int(stack, *offset)?;
-                let left = pop_int(stack, *offset)?;
-                let result = match kind {
-                    CmpKind::Eq => left == right,
-                    CmpKind::NotEq => left != right,
-                    CmpKind::Lt => left < right,
-                    CmpKind::Lte => left <= right,
-                    CmpKind::Gt => left > right,
-                    CmpKind::Gte => left >= right,
-                };
-                stack.push(RuntimeValue::Bool(result));
+                let right = pop_value(stack, *offset, "cmp")?;
+                let left = pop_value(stack, *offset, "cmp")?;
+                let result = native_runtime::ops::cmp_int(*kind, left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
             }
             IrOp::Match { pattern, offset } => {
                 let value = pop_value(stack, *offset, "match")?;
@@ -487,8 +461,37 @@ fn evaluate_ops(
             }
             IrOp::Case { branches, offset } => {
                 let subject = pop_value(stack, *offset, "case subject")?;
-                let mut matched = false;
 
+                if branches.iter().all(|branch| branch.guard_ops.is_none()) {
+                    let patterns = branches
+                        .iter()
+                        .map(|branch| branch.pattern.clone())
+                        .collect::<Vec<_>>();
+
+                    if let Some((selected_index, bindings)) =
+                        native_runtime::pattern::select_case_branch(&subject, &patterns, env)
+                    {
+                        let mut branch_env = env.clone();
+                        for (name, value) in bindings {
+                            branch_env.insert(name, value);
+                        }
+
+                        if let Some(ret) = evaluate_ops(
+                            program,
+                            &branches[selected_index].ops,
+                            &mut branch_env,
+                            stack,
+                        )? {
+                            return Ok(Some(ret));
+                        }
+                    } else {
+                        return Err(RuntimeError::at_offset("no case clause matching", *offset));
+                    }
+
+                    continue;
+                }
+
+                let mut matched = false;
                 for branch in branches {
                     let mut bindings = HashMap::new();
                     if !match_pattern(&subject, &branch.pattern, env, &mut bindings) {
@@ -496,8 +499,8 @@ fn evaluate_ops(
                     }
 
                     let mut branch_env = env.clone();
-                    for (k, v) in bindings {
-                        branch_env.insert(k, v);
+                    for (name, value) in bindings {
+                        branch_env.insert(name, value);
                     }
 
                     if let Some(guard_ops) = &branch.guard_ops {
@@ -851,105 +854,7 @@ fn match_pattern(
     env: &HashMap<String, RuntimeValue>,
     bindings: &mut HashMap<String, RuntimeValue>,
 ) -> bool {
-    match pattern {
-        IrPattern::Wildcard => true,
-        IrPattern::Bind { name } => {
-            if let Some(existing) = bindings.get(name) {
-                return existing == value;
-            }
-
-            bindings.insert(name.clone(), value.clone());
-            true
-        }
-        IrPattern::Pin { name } => bindings
-            .get(name)
-            .or_else(|| env.get(name))
-            .is_some_and(|pinned| pinned == value),
-        IrPattern::Integer { value: p_val } => match value {
-            RuntimeValue::Int(v) => v == p_val,
-            _ => false,
-        },
-        IrPattern::Bool { value: p_val } => match value {
-            RuntimeValue::Bool(v) => v == p_val,
-            _ => false,
-        },
-        IrPattern::Nil => matches!(value, RuntimeValue::Nil),
-        IrPattern::String { value: p_val } => match value {
-            RuntimeValue::String(v) => v == p_val,
-            _ => false,
-        },
-        IrPattern::Atom { value: p_val } => match value {
-            RuntimeValue::Atom(v) => v == p_val,
-            _ => false,
-        },
-        IrPattern::Tuple { items } => match value {
-            RuntimeValue::Tuple(left, right) if items.len() == 2 => {
-                match_pattern(left, &items[0], env, bindings)
-                    && match_pattern(right, &items[1], env, bindings)
-            }
-            _ => false,
-        },
-        IrPattern::List { items, tail } => match value {
-            RuntimeValue::List(values) => {
-                if values.len() < items.len() {
-                    return false;
-                }
-
-                let prefix_matches = values
-                    .iter()
-                    .take(items.len())
-                    .zip(items.iter())
-                    .all(|(value, pattern)| match_pattern(value, pattern, env, bindings));
-
-                if !prefix_matches {
-                    return false;
-                }
-
-                if let Some(tail_pattern) = tail {
-                    let tail_values = values[items.len()..].to_vec();
-                    match_pattern(
-                        &RuntimeValue::List(tail_values),
-                        tail_pattern,
-                        env,
-                        bindings,
-                    )
-                } else {
-                    values.len() == items.len()
-                }
-            }
-            _ => false,
-        },
-        IrPattern::Map { entries } => match value {
-            RuntimeValue::Map(values) => {
-                for entry in entries {
-                    let mut entry_matched = false;
-
-                    for (candidate_key, candidate_value) in values {
-                        let mut candidate_bindings = bindings.clone();
-                        if match_pattern(candidate_key, &entry.key, env, &mut candidate_bindings)
-                            && match_pattern(
-                                candidate_value,
-                                &entry.value,
-                                env,
-                                &mut candidate_bindings,
-                            )
-                        {
-                            *bindings = candidate_bindings;
-                            entry_matched = true;
-                            break;
-                        }
-                    }
-
-                    if !entry_matched {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            _ => false,
-        },
-    }
+    native_runtime::pattern::match_pattern(value, pattern, env, bindings)
 }
 
 fn evaluate_call(
@@ -1047,247 +952,7 @@ fn evaluate_builtin_call(
     args: Vec<RuntimeValue>,
     offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
-    match name {
-        "ok" => {
-            let arg = expect_single_builtin_arg(name, args, offset)?;
-            Ok(RuntimeValue::ResultOk(Box::new(arg)))
-        }
-        "err" => {
-            let arg = expect_single_builtin_arg(name, args, offset)?;
-            Ok(RuntimeValue::ResultErr(Box::new(arg)))
-        }
-        "tuple" => {
-            let (left, right) = expect_pair_builtin_args(name, args, offset)?;
-            Ok(RuntimeValue::Tuple(Box::new(left), Box::new(right)))
-        }
-        "list" => Ok(RuntimeValue::List(args)),
-        "map_empty" => {
-            if !args.is_empty() {
-                return Err(RuntimeError::at_offset(
-                    format!(
-                        "arity mismatch for runtime builtin map_empty: expected 0 args, found {}",
-                        args.len()
-                    ),
-                    offset,
-                ));
-            }
-            Ok(RuntimeValue::Map(Vec::new()))
-        }
-        "map" => {
-            let (key, value) = expect_pair_builtin_args(name, args, offset)?;
-            Ok(RuntimeValue::Map(vec![(key, value)]))
-        }
-        "map_put" => {
-            let (base, key, value) = expect_triple_builtin_args(name, args, offset)?;
-            match base {
-                RuntimeValue::Map(mut entries) => {
-                    if let Some(existing) =
-                        entries.iter_mut().find(|(entry_key, _)| *entry_key == key)
-                    {
-                        existing.1 = value;
-                    } else {
-                        entries.push((key, value));
-                    }
-                    Ok(RuntimeValue::Map(entries))
-                }
-                _ => Err(RuntimeError::at_offset(
-                    format!("expected map base for put, found {}", base.kind_label()),
-                    offset,
-                )),
-            }
-        }
-        "map_update" => {
-            let (base, key, value) = expect_triple_builtin_args(name, args, offset)?;
-            match base {
-                RuntimeValue::Map(mut entries) => {
-                    if let Some(existing) =
-                        entries.iter_mut().find(|(entry_key, _)| *entry_key == key)
-                    {
-                        existing.1 = value;
-                        Ok(RuntimeValue::Map(entries))
-                    } else {
-                        Err(RuntimeError::at_offset(
-                            format!("key {} not found in map", key.render()),
-                            offset,
-                        ))
-                    }
-                }
-                _ => Err(RuntimeError::at_offset(
-                    format!("expected map base for update, found {}", base.kind_label()),
-                    offset,
-                )),
-            }
-        }
-        "map_access" => {
-            let (base, key) = expect_pair_builtin_args(name, args, offset)?;
-            match base {
-                RuntimeValue::Map(entries) => Ok(entries
-                    .into_iter()
-                    .find_map(|(entry_key, value)| (entry_key == key).then_some(value))
-                    .unwrap_or(RuntimeValue::Nil)),
-                _ => Err(RuntimeError::at_offset(
-                    format!("expected map base for access, found {}", base.kind_label()),
-                    offset,
-                )),
-            }
-        }
-        "keyword" => {
-            let (key, value) = expect_pair_builtin_args(name, args, offset)?;
-            Ok(RuntimeValue::Keyword(vec![(key, value)]))
-        }
-        "keyword_append" => {
-            let (base, key, value) = expect_triple_builtin_args(name, args, offset)?;
-            match base {
-                RuntimeValue::Keyword(mut entries) => {
-                    entries.push((key, value));
-                    Ok(RuntimeValue::Keyword(entries))
-                }
-                _ => Err(RuntimeError::at_offset(
-                    format!(
-                        "expected keyword base for append, found {}",
-                        base.kind_label()
-                    ),
-                    offset,
-                )),
-            }
-        }
-        "protocol_dispatch" => {
-            let value = expect_single_builtin_arg(name, args, offset)?;
-            evaluate_protocol_dispatch(value, offset)
-        }
-        "host_call" => evaluate_host_call(args, offset),
-        _ => Err(RuntimeError::at_offset(
-            format!("unsupported builtin call in runtime evaluator: {name}"),
-            offset,
-        )),
-    }
-}
-
-const PROTOCOL_DISPATCH_TABLE: &[(&str, i64)] = &[("tuple", 1), ("map", 2)];
-
-fn evaluate_protocol_dispatch(
-    value: RuntimeValue,
-    offset: usize,
-) -> Result<RuntimeValue, RuntimeError> {
-    let implementation = PROTOCOL_DISPATCH_TABLE
-        .iter()
-        .find_map(|(kind, implementation)| (value.kind_label() == *kind).then_some(*implementation))
-        .ok_or_else(|| {
-            RuntimeError::at_offset(
-                format!(
-                    "protocol_dispatch has no implementation for {}",
-                    value.kind_label()
-                ),
-                offset,
-            )
-        })?;
-
-    Ok(RuntimeValue::Int(implementation))
-}
-
-fn evaluate_host_call(
-    mut args: Vec<RuntimeValue>,
-    offset: usize,
-) -> Result<RuntimeValue, RuntimeError> {
-    if args.is_empty() {
-        return Err(RuntimeError::at_offset(
-            "host_call requires at least 1 argument (host function key)",
-            offset,
-        ));
-    }
-
-    // First argument must be the host function key (atom)
-    let key = args.remove(0);
-    let key_str = match key {
-        RuntimeValue::Atom(s) => s,
-        other => {
-            return Err(RuntimeError::at_offset(
-                format!(
-                    "host_call first argument must be an atom (host key), found {}",
-                    other.kind_label()
-                ),
-                offset,
-            ));
-        }
-    };
-
-    // Call the host function via registry
-    HOST_REGISTRY
-        .call(&key_str, &args)
-        .map_err(|e: HostError| RuntimeError::at_offset(e.to_string(), offset))
-}
-
-fn expect_single_builtin_arg(
-    name: &str,
-    mut args: Vec<RuntimeValue>,
-    offset: usize,
-) -> Result<RuntimeValue, RuntimeError> {
-    if args.len() != 1 {
-        return Err(RuntimeError::at_offset(
-            format!(
-                "arity mismatch for runtime builtin {name}: expected 1 args, found {}",
-                args.len()
-            ),
-            offset,
-        ));
-    }
-
-    Ok(args
-        .pop()
-        .expect("arity check should guarantee one builtin argument"))
-}
-
-fn expect_pair_builtin_args(
-    name: &str,
-    mut args: Vec<RuntimeValue>,
-    offset: usize,
-) -> Result<(RuntimeValue, RuntimeValue), RuntimeError> {
-    if args.len() != 2 {
-        return Err(RuntimeError::at_offset(
-            format!(
-                "arity mismatch for runtime builtin {name}: expected 2 args, found {}",
-                args.len()
-            ),
-            offset,
-        ));
-    }
-
-    let right = args
-        .pop()
-        .expect("arity check should guarantee second builtin argument");
-    let left = args
-        .pop()
-        .expect("arity check should guarantee first builtin argument");
-
-    Ok((left, right))
-}
-
-fn expect_triple_builtin_args(
-    name: &str,
-    mut args: Vec<RuntimeValue>,
-    offset: usize,
-) -> Result<(RuntimeValue, RuntimeValue, RuntimeValue), RuntimeError> {
-    if args.len() != 3 {
-        return Err(RuntimeError::at_offset(
-            format!(
-                "arity mismatch for runtime builtin {name}: expected 3 args, found {}",
-                args.len()
-            ),
-            offset,
-        ));
-    }
-
-    let third = args
-        .pop()
-        .expect("arity check should guarantee third builtin argument");
-    let second = args
-        .pop()
-        .expect("arity check should guarantee second builtin argument");
-    let first = args
-        .pop()
-        .expect("arity check should guarantee first builtin argument");
-
-    Ok((first, second, third))
+    native_runtime::evaluate_builtin_call(name, args, offset).map_err(map_native_runtime_error)
 }
 
 fn pop_value(
@@ -1300,19 +965,8 @@ fn pop_value(
     })
 }
 
-fn pop_int(stack: &mut Vec<RuntimeValue>, offset: usize) -> Result<i64, RuntimeError> {
-    let value = pop_value(stack, offset, "int op")?;
-
-    match value {
-        RuntimeValue::Int(number) => Ok(number),
-        other => Err(RuntimeError::at_offset(
-            format!(
-                "int operator expects int operands, found {}",
-                other.kind_label()
-            ),
-            offset,
-        )),
-    }
+fn map_native_runtime_error(error: native_runtime::NativeRuntimeError) -> RuntimeError {
+    RuntimeError::at_offset(error.message().to_string(), error.offset())
 }
 
 #[cfg(test)]
