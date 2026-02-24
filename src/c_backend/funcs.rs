@@ -127,10 +127,12 @@ fn terminator_operands(terminator: &MirTerminator) -> Vec<u32> {
 }
 
 /// Infer, for each block that has args, the register IDs that serve as phi
-/// inputs (values that are used in the block but not produced by its instructions).
-///
-/// This mirrors the logic in `llvm_backend::codegen::infer_block_arg_value_ids`.
+/// inputs. We first prefer IDs used before local definition in the block, then
+/// fall back to unresolved value IDs so merge values that are forwarded into
+/// successor blocks still get stable phi slots.
 fn infer_block_phi_reg_ids(function: &MirFunction) -> BTreeMap<u32, Vec<u32>> {
+    let unresolved_value_ids = unresolved_value_ids(function);
+    let mut assigned_value_ids = BTreeSet::<u32>::new();
     let mut result = BTreeMap::new();
 
     for block in &function.blocks {
@@ -139,28 +141,85 @@ fn infer_block_phi_reg_ids(function: &MirFunction) -> BTreeMap<u32, Vec<u32>> {
             continue;
         }
 
-        let mut defined = BTreeSet::<u32>::new();
-        let mut ordered_external = Vec::<u32>::new();
+        let mut inferred = Vec::<u32>::new();
 
-        for instruction in &block.instructions {
-            for used in instruction_operands(instruction) {
-                if !defined.contains(&used) && !ordered_external.contains(&used) {
-                    ordered_external.push(used);
-                }
+        for candidate in block_external_value_ids(block) {
+            if !unresolved_value_ids.contains(&candidate)
+                || assigned_value_ids.contains(&candidate)
+                || inferred.contains(&candidate)
+            {
+                continue;
             }
-            if let Some(dest) = instruction_dest(instruction) {
-                defined.insert(dest);
+            inferred.push(candidate);
+            if inferred.len() == block.args.len() {
+                break;
             }
         }
 
-        for used in terminator_operands(&block.terminator) {
+        if inferred.len() < block.args.len() {
+            for candidate in &unresolved_value_ids {
+                if assigned_value_ids.contains(candidate) || inferred.contains(candidate) {
+                    continue;
+                }
+                inferred.push(*candidate);
+                if inferred.len() == block.args.len() {
+                    break;
+                }
+            }
+        }
+
+        assigned_value_ids.extend(inferred.iter().copied());
+        result.insert(block.id, inferred);
+    }
+
+    result
+}
+
+fn block_external_value_ids(block: &crate::mir::MirBlock) -> Vec<u32> {
+    let mut defined = BTreeSet::<u32>::new();
+    let mut ordered_external = Vec::<u32>::new();
+
+    for instruction in &block.instructions {
+        for used in instruction_operands(instruction) {
             if !defined.contains(&used) && !ordered_external.contains(&used) {
                 ordered_external.push(used);
             }
         }
-
-        result.insert(block.id, ordered_external);
+        if let Some(dest) = instruction_dest(instruction) {
+            defined.insert(dest);
+        }
     }
 
-    result
+    for used in terminator_operands(&block.terminator) {
+        if !defined.contains(&used) && !ordered_external.contains(&used) {
+            ordered_external.push(used);
+        }
+    }
+
+    ordered_external
+}
+
+fn unresolved_value_ids(function: &MirFunction) -> BTreeSet<u32> {
+    let mut defined = BTreeSet::<u32>::new();
+    let mut referenced = BTreeSet::<u32>::new();
+
+    for block in &function.blocks {
+        for instruction in &block.instructions {
+            if let Some(dest) = instruction_dest(instruction) {
+                defined.insert(dest);
+            }
+            for used in instruction_operands(instruction) {
+                referenced.insert(used);
+            }
+        }
+
+        for used in terminator_operands(&block.terminator) {
+            referenced.insert(used);
+        }
+    }
+
+    referenced
+        .into_iter()
+        .filter(|value_id| !defined.contains(value_id))
+        .collect()
 }

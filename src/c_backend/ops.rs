@@ -21,23 +21,29 @@ pub(super) fn emit_c_instructions(
             }
             MirInstruction::ConstBool { dest, value, .. } => {
                 out.push_str(&format!(
-                    "  v{dest} = (TnVal){};\n",
+                    "  v{dest} = tn_runtime_const_bool((TnVal){});\n",
                     if *value { 1 } else { 0 }
                 ));
             }
             MirInstruction::ConstNil { dest, .. } => {
-                out.push_str(&format!("  v{dest} = (TnVal)0;\n"));
+                out.push_str(&format!("  v{dest} = tn_runtime_const_nil();\n"));
             }
             MirInstruction::ConstAtom { dest, value, .. } => {
-                let hash = hash_text_i64(value);
+                let escaped = c_string_literal(value);
                 out.push_str(&format!(
-                    "  v{dest} = tn_runtime_const_atom((TnVal){hash}LL);\n"
+                    "  v{dest} = tn_runtime_const_atom((TnVal)(intptr_t){escaped});\n"
                 ));
             }
-            MirInstruction::ConstString { dest, .. } | MirInstruction::ConstFloat { dest, .. } => {
-                // Unsupported types: emit a runtime abort stub call
+            MirInstruction::ConstString { dest, value, .. } => {
+                let escaped = c_string_literal(value);
                 out.push_str(&format!(
-                    "  v{dest} = tn_stub_abort(\"unsupported constant type\");\n"
+                    "  v{dest} = tn_runtime_const_string((TnVal)(intptr_t){escaped});\n"
+                ));
+            }
+            MirInstruction::ConstFloat { dest, value, .. } => {
+                let escaped = c_string_literal(&value.to_string());
+                out.push_str(&format!(
+                    "  v{dest} = tn_runtime_const_float((TnVal)(intptr_t){escaped});\n"
                 ));
             }
             MirInstruction::LoadVariable { dest, name, .. } => {
@@ -136,24 +142,28 @@ pub(super) fn emit_c_instructions(
                 offset,
                 ..
             } => {
-                if let IrOp::Try { .. } = source {
-                    let try_hash = hash_ir_op_i64(source)?;
-                    let Some(dest) = dest else {
-                        return Err(CBackendError::new(format!(
-                            "c backend missing legacy destination in function {} at offset {offset}",
-                            function.name
-                        )));
-                    };
-                    out.push_str(&format!(
-                        "  v{dest} = tn_runtime_try((TnVal){try_hash}LL);\n"
-                    ));
-                } else {
-                    return Err(CBackendError::unsupported_instruction(
-                        &function.name,
-                        instruction,
-                        *offset,
-                    ));
-                }
+                let runtime_helper = match source {
+                    IrOp::Try { .. } => "tn_runtime_try",
+                    IrOp::For { .. } => "tn_runtime_for",
+                    _ => {
+                        return Err(CBackendError::unsupported_instruction(
+                            &function.name,
+                            instruction,
+                            *offset,
+                        ));
+                    }
+                };
+
+                let op_hash = hash_ir_op_i64(source)?;
+                let Some(dest) = dest else {
+                    return Err(CBackendError::new(format!(
+                        "c backend missing legacy destination in function {} at offset {offset}",
+                        function.name
+                    )));
+                };
+                out.push_str(&format!(
+                    "  v{dest} = {runtime_helper}((TnVal){op_hash}LL);\n"
+                ));
             }
         }
     }
@@ -166,24 +176,24 @@ fn emit_c_binary(dest: u32, kind: &MirBinaryKind, left: u32, right: u32, out: &m
         MirBinaryKind::SubInt => out.push_str(&format!("  v{dest} = v{left} - v{right};\n")),
         MirBinaryKind::MulInt => out.push_str(&format!("  v{dest} = v{left} * v{right};\n")),
         MirBinaryKind::DivInt => out.push_str(&format!("  v{dest} = v{left} / v{right};\n")),
-        MirBinaryKind::CmpIntEq => {
-            out.push_str(&format!("  v{dest} = (v{left} == v{right}) ? 1 : 0;\n"))
-        }
-        MirBinaryKind::CmpIntNotEq => {
-            out.push_str(&format!("  v{dest} = (v{left} != v{right}) ? 1 : 0;\n"))
-        }
-        MirBinaryKind::CmpIntLt => {
-            out.push_str(&format!("  v{dest} = (v{left} < v{right}) ? 1 : 0;\n"))
-        }
-        MirBinaryKind::CmpIntLte => {
-            out.push_str(&format!("  v{dest} = (v{left} <= v{right}) ? 1 : 0;\n"))
-        }
-        MirBinaryKind::CmpIntGt => {
-            out.push_str(&format!("  v{dest} = (v{left} > v{right}) ? 1 : 0;\n"))
-        }
-        MirBinaryKind::CmpIntGte => {
-            out.push_str(&format!("  v{dest} = (v{left} >= v{right}) ? 1 : 0;\n"))
-        }
+        MirBinaryKind::CmpIntEq => out.push_str(&format!(
+            "  v{dest} = tn_runtime_const_bool((v{left} == v{right}) ? 1 : 0);\n"
+        )),
+        MirBinaryKind::CmpIntNotEq => out.push_str(&format!(
+            "  v{dest} = tn_runtime_const_bool((v{left} != v{right}) ? 1 : 0);\n"
+        )),
+        MirBinaryKind::CmpIntLt => out.push_str(&format!(
+            "  v{dest} = tn_runtime_const_bool((v{left} < v{right}) ? 1 : 0);\n"
+        )),
+        MirBinaryKind::CmpIntLte => out.push_str(&format!(
+            "  v{dest} = tn_runtime_const_bool((v{left} <= v{right}) ? 1 : 0);\n"
+        )),
+        MirBinaryKind::CmpIntGt => out.push_str(&format!(
+            "  v{dest} = tn_runtime_const_bool((v{left} > v{right}) ? 1 : 0);\n"
+        )),
+        MirBinaryKind::CmpIntGte => out.push_str(&format!(
+            "  v{dest} = tn_runtime_const_bool((v{left} >= v{right}) ? 1 : 0);\n"
+        )),
         MirBinaryKind::Concat => out.push_str(&format!(
             "  v{dest} = tn_runtime_concat(v{left}, v{right});\n"
         )),
@@ -350,4 +360,20 @@ fn emit_c_builtin_call(
         }
     }
     Ok(())
+}
+
+fn c_string_literal(value: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }

@@ -34,7 +34,7 @@ pub(super) fn emit_c_terminator_with_phi(
             on_short_circuit,
             ..
         } => {
-            let cond_expr = format!("v{condition}");
+            let cond_expr = format!("tn_runtime_is_truthy(v{condition})");
             let (true_target, false_target) = match op {
                 crate::mir::MirShortCircuitOp::AndAnd | crate::mir::MirShortCircuitOp::And => {
                     (on_evaluate_rhs, on_short_circuit)
@@ -138,10 +138,12 @@ pub(super) fn emit_c_pattern_condition(
         IrPattern::Wildcard | IrPattern::Bind { .. } => Ok("1".to_string()),
         IrPattern::Integer { value } => Ok(format!("({scrutinee_expr} == {value}LL)")),
         IrPattern::Bool { value } => Ok(format!(
-            "({scrutinee_expr} == {})",
+            "tn_runtime_value_equal({scrutinee_expr}, tn_runtime_const_bool((TnVal){}))",
             if *value { 1 } else { 0 }
         )),
-        IrPattern::Nil => Ok(format!("({scrutinee_expr} == 0)")),
+        IrPattern::Nil => Ok(format!(
+            "tn_runtime_value_equal({scrutinee_expr}, tn_runtime_const_nil())"
+        )),
         _ => {
             let pattern_hash = hash_pattern_i64(pattern)?;
             let reg = format!("{label}_complex");

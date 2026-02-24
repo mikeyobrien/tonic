@@ -61,3 +61,89 @@ fn compile_llvm_backend_emits_deterministic_no_clause_helper_calls() {
     assert!(llvm_ir.contains("declare i64 @tn_runtime_error_no_matching_clause()"));
     assert!(llvm_ir.contains("call i64 @tn_runtime_error_no_matching_clause()"));
 }
+
+#[test]
+fn compile_llvm_backend_handles_control_flow_catalog_cfg_fixtures() {
+    let repo_root = std::env::current_dir().expect("repo root should be readable");
+    let temp_dir = common::unique_temp_dir("compile-llvm-control-flow-catalog");
+
+    for fixture in [
+        "examples/parity/02-operators/logical_keywords.tn",
+        "examples/parity/02-operators/logical_short_circuit.tn",
+        "examples/parity/06-control-flow/if_unless.tn",
+    ] {
+        let source = repo_root.join(fixture);
+        assert!(source.exists(), "expected fixture {fixture} to exist");
+
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+            .current_dir(&temp_dir)
+            .args([
+                "compile",
+                source.to_str().expect("fixture path should be utf8"),
+                "--backend",
+                "llvm",
+            ])
+            .output()
+            .expect("compile command should execute");
+
+        assert!(
+            output.status.success(),
+            "expected llvm compile success for {fixture}, got exit {:?}\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn compile_llvm_backend_handles_for_catalog_fixtures_and_reduce_failure_contract() {
+    let repo_root = std::env::current_dir().expect("repo root should be readable");
+    let temp_dir = common::unique_temp_dir("compile-llvm-for-catalog");
+
+    for fixture in [
+        "examples/parity/06-control-flow/for_single_generator.tn",
+        "examples/parity/06-control-flow/for_multi_generator.tn",
+        "examples/parity/06-control-flow/for_into.tn",
+        "examples/parity/06-control-flow/for_into_runtime_fail.tn",
+    ] {
+        let source = repo_root.join(fixture);
+        assert!(source.exists(), "expected fixture {fixture} to exist");
+
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+            .current_dir(&temp_dir)
+            .args([
+                "compile",
+                source.to_str().expect("fixture path should be utf8"),
+                "--backend",
+                "llvm",
+            ])
+            .output()
+            .expect("compile command should execute");
+
+        assert!(
+            output.status.success(),
+            "expected llvm compile success for {fixture}, got exit {:?}\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let unsupported_source = repo_root.join("examples/parity/06-control-flow/for_reduce_fail.tn");
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            unsupported_source
+                .to_str()
+                .expect("fixture path should be utf8"),
+            "--backend",
+            "llvm",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains(
+            "error: unsupported for option 'reduce'; remove options from for for now",
+        ));
+}

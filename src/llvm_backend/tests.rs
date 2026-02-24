@@ -168,6 +168,44 @@ fn lower_mir_subset_lowers_string_and_float_constants_to_runtime_helpers() {
 }
 
 #[test]
+fn lower_mir_subset_lowers_for_legacy_instruction_to_runtime_helper() {
+    let mir = MirProgram {
+        functions: vec![MirFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            entry_block: 0,
+            blocks: vec![MirBlock {
+                id: 0,
+                args: vec![],
+                instructions: vec![MirInstruction::Legacy {
+                    dest: Some(0),
+                    source: IrOp::For {
+                        generators: vec![],
+                        into_ops: None,
+                        body_ops: vec![],
+                        offset: 21,
+                    },
+                    offset: 21,
+                    value_type: Some(MirType::Dynamic),
+                }],
+                terminator: MirTerminator::Return {
+                    value: 0,
+                    offset: 22,
+                },
+            }],
+        }],
+    };
+
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir)
+        .expect("for legacy op should lower to deterministic runtime helper call");
+
+    assert!(llvm_ir.contains("declare i64 @tn_runtime_for(i64)"));
+    assert!(llvm_ir.contains("call i64 @tn_runtime_for(i64"));
+}
+
+#[test]
 fn lower_mir_subset_rejects_unsupported_legacy_instruction() {
     let mir = MirProgram {
         functions: vec![MirFunction {
@@ -181,10 +219,8 @@ fn lower_mir_subset_rejects_unsupported_legacy_instruction() {
                 args: vec![],
                 instructions: vec![MirInstruction::Legacy {
                     dest: None,
-                    source: IrOp::For {
-                        generators: vec![],
-                        into_ops: None,
-                        body_ops: vec![],
+                    source: IrOp::ConstInt {
+                        value: 1,
                         offset: 21,
                     },
                     offset: 21,

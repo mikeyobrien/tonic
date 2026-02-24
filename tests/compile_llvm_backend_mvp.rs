@@ -66,12 +66,12 @@ fn compile_llvm_backend_emits_executable_artifact_for_subset_program() {
 }
 
 #[test]
-fn compile_llvm_backend_rejects_unsupported_ops_with_deterministic_diagnostic() {
+fn compile_llvm_backend_keeps_for_reduce_option_failure_deterministic() {
     let temp_dir = common::unique_temp_dir("compile-llvm-unsupported");
     let source_path = temp_dir.join("unsupported.tn");
     fs::write(
         &source_path,
-        "defmodule Unsupported do\n  def run() do\n    for x <- [1, 2, 3] do\n      x\n    end\n  end\nend\n",
+        "defmodule Unsupported do\n  def run() do\n    for x <- [1, 2, 3], reduce: 0 do\n      x\n    end\n  end\nend\n",
     )
     .unwrap();
 
@@ -81,7 +81,7 @@ fn compile_llvm_backend_rejects_unsupported_ops_with_deterministic_diagnostic() 
         .assert()
         .failure()
         .stderr(contains(
-            "error: llvm backend unsupported instruction legacy in function Unsupported.run",
+            "error: unsupported for option 'reduce'; remove options from for for now",
         ));
 }
 

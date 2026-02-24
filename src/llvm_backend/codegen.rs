@@ -41,6 +41,7 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "declare i64 @tn_runtime_question(i64)".to_string(),
         "declare i64 @tn_runtime_raise(i64)".to_string(),
         "declare i64 @tn_runtime_try(i64)".to_string(),
+        "declare i64 @tn_runtime_for(i64)".to_string(),
         "declare i64 @tn_runtime_make_closure(i64, i64, i64)".to_string(),
         "declare i64 (i64, i64, ...) @tn_runtime_call_closure".to_string(),
         "declare i64 @tn_runtime_const_atom(i64)".to_string(),
@@ -384,6 +385,8 @@ fn predecessor_edges(
 fn infer_block_arg_value_ids(
     function: &MirFunction,
 ) -> Result<BTreeMap<u32, Vec<u32>>, LlvmBackendError> {
+    let unresolved_value_ids = unresolved_value_ids(function);
+    let mut assigned_value_ids = BTreeSet::<u32>::new();
     let mut value_ids_by_block = BTreeMap::new();
 
     for block in &function.blocks {
@@ -392,38 +395,95 @@ fn infer_block_arg_value_ids(
             continue;
         }
 
-        let mut defined = BTreeSet::<u32>::new();
-        let mut ordered_external = Vec::<u32>::new();
+        let mut inferred = Vec::<u32>::new();
 
-        for instruction in &block.instructions {
-            for used in instruction_operands(instruction) {
-                if !defined.contains(&used) && !ordered_external.contains(&used) {
-                    ordered_external.push(used);
+        for candidate in block_external_value_ids(block) {
+            if !unresolved_value_ids.contains(&candidate)
+                || assigned_value_ids.contains(&candidate)
+                || inferred.contains(&candidate)
+            {
+                continue;
+            }
+            inferred.push(candidate);
+            if inferred.len() == block.args.len() {
+                break;
+            }
+        }
+
+        if inferred.len() < block.args.len() {
+            for candidate in &unresolved_value_ids {
+                if assigned_value_ids.contains(candidate) || inferred.contains(candidate) {
+                    continue;
+                }
+                inferred.push(*candidate);
+                if inferred.len() == block.args.len() {
+                    break;
                 }
             }
-
-            if let Some(dest) = instruction_destination(instruction) {
-                defined.insert(dest);
-            }
         }
 
-        for used in terminator_operands(&block.terminator) {
-            if !defined.contains(&used) && !ordered_external.contains(&used) {
-                ordered_external.push(used);
-            }
-        }
-
-        if ordered_external.len() != block.args.len() {
+        if inferred.len() != block.args.len() {
             return Err(LlvmBackendError::new(format!(
                 "llvm backend cannot infer block arg values for block {} in function {}",
                 block.id, function.name
             )));
         }
 
-        value_ids_by_block.insert(block.id, ordered_external);
+        assigned_value_ids.extend(inferred.iter().copied());
+        value_ids_by_block.insert(block.id, inferred);
     }
 
     Ok(value_ids_by_block)
+}
+
+fn block_external_value_ids(block: &MirBlock) -> Vec<u32> {
+    let mut defined = BTreeSet::<u32>::new();
+    let mut ordered_external = Vec::<u32>::new();
+
+    for instruction in &block.instructions {
+        for used in instruction_operands(instruction) {
+            if !defined.contains(&used) && !ordered_external.contains(&used) {
+                ordered_external.push(used);
+            }
+        }
+
+        if let Some(dest) = instruction_destination(instruction) {
+            defined.insert(dest);
+        }
+    }
+
+    for used in terminator_operands(&block.terminator) {
+        if !defined.contains(&used) && !ordered_external.contains(&used) {
+            ordered_external.push(used);
+        }
+    }
+
+    ordered_external
+}
+
+fn unresolved_value_ids(function: &MirFunction) -> BTreeSet<u32> {
+    let mut defined = BTreeSet::<u32>::new();
+    let mut referenced = BTreeSet::<u32>::new();
+
+    for block in &function.blocks {
+        for instruction in &block.instructions {
+            if let Some(dest) = instruction_destination(instruction) {
+                defined.insert(dest);
+            }
+            for used in instruction_operands(instruction) {
+                referenced.insert(used);
+            }
+        }
+
+        for used in terminator_operands(&block.terminator) {
+            referenced.insert(used);
+        }
+    }
+
+    referenced
+        .into_iter()
+        .filter(|value_id| !defined.contains(value_id))
+        .collect()
 }
 
 fn emit_phi_nodes(
@@ -571,26 +631,30 @@ fn emit_instructions(
                 offset,
                 ..
             } => {
-                if let IrOp::Try { .. } = source {
-                    let try_hash = hash_ir_op_i64(source)?;
-                    let Some(dest) = dest else {
-                        return Err(LlvmBackendError::new(format!(
-                            "llvm backend missing legacy destination in function {} at offset {}",
-                            function.name, offset
-                        )));
-                    };
+                let runtime_helper = match source {
+                    IrOp::Try { .. } => "tn_runtime_try",
+                    IrOp::For { .. } => "tn_runtime_for",
+                    _ => {
+                        return Err(LlvmBackendError::unsupported_instruction(
+                            &function.name,
+                            instruction,
+                            *offset,
+                        ));
+                    }
+                };
 
-                    lines.push(format!(
-                        "  {} = call i64 @tn_runtime_try(i64 {try_hash})",
-                        value_register(*dest)
-                    ));
-                } else {
-                    return Err(LlvmBackendError::unsupported_instruction(
-                        &function.name,
-                        instruction,
-                        *offset,
-                    ));
-                }
+                let op_hash = hash_ir_op_i64(source)?;
+                let Some(dest) = dest else {
+                    return Err(LlvmBackendError::new(format!(
+                        "llvm backend missing legacy destination in function {} at offset {}",
+                        function.name, offset
+                    )));
+                };
+
+                lines.push(format!(
+                    "  {} = call i64 @{runtime_helper}(i64 {op_hash})",
+                    value_register(*dest)
+                ));
             }
             MirInstruction::MakeClosure {
                 dest, params, ops, ..
