@@ -8,6 +8,7 @@ mod ir;
 mod lexer;
 mod manifest;
 mod mir;
+pub mod native_abi;
 mod parser;
 mod resolver;
 mod resolver_diag;

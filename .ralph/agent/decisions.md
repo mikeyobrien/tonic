@@ -708,3 +708,14 @@ Template:
 - **Reasoning:** The roadmap requires MIR architecture with explicit control flow and typed lowering boundaries now, but fully modeling every control form would over-scope one atomic task. This option establishes stable CFG + merge semantics and a typed operation surface that future LLVM tasks can extend incrementally.
 - **Reversibility:** High — legacy instruction variants are additive and can be replaced by richer CFG lowering in later roadmap tasks without breaking CLI dump contracts.
 - **Timestamp (UTC ISO 8601):** 2026-02-24T15:43:00Z
+
+## DEC-061
+- **Decision:** Which memory ownership model to use for the first native TValue ABI increment.
+- **Chosen Option:** Use a handle-based global refcount table (deterministic retain/release over `u64` handles) rather than raw pointer ownership for heap-backed TValue payloads.
+- **Confidence (0-100):** 76
+- **Alternatives Considered:**
+  - Raw pointer payloads backed by `Arc` and FFI retain/release shims.
+  - Arena/region allocation with per-invocation teardown.
+- **Reasoning:** Task 03 needs stable ABI contracts plus deterministic misuse handling. Handle-based refcounting keeps the TValue layout C-friendly while allowing invalid-tag/invalid-handle/double-release paths to return deterministic errors instead of risking UB from stale raw pointers.
+- **Reversibility:** High — payload semantics are internal to the ABI module and can be migrated to pointer-based storage later while preserving the external TValue shape.
+- **Timestamp (UTC ISO 8601):** 2026-02-24T15:29:55Z

@@ -862,3 +862,34 @@ Verification gate run complete and green:
 - `cargo test`
 
 Task file `02-mir-cfg-and-typed-lowering.code-task.md` marked completed (started/completed 2026-02-24).
+
+## 2026-02-24T15:29:55Z — Builder Task 03 complete (native TValue ABI + memory model)
+
+Processed pending `task.complete` handoff from Task 02 and executed roadmap Task 03 as one atomic increment.
+
+Implemented native ABI foundation in `src/native_abi/`:
+- `TValue` `#[repr(C)]` value cell with stable v1 layout (16-byte / 8-byte aligned), explicit `TValueTag`, `TOwnership`, and `TONIC_RUNTIME_ABI_VERSION`.
+- Deterministic handle-based refcount memory model (`store`, `retain`, `release`) in `src/native_abi/heap.rs`.
+- Safe conversion helpers between interpreter `RuntimeValue` and ABI values (`runtime_to_tvalue`, `tvalue_to_runtime`, `validate_tvalue`).
+- Boundary call ABI contracts via `TCallContext` / `TCallResult` and panic-safe `invoke_runtime_boundary` (`catch_unwind`, no cross-boundary unwind).
+- Deterministic error taxonomy (`AbiErrorCode`) for invalid tag/ownership/handle misuse and ABI mismatch.
+
+Added ABI documentation:
+- `docs/runtime-abi.md` (versioning, layout contract, memory semantics, boundary call behavior).
+
+Coverage (TDD red→green) in `src/native_abi/tests.rs`:
+- layout/version contract checks
+- roundtrip conversion for nested collection/result values
+- retain/release stress + over-release safety
+- invalid-tag and tag-handle mismatch deterministic error handling
+- boundary ABI mismatch + panic containment checks
+
+Other updates:
+- `src/main.rs` now exports `pub mod native_abi;`.
+- Decision journal entry `DEC-061` captures handle-based refcount choice (confidence 76).
+- Task file `03-runtime-value-abi-and-memory-model.code-task.md` marked completed (started/completed 2026-02-24).
+
+Verification gate run complete and green:
+- `cargo fmt --all`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
