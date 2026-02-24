@@ -833,31 +833,138 @@ static void tn_runtime_println(TnVal value) {
     }
     out.push('\n');
 
-    // Single-arg stubs
-    for name in &[
-        "tn_runtime_for",
-        "tn_runtime_to_string",
-        "tn_runtime_not",
-        "tn_runtime_bang",
-    ] {
-        out.push_str(&format!(
-            "static TnVal {name}(TnVal _a) {{ return tn_stub_abort(\"{name}\"); }}\n"
-        ));
-    }
-    out.push('\n');
+    out.push_str(
+        r###"static TnVal tn_runtime_for(TnVal _a) { return tn_stub_abort("tn_runtime_for"); }
 
-    // Two-arg stubs
-    for name in &[
-        "tn_runtime_concat",
-        "tn_runtime_list_concat",
-        "tn_runtime_list_subtract",
-    ] {
-        out.push_str(&format!(
-            "static TnVal {name}(TnVal _a, TnVal _b) {{ return tn_stub_abort(\"{name}\"); }}\n"
-        ));
-    }
-    out.push('\n');
+static TnVal tn_runtime_to_string(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL) {
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%lld", (long long)value);
+    return tn_runtime_const_string((TnVal)(intptr_t)buffer);
+  }
 
+  switch (obj->kind) {
+    case TN_OBJ_BOOL:
+      return tn_runtime_const_string((TnVal)(intptr_t)(obj->as.bool_value ? "true" : "false"));
+    case TN_OBJ_NIL:
+      return tn_runtime_const_string((TnVal)(intptr_t)"nil");
+    case TN_OBJ_ATOM:
+    case TN_OBJ_STRING:
+    case TN_OBJ_FLOAT:
+      return tn_runtime_const_string((TnVal)(intptr_t)obj->as.text.text);
+    default:
+      return tn_runtime_failf("to_string expects scalar value, found %s", tn_runtime_value_kind(value));
+  }
+}
+
+static TnVal tn_runtime_not(TnVal _a) { return tn_stub_abort("tn_runtime_not"); }
+static TnVal tn_runtime_bang(TnVal _a) { return tn_stub_abort("tn_runtime_bang"); }
+
+static TnVal tn_runtime_concat(TnVal left, TnVal right) {
+  TnObj *left_obj = tn_get_obj(left);
+  TnObj *right_obj = tn_get_obj(right);
+  if (left_obj == NULL || left_obj->kind != TN_OBJ_STRING ||
+      right_obj == NULL || right_obj->kind != TN_OBJ_STRING) {
+    return tn_runtime_failf("concat expects string <> string, found %s <> %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+
+  const char *left_text = left_obj->as.text.text;
+  const char *right_text = right_obj->as.text.text;
+  size_t left_len = strlen(left_text);
+  size_t right_len = strlen(right_text);
+  char *joined = (char *)malloc(left_len + right_len + 1);
+  if (joined == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  memcpy(joined, left_text, left_len);
+  memcpy(joined + left_len, right_text, right_len + 1);
+
+  TnObj *obj = tn_new_obj(TN_OBJ_STRING);
+  obj->as.text.text = joined;
+  return tn_heap_store(obj);
+}
+
+static TnVal tn_runtime_list_concat(TnVal left, TnVal right) {
+  TnObj *left_obj = tn_get_obj(left);
+  TnObj *right_obj = tn_get_obj(right);
+  if (left_obj == NULL || left_obj->kind != TN_OBJ_LIST ||
+      right_obj == NULL || right_obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("list concat expects list ++ list, found %s ++ %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+
+  size_t left_len = left_obj->as.list.len;
+  size_t right_len = right_obj->as.list.len;
+  size_t combined_len = left_len + right_len;
+
+  TnObj *obj = tn_new_obj(TN_OBJ_LIST);
+  obj->as.list.len = combined_len;
+  obj->as.list.items = combined_len == 0 ? NULL : (TnVal *)calloc(combined_len, sizeof(TnVal));
+  if (combined_len > 0 && obj->as.list.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < left_len; i += 1) {
+    obj->as.list.items[i] = left_obj->as.list.items[i];
+  }
+  for (size_t i = 0; i < right_len; i += 1) {
+    obj->as.list.items[left_len + i] = right_obj->as.list.items[i];
+  }
+
+  return tn_heap_store(obj);
+}
+
+static TnVal tn_runtime_list_subtract(TnVal left, TnVal right) {
+  TnObj *left_obj = tn_get_obj(left);
+  TnObj *right_obj = tn_get_obj(right);
+  if (left_obj == NULL || left_obj->kind != TN_OBJ_LIST ||
+      right_obj == NULL || right_obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("list subtract expects list -- list, found %s -- %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+
+  size_t left_len = left_obj->as.list.len;
+  size_t right_len = right_obj->as.list.len;
+
+  int *consumed = right_len == 0 ? NULL : (int *)calloc(right_len, sizeof(int));
+  if (right_len > 0 && consumed == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  TnObj *obj = tn_new_obj(TN_OBJ_LIST);
+  obj->as.list.len = 0;
+  obj->as.list.items = left_len == 0 ? NULL : (TnVal *)calloc(left_len, sizeof(TnVal));
+  if (left_len > 0 && obj->as.list.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < left_len; i += 1) {
+    TnVal candidate = left_obj->as.list.items[i];
+    int removed = 0;
+    for (size_t j = 0; j < right_len; j += 1) {
+      if (consumed[j] == 0 && tn_runtime_value_equal(candidate, right_obj->as.list.items[j])) {
+        consumed[j] = 1;
+        removed = 1;
+        break;
+      }
+    }
+
+    if (!removed) {
+      obj->as.list.items[obj->as.list.len] = candidate;
+      obj->as.list.len += 1;
+    }
+  }
+
+  free(consumed);
+  return tn_heap_store(obj);
+}
+
+"###,
+    );
     emit_runtime_pattern_helpers(mir, out)?;
     emit_runtime_try_helpers(mir, out)?;
     emit_compiled_closure_helpers(mir, out)?;
