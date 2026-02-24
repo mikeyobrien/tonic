@@ -446,8 +446,17 @@ fn infer_expression_type(
         }
         Expr::Variable { .. } => Ok(solver.fresh_var()),
         Expr::Atom { .. } => Ok(Type::Dynamic),
-        Expr::Try { .. } => Ok(Type::Dynamic),
-        Expr::Raise { .. } => Ok(Type::Dynamic),
+        Expr::Try { body, rescue, .. } => {
+            infer_expression_type(body, current_module, signatures, solver)?;
+            for branch in rescue {
+                infer_expression_type(branch.body(), current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
+        Expr::Raise { error, .. } => {
+            infer_expression_type(error, current_module, signatures, solver)?;
+            Ok(Type::Dynamic)
+        }
     }
 }
 

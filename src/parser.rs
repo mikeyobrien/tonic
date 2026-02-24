@@ -1063,6 +1063,8 @@ fn token_can_start_no_paren_arg(kind: TokenKind) -> bool {
             | TokenKind::Cond
             | TokenKind::With
             | TokenKind::For
+            | TokenKind::Try
+            | TokenKind::Raise
             | TokenKind::Ampersand
     )
 }
@@ -2711,6 +2713,36 @@ mod tests {
                 "callee":"Math.one",
                 "args":[{"kind":"int","value":7}]
             })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_try_as_no_paren_call_arg() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def helper(value) do\n    value\n  end\n\n  def run() do\n    helper try do\n      :ok\n    rescue\n      _ -> :err\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize try no-paren call fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert!(
+            matches!(ast.modules[0].functions[1].body, Expr::Call { .. }),
+            "outermost expr should be call"
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_raise_as_no_paren_call_arg() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def helper(value) do\n    value\n  end\n\n  def run() do\n    helper raise \"boom\"\n  end\nend\n",
+        )
+        .expect("scanner should tokenize raise no-paren call fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert!(
+            matches!(ast.modules[0].functions[1].body, Expr::Call { .. }),
+            "outermost expr should be call"
         );
     }
 
