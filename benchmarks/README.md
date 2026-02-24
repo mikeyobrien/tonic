@@ -1,18 +1,28 @@
 # Tonic Benchmark Suite
 
-This suite profiles representative Tonic workloads and can enforce latency thresholds.
+This suite profiles representative Tonic workloads and can enforce latency/performance contracts.
 
 ## Inputs
 
-- Suite manifest: `benchmarks/suite.toml`
+- Legacy suite manifest: `benchmarks/suite.toml`
+- Native compiler contract suite: `benchmarks/native-compiler-suite.toml`
+- Rust/Go baseline data: `benchmarks/native-compiler-baselines.json`
 - Runner: `src/bin/benchsuite.rs`
 
 Each workload defines:
 - `name`
 - `command` (argv passed to `tonic`)
-- `mode` (`warm` or `cold`, default `warm`. Cold mode clears `.tonic/cache` before each run)
+- `mode` (`warm` or `cold`, default `warm`; cold mode clears `.tonic/cache`)
 - `threshold_p50_ms`
 - `threshold_p95_ms`
+- optional `threshold_rss_kb`
+- optional `weight`
+- optional `category`
+
+Native compiler suites can also define `[performance_contract]` with:
+- native SLOs (`startup`, `runtime`, `rss`, `artifact_size`, `compile_latency`)
+- weighted scoring (`metric_weights`, `pass_threshold`)
+- reference baseline targets (`rust`, `go`) + `relative_budget_pct`
 
 ## Run
 
@@ -22,32 +32,33 @@ Build a release binary first:
 cargo build --release
 ```
 
-Run the suite (JSON printed to stdout + written to file):
+Run the legacy suite:
 
 ```bash
 cargo run --bin benchsuite -- --bin target/release/tonic
 ```
 
-Calibrate thresholds to suggest new limits based on current baseline:
+Run the native compiler contract suite (includes weighted Rust/Go comparisons):
+
+```bash
+cargo run --bin benchsuite -- \
+  --bin target/release/tonic \
+  --manifest benchmarks/native-compiler-suite.toml \
+  --target-name interpreter \
+  --compile-latency-ms 2600 \
+  --json-out benchmarks/native-compiler-summary.json \
+  --markdown-out benchmarks/native-compiler-summary.md
+```
+
+Calibrate workload thresholds:
 
 ```bash
 cargo run --bin benchsuite -- --bin target/release/tonic --calibrate --calibrate-margin-pct 20
 ```
 
-Custom run count / warmup + markdown output:
-
-```bash
-cargo run --bin benchsuite -- \
-  --bin target/release/tonic \
-  --runs 25 \
-  --warmup 5 \
-  --json-out benchmarks/summary.json \
-  --markdown-out benchmarks/summary.md
-```
-
 ## Enforce performance requirements
 
-Fail non-zero if any workload exceeds p50/p95 thresholds:
+Fail non-zero if any configured threshold or contract gate fails:
 
 ```bash
 ./scripts/bench-enforce.sh
@@ -56,10 +67,31 @@ Fail non-zero if any workload exceeds p50/p95 thresholds:
 Or manually:
 
 ```bash
-cargo run --bin benchsuite -- --bin target/release/tonic --enforce
+cargo run --bin benchsuite -- \
+  --bin target/release/tonic \
+  --manifest benchmarks/native-compiler-suite.toml \
+  --target-name interpreter \
+  --compile-latency-ms 2600 \
+  --enforce
 ```
 
-This is suitable for CI perf-gate checks.
+In contract mode, enforce checks:
+- absolute workload thresholds (`p50`, `p95`, optional `rss`)
+- weighted overall competitiveness score
+- native SLO thresholds
+- deterministic failure reasons in JSON/Markdown reports
+
+## Reproducibility metadata
+
+Runner output now persists host metadata in every report:
+- OS/arch
+- kernel
+- CPU model
+- rustc version
+- go version
+- capture timestamp
+
+Reference baseline metadata is also included in contract report output.
 
 ## Profiling hotspots
 
@@ -75,9 +107,3 @@ Or with `perf`:
 perf record -g target/release/tonic run examples/parity/06-control-flow/for_multi_generator.tn
 perf report
 ```
-
-## Mapping to performance requirements
-
-- p50: typical developer experience latency
-- p95: tail latency and worst-case responsiveness
-- Thresholds in `suite.toml` are explicit contracts; tune downward as perf improves.
