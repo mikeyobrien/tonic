@@ -1,4 +1,4 @@
-use crate::ir::{CmpKind, IrCallTarget, IrOp};
+use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern};
 use crate::mir::{MirInstruction, MirProgram};
 use std::collections::BTreeMap;
 
@@ -834,9 +834,7 @@ static void tn_runtime_println(TnVal value) {
     out.push('\n');
 
     out.push_str(
-        r###"static TnVal tn_runtime_for(TnVal _a) { return tn_stub_abort("tn_runtime_for"); }
-
-static TnVal tn_runtime_to_string(TnVal value) {
+        r###"static TnVal tn_runtime_to_string(TnVal value) {
   TnObj *obj = tn_get_obj(value);
   if (obj == NULL) {
     char buffer[32];
@@ -967,6 +965,7 @@ static TnVal tn_runtime_list_subtract(TnVal left, TnVal right) {
     );
     emit_runtime_pattern_helpers(mir, out)?;
     emit_runtime_try_helpers(mir, out)?;
+    emit_runtime_for_helpers(mir, out)?;
     emit_compiled_closure_helpers(mir, out)?;
     Ok(())
 }
@@ -982,6 +981,47 @@ struct ClosureSpec {
 struct TrySpec {
     hash: i64,
     op: IrOp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ForSpec {
+    hash: i64,
+    op: IrOp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StaticForValue {
+    Int(i64),
+    Bool(bool),
+    Nil,
+    Atom(String),
+    String(String),
+    Float(String),
+    Tuple(Box<StaticForValue>, Box<StaticForValue>),
+    List(Vec<StaticForValue>),
+    Map(Vec<(StaticForValue, StaticForValue)>),
+}
+
+impl StaticForValue {
+    fn kind_label(&self) -> &'static str {
+        match self {
+            StaticForValue::Int(_) => "int",
+            StaticForValue::Bool(_) => "bool",
+            StaticForValue::Nil => "nil",
+            StaticForValue::Atom(_) => "atom",
+            StaticForValue::String(_) => "string",
+            StaticForValue::Float(_) => "float",
+            StaticForValue::Tuple(_, _) => "tuple",
+            StaticForValue::List(_) => "list",
+            StaticForValue::Map(_) => "map",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StaticForEvalIssue {
+    Runtime(String),
+    Unsupported(String),
 }
 
 fn emit_runtime_try_helpers(mir: &MirProgram, out: &mut String) -> Result<(), CBackendError> {
@@ -1044,6 +1084,447 @@ fn collect_try_specs(mir: &MirProgram) -> Result<Vec<TrySpec>, CBackendError> {
         .into_iter()
         .map(|(hash, op)| TrySpec { hash, op })
         .collect())
+}
+
+fn emit_runtime_for_helpers(mir: &MirProgram, out: &mut String) -> Result<(), CBackendError> {
+    let for_specs = collect_for_specs(mir)?;
+
+    out.push_str("/* compiled for helpers */\n");
+    for (index, for_spec) in for_specs.iter().enumerate() {
+        emit_runtime_for_case(index, for_spec, out)?;
+    }
+
+    out.push_str("static TnVal tn_runtime_for(TnVal op_hash) {\n");
+    if for_specs.is_empty() {
+        out.push_str("  return tn_stub_abort(\"tn_runtime_for\");\n");
+    } else {
+        out.push_str("  switch (op_hash) {\n");
+        for (index, for_spec) in for_specs.iter().enumerate() {
+            out.push_str(&format!(
+                "    case (TnVal){}LL: return tn_runtime_for_case_{index}();\n",
+                for_spec.hash
+            ));
+        }
+        out.push_str("    default:\n");
+        out.push_str("      return tn_stub_abort(\"tn_runtime_for\");\n");
+        out.push_str("  }\n");
+    }
+    out.push_str("}\n\n");
+
+    Ok(())
+}
+
+fn collect_for_specs(mir: &MirProgram) -> Result<Vec<ForSpec>, CBackendError> {
+    let mut by_hash = BTreeMap::<i64, IrOp>::new();
+
+    for function in &mir.functions {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let MirInstruction::Legacy { source, .. } = instruction else {
+                    continue;
+                };
+
+                if !matches!(source, IrOp::For { .. }) {
+                    continue;
+                }
+
+                let hash = hash_ir_op_i64(source)?;
+                if let Some(existing) = by_hash.get(&hash) {
+                    if existing != source {
+                        return Err(CBackendError::new(format!(
+                            "c backend for hash collision for hash {hash}"
+                        )));
+                    }
+                } else {
+                    by_hash.insert(hash, source.clone());
+                }
+            }
+        }
+    }
+
+    Ok(by_hash
+        .into_iter()
+        .map(|(hash, op)| ForSpec { hash, op })
+        .collect())
+}
+
+fn emit_runtime_for_case(
+    index: usize,
+    for_spec: &ForSpec,
+    out: &mut String,
+) -> Result<(), CBackendError> {
+    out.push_str(&format!(
+        "static TnVal tn_runtime_for_case_{index}(void) {{\n"
+    ));
+
+    match evaluate_for_spec(&for_spec.op) {
+        Ok(value) => {
+            let mut temp_index = 0usize;
+            let rendered = emit_static_for_value(&value, out, &mut temp_index);
+            out.push_str(&format!("  return {rendered};\n"));
+        }
+        Err(StaticForEvalIssue::Runtime(message)) => {
+            let escaped = c_string_literal(&message);
+            out.push_str(&format!("  return tn_runtime_fail({escaped});\n"));
+        }
+        Err(StaticForEvalIssue::Unsupported(_)) => {
+            out.push_str("  return tn_stub_abort(\"tn_runtime_for\");\n");
+        }
+    }
+
+    out.push_str("}\n\n");
+    Ok(())
+}
+
+fn emit_static_for_value(
+    value: &StaticForValue,
+    out: &mut String,
+    temp_index: &mut usize,
+) -> String {
+    match value {
+        StaticForValue::Int(value) => format!("(TnVal){value}LL"),
+        StaticForValue::Bool(value) => {
+            format!(
+                "tn_runtime_const_bool((TnVal){})",
+                if *value { 1 } else { 0 }
+            )
+        }
+        StaticForValue::Nil => "tn_runtime_const_nil()".to_string(),
+        StaticForValue::Atom(value) => {
+            let escaped = c_string_literal(value);
+            format!("tn_runtime_const_atom((TnVal)(intptr_t){escaped})")
+        }
+        StaticForValue::String(value) => {
+            let escaped = c_string_literal(value);
+            format!("tn_runtime_const_string((TnVal)(intptr_t){escaped})")
+        }
+        StaticForValue::Float(value) => {
+            let escaped = c_string_literal(value);
+            format!("tn_runtime_const_float((TnVal)(intptr_t){escaped})")
+        }
+        StaticForValue::Tuple(left, right) => {
+            let left_value = emit_static_for_value(left, out, temp_index);
+            let right_value = emit_static_for_value(right, out, temp_index);
+            format!("tn_runtime_make_tuple({left_value}, {right_value})")
+        }
+        StaticForValue::List(values) => {
+            let rendered_items = values
+                .iter()
+                .map(|item| emit_static_for_value(item, out, temp_index))
+                .collect::<Vec<_>>();
+            let args = std::iter::once(format!("(TnVal){}", values.len()))
+                .chain(rendered_items)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("tn_runtime_make_list_varargs({args})")
+        }
+        StaticForValue::Map(entries) => {
+            if entries.is_empty() {
+                "tn_runtime_map_empty()".to_string()
+            } else {
+                let temp = format!("tn_for_value_{}", *temp_index);
+                *temp_index += 1;
+                out.push_str(&format!("  TnVal {temp} = tn_runtime_map_empty();\n"));
+                for (key, value) in entries {
+                    let rendered_key = emit_static_for_value(key, out, temp_index);
+                    let rendered_value = emit_static_for_value(value, out, temp_index);
+                    out.push_str(&format!(
+                        "  {temp} = tn_runtime_map_put({temp}, {rendered_key}, {rendered_value});\n"
+                    ));
+                }
+                temp
+            }
+        }
+    }
+}
+
+fn evaluate_for_spec(for_op: &IrOp) -> Result<StaticForValue, StaticForEvalIssue> {
+    let IrOp::For {
+        generators,
+        into_ops,
+        body_ops,
+        ..
+    } = for_op
+    else {
+        return Err(StaticForEvalIssue::Unsupported(
+            "for helper source was not IrOp::For".to_string(),
+        ));
+    };
+
+    let mut results = if let Some(into_ops) = into_ops {
+        match evaluate_static_for_ops(into_ops, &BTreeMap::new())? {
+            StaticForValue::List(values) => values,
+            other => {
+                return Err(StaticForEvalIssue::Runtime(format!(
+                    "for into destination must be a list, found {}",
+                    other.kind_label()
+                )));
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    evaluate_for_generators(generators, 0, &BTreeMap::new(), body_ops, &mut results)?;
+
+    Ok(StaticForValue::List(results))
+}
+
+fn evaluate_for_generators(
+    generators: &[(IrPattern, Vec<IrOp>)],
+    index: usize,
+    env: &BTreeMap<String, StaticForValue>,
+    body_ops: &[IrOp],
+    results: &mut Vec<StaticForValue>,
+) -> Result<(), StaticForEvalIssue> {
+    if index >= generators.len() {
+        let body_value = evaluate_static_for_ops(body_ops, env)?;
+        results.push(body_value);
+        return Ok(());
+    }
+
+    let (pattern, generator_ops) = &generators[index];
+    let enumerable = evaluate_static_for_ops(generator_ops, env)?;
+    let values = match enumerable {
+        StaticForValue::List(values) => values,
+        other => {
+            return Err(StaticForEvalIssue::Runtime(format!(
+                "for expects list generator, found {}",
+                other.kind_label()
+            )));
+        }
+    };
+
+    for value in values {
+        let mut iteration_env = env.clone();
+        if !apply_pattern_bindings(pattern, &value, &mut iteration_env)? {
+            continue;
+        }
+
+        evaluate_for_generators(generators, index + 1, &iteration_env, body_ops, results)?;
+    }
+
+    Ok(())
+}
+
+fn evaluate_static_for_ops(
+    ops: &[IrOp],
+    env: &BTreeMap<String, StaticForValue>,
+) -> Result<StaticForValue, StaticForEvalIssue> {
+    let mut stack = Vec::<StaticForValue>::new();
+
+    for op in ops {
+        match op {
+            IrOp::ConstInt { value, .. } => stack.push(StaticForValue::Int(*value)),
+            IrOp::ConstBool { value, .. } => stack.push(StaticForValue::Bool(*value)),
+            IrOp::ConstNil { .. } => stack.push(StaticForValue::Nil),
+            IrOp::ConstAtom { value, .. } => stack.push(StaticForValue::Atom(value.clone())),
+            IrOp::ConstString { value, .. } => stack.push(StaticForValue::String(value.clone())),
+            IrOp::ConstFloat { value, .. } => stack.push(StaticForValue::Float(value.clone())),
+            IrOp::LoadVariable { name, .. } => {
+                if let Some(value) = env.get(name) {
+                    stack.push(value.clone());
+                } else {
+                    return Err(StaticForEvalIssue::Unsupported(format!(
+                        "for helper unknown binding '{name}'"
+                    )));
+                }
+            }
+            IrOp::AddInt { .. } => {
+                let right = pop_static_for_int(&mut stack, "add right")?;
+                let left = pop_static_for_int(&mut stack, "add left")?;
+                stack.push(StaticForValue::Int(left + right));
+            }
+            IrOp::SubInt { .. } => {
+                let right = pop_static_for_int(&mut stack, "sub right")?;
+                let left = pop_static_for_int(&mut stack, "sub left")?;
+                stack.push(StaticForValue::Int(left - right));
+            }
+            IrOp::MulInt { .. } => {
+                let right = pop_static_for_int(&mut stack, "mul right")?;
+                let left = pop_static_for_int(&mut stack, "mul left")?;
+                stack.push(StaticForValue::Int(left * right));
+            }
+            IrOp::DivInt { .. } => {
+                let right = pop_static_for_int(&mut stack, "div right")?;
+                let left = pop_static_for_int(&mut stack, "div left")?;
+                stack.push(StaticForValue::Int(left / right));
+            }
+            IrOp::Call { callee, argc, .. } => {
+                let mut args = Vec::with_capacity(*argc);
+                for _ in 0..*argc {
+                    args.push(pop_static_for_value(&mut stack, "call argument")?);
+                }
+                args.reverse();
+
+                match callee {
+                    IrCallTarget::Builtin { name } => match name.as_str() {
+                        "tuple" => {
+                            if args.len() != 2 {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper tuple expected 2 args, found {}",
+                                    args.len()
+                                )));
+                            }
+                            stack.push(StaticForValue::Tuple(
+                                Box::new(args[0].clone()),
+                                Box::new(args[1].clone()),
+                            ));
+                        }
+                        "list" => stack.push(StaticForValue::List(args)),
+                        "map_empty" => {
+                            if !args.is_empty() {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper map_empty expected 0 args, found {}",
+                                    args.len()
+                                )));
+                            }
+                            stack.push(StaticForValue::Map(Vec::new()));
+                        }
+                        other => {
+                            return Err(StaticForEvalIssue::Unsupported(format!(
+                                "for helper unsupported builtin call target: {other}"
+                            )));
+                        }
+                    },
+                    IrCallTarget::Function { name } => {
+                        return Err(StaticForEvalIssue::Unsupported(format!(
+                            "for helper unsupported function call target: {name}"
+                        )));
+                    }
+                }
+            }
+            IrOp::Return { .. } => {
+                if let Some(value) = stack.pop() {
+                    return Ok(value);
+                }
+                return Ok(StaticForValue::Nil);
+            }
+            other => {
+                return Err(StaticForEvalIssue::Unsupported(format!(
+                    "for helper unsupported op: {other:?}"
+                )));
+            }
+        }
+    }
+
+    if let Some(value) = stack.pop() {
+        Ok(value)
+    } else {
+        Ok(StaticForValue::Nil)
+    }
+}
+
+fn apply_pattern_bindings(
+    pattern: &IrPattern,
+    value: &StaticForValue,
+    env: &mut BTreeMap<String, StaticForValue>,
+) -> Result<bool, StaticForEvalIssue> {
+    let snapshot = env.clone();
+
+    let matched = match pattern {
+        IrPattern::Bind { name } => {
+            if let Some(existing) = env.get(name) {
+                existing == value
+            } else {
+                env.insert(name.clone(), value.clone());
+                true
+            }
+        }
+        IrPattern::Pin { name } => env.get(name).map(|bound| bound == value).unwrap_or(false),
+        IrPattern::Wildcard => true,
+        IrPattern::Integer { value: expected } => {
+            matches!(value, StaticForValue::Int(actual) if actual == expected)
+        }
+        IrPattern::Bool { value: expected } => {
+            matches!(value, StaticForValue::Bool(actual) if actual == expected)
+        }
+        IrPattern::Nil => matches!(value, StaticForValue::Nil),
+        IrPattern::String { value: expected } => {
+            matches!(value, StaticForValue::String(actual) if actual == expected)
+        }
+        IrPattern::Atom { value: expected } => {
+            matches!(value, StaticForValue::Atom(actual) if actual == expected)
+        }
+        IrPattern::Tuple { items } => {
+            if let StaticForValue::Tuple(left, right) = value {
+                if items.len() != 2 {
+                    false
+                } else {
+                    apply_pattern_bindings(&items[0], left, env)?
+                        && apply_pattern_bindings(&items[1], right, env)?
+                }
+            } else {
+                false
+            }
+        }
+        IrPattern::List { items, tail } => {
+            if let StaticForValue::List(values) = value {
+                if values.len() < items.len() || (tail.is_none() && values.len() != items.len()) {
+                    false
+                } else {
+                    let mut matches = true;
+                    for (idx, item_pattern) in items.iter().enumerate() {
+                        if !apply_pattern_bindings(item_pattern, &values[idx], env)? {
+                            matches = false;
+                            break;
+                        }
+                    }
+
+                    if matches {
+                        if let Some(tail_pattern) = tail {
+                            let tail_values = values[items.len()..].to_vec();
+                            apply_pattern_bindings(
+                                tail_pattern,
+                                &StaticForValue::List(tail_values),
+                                env,
+                            )?
+                        } else {
+                            true
+                        }
+                    } else {
+                        false
+                    }
+                }
+            } else {
+                false
+            }
+        }
+        IrPattern::Map { .. } => {
+            return Err(StaticForEvalIssue::Unsupported(
+                "for helper does not support map patterns".to_string(),
+            ));
+        }
+    };
+
+    if matched {
+        Ok(true)
+    } else {
+        *env = snapshot;
+        Ok(false)
+    }
+}
+
+fn pop_static_for_value(
+    stack: &mut Vec<StaticForValue>,
+    context: &str,
+) -> Result<StaticForValue, StaticForEvalIssue> {
+    stack.pop().ok_or_else(|| {
+        StaticForEvalIssue::Unsupported(format!("for helper stack underflow for {context}"))
+    })
+}
+
+fn pop_static_for_int(
+    stack: &mut Vec<StaticForValue>,
+    context: &str,
+) -> Result<i64, StaticForEvalIssue> {
+    match pop_static_for_value(stack, context)? {
+        StaticForValue::Int(value) => Ok(value),
+        other => Err(StaticForEvalIssue::Runtime(format!(
+            "for arithmetic expects int {context}, found {}",
+            other.kind_label()
+        ))),
+    }
 }
 
 fn emit_runtime_try_case(
