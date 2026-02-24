@@ -1,6 +1,8 @@
 ---
-status: pending
-HEARTBEAT_TASK_STATUS: todo
+status: completed
+HEARTBEAT_TASK_STATUS: done
+started: 2026-02-24
+completed: 2026-02-24
 ---
 
 # Task: Integrate AOT Native Artifact Pipeline into CLI (`compile`/`run`)

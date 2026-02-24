@@ -12,7 +12,7 @@ fn compile_help_lists_usage() {
         .assert()
         .success()
         .stdout(contains(
-            "tonic compile <path> [--backend <interp|llvm>] [--out <artifact-path>|--dump-mir]",
+            "tonic compile <path> [--backend <interp|llvm>] [--emit <ir|llvm-ir|object|executable>] [--out <artifact-path>|--dump-mir]",
         ));
 }
 
