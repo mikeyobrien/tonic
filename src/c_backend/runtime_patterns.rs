@@ -101,7 +101,9 @@ pub(super) fn emit_runtime_pattern_helpers(
     out.push_str("    return value;\n");
     out.push_str("  }\n");
     out.push('\n');
-    out.push_str("  return tn_stub_abort(\"tn_runtime_load_binding\");\n");
+    out.push_str(
+        "  return tn_runtime_failf(\"missing runtime binding for key %lld\", (long long)key);\n",
+    );
     out.push_str("}\n");
     out.push('\n');
     out.push_str("static int tn_runtime_pattern_matches(TnVal value, TnVal pattern_hash) {\n");

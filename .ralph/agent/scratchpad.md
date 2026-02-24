@@ -149,3 +149,69 @@ Parity delta:
 - No remaining runtime stderr failures for Task 05 helper bucket (`const_atom`, `make_tuple`, `make_list`, `range`, map/keyword constructor/access/update paths).
 
 Task file updated to completed (`05-runtime-core-values-and-collections.code-task.md`). Confidence: 88/100.
+
+## 2026-02-24T23:06:12Z — Builder completed Task 06 runtime patterns/guards/control-flow parity
+Implemented one-task scope for `.agents/tasks/2026-02-24-llvm-catalog-parity/06-runtime-patterns-guards-and-control-flow.code-task.md`.
+
+What shipped:
+- Added generated native pattern runtime in `src/c_backend/runtime_patterns.rs` with:
+  - deterministic hash-indexed pattern dispatch (`tn_runtime_pattern_matches`),
+  - binding table snapshot/restore for backtracking-safe pattern checks,
+  - runtime binding loads (`tn_runtime_load_binding`),
+  - `match` operator runtime behavior (`tn_runtime_match_operator`) with bad-match fallback.
+- Supported pattern semantics used by active fixtures: atom/string/int/bool/nil, bind/pin/wildcard, tuple/list (with tail support), and map entry matching with binding rollback.
+- Updated `src/c_backend/stubs.rs` + `src/c_backend/mod.rs` to wire generated pattern helpers and keep non-task helpers as explicit abort stubs.
+- Updated both C and LLVM terminator pattern fast-path logic so `Bind` patterns go through runtime matcher (ensures bindings are created before guard/load access).
+- Added RED→GREEN runtime regression coverage in `tests/runtime_llvm_patterns_control_flow.rs` for all Task 06 fixture targets.
+
+Verification run this iteration:
+- `cargo test --test runtime_llvm_patterns_control_flow` (RED then GREEN)
+- `cargo test --test compile_llvm_backend_collections_patterns`
+- `cargo test --test compile_llvm_backend_control_flow_calls`
+- `cargo test --test runtime_llvm_core_values_collections`
+- `cargo fmt --all -- --check` (after `cargo fmt --all`)
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo run --quiet --bin llvm_catalog_parity -- --catalog examples/parity/catalog.toml --report-json /tmp/llvm-parity-task06.json --report-md /tmp/llvm-parity-task06.md`
+
+Parity delta:
+- Compile parity remains `64/64`.
+- Runtime parity improved from `31/62` to `46/62`.
+- All Task 06 target fixtures now report runtime parity match.
+
+Task file updated to completed (`06-runtime-patterns-guards-and-control-flow.code-task.md`). Confidence: 87/100.
+
+## 2026-02-24T22:57:52Z — Builder completed Task 07 runtime closures/bindings/interop parity
+Implemented one-task scope for `.agents/tasks/2026-02-24-llvm-catalog-parity/07-runtime-closures-bindings-and-interop.code-task.md`.
+
+What shipped:
+- Added compiled-closure runtime support in `src/c_backend/stubs.rs`:
+  - closure object kind (`TN_OBJ_CLOSURE`) and renderer support,
+  - native `tn_runtime_make_closure` object construction,
+  - native `tn_runtime_call_closure_varargs` invocation path with arity/type checks,
+  - MIR-driven closure descriptor dispatch generation (`tn_runtime_call_compiled_closure`) with closure body lowering for active closure ops.
+- Implemented native host interop helpers in `src/c_backend/stubs.rs`:
+  - `tn_runtime_host_call_varargs` for `:identity` and `:sum_ints`,
+  - deterministic unknown host/key/type/arity failures,
+  - `tn_runtime_protocol_dispatch` mapping tuple->1 and map->2 with deterministic unsupported-type failure.
+- Updated binding load miss behavior in `src/c_backend/runtime_patterns.rs` to deterministic runtime failure (no `tn_stub_abort("tn_runtime_load_binding")` fallback path).
+- Added RED→GREEN regression coverage in `tests/runtime_llvm_closures_bindings_interop.rs` for:
+  - catalog fixtures `anonymous_fn_capture_invoke`, `cond_branches`, `host_call_and_protocol_dispatch`,
+  - protocol dispatch runtime behavior,
+  - deterministic unsupported interop errors.
+
+Verification run this iteration:
+- `cargo test --test runtime_llvm_closures_bindings_interop` (RED then GREEN)
+- `cargo test --test compile_llvm_backend_closures_captures`
+- `cargo test --test compile_llvm_backend_host_interop`
+- `cargo test --test runtime_llvm_patterns_control_flow`
+- `cargo test --test compile_aot_artifacts_cli`
+- `cargo fmt --all -- --check` (after `cargo fmt --all`)
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo run --quiet --bin llvm_catalog_parity -- --catalog examples/parity/catalog.toml --report-json /tmp/llvm-parity-task07.json --report-md /tmp/llvm-parity-task07.md`
+
+Parity delta:
+- Compile parity remains `64/64`.
+- Runtime parity improved from `46/62` to `48/62`.
+- Task 07 target fixtures now all match catalog output/exit in compiled mode.
+
+Task file updated to completed (`07-runtime-closures-bindings-and-interop.code-task.md`). Confidence: 89/100.

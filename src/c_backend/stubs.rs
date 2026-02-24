@@ -1,6 +1,12 @@
-use crate::mir::MirProgram;
+use crate::ir::{CmpKind, IrCallTarget, IrOp};
+use crate::mir::{MirInstruction, MirProgram};
+use std::collections::BTreeMap;
 
-use super::{error::CBackendError, runtime_patterns::emit_runtime_pattern_helpers};
+use super::{
+    error::CBackendError,
+    hash::{closure_capture_names, hash_closure_descriptor_i64, hash_text_i64},
+    runtime_patterns::emit_runtime_pattern_helpers,
+};
 
 /// Emit the C file preamble: include directives and typedef.
 pub(super) fn emit_header(out: &mut String) {
@@ -38,7 +44,8 @@ typedef enum {
   TN_OBJ_LIST,
   TN_OBJ_MAP,
   TN_OBJ_KEYWORD,
-  TN_OBJ_RANGE
+  TN_OBJ_RANGE,
+  TN_OBJ_CLOSURE
 } TnObjKind;
 
 typedef struct {
@@ -69,6 +76,11 @@ typedef struct TnObj {
       TnVal start;
       TnVal end;
     } range;
+    struct {
+      TnVal descriptor_hash;
+      TnVal param_count;
+      TnVal capture_count;
+    } closure;
   } as;
 } TnObj;
 
@@ -97,6 +109,22 @@ static TnVal tn_make_box(size_t id) {
 
 static int tn_runtime_is_truthy(TnVal value);
 static int tn_runtime_value_equal(TnVal left, TnVal right);
+static const char *tn_runtime_value_kind(TnVal value);
+
+static TnVal tn_runtime_fail(const char *message) {
+  fprintf(stderr, "error: %s\n", message);
+  exit(1);
+}
+
+static TnVal tn_runtime_failf(const char *format, ...) {
+  fprintf(stderr, "error: ");
+  va_list args;
+  va_start(args, format);
+  vfprintf(stderr, format, args);
+  va_end(args);
+  fputc('\n', stderr);
+  exit(1);
+}
 
 static char *tn_strdup_or_die(const char *value) {
   size_t len = strlen(value);
@@ -309,6 +337,44 @@ static int tn_runtime_value_equal(TnVal left, TnVal right) {
              left_obj->as.range.end == right_obj->as.range.end;
     default:
       return 0;
+  }
+}
+
+static const char *tn_runtime_value_kind(TnVal value) {
+  if (!tn_is_boxed(value)) {
+    return "int";
+  }
+
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL) {
+    return "unknown";
+  }
+
+  switch (obj->kind) {
+    case TN_OBJ_BOOL:
+      return "bool";
+    case TN_OBJ_NIL:
+      return "nil";
+    case TN_OBJ_ATOM:
+      return "atom";
+    case TN_OBJ_STRING:
+      return "string";
+    case TN_OBJ_FLOAT:
+      return "float";
+    case TN_OBJ_TUPLE:
+      return "tuple";
+    case TN_OBJ_LIST:
+      return "list";
+    case TN_OBJ_MAP:
+      return "map";
+    case TN_OBJ_KEYWORD:
+      return "keyword";
+    case TN_OBJ_RANGE:
+      return "range";
+    case TN_OBJ_CLOSURE:
+      return "function";
+    default:
+      return "unknown";
   }
 }
 
@@ -561,6 +627,9 @@ static void tn_render_value(FILE *out, TnVal value) {
       fputs("..", out);
       tn_render_value(out, obj->as.range.end);
       return;
+    case TN_OBJ_CLOSURE:
+      fprintf(out, "#Function<%" PRId64 ">", (int64_t)obj->as.closure.param_count);
+      return;
     default:
       fputs("<unknown>", out);
       return;
@@ -574,6 +643,125 @@ static void tn_runtime_println(TnVal value) {
 
 "###,
     );
+
+    out.push_str(
+        "static TnVal tn_runtime_call_compiled_closure(TnVal descriptor_hash, const TnVal *argv, size_t argc);\n\n",
+    );
+
+    out.push_str(
+        "static TnVal tn_runtime_make_closure(TnVal descriptor_hash, TnVal param_count, TnVal capture_count) {\n",
+    );
+    out.push_str("  TnObj *obj = tn_new_obj(TN_OBJ_CLOSURE);\n");
+    out.push_str("  obj->as.closure.descriptor_hash = descriptor_hash;\n");
+    out.push_str("  obj->as.closure.param_count = param_count;\n");
+    out.push_str("  obj->as.closure.capture_count = capture_count;\n");
+    out.push_str("  return tn_heap_store(obj);\n");
+    out.push_str("}\n\n");
+
+    out.push_str("static TnVal tn_runtime_protocol_dispatch(TnVal value) {\n");
+    out.push_str("  TnObj *obj = tn_get_obj(value);\n");
+    out.push_str("  if (obj != NULL && obj->kind == TN_OBJ_TUPLE) {\n");
+    out.push_str("    return (TnVal)1;\n");
+    out.push_str("  }\n");
+    out.push_str("  if (obj != NULL && obj->kind == TN_OBJ_MAP) {\n");
+    out.push_str("    return (TnVal)2;\n");
+    out.push_str("  }\n");
+    out.push_str(
+        "  return tn_runtime_failf(\"protocol_dispatch has no implementation for %s\", tn_runtime_value_kind(value));\n",
+    );
+    out.push_str("}\n\n");
+
+    out.push_str("static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n");
+    out.push_str("  if (count < 1) {\n");
+    out.push_str(
+        "    return tn_runtime_fail(\"host_call requires at least 1 argument (host function key)\");\n",
+    );
+    out.push_str("  }\n\n");
+    out.push_str("  size_t argc = (size_t)count;\n");
+    out.push_str("  TnVal *args = (TnVal *)calloc(argc, sizeof(TnVal));\n");
+    out.push_str("  if (args == NULL) {\n");
+    out.push_str("    fprintf(stderr, \"error: native runtime allocation failure\\n\");\n");
+    out.push_str("    exit(1);\n");
+    out.push_str("  }\n\n");
+    out.push_str("  va_list vargs;\n");
+    out.push_str("  va_start(vargs, count);\n");
+    out.push_str("  for (size_t i = 0; i < argc; i += 1) {\n");
+    out.push_str("    args[i] = va_arg(vargs, TnVal);\n");
+    out.push_str("  }\n");
+    out.push_str("  va_end(vargs);\n\n");
+    out.push_str("  TnObj *key_obj = tn_get_obj(args[0]);\n");
+    out.push_str("  if (key_obj == NULL || key_obj->kind != TN_OBJ_ATOM) {\n");
+    out.push_str(
+        "    return tn_runtime_failf(\"host_call first argument must be an atom (host key), found %s\", tn_runtime_value_kind(args[0]));\n",
+    );
+    out.push_str("  }\n\n");
+    out.push_str("  const char *key = key_obj->as.text.text;\n");
+    out.push_str("  if (strcmp(key, \"identity\") == 0) {\n");
+    out.push_str("    if (argc != 2) {\n");
+    out.push_str(
+        "      return tn_runtime_failf(\"host error: identity expects exactly 1 argument, found %zu\", argc - 1);\n",
+    );
+    out.push_str("    }\n");
+    out.push_str("    TnVal result = args[1];\n");
+    out.push_str("    free(args);\n");
+    out.push_str("    return result;\n");
+    out.push_str("  }\n\n");
+    out.push_str("  if (strcmp(key, \"sum_ints\") == 0) {\n");
+    out.push_str("    if (argc <= 1) {\n");
+    out.push_str(
+        "      return tn_runtime_fail(\"host error: sum_ints expects at least 1 argument\");\n",
+    );
+    out.push_str("    }\n");
+    out.push_str("    int64_t total = 0;\n");
+    out.push_str("    for (size_t i = 1; i < argc; i += 1) {\n");
+    out.push_str("      if (tn_is_boxed(args[i])) {\n");
+    out.push_str(
+        "        return tn_runtime_failf(\"host error: sum_ints expects int arguments only; argument %zu was %s\", i, tn_runtime_value_kind(args[i]));\n",
+    );
+    out.push_str("      }\n");
+    out.push_str("      total += (int64_t)args[i];\n");
+    out.push_str("    }\n");
+    out.push_str("    free(args);\n");
+    out.push_str("    return (TnVal)total;\n");
+    out.push_str("  }\n\n");
+    out.push_str("  return tn_runtime_failf(\"host error: unknown host function: %s\", key);\n");
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "static TnVal tn_runtime_call_closure_varargs(TnVal closure, TnVal count, ...) {\n",
+    );
+    out.push_str("  if (count < 0) {\n");
+    out.push_str("    return tn_runtime_fail(\"arity mismatch for anonymous function: expected 0 args, found -1\");\n");
+    out.push_str("  }\n\n");
+    out.push_str("  TnObj *closure_obj = tn_get_obj(closure);\n");
+    out.push_str("  if (closure_obj == NULL || closure_obj->kind != TN_OBJ_CLOSURE) {\n");
+    out.push_str(
+        "    return tn_runtime_failf(\"attempted to call non-function value: %s\", tn_runtime_value_kind(closure));\n",
+    );
+    out.push_str("  }\n\n");
+    out.push_str("  if (closure_obj->as.closure.param_count != count) {\n");
+    out.push_str(
+        "    return tn_runtime_failf(\"arity mismatch for anonymous function: expected %lld args, found %lld\", (long long)closure_obj->as.closure.param_count, (long long)count);\n",
+    );
+    out.push_str("  }\n\n");
+    out.push_str("  size_t argc = (size_t)count;\n");
+    out.push_str("  TnVal *args = argc == 0 ? NULL : (TnVal *)calloc(argc, sizeof(TnVal));\n");
+    out.push_str("  if (argc > 0 && args == NULL) {\n");
+    out.push_str("    fprintf(stderr, \"error: native runtime allocation failure\\n\");\n");
+    out.push_str("    exit(1);\n");
+    out.push_str("  }\n\n");
+    out.push_str("  va_list vargs;\n");
+    out.push_str("  va_start(vargs, count);\n");
+    out.push_str("  for (size_t i = 0; i < argc; i += 1) {\n");
+    out.push_str("    args[i] = va_arg(vargs, TnVal);\n");
+    out.push_str("  }\n");
+    out.push_str("  va_end(vargs);\n\n");
+    out.push_str(
+        "  TnVal result = tn_runtime_call_compiled_closure(closure_obj->as.closure.descriptor_hash, args, argc);\n",
+    );
+    out.push_str("  free(args);\n");
+    out.push_str("  return result;\n");
+    out.push_str("}\n\n");
 
     // Zero-arg stubs
     for name in &[
@@ -598,7 +786,6 @@ static void tn_runtime_println(TnVal value) {
         "tn_runtime_to_string",
         "tn_runtime_not",
         "tn_runtime_bang",
-        "tn_runtime_protocol_dispatch",
     ] {
         out.push_str(&format!(
             "static TnVal {name}(TnVal _a) {{ return tn_stub_abort(\"{name}\"); }}\n"
@@ -618,15 +805,435 @@ static void tn_runtime_println(TnVal value) {
     }
     out.push('\n');
 
-    // Three-arg stubs
-    out.push_str("static TnVal tn_runtime_make_closure(TnVal _a, TnVal _b, TnVal _c) { return tn_stub_abort(\"tn_runtime_make_closure\"); }\n");
-    out.push('\n');
-
-    // Pattern + varargs stubs
-    out.push_str("static TnVal tn_runtime_host_call_varargs(TnVal _count, ...) { return tn_stub_abort(\"tn_runtime_host_call\"); }\n");
-    out.push_str("static TnVal tn_runtime_call_closure_varargs(TnVal _closure, TnVal _count, ...) { return tn_stub_abort(\"tn_runtime_call_closure\"); }\n");
-    out.push('\n');
-
     emit_runtime_pattern_helpers(mir, out)?;
+    emit_compiled_closure_helpers(mir, out)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClosureSpec {
+    hash: i64,
+    params: Vec<String>,
+    ops: Vec<IrOp>,
+}
+
+fn emit_compiled_closure_helpers(mir: &MirProgram, out: &mut String) -> Result<(), CBackendError> {
+    let closures = collect_closure_specs(mir)?;
+
+    out.push_str("/* compiled closure helpers */\n");
+
+    for (index, closure) in closures.iter().enumerate() {
+        emit_compiled_closure_body(index, closure, out)?;
+    }
+
+    out.push_str(
+        "static TnVal tn_runtime_call_compiled_closure(TnVal descriptor_hash, const TnVal *argv, size_t argc) {\n",
+    );
+    if closures.is_empty() {
+        out.push_str(
+            "  return tn_runtime_failf(\"unsupported closure descriptor %lld\", (long long)descriptor_hash);\n",
+        );
+    } else {
+        out.push_str("  switch (descriptor_hash) {\n");
+        for (index, closure) in closures.iter().enumerate() {
+            out.push_str(&format!(
+                "    case (TnVal){}LL: return tn_compiled_closure_{index}(argv, argc);\n",
+                closure.hash
+            ));
+        }
+        out.push_str("    default:\n");
+        out.push_str(
+            "      return tn_runtime_failf(\"unsupported closure descriptor %lld\", (long long)descriptor_hash);\n",
+        );
+        out.push_str("  }\n");
+    }
+    out.push_str("}\n");
+
+    Ok(())
+}
+
+fn collect_closure_specs(mir: &MirProgram) -> Result<Vec<ClosureSpec>, CBackendError> {
+    let mut by_hash = BTreeMap::<i64, ClosureSpec>::new();
+
+    for function in &mir.functions {
+        for block in &function.blocks {
+            for instruction in &block.instructions {
+                let MirInstruction::MakeClosure { params, ops, .. } = instruction else {
+                    continue;
+                };
+
+                let capture_names = closure_capture_names(params, ops);
+                let hash = hash_closure_descriptor_i64(params, ops, &capture_names)?;
+
+                let spec = ClosureSpec {
+                    hash,
+                    params: params.clone(),
+                    ops: ops.clone(),
+                };
+
+                if let Some(existing) = by_hash.get(&hash) {
+                    if existing != &spec {
+                        return Err(CBackendError::new(format!(
+                            "c backend closure descriptor hash collision for hash {hash}"
+                        )));
+                    }
+                } else {
+                    by_hash.insert(hash, spec);
+                }
+            }
+        }
+    }
+
+    Ok(by_hash.into_values().collect())
+}
+
+fn emit_compiled_closure_body(
+    index: usize,
+    closure: &ClosureSpec,
+    out: &mut String,
+) -> Result<(), CBackendError> {
+    out.push_str(&format!(
+        "static TnVal tn_compiled_closure_{index}(const TnVal *argv, size_t argc) {{\n"
+    ));
+    out.push_str(&format!("  if (argc != {}) {{\n", closure.params.len()));
+    out.push_str(&format!(
+        "    return tn_runtime_failf(\"arity mismatch for anonymous function: expected %d args, found %zu\", {}, argc);\n",
+        closure.params.len()
+    ));
+    out.push_str("  }\n\n");
+
+    let mut params = BTreeMap::<String, usize>::new();
+    for (position, name) in closure.params.iter().enumerate() {
+        params.insert(name.clone(), position);
+    }
+
+    let mut stack = Vec::<String>::new();
+    let mut temp_index = 0usize;
+    let mut emitted_return = false;
+
+    for op in &closure.ops {
+        match op {
+            IrOp::LoadVariable { name, .. } => {
+                if let Some(position) = params.get(name) {
+                    stack.push(format!("argv[{position}]"));
+                } else {
+                    let binding_hash = hash_text_i64(name);
+                    let temp = format!("tmp_{temp_index}");
+                    temp_index += 1;
+                    out.push_str(&format!(
+                        "  TnVal {temp} = tn_runtime_load_binding((TnVal){binding_hash}LL);\n"
+                    ));
+                    stack.push(temp);
+                }
+            }
+            IrOp::ConstInt { value, .. } => {
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!("  TnVal {temp} = (TnVal){value}LL;\n"));
+                stack.push(temp);
+            }
+            IrOp::ConstBool { value, .. } => {
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_const_bool((TnVal){});\n",
+                    if *value { 1 } else { 0 }
+                ));
+                stack.push(temp);
+            }
+            IrOp::ConstNil { .. } => {
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!("  TnVal {temp} = tn_runtime_const_nil();\n"));
+                stack.push(temp);
+            }
+            IrOp::ConstString { value, .. } => {
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                let escaped = c_string_literal(value);
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_const_string((TnVal)(intptr_t){escaped});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::ConstAtom { value, .. } => {
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                let escaped = c_string_literal(value);
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_const_atom((TnVal)(intptr_t){escaped});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::ConstFloat { value, .. } => {
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                let escaped = c_string_literal(value);
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_const_float((TnVal)(intptr_t){escaped});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::AddInt { .. } => {
+                emit_closure_binary("+", &mut stack, &mut temp_index, out)?;
+            }
+            IrOp::SubInt { .. } => {
+                emit_closure_binary("-", &mut stack, &mut temp_index, out)?;
+            }
+            IrOp::MulInt { .. } => {
+                emit_closure_binary("*", &mut stack, &mut temp_index, out)?;
+            }
+            IrOp::DivInt { .. } => {
+                emit_closure_binary("/", &mut stack, &mut temp_index, out)?;
+            }
+            IrOp::CmpInt { kind, .. } => {
+                let right = pop_stack_value(&mut stack, "cmp_int right operand")?;
+                let left = pop_stack_value(&mut stack, "cmp_int left operand")?;
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                let operator = match kind {
+                    CmpKind::Eq => "==",
+                    CmpKind::NotEq => "!=",
+                    CmpKind::Lt => "<",
+                    CmpKind::Lte => "<=",
+                    CmpKind::Gt => ">",
+                    CmpKind::Gte => ">=",
+                };
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_const_bool(({left} {operator} {right}) ? 1 : 0);\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::ToString { .. } => {
+                let input = pop_stack_value(&mut stack, "to_string input")?;
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_to_string({input});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::Not { .. } => {
+                let input = pop_stack_value(&mut stack, "not input")?;
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!("  TnVal {temp} = tn_runtime_not({input});\n"));
+                stack.push(temp);
+            }
+            IrOp::Bang { .. } => {
+                let input = pop_stack_value(&mut stack, "bang input")?;
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!("  TnVal {temp} = tn_runtime_bang({input});\n"));
+                stack.push(temp);
+            }
+            IrOp::Question { .. } => {
+                let input = pop_stack_value(&mut stack, "question input")?;
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!("  TnVal {temp} = tn_runtime_question({input});\n"));
+                stack.push(temp);
+            }
+            IrOp::Raise { .. } => {
+                let input = pop_stack_value(&mut stack, "raise input")?;
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!("  TnVal {temp} = tn_runtime_raise({input});\n"));
+                stack.push(temp);
+            }
+            IrOp::Call { callee, argc, .. } => {
+                emit_closure_call(callee, *argc, &mut stack, &mut temp_index, out)?;
+            }
+            IrOp::CallValue { argc, .. } => {
+                let mut args = Vec::with_capacity(*argc);
+                for _ in 0..*argc {
+                    args.push(pop_stack_value(&mut stack, "closure argument")?);
+                }
+                args.reverse();
+                let callee = pop_stack_value(&mut stack, "closure callee")?;
+                let call_args = std::iter::once(callee)
+                    .chain(std::iter::once(format!("(TnVal){argc}")))
+                    .chain(args.into_iter())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let temp = format!("tmp_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_call_closure_varargs({call_args});\n"
+                ));
+                stack.push(temp);
+            }
+            IrOp::Return { .. } => {
+                let value = pop_stack_value(&mut stack, "return value")?;
+                out.push_str(&format!("  return {value};\n"));
+                emitted_return = true;
+                break;
+            }
+            _ => {
+                out.push_str(
+                    "  return tn_runtime_fail(\"unsupported closure operation in native runtime\");\n",
+                );
+                emitted_return = true;
+                break;
+            }
+        }
+    }
+
+    if !emitted_return {
+        if let Some(value) = stack.pop() {
+            out.push_str(&format!("  return {value};\n"));
+        } else {
+            out.push_str(
+                "  return tn_runtime_fail(\"anonymous function ended without return\");\n",
+            );
+        }
+    }
+
+    out.push_str("}\n\n");
+    Ok(())
+}
+
+fn emit_closure_binary(
+    operator: &str,
+    stack: &mut Vec<String>,
+    temp_index: &mut usize,
+    out: &mut String,
+) -> Result<(), CBackendError> {
+    let right = pop_stack_value(stack, "binary right operand")?;
+    let left = pop_stack_value(stack, "binary left operand")?;
+    let temp = format!("tmp_{}", *temp_index);
+    *temp_index += 1;
+    out.push_str(&format!("  TnVal {temp} = {left} {operator} {right};\n"));
+    stack.push(temp);
+    Ok(())
+}
+
+fn emit_closure_call(
+    callee: &IrCallTarget,
+    argc: usize,
+    stack: &mut Vec<String>,
+    temp_index: &mut usize,
+    out: &mut String,
+) -> Result<(), CBackendError> {
+    let mut args = Vec::with_capacity(argc);
+    for _ in 0..argc {
+        args.push(pop_stack_value(stack, "call argument")?);
+    }
+    args.reverse();
+
+    let rendered_args = args.join(", ");
+    let temp = format!("tmp_{}", *temp_index);
+    *temp_index += 1;
+
+    match callee {
+        IrCallTarget::Builtin { name } => match name.as_str() {
+            "tuple" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_tuple({rendered_args});\n"
+                ));
+            }
+            "list" => {
+                let count_then_args = std::iter::once(format!("(TnVal){argc}"))
+                    .chain(args)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_list_varargs({count_then_args});\n"
+                ));
+            }
+            "map_empty" => {
+                out.push_str(&format!("  TnVal {temp} = tn_runtime_map_empty();\n"));
+            }
+            "map" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_map({rendered_args});\n"
+                ));
+            }
+            "map_put" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_map_put({rendered_args});\n"
+                ));
+            }
+            "map_update" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_map_update({rendered_args});\n"
+                ));
+            }
+            "map_access" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_map_access({rendered_args});\n"
+                ));
+            }
+            "keyword" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_keyword({rendered_args});\n"
+                ));
+            }
+            "keyword_append" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_keyword_append({rendered_args});\n"
+                ));
+            }
+            "host_call" => {
+                let count_then_args = std::iter::once(format!("(TnVal){argc}"))
+                    .chain(args)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_host_call_varargs({count_then_args});\n"
+                ));
+            }
+            "protocol_dispatch" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_protocol_dispatch({rendered_args});\n"
+                ));
+            }
+            "ok" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_ok({rendered_args});\n"
+                ));
+            }
+            "err" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_err({rendered_args});\n"
+                ));
+            }
+            other => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_fail(\"unsupported closure builtin call target: {other}\");\n"
+                ));
+            }
+        },
+        IrCallTarget::Function { name } => {
+            out.push_str(&format!(
+                "  TnVal {temp} = tn_runtime_fail(\"unsupported closure function call target: {name}\");\n"
+            ));
+        }
+    }
+
+    stack.push(temp);
+    Ok(())
+}
+
+fn pop_stack_value(stack: &mut Vec<String>, context: &str) -> Result<String, CBackendError> {
+    stack.pop().ok_or_else(|| {
+        CBackendError::new(format!("c backend closure stack underflow for {context}"))
+    })
+}
+
+fn c_string_literal(value: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }
