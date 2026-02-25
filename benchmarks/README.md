@@ -27,7 +27,8 @@ Each workload defines:
 Native compiler suites can also define `[performance_contract]` with:
 - native SLOs (`startup`, `runtime`, `rss`, `artifact_size`, `compile_latency`)
 - weighted scoring (`metric_weights`, `pass_threshold`)
-- reference baseline targets (`rust`, `go`) + `relative_budget_pct`
+- reference baseline targets (strict gate currently uses `tonic_interpreter_baseline`) + `relative_budget_pct`
+- optional additional targets (e.g. Rust/Go) in the baseline JSON for reporting/reference
 
 ## Run
 
@@ -63,7 +64,7 @@ Wrapper script (recommended):
 ./scripts/bench-interpreter-vs-compiled.sh
 ```
 
-Run the native compiler contract suite (includes weighted Rust/Go comparisons):
+Run the native compiler contract suite (strict regression gate against Tonic baseline):
 
 ```bash
 cargo run --bin benchsuite -- \

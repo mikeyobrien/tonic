@@ -2,6 +2,12 @@
 
 This policy defines how Tonic evaluates native benchmark regressions from `benchmarks/native-compiler-suite.toml`.
 
+## Baseline Semantics
+
+The strict regression policy compares the `interpreter` candidate target against a stable Tonic baseline target (currently `tonic_interpreter_baseline`) in `benchmarks/native-compiler-baselines.json`.
+
+Rust/Go baseline rows remain in the same JSON for reporting/reference, but strict pass/fail uses the explicit Tonic baseline target so the gate measures regressions in Tonic itself.
+
 ## Inputs
 
 - Benchmark contract report: `native-compiler-summary.json`

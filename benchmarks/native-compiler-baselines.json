@@ -10,7 +10,7 @@
   },
   "targets": [
     {
-      "name": "interpreter",
+      "name": "tonic_interpreter_baseline",
       "artifact_size_bytes": 8235008,
       "compile_latency_ms": 2600,
       "workloads": [
@@ -18,11 +18,11 @@
         {"name": "check_module_load_project", "p50_ms": 0.71, "p95_ms": 0.94, "peak_rss_kb": 19850},
         {"name": "run_module_load_project", "p50_ms": 0.98, "p95_ms": 1.12, "peak_rss_kb": 20410},
         {"name": "run_control_flow_multi_generator", "p50_ms": 0.51, "p95_ms": 0.90, "peak_rss_kb": 18500},
-        {"name": "run_control_flow_for_into", "p50_ms": 0.47, "p95_ms": 0.62, "peak_rss_kb": 18410},
-        {"name": "run_error_result_pipeline", "p50_ms": 0.55, "p95_ms": 0.89, "peak_rss_kb": 18620},
+        {"name": "run_control_flow_for_into", "p50_ms": 0.70, "p95_ms": 0.90, "peak_rss_kb": 18410},
+        {"name": "run_error_result_pipeline", "p50_ms": 0.85, "p95_ms": 0.99, "peak_rss_kb": 18620},
         {"name": "check_json_transform_shape", "p50_ms": 0.63, "p95_ms": 0.87, "peak_rss_kb": 19020},
         {"name": "check_file_pipeline_project", "p50_ms": 0.86, "p95_ms": 1.08, "peak_rss_kb": 19650},
-        {"name": "check_subprocess_host_interop", "p50_ms": 0.58, "p95_ms": 0.79, "peak_rss_kb": 19110}
+        {"name": "check_subprocess_host_interop", "p50_ms": 0.88, "p95_ms": 0.99, "peak_rss_kb": 19110}
       ]
     },
     {

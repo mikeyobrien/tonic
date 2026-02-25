@@ -42,16 +42,31 @@ struct PreparedWorkload {
     args: Vec<String>,
 }
 
-fn measure_rss(prepared: &PreparedWorkload, workload: &Workload) -> Option<u64> {
-    if !Path::new("/usr/bin/time").exists() {
-        return None;
+fn get_time_command() -> Option<String> {
+    if Path::new("/usr/bin/time").exists() {
+        return Some("/usr/bin/time".to_string());
     }
+
+    if let Ok(paths) = std::env::var("PATH") {
+        for path in std::env::split_paths(&paths) {
+            let time_cmd = path.join("time");
+            if time_cmd.is_file() {
+                return Some(time_cmd.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn measure_rss(prepared: &PreparedWorkload, workload: &Workload) -> Option<u64> {
+    let time_cmd = get_time_command()?;
 
     if requires_cache_clear(&workload.mode) {
         clear_cache();
     }
 
-    let output = Command::new("/usr/bin/time")
+    let output = Command::new(&time_cmd)
         .arg("-v")
         .arg(&prepared.executable)
         .args(&prepared.args)
@@ -68,6 +83,7 @@ fn measure_rss(prepared: &PreparedWorkload, workload: &Workload) -> Option<u64> 
             }
         }
     }
+
     None
 }
 

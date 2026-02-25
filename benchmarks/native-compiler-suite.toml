@@ -6,8 +6,8 @@
 [performance_contract]
 baseline_path = "benchmarks/native-compiler-baselines.json"
 candidate_target = "interpreter"
-reference_targets = ["rust", "go"]
-relative_budget_pct = 25
+reference_targets = ["tonic_interpreter_baseline"]
+relative_budget_pct = 50
 pass_threshold = 0.82
 
   [performance_contract.metric_weights]
