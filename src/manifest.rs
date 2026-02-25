@@ -235,7 +235,11 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
         Expr::Tuple { items, .. } | Expr::List { items, .. } => items
             .iter()
             .any(|item| expr_references_module(item, module_name)),
-        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => entries
+        Expr::Map { entries, .. } => entries.iter().any(|entry| {
+            expr_references_module(entry.key(), module_name)
+                || expr_references_module(entry.value(), module_name)
+        }),
+        Expr::Keyword { entries, .. } => entries
             .iter()
             .any(|entry| expr_references_module(&entry.value, module_name)),
         Expr::MapUpdate { base, updates, .. } => {

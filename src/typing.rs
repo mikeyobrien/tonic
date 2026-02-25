@@ -273,7 +273,14 @@ fn infer_expression_type(
             }
             Ok(Type::Dynamic)
         }
-        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => {
+        Expr::Map { entries, .. } => {
+            for entry in entries {
+                infer_expression_type(entry.key(), current_module, signatures, solver)?;
+                infer_expression_type(entry.value(), current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
+        Expr::Keyword { entries, .. } => {
             for entry in entries {
                 infer_expression_type(&entry.value, current_module, signatures, solver)?;
             }

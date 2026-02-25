@@ -98,6 +98,10 @@ fn fixture_contracts() -> Vec<(&'static str, &'static str)> {
             "%{:ok => 1}\n",
         ),
         (
+            "examples/parity/03-collections/map_fat_arrow_literal.tn",
+            "%{\"status\" => 200, 1 => true, false => :nope}\n",
+        ),
+        (
             "examples/parity/03-collections/map_update_single_key.tn",
             "%{:a => 2}\n",
         ),

@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    %{"status" => 200, 1 => true, false => :nope}
+  end
+end

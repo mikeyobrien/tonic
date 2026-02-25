@@ -49,6 +49,7 @@ fn fixture_paths() -> Vec<&'static str> {
         "examples/parity/01-literals/interpolation_basic.tn",
         "examples/parity/02-operators/concat_and_list_ops.tn",
         "examples/parity/03-collections/map_dot_and_index_access.tn",
+        "examples/parity/03-collections/map_fat_arrow_literal.tn",
         "examples/parity/08-errors/host_call_and_protocol_dispatch.tn",
         "examples/parity/08-errors/ok_err_constructors.tn",
         "examples/parity/08-errors/question_operator_err_bubble.tn",

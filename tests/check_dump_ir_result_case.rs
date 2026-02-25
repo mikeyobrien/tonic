@@ -53,7 +53,7 @@ fn check_dump_ir_lowers_list_and_map_case_patterns() {
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
         examples_dir.join("ir_list_map_case.tn"),
-        "defmodule Demo do\n  def subject() do\n    map(:ok, list(1, 2))\n  end\n\n  def run() do\n    case subject() do\n      [head, tail] -> head + tail\n      %{:ok -> [value, _]} -> value + 0\n      _ -> 0\n    end\n  end\nend\n",
+        "defmodule Demo do\n  def subject() do\n    map(:ok, list(1, 2))\n  end\n\n  def run() do\n    case subject() do\n      [head, tail] -> head + tail\n      %{:ok => [value, _]} -> value + 0\n      _ -> 0\n    end\n  end\nend\n",
     )
     .expect("fixture setup should write list/map case source file");
 

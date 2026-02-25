@@ -147,7 +147,14 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             }
             Ok(())
         }
-        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => {
+        Expr::Map { entries, .. } => {
+            for entry in entries {
+                resolve_expr(entry.key(), context)?;
+                resolve_expr(entry.value(), context)?;
+            }
+            Ok(())
+        }
+        Expr::Keyword { entries, .. } => {
             for entry in entries {
                 resolve_expr(&entry.value, context)?;
             }

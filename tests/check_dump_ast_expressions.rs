@@ -397,7 +397,7 @@ fn check_dump_ast_matches_collection_literal_contract() {
         "]},",
         "{\"kind\":\"call\",\"callee\":\"tuple\",\"args\":[",
         "{\"kind\":\"map\",\"entries\":[",
-        "{\"key\":\"ok\",\"value\":{\"kind\":\"int\",\"value\":5}}",
+        "{\"key\":{\"kind\":\"atom\",\"value\":\"ok\"},\"value\":{\"kind\":\"int\",\"value\":5}}",
         "]},",
         "{\"kind\":\"keyword\",\"entries\":[",
         "{\"key\":\"done\",\"value\":{\"kind\":\"int\",\"value\":6}}",

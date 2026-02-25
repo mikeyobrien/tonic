@@ -2,20 +2,20 @@ use std::fs;
 mod common;
 
 #[test]
-fn run_executes_case_with_list_pattern() {
-    let fixture_root = common::unique_fixture_root("run-case-list-pattern");
+fn run_executes_map_literal_with_fat_arrow_keys() {
+    let fixture_root = common::unique_fixture_root("run-map-fat-arrow-literal");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("run_case_list_pattern.tn"),
-        "defmodule Demo do\n  def run() do\n    case list(1, 2) do\n      [head, tail] -> head + tail\n      _ -> 0\n    end\n  end\nend\n",
+        examples_dir.join("map_fat_arrow_literal.tn"),
+        "defmodule Demo do\n  def run() do\n    %{\"status\" => 200, 1 => true, false => :nope}\n  end\nend\n",
     )
-    .expect("fixture setup should write list-pattern source file");
+    .expect("fixture setup should write map literal source file");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["run", "examples/run_case_list_pattern.tn"])
+        .args(["run", "examples/map_fat_arrow_literal.tn"])
         .output()
         .expect("run command should execute");
 
@@ -27,24 +27,24 @@ fn run_executes_case_with_list_pattern() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert_eq!(stdout, "3\n");
+    assert_eq!(stdout, "%{\"status\" => 200, 1 => true, false => :nope}\n");
 }
 
 #[test]
-fn run_executes_case_with_nested_map_and_list_patterns() {
-    let fixture_root = common::unique_fixture_root("run-case-map-list-pattern");
+fn run_executes_case_map_pattern_with_fat_arrow_keys() {
+    let fixture_root = common::unique_fixture_root("run-map-fat-arrow-pattern");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("run_case_map_pattern.tn"),
-        "defmodule Demo do\n  def run() do\n    case map(:ok, list(7, 8)) do\n      %{:ok => [value, _]} -> value + 0\n      _ -> 0\n    end\n  end\nend\n",
+        examples_dir.join("map_fat_arrow_pattern.tn"),
+        "defmodule Demo do\n  def run() do\n    case %{\"status\" => 200, 1 => true} do\n      %{\"status\" => code, 1 => ok} -> if ok do\n        code\n      else\n        0\n      end\n      _ -> 0\n    end\n  end\nend\n",
     )
     .expect("fixture setup should write map-pattern source file");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["run", "examples/run_case_map_pattern.tn"])
+        .args(["run", "examples/map_fat_arrow_pattern.tn"])
         .output()
         .expect("run command should execute");
 
@@ -56,5 +56,5 @@ fn run_executes_case_with_nested_map_and_list_patterns() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert_eq!(stdout, "7\n");
+    assert_eq!(stdout, "200\n");
 }

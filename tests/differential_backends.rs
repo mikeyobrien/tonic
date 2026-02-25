@@ -11,6 +11,7 @@ const PARITY_DIFF_SUBSET: &[&str] = &[
     "examples/parity/02-operators/membership_and_range.tn",
     "examples/parity/03-collections/list_literal.tn",
     "examples/parity/03-collections/map_literal_single_entry.tn",
+    "examples/parity/03-collections/map_fat_arrow_literal.tn",
     "examples/parity/03-collections/tuple_literal_and_match.tn",
     "examples/parity/04-patterns/case_atom_and_wildcard.tn",
     "examples/parity/04-patterns/case_list_bind.tn",

@@ -481,11 +481,8 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             }
 
             let first = &entries[0];
-            ops.push(IrOp::ConstAtom {
-                value: first.key.clone(),
-                offset: *offset,
-            });
-            lower_expr(&first.value, current_module, ops)?;
+            lower_expr(first.key(), current_module, ops)?;
+            lower_expr(first.value(), current_module, ops)?;
 
             ops.push(IrOp::Call {
                 callee: IrCallTarget::Builtin {
@@ -496,11 +493,8 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             });
 
             for entry in entries.iter().skip(1) {
-                ops.push(IrOp::ConstAtom {
-                    value: entry.key.clone(),
-                    offset: *offset,
-                });
-                lower_expr(&entry.value, current_module, ops)?;
+                lower_expr(entry.key(), current_module, ops)?;
+                lower_expr(entry.value(), current_module, ops)?;
                 ops.push(IrOp::Call {
                     callee: IrCallTarget::Builtin {
                         name: "map_put".to_string(),
@@ -1054,10 +1048,8 @@ fn lower_expr_pattern(expr: &Expr) -> Result<IrPattern, LoweringError> {
                 .iter()
                 .map(|entry| {
                     Ok(IrMapPatternEntry {
-                        key: IrPattern::Atom {
-                            value: entry.key.clone(),
-                        },
-                        value: lower_expr_pattern(&entry.value)?,
+                        key: lower_expr_pattern(entry.key())?,
+                        value: lower_expr_pattern(entry.value())?,
                     })
                 })
                 .collect::<Result<Vec<_>, LoweringError>>()?;

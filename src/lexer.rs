@@ -96,6 +96,7 @@ pub enum TokenKind {
     Question,
     Pipe,
     PipeGt,
+    FatArrow,
     Arrow,
     LeftArrow,
     BackslashBackslash,
@@ -203,6 +204,7 @@ impl Token {
             TokenKind::Question => "QUESTION".to_string(),
             TokenKind::Pipe => "PIPE".to_string(),
             TokenKind::PipeGt => "PIPE_GT".to_string(),
+            TokenKind::FatArrow => "FAT_ARROW".to_string(),
             TokenKind::Arrow => "ARROW".to_string(),
             TokenKind::LeftArrow => "LEFT_ARROW".to_string(),
             TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH".to_string(),
@@ -430,7 +432,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '=' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'=') {
+                        if chars.get(idx + 1) == Some(&'>') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::FatArrow, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::EqEq, Span::new(start, idx)));
                         } else {
@@ -938,6 +943,31 @@ mod tests {
                 "IDENT(arg)",
                 "ARROW",
                 "IDENT(arg)",
+                "END(end)",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_supports_map_fat_arrow_without_regressing_case_arrows() {
+        let labels = dump_labels("%{\"status\" => 200} case value do :ok -> 1 end");
+
+        assert_eq!(
+            labels,
+            [
+                "PERCENT",
+                "LBRACE",
+                "STRING(status)",
+                "FAT_ARROW",
+                "INT(200)",
+                "RBRACE",
+                "CASE(case)",
+                "IDENT(value)",
+                "DO(do)",
+                "ATOM(ok)",
+                "ARROW",
+                "INT(1)",
                 "END(end)",
                 "EOF",
             ]

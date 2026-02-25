@@ -9,7 +9,7 @@ fn compile_llvm_backend_lowers_collection_builtins_and_pattern_matching_helpers(
     let source_path = temp_dir.join("collections_patterns.tn");
     fs::write(
         &source_path,
-        "defmodule Demo do\n  def match_list() do\n    [head, _] = list(9, 4)\n  end\n\n  def classify(expected) do\n    case map(:ok, list(expected, 8)) do\n      %{:ok -> [^expected, value]} when value == 8 -> value\n      _ -> 0\n    end\n  end\n\n  def run() do\n    tuple(match_list(), classify(7))\n  end\nend\n",
+        "defmodule Demo do\n  def match_list() do\n    [head, _] = list(9, 4)\n  end\n\n  def classify(expected) do\n    case map(:ok, list(expected, 8)) do\n      %{:ok => [^expected, value]} when value == 8 -> value\n      _ -> 0\n    end\n  end\n\n  def run() do\n    tuple(match_list(), classify(7))\n  end\nend\n",
     )
     .unwrap();
 

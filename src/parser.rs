@@ -300,7 +300,7 @@ pub enum Expr {
         id: NodeId,
         #[serde(skip_serializing)]
         offset: usize,
-        entries: Vec<LabelExprEntry>,
+        entries: Vec<MapExprEntry>,
     },
     MapUpdate {
         #[serde(skip_serializing)]
@@ -568,6 +568,22 @@ impl MapPatternEntry {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct MapExprEntry {
+    pub(crate) key: Expr,
+    pub(crate) value: Expr,
+}
+
+impl MapExprEntry {
+    pub(crate) fn key(&self) -> &Expr {
+        &self.key
+    }
+
+    pub(crate) fn value(&self) -> &Expr {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LabelExprEntry {
     pub(crate) key: String,
     pub(crate) value: Expr,
@@ -610,7 +626,7 @@ impl Expr {
         Self::List { id, offset, items }
     }
 
-    fn map(id: NodeId, offset: usize, entries: Vec<LabelExprEntry>) -> Self {
+    fn map(id: NodeId, offset: usize, entries: Vec<MapExprEntry>) -> Self {
         Self::Map {
             id,
             offset,
@@ -933,7 +949,13 @@ fn canonicalize_expr_call_targets(
                 canonicalize_expr_call_targets(item, aliases, imports, local_functions);
             }
         }
-        Expr::Map { entries, .. } | Expr::Keyword { entries, .. } => {
+        Expr::Map { entries, .. } => {
+            for entry in entries {
+                canonicalize_expr_call_targets(&mut entry.key, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+            }
+        }
+        Expr::Keyword { entries, .. } => {
             for entry in entries {
                 canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
             }
@@ -2145,26 +2167,31 @@ impl<'a> Parser<'a> {
         }
 
         if self.starts_keyword_literal_entry() {
-            let entries = self.parse_label_entries(TokenKind::RBrace, "map key")?;
+            let entries = self.parse_map_entries_after_first()?;
             return Ok(Expr::map(self.node_ids.next_expr(), offset, entries));
         }
 
-        let base = self.parse_expression()?;
+        let first_key = self.parse_expression()?;
 
         if self.match_kind(TokenKind::Pipe) {
             let entries = self.parse_label_entries(TokenKind::RBrace, "map update key")?;
             return Ok(Expr::map_update(
                 self.node_ids.next_expr(),
                 offset,
-                base,
+                first_key,
                 entries,
             ));
         }
 
-        Err(ParserError::at_current(
-            "expected map update pipe `|` or label entry",
-            self.current(),
-        ))
+        let mut entries = vec![self.parse_map_entry_from_key(first_key)?];
+
+        while self.match_kind(TokenKind::Comma) {
+            entries.push(self.parse_map_entry()?);
+        }
+
+        self.expect(TokenKind::RBrace, "}")?;
+
+        Ok(Expr::map(self.node_ids.next_expr(), offset, entries))
     }
 
     fn starts_keyword_literal_entry(&self) -> bool {
@@ -2172,6 +2199,47 @@ impl<'a> Parser<'a> {
             && self
                 .peek(1)
                 .is_some_and(|token| token.kind() == TokenKind::Colon)
+    }
+
+    fn parse_map_entries_after_first(&mut self) -> Result<Vec<MapExprEntry>, ParserError> {
+        let mut entries = vec![self.parse_map_entry_from_label()?];
+
+        while self.match_kind(TokenKind::Comma) {
+            entries.push(self.parse_map_entry()?);
+        }
+
+        self.expect(TokenKind::RBrace, "}")?;
+        Ok(entries)
+    }
+
+    fn parse_map_entry(&mut self) -> Result<MapExprEntry, ParserError> {
+        if self.starts_keyword_literal_entry() {
+            return self.parse_map_entry_from_label();
+        }
+
+        let key = self.parse_expression()?;
+        self.parse_map_entry_from_key(key)
+    }
+
+    fn parse_map_entry_from_label(&mut self) -> Result<MapExprEntry, ParserError> {
+        let offset = self
+            .current()
+            .map(|token| token.span().start())
+            .unwrap_or(0);
+        let label = self.expect_ident("map key")?;
+        self.expect(TokenKind::Colon, ":")?;
+        let value = self.parse_expression()?;
+
+        Ok(MapExprEntry {
+            key: Expr::atom(self.node_ids.next_expr(), offset, label),
+            value,
+        })
+    }
+
+    fn parse_map_entry_from_key(&mut self, key: Expr) -> Result<MapExprEntry, ParserError> {
+        self.expect(TokenKind::FatArrow, "map fat arrow `=>`")?;
+        let value = self.parse_expression()?;
+        Ok(MapExprEntry { key, value })
     }
 
     fn parse_label_entries(
@@ -2463,7 +2531,10 @@ impl<'a> Parser<'a> {
                     (key, value)
                 } else {
                     let key = self.parse_pattern()?;
-                    self.expect(TokenKind::Arrow, "->")?;
+                    if !(self.match_kind(TokenKind::FatArrow) || self.match_kind(TokenKind::Arrow))
+                    {
+                        return Err(self.expected("map pattern fat arrow `=>`"));
+                    }
                     let value = self.parse_pattern()?;
                     (key, value)
                 };
@@ -2964,6 +3035,112 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_map_fat_arrow_literals_and_mixed_entries() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def run() do\n    %{\"status\" => 200, ok: true, 1 => false}\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"map",
+                "entries":[
+                    {
+                        "key":{"kind":"string","value":"status"},
+                        "value":{"kind":"int","value":200}
+                    },
+                    {
+                        "key":{"kind":"atom","value":"ok"},
+                        "value":{"kind":"bool","value":true}
+                    },
+                    {
+                        "key":{"kind":"int","value":1},
+                        "value":{"kind":"bool","value":false}
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_map_fat_arrow_patterns() {
+        let tokens = scan_tokens(
+            "defmodule PatternDemo do\n  def run() do\n    case input() do\n      %{\"status\" => code, true => flag, ok: value} -> tuple(code, tuple(flag, value))\n      _ -> 0\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"case",
+                "subject":{"kind":"call","callee":"input","args":[]},
+                "branches":[
+                    {
+                        "pattern":{
+                            "kind":"map",
+                            "entries":[
+                                {
+                                    "key":{"kind":"string","value":"status"},
+                                    "value":{"kind":"bind","name":"code"}
+                                },
+                                {
+                                    "key":{"kind":"bool","value":true},
+                                    "value":{"kind":"bind","name":"flag"}
+                                },
+                                {
+                                    "key":{"kind":"atom","value":"ok"},
+                                    "value":{"kind":"bind","name":"value"}
+                                }
+                            ]
+                        },
+                        "body":{
+                            "kind":"call",
+                            "callee":"tuple",
+                            "args":[
+                                {"kind":"variable","name":"code"},
+                                {
+                                    "kind":"call",
+                                    "callee":"tuple",
+                                    "args":[
+                                        {"kind":"variable","name":"flag"},
+                                        {"kind":"variable","name":"value"}
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "pattern":{"kind":"wildcard"},
+                        "body":{"kind":"int","value":0}
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_reports_deterministic_map_entry_diagnostics() {
+        let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    %{1 2}\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+        let error = parse_ast(&tokens).expect_err("parser should reject malformed map entries");
+
+        assert!(
+            error
+                .to_string()
+                .contains("expected map fat arrow `=>`, found INT(2)"),
+            "unexpected parser error: {error}"
+        );
+    }
+
+    #[test]
     fn parse_ast_supports_pin_patterns_case_guards_and_match_operator() {
         let tokens = scan_tokens(
             "defmodule PatternDemo do\n  def run() do\n    case list(7, 8) do\n      [^value, tail] when tail == 8 -> value = tail\n      _ -> 0\n    end\n  end\n\n  def value() do\n    7\n  end\nend\n",
@@ -3359,7 +3536,15 @@ mod tests {
                     collect_expr_ids(item, ids);
                 }
             }
-            Expr::Map { id, entries, .. } | Expr::Keyword { id, entries, .. } => {
+            Expr::Map { id, entries, .. } => {
+                ids.push(id.0.clone());
+
+                for entry in entries {
+                    collect_expr_ids(&entry.key, ids);
+                    collect_expr_ids(&entry.value, ids);
+                }
+            }
+            Expr::Keyword { id, entries, .. } => {
                 ids.push(id.0.clone());
 
                 for entry in entries {

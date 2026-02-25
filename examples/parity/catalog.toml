@@ -170,6 +170,14 @@ stdout = '''%{:ok => 1}
 status = "active"
 
 [[example]]
+path = "examples/parity/03-collections/map_fat_arrow_literal.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''%{"status" => 200, 1 => true, false => :nope}
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/03-collections/map_update_single_key.tn"
 check_exit = 0
 run_exit = 0
