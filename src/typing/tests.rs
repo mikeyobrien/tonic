@@ -93,6 +93,21 @@ fn infer_types_accepts_protocol_dispatch_builtin_calls() {
 }
 
 #[test]
+fn infer_types_accepts_defprotocol_call_targets() {
+    let source = "defmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  def run() do\n    Size.size(tuple(1, 2))\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize protocol call fixture");
+    let ast = parse_ast(&tokens).expect("parser should build protocol call fixture ast");
+
+    let summary = infer_types(&ast).expect("type inference should accept defprotocol call targets");
+
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
+    assert_eq!(
+        summary.signature("Size.size"),
+        Some("fn(dynamic) -> dynamic")
+    );
+}
+
+#[test]
 fn infer_types_accepts_host_call_with_atom_key() {
     let source =
         "defmodule Demo do\n  def run() do\n    host_call(:sum_ints, 1, 2, 3)\n  end\nend\n";

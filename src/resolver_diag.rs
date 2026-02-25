@@ -7,6 +7,11 @@ pub enum ResolverDiagnosticCode {
     DuplicateModule,
     UndefinedStructModule,
     UnknownStructField,
+    DuplicateProtocol,
+    DuplicateProtocolFunction,
+    UnknownProtocol,
+    DuplicateProtocolImpl,
+    InvalidProtocolImpl,
 }
 
 impl ResolverDiagnosticCode {
@@ -17,6 +22,11 @@ impl ResolverDiagnosticCode {
             Self::DuplicateModule => "E1003",
             Self::UndefinedStructModule => "E1004",
             Self::UnknownStructField => "E1005",
+            Self::DuplicateProtocol => "E1006",
+            Self::DuplicateProtocolFunction => "E1007",
+            Self::UnknownProtocol => "E1008",
+            Self::DuplicateProtocolImpl => "E1009",
+            Self::InvalidProtocolImpl => "E1010",
         }
     }
 }
@@ -68,6 +78,51 @@ impl ResolverError {
             code: ResolverDiagnosticCode::UnknownStructField,
             message: format!(
                 "unknown struct field '{field}' for {struct_module} in {module}.{function}"
+            ),
+        }
+    }
+
+    pub fn duplicate_protocol(protocol: &str) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::DuplicateProtocol,
+            message: format!("duplicate protocol definition '{protocol}'"),
+        }
+    }
+
+    pub fn duplicate_protocol_function(protocol: &str, function: &str, arity: usize) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::DuplicateProtocolFunction,
+            message: format!(
+                "duplicate protocol function '{function}/{arity}' in protocol '{protocol}'"
+            ),
+        }
+    }
+
+    pub fn unknown_protocol(protocol: &str, target: &str) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::UnknownProtocol,
+            message: format!("unknown protocol '{protocol}' for defimpl target '{target}'"),
+        }
+    }
+
+    pub fn duplicate_protocol_impl(protocol: &str, target: &str) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::DuplicateProtocolImpl,
+            message: format!("duplicate defimpl for protocol '{protocol}' and target '{target}'"),
+        }
+    }
+
+    pub fn invalid_protocol_impl(
+        protocol: &str,
+        target: &str,
+        function: &str,
+        arity: usize,
+        reason: &str,
+    ) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::InvalidProtocolImpl,
+            message: format!(
+                "invalid defimpl for protocol '{protocol}' target '{target}': {function}/{arity} {reason}"
             ),
         }
     }
@@ -161,6 +216,82 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1005] unknown struct field 'agez' for User in Demo.run"
+        );
+    }
+
+    #[test]
+    fn duplicate_protocol_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::duplicate_protocol("Size");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::DuplicateProtocol);
+        assert_eq!(error.message(), "duplicate protocol definition 'Size'");
+        assert_eq!(
+            error.to_string(),
+            "[E1006] duplicate protocol definition 'Size'"
+        );
+    }
+
+    #[test]
+    fn duplicate_protocol_function_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::duplicate_protocol_function("Size", "size", 1);
+
+        assert_eq!(
+            error.code(),
+            ResolverDiagnosticCode::DuplicateProtocolFunction
+        );
+        assert_eq!(
+            error.message(),
+            "duplicate protocol function 'size/1' in protocol 'Size'"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1007] duplicate protocol function 'size/1' in protocol 'Size'"
+        );
+    }
+
+    #[test]
+    fn unknown_protocol_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::unknown_protocol("Size", "Tuple");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UnknownProtocol);
+        assert_eq!(
+            error.message(),
+            "unknown protocol 'Size' for defimpl target 'Tuple'"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1008] unknown protocol 'Size' for defimpl target 'Tuple'"
+        );
+    }
+
+    #[test]
+    fn duplicate_protocol_impl_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::duplicate_protocol_impl("Size", "Tuple");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::DuplicateProtocolImpl);
+        assert_eq!(
+            error.message(),
+            "duplicate defimpl for protocol 'Size' and target 'Tuple'"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1009] duplicate defimpl for protocol 'Size' and target 'Tuple'"
+        );
+    }
+
+    #[test]
+    fn invalid_protocol_impl_constructor_uses_stable_code_and_message() {
+        let error =
+            ResolverError::invalid_protocol_impl("Size", "Tuple", "size", 1, "is not declared");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::InvalidProtocolImpl);
+        assert_eq!(
+            error.message(),
+            "invalid defimpl for protocol 'Size' target 'Tuple': size/1 is not declared"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1010] invalid defimpl for protocol 'Size' target 'Tuple': size/1 is not declared"
         );
     }
 }

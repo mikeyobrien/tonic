@@ -1,4 +1,7 @@
-use crate::parser::{Ast, BinaryOp, Expr, ModuleForm, Pattern};
+use crate::parser::{
+    Ast, BinaryOp, Expr, ModuleForm, Parameter, Pattern, ProtocolFunctionSignature,
+    ProtocolImplFunction,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -244,40 +247,38 @@ impl std::error::Error for LoweringError {}
 
 type StructDefinitions = HashMap<String, Vec<(String, Expr)>>;
 
+type ProtocolDispatchImpls = HashMap<(String, String), Vec<(String, String)>>;
+
+#[derive(Debug, Clone)]
+struct ProtocolDecl {
+    name: String,
+    functions: Vec<ProtocolFunctionSignature>,
+}
+
+#[derive(Debug, Clone)]
+struct ProtocolImplDecl {
+    module_name: String,
+    protocol: String,
+    target: String,
+    functions: Vec<ProtocolImplFunction>,
+}
+
 pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
     let mut functions = Vec::new();
     let struct_definitions = collect_struct_definitions(ast);
+    let (protocol_decls, protocol_impls) = collect_protocol_forms(ast);
 
     for module in &ast.modules {
         for function in &module.functions {
-            let mut ops = Vec::new();
-            lower_expr(&function.body, &module.name, &struct_definitions, &mut ops)?;
-            ops.push(IrOp::Return {
-                offset: function.body.offset(),
-            });
-
-            let guard_ops = if let Some(guard) = function.guard() {
-                let mut guard_ops = Vec::new();
-                lower_expr(guard, &module.name, &struct_definitions, &mut guard_ops)?;
-                Some(guard_ops)
-            } else {
-                None
-            };
-
-            let params = function
-                .params
-                .iter()
-                .map(|param| param.name().to_string())
-                .collect::<Vec<_>>();
-            let param_patterns = lower_function_param_patterns(function, &params)?;
-
-            functions.push(IrFunction {
-                name: qualify_function_name(&module.name, &function.name),
-                params,
-                param_patterns,
-                guard_ops,
-                ops,
-            });
+            let lowered = lower_named_function(
+                &qualify_function_name(&module.name, &function.name),
+                module.name.as_str(),
+                &function.params,
+                function.guard(),
+                &function.body,
+                &struct_definitions,
+            )?;
+            functions.push(lowered);
 
             let wrappers = lower_default_argument_wrappers(
                 module.name.as_str(),
@@ -285,6 +286,29 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
                 &struct_definitions,
             )?;
             functions.extend(wrappers);
+        }
+    }
+
+    let mut dispatch_impls: ProtocolDispatchImpls = HashMap::new();
+    for protocol_impl in &protocol_impls {
+        for function in &protocol_impl.functions {
+            let lowered =
+                lower_protocol_impl_function(protocol_impl, function, &struct_definitions)?;
+            dispatch_impls
+                .entry((protocol_impl.protocol.clone(), function.name.clone()))
+                .or_default()
+                .push((protocol_impl.target.clone(), lowered.name.clone()));
+            functions.push(lowered);
+        }
+    }
+
+    for protocol in &protocol_decls {
+        for signature in &protocol.functions {
+            functions.push(lower_protocol_dispatch_function(
+                protocol,
+                signature,
+                &dispatch_impls,
+            )?);
         }
     }
 
@@ -314,17 +338,301 @@ fn collect_struct_definitions(ast: &Ast) -> StructDefinitions {
     definitions
 }
 
-fn lower_function_param_patterns(
-    function: &crate::parser::Function,
-    params: &[String],
-) -> Result<Option<Vec<IrPattern>>, LoweringError> {
-    let lowered_patterns = function
+fn collect_protocol_forms(ast: &Ast) -> (Vec<ProtocolDecl>, Vec<ProtocolImplDecl>) {
+    let mut protocols = Vec::new();
+    let mut implementations = Vec::new();
+
+    for module in &ast.modules {
+        for form in &module.forms {
+            match form {
+                ModuleForm::Defprotocol { name, functions } => {
+                    protocols.push(ProtocolDecl {
+                        name: name.clone(),
+                        functions: functions.clone(),
+                    });
+                }
+                ModuleForm::Defimpl {
+                    protocol,
+                    target,
+                    functions,
+                } => {
+                    implementations.push(ProtocolImplDecl {
+                        module_name: module.name.clone(),
+                        protocol: protocol.clone(),
+                        target: target.clone(),
+                        functions: functions.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    (protocols, implementations)
+}
+
+fn lower_named_function(
+    qualified_name: &str,
+    current_module: &str,
+    params: &[Parameter],
+    guard: Option<&Expr>,
+    body: &Expr,
+    struct_definitions: &StructDefinitions,
+) -> Result<IrFunction, LoweringError> {
+    let mut ops = Vec::new();
+    lower_expr(body, current_module, struct_definitions, &mut ops)?;
+    ops.push(IrOp::Return {
+        offset: body.offset(),
+    });
+
+    let guard_ops = if let Some(guard) = guard {
+        let mut guard_ops = Vec::new();
+        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
+        Some(guard_ops)
+    } else {
+        None
+    };
+
+    let lowered_params = params
+        .iter()
+        .map(|param| param.name().to_string())
+        .collect::<Vec<_>>();
+
+    Ok(IrFunction {
+        name: qualified_name.to_string(),
+        param_patterns: lower_param_patterns(params, &lowered_params)?,
+        params: lowered_params,
+        guard_ops,
+        ops,
+    })
+}
+
+fn lower_protocol_impl_function(
+    protocol_impl: &ProtocolImplDecl,
+    function: &ProtocolImplFunction,
+    struct_definitions: &StructDefinitions,
+) -> Result<IrFunction, LoweringError> {
+    let qualified_name = protocol_impl_function_name(
+        &protocol_impl.protocol,
+        &protocol_impl.target,
+        &function.name,
+    );
+
+    lower_named_function(
+        &qualified_name,
+        &protocol_impl.module_name,
+        &function.params,
+        function.guard.as_ref(),
+        &function.body,
+        struct_definitions,
+    )
+}
+
+fn lower_protocol_dispatch_function(
+    protocol: &ProtocolDecl,
+    signature: &ProtocolFunctionSignature,
+    dispatch_impls: &ProtocolDispatchImpls,
+) -> Result<IrFunction, LoweringError> {
+    if signature.params.is_empty() {
+        return Err(LoweringError::unsupported("protocol dispatch arity", 0));
+    }
+
+    let dispatch_key = (protocol.name.clone(), signature.name.clone());
+    let implementations = dispatch_impls
+        .get(&dispatch_key)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut tuple_impl = None;
+    let mut map_impl = None;
+    let mut struct_impls = Vec::new();
+
+    for (target, implementation) in implementations {
+        match target.as_str() {
+            "Tuple" => tuple_impl = Some(implementation),
+            "Map" => map_impl = Some(implementation),
+            _ => struct_impls.push((target, implementation)),
+        }
+    }
+
+    let dispatch_param = signature
         .params
+        .first()
+        .expect("protocol dispatch should include first parameter")
+        .clone();
+
+    let mut top_level_branches = Vec::new();
+    for (target, implementation) in struct_impls {
+        top_level_branches.push(IrCaseBranch {
+            pattern: IrPattern::Map {
+                entries: vec![IrMapPatternEntry {
+                    key: IrPattern::Atom {
+                        value: "__struct__".to_string(),
+                    },
+                    value: IrPattern::Atom { value: target },
+                }],
+            },
+            guard_ops: None,
+            ops: build_protocol_impl_call_ops(&implementation, &signature.params, 0),
+        });
+    }
+
+    top_level_branches.push(IrCaseBranch {
+        pattern: IrPattern::Map {
+            entries: vec![IrMapPatternEntry {
+                key: IrPattern::Atom {
+                    value: "__struct__".to_string(),
+                },
+                value: IrPattern::Bind {
+                    name: "__tonic_struct_name".to_string(),
+                },
+            }],
+        },
+        guard_ops: None,
+        ops: build_protocol_missing_impl_ops(&protocol.name, &signature.name, "struct", 0),
+    });
+
+    top_level_branches.push(IrCaseBranch {
+        pattern: IrPattern::Wildcard,
+        guard_ops: None,
+        ops: build_non_struct_protocol_dispatch_ops(
+            &protocol.name,
+            &signature.name,
+            &dispatch_param,
+            &signature.params,
+            tuple_impl.as_deref(),
+            map_impl.as_deref(),
+            0,
+        ),
+    });
+
+    Ok(IrFunction {
+        name: qualify_function_name(&protocol.name, &signature.name),
+        params: signature.params.clone(),
+        param_patterns: None,
+        guard_ops: None,
+        ops: vec![
+            IrOp::LoadVariable {
+                name: dispatch_param,
+                offset: 0,
+            },
+            IrOp::Case {
+                branches: top_level_branches,
+                offset: 0,
+            },
+            IrOp::Return { offset: 0 },
+        ],
+    })
+}
+
+fn build_non_struct_protocol_dispatch_ops(
+    protocol: &str,
+    function: &str,
+    dispatch_param: &str,
+    params: &[String],
+    tuple_impl: Option<&str>,
+    map_impl: Option<&str>,
+    offset: usize,
+) -> Vec<IrOp> {
+    let mut ops = vec![
+        IrOp::LoadVariable {
+            name: dispatch_param.to_string(),
+            offset,
+        },
+        IrOp::Call {
+            callee: IrCallTarget::Builtin {
+                name: "protocol_dispatch".to_string(),
+            },
+            argc: 1,
+            offset,
+        },
+    ];
+
+    let tuple_ops = tuple_impl
+        .map(|implementation| build_protocol_impl_call_ops(implementation, params, offset))
+        .unwrap_or_else(|| build_protocol_missing_impl_ops(protocol, function, "tuple", offset));
+
+    let map_ops = map_impl
+        .map(|implementation| build_protocol_impl_call_ops(implementation, params, offset))
+        .unwrap_or_else(|| build_protocol_missing_impl_ops(protocol, function, "map", offset));
+
+    ops.push(IrOp::Case {
+        branches: vec![
+            IrCaseBranch {
+                pattern: IrPattern::Integer { value: 1 },
+                guard_ops: None,
+                ops: tuple_ops,
+            },
+            IrCaseBranch {
+                pattern: IrPattern::Integer { value: 2 },
+                guard_ops: None,
+                ops: map_ops,
+            },
+            IrCaseBranch {
+                pattern: IrPattern::Wildcard,
+                guard_ops: None,
+                ops: build_protocol_missing_impl_ops(protocol, function, "value", offset),
+            },
+        ],
+        offset,
+    });
+
+    ops
+}
+
+fn build_protocol_impl_call_ops(
+    implementation: &str,
+    params: &[String],
+    offset: usize,
+) -> Vec<IrOp> {
+    let mut ops = params
+        .iter()
+        .map(|param| IrOp::LoadVariable {
+            name: param.clone(),
+            offset,
+        })
+        .collect::<Vec<_>>();
+
+    ops.push(IrOp::Call {
+        callee: IrCallTarget::Function {
+            name: implementation.to_string(),
+        },
+        argc: params.len(),
+        offset,
+    });
+
+    ops
+}
+
+fn build_protocol_missing_impl_ops(
+    protocol: &str,
+    function: &str,
+    target: &str,
+    offset: usize,
+) -> Vec<IrOp> {
+    vec![
+        IrOp::ConstString {
+            value: format!("protocol {protocol}.{function} has no implementation for {target}"),
+            offset,
+        },
+        IrOp::Raise { offset },
+    ]
+}
+
+fn protocol_impl_function_name(protocol: &str, target: &str, function: &str) -> String {
+    format!("__tonic_protocol_impl.{protocol}.{target}.{function}")
+}
+
+fn lower_param_patterns(
+    params: &[Parameter],
+    lowered_params: &[String],
+) -> Result<Option<Vec<IrPattern>>, LoweringError> {
+    let lowered_patterns = params
         .iter()
         .map(|param| lower_pattern(param.pattern()))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let is_simple_bind_shape = lowered_patterns.iter().zip(params.iter()).all(
+    let is_simple_bind_shape = lowered_patterns.iter().zip(lowered_params.iter()).all(
         |(pattern, param_name)| matches!(pattern, IrPattern::Bind { name } if name == param_name),
     );
 
@@ -1566,5 +1874,45 @@ mod tests {
                 {"op":"return","offset":37}
             ])
         );
+    }
+
+    #[test]
+    fn lower_ast_generates_protocol_dispatcher_and_impl_functions() {
+        let source = "defmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  defimpl Size, for: Tuple do\n    def size(_value) do\n      2\n    end\n  end\n\n  def run() do\n    Size.size(tuple(1, 2))\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize protocol lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build protocol lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support protocol forms");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        let names = json["functions"]
+            .as_array()
+            .expect("lowered functions should be an array")
+            .iter()
+            .map(|function| {
+                function["name"]
+                    .as_str()
+                    .expect("lowered function should include a name")
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+
+        assert!(names.iter().any(|name| name == "Demo.run"));
+        assert!(names.iter().any(|name| name == "Size.size"));
+        assert!(names
+            .iter()
+            .any(|name| name == "__tonic_protocol_impl.Size.Tuple.size"));
+
+        let size_function = json["functions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|function| function["name"] == "Size.size")
+            .expect("lowered ir should include protocol dispatcher function");
+
+        let serialized_ops = serde_json::to_string(&size_function["ops"])
+            .expect("protocol dispatcher ops should serialize");
+        assert!(serialized_ops.contains("protocol_dispatch"));
     }
 }

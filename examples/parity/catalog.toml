@@ -346,6 +346,14 @@ stdout = '''30
 status = "active"
 
 [[example]]
+path = "examples/parity/07-modules/protocol_defimpl_dispatch.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{2, {1, 9}}
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/07-modules/project_multifile_pipeline"
 check_exit = 0
 run_exit = 0

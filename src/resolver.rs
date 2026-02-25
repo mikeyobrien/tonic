@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
     ensure_no_duplicate_modules(ast)?;
 
-    let module_graph = ModuleGraph::from_ast(ast);
+    let module_graph = ModuleGraph::from_ast(ast)?;
 
     for module in &ast.modules {
         for function in &module.functions {
@@ -49,6 +49,13 @@ fn ensure_no_duplicate_modules(ast: &Ast) -> Result<(), ResolverError> {
 struct ModuleGraph {
     modules: HashMap<String, HashMap<String, FunctionVisibility>>,
     structs: HashMap<String, HashSet<String>>,
+    protocols: HashMap<String, ProtocolDefinition>,
+}
+
+#[derive(Debug, Default)]
+struct ProtocolDefinition {
+    functions: HashMap<String, usize>,
+    impl_targets: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -64,9 +71,10 @@ enum CallResolution {
 }
 
 impl ModuleGraph {
-    fn from_ast(ast: &Ast) -> Self {
+    fn from_ast(ast: &Ast) -> Result<Self, ResolverError> {
         let mut modules: HashMap<String, HashMap<String, FunctionVisibility>> = HashMap::new();
         let mut structs: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut protocols: HashMap<String, ProtocolDefinition> = HashMap::new();
 
         for module in &ast.modules {
             let symbols = modules.entry(module.name.clone()).or_default();
@@ -95,7 +103,128 @@ impl ModuleGraph {
             }
         }
 
-        Self { modules, structs }
+        for module in &ast.modules {
+            for form in &module.forms {
+                let ModuleForm::Defprotocol { name, functions } = form else {
+                    continue;
+                };
+
+                if protocols.contains_key(name) {
+                    return Err(ResolverError::duplicate_protocol(name));
+                }
+
+                let mut signatures = HashMap::new();
+                for function in functions {
+                    let arity = function.params.len();
+                    if signatures.insert(function.name.clone(), arity).is_some() {
+                        return Err(ResolverError::duplicate_protocol_function(
+                            name,
+                            &function.name,
+                            arity,
+                        ));
+                    }
+
+                    modules
+                        .entry(name.clone())
+                        .or_default()
+                        .entry(function.name.clone())
+                        .or_default()
+                        .public = true;
+                }
+
+                protocols.insert(
+                    name.clone(),
+                    ProtocolDefinition {
+                        functions: signatures,
+                        impl_targets: HashSet::new(),
+                    },
+                );
+            }
+        }
+
+        for module in &ast.modules {
+            for form in &module.forms {
+                let ModuleForm::Defimpl {
+                    protocol,
+                    target,
+                    functions,
+                } = form
+                else {
+                    continue;
+                };
+
+                let Some(protocol_definition) = protocols.get_mut(protocol) else {
+                    return Err(ResolverError::unknown_protocol(protocol, target));
+                };
+
+                if !protocol_definition.impl_targets.insert(target.clone()) {
+                    return Err(ResolverError::duplicate_protocol_impl(protocol, target));
+                }
+
+                let mut implemented = HashMap::new();
+                for function in functions {
+                    let arity = function.params.len();
+                    if implemented.insert(function.name.clone(), arity).is_some() {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            "is declared more than once",
+                        ));
+                    }
+
+                    if function.params.iter().any(|param| param.has_default()) {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            "must not use default parameters",
+                        ));
+                    }
+
+                    let Some(expected_arity) = protocol_definition.functions.get(&function.name)
+                    else {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            "is not declared by the protocol",
+                        ));
+                    };
+
+                    if *expected_arity != arity {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            &format!("has arity mismatch (expected {expected_arity})"),
+                        ));
+                    }
+                }
+
+                for (name, arity) in &protocol_definition.functions {
+                    if implemented.get(name).copied() != Some(*arity) {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            name,
+                            *arity,
+                            "is missing",
+                        ));
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            modules,
+            structs,
+            protocols,
+        })
     }
 
     fn resolve_call_target(&self, current_module: &str, callee: &str) -> CallResolution {
@@ -104,6 +233,14 @@ impl ModuleGraph {
         }
 
         if let Some((module_name, function_name)) = callee.split_once('.') {
+            if let Some(protocol) = self.protocols.get(module_name) {
+                return if protocol.functions.contains_key(function_name) {
+                    CallResolution::Found
+                } else {
+                    CallResolution::Missing
+                };
+            }
+
             let Some(module_symbols) = self.modules.get(module_name) else {
                 return CallResolution::Missing;
             };
@@ -566,6 +703,46 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1005] unknown struct field 'agez' for User in User.run"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_accepts_defprotocol_and_defimpl_forms() {
+        let source = "defmodule User do\n  defstruct age: 0\nend\n\ndefmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  defimpl Size, for: Tuple do\n    def size(_value) do\n      2\n    end\n  end\n\n  defimpl Size, for: User do\n    def size(user) do\n      user.age\n    end\n  end\n\n  def run(user) do\n    tuple(Size.size(tuple(1, 2)), Size.size(user))\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize protocol fixture");
+        let ast = parse_ast(&tokens).expect("parser should build protocol fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept protocol declaration and impl forms");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_unknown_protocol_impl_target() {
+        let source = "defmodule Demo do\n  defimpl Missing, for: Tuple do\n    def size(_value) do\n      1\n    end\n  end\n\n  def run() do\n    0\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize unknown protocol fixture");
+        let ast = parse_ast(&tokens).expect("parser should build unknown protocol fixture ast");
+
+        let error = resolve_ast(&ast).expect_err("resolver should reject unknown defimpl protocol");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UnknownProtocol);
+        assert_eq!(
+            error.to_string(),
+            "[E1008] unknown protocol 'Missing' for defimpl target 'Tuple'"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_rejects_protocol_impl_arity_mismatch() {
+        let source = "defmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  defimpl Size, for: Tuple do\n    def size(_value, _extra) do\n      2\n    end\n  end\n\n  def run() do\n    0\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize arity mismatch fixture");
+        let ast = parse_ast(&tokens).expect("parser should build arity mismatch fixture ast");
+
+        let error =
+            resolve_ast(&ast).expect_err("resolver should reject protocol impl arity mismatch");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::InvalidProtocolImpl);
+        assert_eq!(
+            error.to_string(),
+            "[E1010] invalid defimpl for protocol 'Size' target 'Tuple': size/2 has arity mismatch (expected 1)"
         );
     }
 }

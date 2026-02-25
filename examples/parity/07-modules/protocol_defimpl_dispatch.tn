@@ -1,0 +1,31 @@
+defmodule User do
+  defstruct age: 0
+end
+
+defmodule Demo do
+  defprotocol Size do
+    def size(value)
+  end
+
+  defimpl Size, for: Tuple do
+    def size(_value) do
+      2
+    end
+  end
+
+  defimpl Size, for: Map do
+    def size(_value) do
+      1
+    end
+  end
+
+  defimpl Size, for: User do
+    def size(user) do
+      user.age
+    end
+  end
+
+  def run() do
+    tuple(Size.size(tuple(1, 2)), tuple(Size.size(%{a: 1}), Size.size(%User{age: 9})))
+  end
+end

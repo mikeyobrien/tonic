@@ -116,7 +116,7 @@ _Last updated: 2026-02-25_
 - [~] module attributes (`@doc`, `@moduledoc`, custom attrs) parse/AST only (`tests/check_dump_ast_module_forms.rs`)
 - [x] cross-file module resolution baseline (`tests/run_project_multimodule_smoke.rs`)
 - [ ] `import ... only:/except:` (`src/parser.rs`)
-- [ ] `defprotocol` / `defimpl` syntax parity (`src/parser.rs`; runtime has `protocol_dispatch` builtin instead)
+- [x] `defprotocol` / `defimpl` syntax parity (`src/parser.rs`, `src/resolver.rs`, `src/ir.rs`, `tests/check_dump_ast_protocol_forms.rs`, `tests/run_protocol_defimpl_smoke.rs`)
 - [ ] `__MODULE__` / `__ENV__` / `__CALLER__` (`src/` search)
 - [ ] nested `defmodule` parity (`src/parser.rs`)
 - [ ] `alias Foo` and `alias Foo.{Bar,Baz}` forms (`src/parser.rs`)
@@ -157,8 +157,8 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 2. [x] **Struct syntax parity** (`%Module{...}`, updates, struct patterns)  
    `defstruct` forms, struct literal/update parsing, struct-pattern matching, resolver diagnostics, and runtime `__struct__` tagging are now wired end-to-end.
 
-3. [ ] **`defprotocol` / `defimpl` syntax + dispatch semantics**  
-   Replace builtin-only protocol shortcuts with first-class language-level protocol definitions and impl blocks.
+3. [x] **`defprotocol` / `defimpl` syntax + dispatch semantics**  
+   Added first-class protocol declaration/implementation forms with resolver validation and runtime dispatch (tuple/map + struct-tagged values) while preserving `protocol_dispatch/1` builtin compatibility.
 
 4. [ ] **`use` and `require` semantic behavior (not parse-only)**  
    `use` should apply `__using__` expansions; `require` should gate macro usage semantics. Needed for ecosystem-style module composition.

@@ -1,4 +1,4 @@
-use crate::parser::{Ast, BinaryOp, Expr, ParameterAnnotation, Pattern};
+use crate::parser::{Ast, BinaryOp, Expr, ModuleForm, ParameterAnnotation, Pattern};
 #[path = "typing_diag.rs"]
 mod diag;
 use diag::TypingError;
@@ -186,6 +186,26 @@ pub fn infer_types(ast: &Ast) -> Result<TypeSummary, TypingError> {
                     return_type,
                     default_count,
                 });
+        }
+
+        for form in &module.forms {
+            let ModuleForm::Defprotocol { name, functions } = form else {
+                continue;
+            };
+
+            for function in functions {
+                signatures
+                    .entry(qualify_function_name(name, &function.name))
+                    .or_insert(FunctionSignature {
+                        params: function
+                            .params
+                            .iter()
+                            .map(|_| solver.fresh_var())
+                            .collect::<Vec<_>>(),
+                        return_type: solver.fresh_var(),
+                        default_count: 0,
+                    });
+            }
         }
     }
 

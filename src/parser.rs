@@ -61,12 +61,37 @@ pub enum ModuleForm {
     Defstruct {
         fields: Vec<StructFieldEntry>,
     },
+    Defprotocol {
+        name: String,
+        functions: Vec<ProtocolFunctionSignature>,
+    },
+    Defimpl {
+        protocol: String,
+        #[serde(rename = "for")]
+        target: String,
+        functions: Vec<ProtocolImplFunction>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct StructFieldEntry {
     pub name: String,
     pub default: Expr,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProtocolFunctionSignature {
+    pub name: String,
+    pub params: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProtocolImplFunction {
+    pub name: String,
+    pub params: Vec<Parameter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guard: Option<Expr>,
+    pub body: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -118,7 +143,7 @@ impl FunctionVisibility {
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Function {
     #[serde(skip_serializing)]
     pub id: NodeId,
@@ -165,7 +190,7 @@ pub enum ParameterAnnotation {
     Dynamic,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
     name: String,
     annotation: ParameterAnnotation,
@@ -1001,15 +1026,43 @@ fn canonicalize_module_call_targets(module: &mut Module) {
         .collect::<HashSet<_>>();
 
     for form in &mut module.forms {
-        if let ModuleForm::Defstruct { fields } = form {
-            for field in fields {
-                canonicalize_expr_call_targets(
-                    &mut field.default,
-                    &aliases,
-                    &imports,
-                    &local_functions,
-                );
+        match form {
+            ModuleForm::Defstruct { fields } => {
+                for field in fields {
+                    canonicalize_expr_call_targets(
+                        &mut field.default,
+                        &aliases,
+                        &imports,
+                        &local_functions,
+                    );
+                }
             }
+            ModuleForm::Defimpl { functions, .. } => {
+                for function in functions {
+                    for param in &mut function.params {
+                        if let Some(default) = &mut param.default {
+                            canonicalize_expr_call_targets(
+                                default,
+                                &aliases,
+                                &imports,
+                                &local_functions,
+                            );
+                        }
+                    }
+
+                    if let Some(guard) = &mut function.guard {
+                        canonicalize_expr_call_targets(guard, &aliases, &imports, &local_functions);
+                    }
+
+                    canonicalize_expr_call_targets(
+                        &mut function.body,
+                        &aliases,
+                        &imports,
+                        &local_functions,
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1341,7 +1394,13 @@ impl<'a> Parser<'a> {
             token.kind() == TokenKind::Ident
                 && matches!(
                     token.lexeme(),
-                    "alias" | "import" | "require" | "use" | "defstruct"
+                    "alias"
+                        | "import"
+                        | "require"
+                        | "use"
+                        | "defstruct"
+                        | "defprotocol"
+                        | "defimpl"
                 )
         })
     }
@@ -1355,6 +1414,8 @@ impl<'a> Parser<'a> {
             "require" => self.parse_named_module_form("require"),
             "use" => self.parse_named_module_form("use"),
             "defstruct" => self.parse_defstruct_form(),
+            "defprotocol" => self.parse_defprotocol_form(),
+            "defimpl" => self.parse_defimpl_form(),
             _ => Err(ParserError::at_current(
                 format!("unsupported module form '{form_name}'"),
                 self.current(),
@@ -1431,6 +1492,105 @@ impl<'a> Parser<'a> {
         }
 
         Ok(ModuleForm::Defstruct { fields })
+    }
+
+    fn parse_defprotocol_form(&mut self) -> Result<ModuleForm, ParserError> {
+        let name = self.parse_module_reference("protocol name")?;
+        self.expect(TokenKind::Do, "do")?;
+
+        let mut functions = Vec::new();
+        while !self.check(TokenKind::End) {
+            if self.is_at_end() {
+                return Err(self.expected("protocol declaration"));
+            }
+            functions.push(self.parse_protocol_signature()?);
+        }
+
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(ModuleForm::Defprotocol { name, functions })
+    }
+
+    fn parse_protocol_signature(&mut self) -> Result<ProtocolFunctionSignature, ParserError> {
+        self.expect(TokenKind::Def, "def")?;
+        let name = self.expect_ident("protocol function name")?;
+        self.expect(TokenKind::LParen, "(")?;
+
+        let mut params = Vec::new();
+        if !self.check(TokenKind::RParen) {
+            loop {
+                params.push(self.expect_ident("protocol function parameter")?);
+                if self.match_kind(TokenKind::Comma) {
+                    continue;
+                }
+                break;
+            }
+        }
+
+        self.expect(TokenKind::RParen, ")")?;
+
+        if self.check(TokenKind::Do) {
+            return Err(ParserError::at_current(
+                "protocol declarations must not include function bodies",
+                self.current(),
+            ));
+        }
+
+        Ok(ProtocolFunctionSignature { name, params })
+    }
+
+    fn parse_defimpl_form(&mut self) -> Result<ModuleForm, ParserError> {
+        let protocol = self.parse_module_reference("protocol name")?;
+        self.expect(TokenKind::Comma, ",")?;
+
+        if !self.check(TokenKind::For) {
+            return Err(self.expected("for"));
+        }
+        self.advance();
+        self.expect(TokenKind::Colon, ":")?;
+        let target = self.parse_module_reference("implementation target")?;
+
+        if self.match_kind(TokenKind::Comma) {
+            let option = self.expect_ident("defimpl option")?;
+            return Err(ParserError::at_current(
+                format!(
+                    "unsupported defimpl option '{option}'; only `for:` is currently supported"
+                ),
+                self.current(),
+            ));
+        }
+
+        self.expect(TokenKind::Do, "do")?;
+
+        let mut functions = Vec::new();
+        while !self.check(TokenKind::End) {
+            if self.is_at_end() {
+                return Err(self.expected("defimpl function declaration"));
+            }
+
+            let function = self.parse_function()?;
+            if function.is_private() {
+                return Err(ParserError::at_current(
+                    "defimpl functions must be public (def)",
+                    self.current(),
+                ));
+            }
+
+            functions.push(ProtocolImplFunction {
+                name: function.name,
+                params: function.params,
+                guard: function.guard,
+                body: function.body,
+            });
+        }
+
+        self.expect(TokenKind::End, "end")?;
+
+        Ok(ModuleForm::Defimpl {
+            protocol,
+            target,
+            functions,
+        })
     }
 
     fn parse_module_attribute(&mut self) -> Result<ModuleAttribute, ParserError> {
