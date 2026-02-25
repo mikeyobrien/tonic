@@ -16,3 +16,4 @@ devenv.local.yaml
 
 # agent planning/scratch artifacts
 .agents/
+.worktrees/
