@@ -14,15 +14,60 @@
       "artifact_size_bytes": 8235008,
       "compile_latency_ms": 2600,
       "workloads": [
-        {"name": "check_parse_control_flow", "p50_ms": 0.82, "p95_ms": 0.95, "peak_rss_kb": 19200},
-        {"name": "check_module_load_project", "p50_ms": 0.71, "p95_ms": 0.94, "peak_rss_kb": 19850},
-        {"name": "run_module_load_project", "p50_ms": 0.98, "p95_ms": 1.12, "peak_rss_kb": 20410},
-        {"name": "run_control_flow_multi_generator", "p50_ms": 0.51, "p95_ms": 0.90, "peak_rss_kb": 18500},
-        {"name": "run_control_flow_for_into", "p50_ms": 0.70, "p95_ms": 0.90, "peak_rss_kb": 18410},
-        {"name": "run_error_result_pipeline", "p50_ms": 0.85, "p95_ms": 0.99, "peak_rss_kb": 18620},
-        {"name": "check_json_transform_shape", "p50_ms": 0.63, "p95_ms": 0.87, "peak_rss_kb": 19020},
-        {"name": "check_file_pipeline_project", "p50_ms": 0.86, "p95_ms": 1.08, "peak_rss_kb": 19650},
-        {"name": "check_subprocess_host_interop", "p50_ms": 0.88, "p95_ms": 0.99, "peak_rss_kb": 19110}
+        {
+          "name": "check_parse_control_flow",
+          "p50_ms": 0.82,
+          "p95_ms": 0.95,
+          "peak_rss_kb": 19200
+        },
+        {
+          "name": "check_module_load_project",
+          "p50_ms": 0.71,
+          "p95_ms": 0.94,
+          "peak_rss_kb": 19850
+        },
+        {
+          "name": "run_module_load_project",
+          "p50_ms": 0.98,
+          "p95_ms": 1.12,
+          "peak_rss_kb": 20410
+        },
+        {
+          "name": "run_control_flow_multi_generator",
+          "p50_ms": 0.51,
+          "p95_ms": 0.9,
+          "peak_rss_kb": 18500
+        },
+        {
+          "name": "run_control_flow_for_into",
+          "p50_ms": 0.7,
+          "p95_ms": 0.9,
+          "peak_rss_kb": 18410
+        },
+        {
+          "name": "run_error_result_pipeline",
+          "p50_ms": 0.85,
+          "p95_ms": 0.99,
+          "peak_rss_kb": 18620
+        },
+        {
+          "name": "check_json_transform_shape",
+          "p50_ms": 0.63,
+          "p95_ms": 0.87,
+          "peak_rss_kb": 19020
+        },
+        {
+          "name": "check_file_pipeline_project",
+          "p50_ms": 0.86,
+          "p95_ms": 1.08,
+          "peak_rss_kb": 19650
+        },
+        {
+          "name": "check_subprocess_host_interop",
+          "p50_ms": 0.88,
+          "p95_ms": 0.99,
+          "peak_rss_kb": 19110
+        }
       ]
     },
     {
@@ -30,15 +75,60 @@
       "artifact_size_bytes": 2146304,
       "compile_latency_ms": 910,
       "workloads": [
-        {"name": "check_parse_control_flow", "p50_ms": 0.21, "p95_ms": 0.27, "peak_rss_kb": 8460},
-        {"name": "check_module_load_project", "p50_ms": 0.24, "p95_ms": 0.30, "peak_rss_kb": 9020},
-        {"name": "run_module_load_project", "p50_ms": 0.31, "p95_ms": 0.40, "peak_rss_kb": 9450},
-        {"name": "run_control_flow_multi_generator", "p50_ms": 0.16, "p95_ms": 0.23, "peak_rss_kb": 8120},
-        {"name": "run_control_flow_for_into", "p50_ms": 0.14, "p95_ms": 0.20, "peak_rss_kb": 8010},
-        {"name": "run_error_result_pipeline", "p50_ms": 0.18, "p95_ms": 0.24, "peak_rss_kb": 8240},
-        {"name": "check_json_transform_shape", "p50_ms": 0.22, "p95_ms": 0.28, "peak_rss_kb": 8570},
-        {"name": "check_file_pipeline_project", "p50_ms": 0.27, "p95_ms": 0.34, "peak_rss_kb": 8990},
-        {"name": "check_subprocess_host_interop", "p50_ms": 0.23, "p95_ms": 0.29, "peak_rss_kb": 8670}
+        {
+          "name": "check_parse_control_flow",
+          "p50_ms": 0.21,
+          "p95_ms": 0.27,
+          "peak_rss_kb": 8460
+        },
+        {
+          "name": "check_module_load_project",
+          "p50_ms": 0.24,
+          "p95_ms": 0.3,
+          "peak_rss_kb": 9020
+        },
+        {
+          "name": "run_module_load_project",
+          "p50_ms": 0.31,
+          "p95_ms": 0.4,
+          "peak_rss_kb": 9450
+        },
+        {
+          "name": "run_control_flow_multi_generator",
+          "p50_ms": 0.16,
+          "p95_ms": 0.23,
+          "peak_rss_kb": 8120
+        },
+        {
+          "name": "run_control_flow_for_into",
+          "p50_ms": 0.14,
+          "p95_ms": 0.2,
+          "peak_rss_kb": 8010
+        },
+        {
+          "name": "run_error_result_pipeline",
+          "p50_ms": 0.18,
+          "p95_ms": 0.24,
+          "peak_rss_kb": 8240
+        },
+        {
+          "name": "check_json_transform_shape",
+          "p50_ms": 0.22,
+          "p95_ms": 0.28,
+          "peak_rss_kb": 8570
+        },
+        {
+          "name": "check_file_pipeline_project",
+          "p50_ms": 0.27,
+          "p95_ms": 0.34,
+          "peak_rss_kb": 8990
+        },
+        {
+          "name": "check_subprocess_host_interop",
+          "p50_ms": 0.23,
+          "p95_ms": 0.29,
+          "peak_rss_kb": 8670
+        }
       ]
     },
     {
@@ -46,15 +136,91 @@
       "artifact_size_bytes": 2586624,
       "compile_latency_ms": 640,
       "workloads": [
-        {"name": "check_parse_control_flow", "p50_ms": 0.29, "p95_ms": 0.35, "peak_rss_kb": 10180},
-        {"name": "check_module_load_project", "p50_ms": 0.31, "p95_ms": 0.39, "peak_rss_kb": 10420},
-        {"name": "run_module_load_project", "p50_ms": 0.40, "p95_ms": 0.49, "peak_rss_kb": 10840},
-        {"name": "run_control_flow_multi_generator", "p50_ms": 0.21, "p95_ms": 0.27, "peak_rss_kb": 9820},
-        {"name": "run_control_flow_for_into", "p50_ms": 0.19, "p95_ms": 0.24, "peak_rss_kb": 9610},
-        {"name": "run_error_result_pipeline", "p50_ms": 0.24, "p95_ms": 0.31, "peak_rss_kb": 10040},
-        {"name": "check_json_transform_shape", "p50_ms": 0.28, "p95_ms": 0.35, "peak_rss_kb": 10370},
-        {"name": "check_file_pipeline_project", "p50_ms": 0.34, "p95_ms": 0.43, "peak_rss_kb": 10760},
-        {"name": "check_subprocess_host_interop", "p50_ms": 0.30, "p95_ms": 0.37, "peak_rss_kb": 10410}
+        {
+          "name": "check_parse_control_flow",
+          "p50_ms": 0.29,
+          "p95_ms": 0.35,
+          "peak_rss_kb": 10180
+        },
+        {
+          "name": "check_module_load_project",
+          "p50_ms": 0.31,
+          "p95_ms": 0.39,
+          "peak_rss_kb": 10420
+        },
+        {
+          "name": "run_module_load_project",
+          "p50_ms": 0.4,
+          "p95_ms": 0.49,
+          "peak_rss_kb": 10840
+        },
+        {
+          "name": "run_control_flow_multi_generator",
+          "p50_ms": 0.21,
+          "p95_ms": 0.27,
+          "peak_rss_kb": 9820
+        },
+        {
+          "name": "run_control_flow_for_into",
+          "p50_ms": 0.19,
+          "p95_ms": 0.24,
+          "peak_rss_kb": 9610
+        },
+        {
+          "name": "run_error_result_pipeline",
+          "p50_ms": 0.24,
+          "p95_ms": 0.31,
+          "peak_rss_kb": 10040
+        },
+        {
+          "name": "check_json_transform_shape",
+          "p50_ms": 0.28,
+          "p95_ms": 0.35,
+          "peak_rss_kb": 10370
+        },
+        {
+          "name": "check_file_pipeline_project",
+          "p50_ms": 0.34,
+          "p95_ms": 0.43,
+          "peak_rss_kb": 10760
+        },
+        {
+          "name": "check_subprocess_host_interop",
+          "p50_ms": 0.3,
+          "p95_ms": 0.37,
+          "peak_rss_kb": 10410
+        }
+      ]
+    },
+    {
+      "name": "tonic_compiled_baseline",
+      "artifact_size_bytes": 10000000,
+      "compile_latency_ms": 3000,
+      "workloads": [
+        {
+          "name": "run_module_load_project",
+          "p50_ms": 0.5,
+          "p95_ms": 0.55,
+          "peak_rss_kb": 16328
+        },
+        {
+          "name": "run_control_flow_multi_generator",
+          "p50_ms": 0.5,
+          "p95_ms": 0.55,
+          "peak_rss_kb": 14800
+        },
+        {
+          "name": "run_control_flow_for_into",
+          "p50_ms": 0.5,
+          "p95_ms": 0.55,
+          "peak_rss_kb": 14728
+        },
+        {
+          "name": "run_error_result_pipeline",
+          "p50_ms": 0.5,
+          "p95_ms": 0.55,
+          "peak_rss_kb": 14896
+        }
       ]
     }
   ]

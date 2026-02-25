@@ -125,6 +125,15 @@ TONIC_BENCH_MARKDOWN_OUT=.tonic/native-gates/native-compiler-summary.md \
 
 ./scripts/native-regression-policy.sh \
   .tonic/native-gates/native-compiler-summary.json --mode strict
+
+TONIC_BENCH_ENFORCE=0 \
+TONIC_BENCH_JSON_OUT=.tonic/native-gates/native-compiled-summary.json \
+TONIC_BENCH_MARKDOWN_OUT=.tonic/native-gates/native-compiled-summary.md \
+TONIC_BENCH_TARGET_NAME=compiled \
+./scripts/bench-native-contract-enforce.sh benchmarks/native-compiled-suite.toml
+
+./scripts/native-regression-policy.sh \
+  .tonic/native-gates/native-compiled-summary.json --mode strict
 ```
 
 Policy verdicts:

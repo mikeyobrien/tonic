@@ -24,6 +24,15 @@ TONIC_BENCH_MARKDOWN_OUT=.tonic/release/native-compiler-summary.md \
 
 ./scripts/native-regression-policy.sh \
   .tonic/release/native-compiler-summary.json --mode strict
+
+TONIC_BENCH_ENFORCE=0 \
+TONIC_BENCH_JSON_OUT=.tonic/release/native-compiled-summary.json \
+TONIC_BENCH_MARKDOWN_OUT=.tonic/release/native-compiled-summary.md \
+TONIC_BENCH_TARGET_NAME=compiled \
+./scripts/bench-native-contract-enforce.sh benchmarks/native-compiled-suite.toml
+
+./scripts/native-regression-policy.sh \
+  .tonic/release/native-compiled-summary.json --mode strict
 ```
 
 Tag cut is blocked unless policy output is `verdict=pass`.
@@ -33,6 +42,8 @@ Tag cut is blocked unless policy output is `verdict=pass`.
 - [ ] Upload benchmark artifacts for the candidate:
   - `.tonic/release/native-compiler-summary.json`
   - `.tonic/release/native-compiler-summary.md`
+  - `.tonic/release/native-compiled-summary.json`
+  - `.tonic/release/native-compiled-summary.md`
 - [ ] Ensure report includes Rust/Go comparison metadata and failure reasons (if any)
 - [ ] Link artifacts in release notes/PR
 

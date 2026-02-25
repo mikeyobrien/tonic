@@ -1,0 +1,66 @@
+# Native compiled runtime performance contract for LLVM roadmap baseline.
+
+[performance_contract]
+baseline_path = "benchmarks/native-compiler-baselines.json"
+candidate_target = "compiled"
+reference_targets = ["tonic_compiled_baseline"]
+relative_budget_pct = 50
+pass_threshold = 0.82
+
+  [performance_contract.metric_weights]
+  latency_p50 = 0.35
+  latency_p95 = 0.25
+  rss = 0.20
+  artifact_size = 0.10
+  compile_latency = 0.10
+
+  [performance_contract.slo]
+  runtime_p50_ms = 15
+  runtime_p95_ms = 30
+  rss_kb = 30720
+  artifact_size_bytes = 12000000
+  compile_latency_ms = 3000
+
+[[workload]]
+name = "run_module_load_project"
+target = "compiled"
+source = "examples/parity/07-modules/project_multifile_pipeline"
+mode = "cold"
+threshold_p50_ms = 14
+threshold_p95_ms = 28
+threshold_rss_kb = 30720
+weight = 1.0
+category = "module_load"
+
+[[workload]]
+name = "run_control_flow_multi_generator"
+target = "compiled"
+source = "examples/parity/06-control-flow/for_multi_generator.tn"
+mode = "warm"
+threshold_p50_ms = 8
+threshold_p95_ms = 16
+threshold_rss_kb = 30720
+weight = 1.3
+category = "control_flow"
+
+[[workload]]
+name = "run_control_flow_for_into"
+target = "compiled"
+source = "examples/parity/06-control-flow/for_into.tn"
+mode = "warm"
+threshold_p50_ms = 8
+threshold_p95_ms = 16
+threshold_rss_kb = 30720
+weight = 1.0
+category = "control_flow"
+
+[[workload]]
+name = "run_error_result_pipeline"
+target = "compiled"
+source = "examples/parity/08-errors/question_operator_success.tn"
+mode = "warm"
+threshold_p50_ms = 8
+threshold_p95_ms = 16
+threshold_rss_kb = 30720
+weight = 0.8
+category = "runtime"
