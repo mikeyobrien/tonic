@@ -10,3 +10,6 @@ devenv.local.yaml
 
 # tonic local runtime artifacts
 .tonic/
+
+# ralph state directory
+.ralph/
