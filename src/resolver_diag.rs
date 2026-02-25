@@ -12,6 +12,8 @@ pub enum ResolverDiagnosticCode {
     UnknownProtocol,
     DuplicateProtocolImpl,
     InvalidProtocolImpl,
+    UndefinedRequiredModule,
+    UndefinedUseModule,
 }
 
 impl ResolverDiagnosticCode {
@@ -27,6 +29,8 @@ impl ResolverDiagnosticCode {
             Self::UnknownProtocol => "E1008",
             Self::DuplicateProtocolImpl => "E1009",
             Self::InvalidProtocolImpl => "E1010",
+            Self::UndefinedRequiredModule => "E1011",
+            Self::UndefinedUseModule => "E1012",
         }
     }
 }
@@ -123,6 +127,24 @@ impl ResolverError {
             code: ResolverDiagnosticCode::InvalidProtocolImpl,
             message: format!(
                 "invalid defimpl for protocol '{protocol}' target '{target}': {function}/{arity} {reason}"
+            ),
+        }
+    }
+
+    pub fn undefined_required_module(required_module: &str, module: &str) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::UndefinedRequiredModule,
+            message: format!(
+                "required module '{required_module}' is not defined for {module}; add the module or remove require"
+            ),
+        }
+    }
+
+    pub fn undefined_use_module(used_module: &str, module: &str) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::UndefinedUseModule,
+            message: format!(
+                "used module '{used_module}' is not defined for {module}; add the module or remove use"
             ),
         }
     }
@@ -292,6 +314,39 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1010] invalid defimpl for protocol 'Size' target 'Tuple': size/1 is not declared"
+        );
+    }
+
+    #[test]
+    fn undefined_required_module_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::undefined_required_module("Logger", "Demo");
+
+        assert_eq!(
+            error.code(),
+            ResolverDiagnosticCode::UndefinedRequiredModule
+        );
+        assert_eq!(
+            error.message(),
+            "required module 'Logger' is not defined for Demo; add the module or remove require"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1011] required module 'Logger' is not defined for Demo; add the module or remove require"
+        );
+    }
+
+    #[test]
+    fn undefined_use_module_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::undefined_use_module("Feature", "Demo");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedUseModule);
+        assert_eq!(
+            error.message(),
+            "used module 'Feature' is not defined for Demo; add the module or remove use"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1012] used module 'Feature' is not defined for Demo; add the module or remove use"
         );
     }
 }

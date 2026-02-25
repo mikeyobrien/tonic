@@ -142,6 +142,39 @@ impl ModuleGraph {
             }
         }
 
+        // Scoped module-form semantics (parity task 04):
+        // - `require Module` declares a compile-time dependency and must target a defined module.
+        // - `use Module` must also target a defined module; its compile-time call-rewrite effect
+        //   is implemented in parser canonicalization as a fallback import.
+        // - Full Elixir macro expansion via `__using__/1` is intentionally deferred.
+        for module in &ast.modules {
+            for form in &module.forms {
+                match form {
+                    ModuleForm::Require {
+                        module: required_module,
+                    } => {
+                        if !modules.contains_key(required_module) {
+                            return Err(ResolverError::undefined_required_module(
+                                required_module,
+                                &module.name,
+                            ));
+                        }
+                    }
+                    ModuleForm::Use {
+                        module: used_module,
+                    } => {
+                        if !modules.contains_key(used_module) {
+                            return Err(ResolverError::undefined_use_module(
+                                used_module,
+                                &module.name,
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         for module in &ast.modules {
             for form in &module.forms {
                 let ModuleForm::Defimpl {
@@ -576,6 +609,15 @@ mod tests {
     }
 
     #[test]
+    fn resolve_ast_accepts_use_with_defined_module_target() {
+        let source = "defmodule Feature do\n  def helper() do\n    41\n  end\nend\n\ndefmodule Demo do\n  use Feature\n\n  def run() do\n    helper()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize use fixture");
+        let ast = parse_ast(&tokens).expect("parser should build use fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept use with a defined module target");
+    }
+
+    #[test]
     fn resolve_ast_accepts_builtin_result_constructors() {
         let source = "defmodule Demo do\n  def run() do\n    ok(1)\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
@@ -672,6 +714,40 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1003] duplicate module definition 'Shared'"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_rejects_undefined_required_module() {
+        let source = "defmodule Demo do\n  require Missing\n\n  def run() do\n    1\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize require fixture");
+        let ast = parse_ast(&tokens).expect("parser should build require fixture ast");
+
+        let error =
+            resolve_ast(&ast).expect_err("resolver should reject undefined required modules");
+
+        assert_eq!(
+            error.code(),
+            ResolverDiagnosticCode::UndefinedRequiredModule
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1011] required module 'Missing' is not defined for Demo; add the module or remove require"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_rejects_undefined_used_module() {
+        let source = "defmodule Demo do\n  use Missing\n\n  def run() do\n    1\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize use fixture");
+        let ast = parse_ast(&tokens).expect("parser should build use fixture ast");
+
+        let error = resolve_ast(&ast).expect_err("resolver should reject undefined used modules");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedUseModule);
+        assert_eq!(
+            error.to_string(),
+            "[E1012] used module 'Missing' is not defined for Demo; add the module or remove use"
         );
     }
 

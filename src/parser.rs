@@ -1001,6 +1001,11 @@ impl fmt::Display for ParserError {
 impl std::error::Error for ParserError {}
 
 fn canonicalize_module_call_targets(module: &mut Module) {
+    // Scoped module-form semantics (parity task 04):
+    // - `import Module` keeps existing behavior for unqualified call rewriting.
+    // - `use Module` provides a limited compile-time effect by acting as an import fallback
+    //   only when the module has no explicit imports.
+    // - Full Elixir `__using__/1` macro expansion is intentionally deferred.
     let aliases = module
         .forms
         .iter()
@@ -1010,14 +1015,23 @@ fn canonicalize_module_call_targets(module: &mut Module) {
         })
         .collect::<HashMap<_, _>>();
 
-    let imports = module
-        .forms
-        .iter()
-        .filter_map(|form| match form {
-            ModuleForm::Import { module } => Some(module.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    let mut imports = Vec::new();
+    let mut use_fallback_modules = Vec::new();
+    for form in &module.forms {
+        match form {
+            ModuleForm::Import { module } => {
+                if !imports.contains(module) {
+                    imports.push(module.clone());
+                }
+            }
+            ModuleForm::Use { module } => {
+                if !use_fallback_modules.contains(module) {
+                    use_fallback_modules.push(module.clone());
+                }
+            }
+            _ => {}
+        }
+    }
 
     let local_functions = module
         .functions
@@ -1033,6 +1047,7 @@ fn canonicalize_module_call_targets(module: &mut Module) {
                         &mut field.default,
                         &aliases,
                         &imports,
+                        &use_fallback_modules,
                         &local_functions,
                     );
                 }
@@ -1045,19 +1060,27 @@ fn canonicalize_module_call_targets(module: &mut Module) {
                                 default,
                                 &aliases,
                                 &imports,
+                                &use_fallback_modules,
                                 &local_functions,
                             );
                         }
                     }
 
                     if let Some(guard) = &mut function.guard {
-                        canonicalize_expr_call_targets(guard, &aliases, &imports, &local_functions);
+                        canonicalize_expr_call_targets(
+                            guard,
+                            &aliases,
+                            &imports,
+                            &use_fallback_modules,
+                            &local_functions,
+                        );
                     }
 
                     canonicalize_expr_call_targets(
                         &mut function.body,
                         &aliases,
                         &imports,
+                        &use_fallback_modules,
                         &local_functions,
                     );
                 }
@@ -1069,15 +1092,33 @@ fn canonicalize_module_call_targets(module: &mut Module) {
     for function in &mut module.functions {
         for param in &mut function.params {
             if let Some(default) = &mut param.default {
-                canonicalize_expr_call_targets(default, &aliases, &imports, &local_functions);
+                canonicalize_expr_call_targets(
+                    default,
+                    &aliases,
+                    &imports,
+                    &use_fallback_modules,
+                    &local_functions,
+                );
             }
         }
 
         if let Some(guard) = &mut function.guard {
-            canonicalize_expr_call_targets(guard, &aliases, &imports, &local_functions);
+            canonicalize_expr_call_targets(
+                guard,
+                &aliases,
+                &imports,
+                &use_fallback_modules,
+                &local_functions,
+            );
         }
 
-        canonicalize_expr_call_targets(&mut function.body, &aliases, &imports, &local_functions);
+        canonicalize_expr_call_targets(
+            &mut function.body,
+            &aliases,
+            &imports,
+            &use_fallback_modules,
+            &local_functions,
+        );
     }
 }
 
@@ -1085,52 +1126,131 @@ fn canonicalize_expr_call_targets(
     expr: &mut Expr,
     aliases: &HashMap<String, String>,
     imports: &[String],
+    use_fallback_modules: &[String],
     local_functions: &HashSet<String>,
 ) {
     match expr {
         Expr::Tuple { items, .. } | Expr::List { items, .. } => {
             for item in items {
-                canonicalize_expr_call_targets(item, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    item,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::Map { entries, .. } => {
             for entry in entries {
-                canonicalize_expr_call_targets(&mut entry.key, aliases, imports, local_functions);
-                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    &mut entry.key,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
+                canonicalize_expr_call_targets(
+                    &mut entry.value,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::Struct { entries, .. } => {
             for entry in entries {
-                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    &mut entry.value,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::Keyword { entries, .. } => {
             for entry in entries {
-                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    &mut entry.value,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::MapUpdate { base, updates, .. } => {
-            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                base,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
             for entry in updates {
-                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    &mut entry.value,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::StructUpdate { base, updates, .. } => {
-            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                base,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
             for entry in updates {
-                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    &mut entry.value,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::FieldAccess { base, .. } => {
-            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                base,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
         }
         Expr::IndexAccess { base, index, .. } => {
-            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
-            canonicalize_expr_call_targets(index, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                base,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
+            canonicalize_expr_call_targets(
+                index,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
         }
         Expr::Call { callee, args, .. } => {
             for arg in args {
-                canonicalize_expr_call_targets(arg, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    arg,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
 
             if let Some((alias_name, function_name)) = callee.split_once('.') {
@@ -1146,38 +1266,89 @@ fn canonicalize_expr_call_targets(
 
             if imports.len() == 1 {
                 *callee = format!("{}.{}", imports[0], callee);
+            } else if imports.is_empty() && use_fallback_modules.len() == 1 {
+                *callee = format!("{}.{}", use_fallback_modules[0], callee);
             }
         }
         Expr::Fn { body, .. } => {
-            canonicalize_expr_call_targets(body, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                body,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
         }
         Expr::Invoke { callee, args, .. } => {
-            canonicalize_expr_call_targets(callee, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                callee,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
             for arg in args {
-                canonicalize_expr_call_targets(arg, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    arg,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::Question { value, .. }
         | Expr::Group { inner: value, .. }
         | Expr::Unary { value, .. } => {
-            canonicalize_expr_call_targets(value, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                value,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
         }
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
-            canonicalize_expr_call_targets(left, aliases, imports, local_functions);
-            canonicalize_expr_call_targets(right, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                left,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
+            canonicalize_expr_call_targets(
+                right,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
         }
         Expr::Case {
             subject, branches, ..
         } => {
-            canonicalize_expr_call_targets(subject, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                subject,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
             for branch in branches {
                 if let Some(guard) = branch.guard_mut() {
-                    canonicalize_expr_call_targets(guard, aliases, imports, local_functions);
+                    canonicalize_expr_call_targets(
+                        guard,
+                        aliases,
+                        imports,
+                        use_fallback_modules,
+                        local_functions,
+                    );
                 }
                 canonicalize_expr_call_targets(
                     branch.body_mut(),
                     aliases,
                     imports,
+                    use_fallback_modules,
                     local_functions,
                 );
             }
@@ -1189,12 +1360,30 @@ fn canonicalize_expr_call_targets(
             ..
         } => {
             for (_, generator) in generators {
-                canonicalize_expr_call_targets(generator, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    generator,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
             if let Some(into_expr) = into {
-                canonicalize_expr_call_targets(into_expr, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    into_expr,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
-            canonicalize_expr_call_targets(body, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                body,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
         }
         Expr::Try {
             body,
@@ -1203,25 +1392,67 @@ fn canonicalize_expr_call_targets(
             after,
             ..
         } => {
-            canonicalize_expr_call_targets(body, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                body,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
             for branch in rescue {
                 if let Some(guard) = branch.guard.as_mut() {
-                    canonicalize_expr_call_targets(guard, aliases, imports, local_functions);
+                    canonicalize_expr_call_targets(
+                        guard,
+                        aliases,
+                        imports,
+                        use_fallback_modules,
+                        local_functions,
+                    );
                 }
-                canonicalize_expr_call_targets(&mut branch.body, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    &mut branch.body,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
             for branch in catch {
                 if let Some(guard) = branch.guard.as_mut() {
-                    canonicalize_expr_call_targets(guard, aliases, imports, local_functions);
+                    canonicalize_expr_call_targets(
+                        guard,
+                        aliases,
+                        imports,
+                        use_fallback_modules,
+                        local_functions,
+                    );
                 }
-                canonicalize_expr_call_targets(&mut branch.body, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    &mut branch.body,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
             if let Some(after) = after {
-                canonicalize_expr_call_targets(after, aliases, imports, local_functions);
+                canonicalize_expr_call_targets(
+                    after,
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
             }
         }
         Expr::Raise { error, .. } => {
-            canonicalize_expr_call_targets(error, aliases, imports, local_functions);
+            canonicalize_expr_call_targets(
+                error,
+                aliases,
+                imports,
+                use_fallback_modules,
+                local_functions,
+            );
         }
         Expr::Int { .. }
         | Expr::Float { .. }
@@ -1233,7 +1464,13 @@ fn canonicalize_expr_call_targets(
         Expr::InterpolatedString { segments, .. } => {
             for segment in segments {
                 if let InterpolationSegment::Expr { expr } = segment {
-                    canonicalize_expr_call_targets(expr, aliases, imports, local_functions);
+                    canonicalize_expr_call_targets(
+                        expr,
+                        aliases,
+                        imports,
+                        use_fallback_modules,
+                        local_functions,
+                    );
                 }
             }
         }
@@ -3891,6 +4128,22 @@ mod tests {
                 "left":{"kind":"call","callee":"Math.helper","args":[]},
                 "right":{"kind":"call","callee":"Math.helper","args":[]}
             })
+        );
+    }
+
+    #[test]
+    fn parse_ast_canonicalizes_use_calls_when_no_explicit_imports() {
+        let tokens = scan_tokens(
+            "defmodule Feature do\n  def helper() do\n    41\n  end\nend\n\ndefmodule Demo do\n  use Feature\n\n  def run() do\n    helper()\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[1].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({"kind":"call","callee":"Feature.helper","args":[]})
         );
     }
 

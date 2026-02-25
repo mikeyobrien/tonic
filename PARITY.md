@@ -111,8 +111,8 @@ _Last updated: 2026-02-25_
 
 - [x] `alias Module, as: Name` (`examples/parity/07-modules/alias_import_use_require.tn`)
 - [~] `import Module` baseline only (no `only:`/`except:`) (`src/parser.rs`, `tests/check_dump_ast_module_forms.rs`)
-- [~] `require Module` parse-level only (`tests/check_dump_ast_module_forms.rs`)
-- [~] `use Module` parse-level only (`tests/check_dump_ast_module_forms.rs`)
+- [x] `require Module` scoped semantic validation (`src/resolver.rs`, `tests/run_use_require_semantics_smoke.rs`)
+- [x] `use Module` scoped semantics (fallback import rewrite + target validation; macro expansion deferred) (`src/parser.rs`, `src/resolver.rs`, `tests/run_use_require_semantics_smoke.rs`, `examples/parity/07-modules/use_require_scoped_semantics.tn`)
 - [~] module attributes (`@doc`, `@moduledoc`, custom attrs) parse/AST only (`tests/check_dump_ast_module_forms.rs`)
 - [x] cross-file module resolution baseline (`tests/run_project_multimodule_smoke.rs`)
 - [ ] `import ... only:/except:` (`src/parser.rs`)
@@ -160,8 +160,8 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 3. [x] **`defprotocol` / `defimpl` syntax + dispatch semantics**  
    Added first-class protocol declaration/implementation forms with resolver validation and runtime dispatch (tuple/map + struct-tagged values) while preserving `protocol_dispatch/1` builtin compatibility.
 
-4. [ ] **`use` and `require` semantic behavior (not parse-only)**  
-   `use` should apply `__using__` expansions; `require` should gate macro usage semantics. Needed for ecosystem-style module composition.
+4. [x] **`use` and `require` semantic behavior (scoped parity)**  
+   `require` now enforces compile-time module-target validation. `use` now applies deterministic scoped behavior (`use Module` acts as fallback import rewrite when no explicit imports) plus target validation. Full Elixir macro semantics (`__using__/1`, macro gating) remain deferred by design.
 
 5. [ ] **`import ... only:/except:` support**  
    Production codebases rely on constrained imports to avoid namespace collisions and keep readability.

@@ -330,6 +330,14 @@ stdout = '''14
 status = "active"
 
 [[example]]
+path = "examples/parity/07-modules/use_require_scoped_semantics.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/07-modules/module_attributes_doc.tn"
 check_exit = 0
 run_exit = 0

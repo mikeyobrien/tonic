@@ -1,0 +1,20 @@
+defmodule Logger do
+  def keep(value) do
+    value
+  end
+end
+
+defmodule Feature do
+  def helper() do
+    Logger.keep(41)
+  end
+end
+
+defmodule Demo do
+  require Logger
+  use Feature
+
+  def run() do
+    helper() + Logger.keep(1)
+  end
+end
