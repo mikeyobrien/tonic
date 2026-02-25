@@ -1,5 +1,12 @@
 defmodule TonicCtl do
   def run() do
+    case find_command(System.argv()) do
+      "none" -> ok(plan())
+      command -> dispatch(command)
+    end
+  end
+
+  def plan() do
     %{
       tool: :tonicctl,
       mode: :executable,
@@ -9,9 +16,22 @@ defmodule TonicCtl do
     }
   end
 
+  def find_command(argv) do
+    case argv do
+      [] -> "none"
+      ["help" | _] -> "help"
+      ["doctor" | _] -> "doctor"
+      ["gates" | _] -> "gates"
+      ["bench" | _] -> "bench"
+      ["release" | _] -> "release"
+      [_ | rest] -> find_command(rest)
+      _ -> "none"
+    end
+  end
+
   def dispatch(command) do
     case command do
-      "help" -> ok(run())
+      "help" -> ok(plan())
       "doctor" -> execute_doctor(doctor_plan())
       "gates" -> execute_gates(gates_plan())
       "bench" -> execute_bench_strict(bench_strict_plan())
