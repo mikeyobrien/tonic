@@ -2,7 +2,7 @@ defmodule TonicCtl do
   def run() do
     case find_command(System.argv()) do
       "none" -> ok(plan())
-      command -> dispatch(command)
+      found_cmd -> dispatch(found_cmd)
     end
   end
 
@@ -18,75 +18,29 @@ defmodule TonicCtl do
 
   def find_command(argv) do
     case argv do
-      ["help" | _tail_help_0] -> "help"
-      ["doctor" | _tail_doctor_0] -> "doctor"
-      ["gates" | _tail_gates_0] -> "gates"
-      ["bench" | _tail_bench_0] -> "bench"
-      ["release" | _tail_release_0] -> "release"
-      [_skip_0 | rest_0] ->
-        case rest_0 do
-          ["help" | _tail_help_1] -> "help"
-          ["doctor" | _tail_doctor_1] -> "doctor"
-          ["gates" | _tail_gates_1] -> "gates"
-          ["bench" | _tail_bench_1] -> "bench"
-          ["release" | _tail_release_1] -> "release"
-          [_skip_1 | rest_1] ->
-            case rest_1 do
-              ["help" | _tail_help_2] -> "help"
-              ["doctor" | _tail_doctor_2] -> "doctor"
-              ["gates" | _tail_gates_2] -> "gates"
-              ["bench" | _tail_bench_2] -> "bench"
-              ["release" | _tail_release_2] -> "release"
-              [_skip_2 | rest_2] ->
-                case rest_2 do
-                  ["help" | _tail_help_3] -> "help"
-                  ["doctor" | _tail_doctor_3] -> "doctor"
-                  ["gates" | _tail_gates_3] -> "gates"
-                  ["bench" | _tail_bench_3] -> "bench"
-                  ["release" | _tail_release_3] -> "release"
-                  [_skip_3 | rest_3] ->
-                    case rest_3 do
-                      ["help" | _tail_help_4] -> "help"
-                      ["doctor" | _tail_doctor_4] -> "doctor"
-                      ["gates" | _tail_gates_4] -> "gates"
-                      ["bench" | _tail_bench_4] -> "bench"
-                      ["release" | _tail_release_4] -> "release"
-                      [_skip_4 | rest_4] ->
-                        case rest_4 do
-                          ["help" | _tail_help_5] -> "help"
-                          ["doctor" | _tail_doctor_5] -> "doctor"
-                          ["gates" | _tail_gates_5] -> "gates"
-                          ["bench" | _tail_bench_5] -> "bench"
-                          ["release" | _tail_release_5] -> "release"
-                          [_skip_5 | rest_5] ->
-                            case rest_5 do
-                              ["help" | _tail_help_6] -> "help"
-                              ["doctor" | _tail_doctor_6] -> "doctor"
-                              ["gates" | _tail_gates_6] -> "gates"
-                              ["bench" | _tail_bench_6] -> "bench"
-                              ["release" | _tail_release_6] -> "release"
-                              [_skip_6 | rest_6] ->
-                                case rest_6 do
-                                  ["help" | _tail_help_7] -> "help"
-                                  ["doctor" | _tail_doctor_7] -> "doctor"
-                                  ["gates" | _tail_gates_7] -> "gates"
-                                  ["bench" | _tail_bench_7] -> "bench"
-                                  ["release" | _tail_release_7] -> "release"
-                                  _ -> "none"
-                                end
-                              _ -> "none"
-                            end
-                          _ -> "none"
-                        end
-                      _ -> "none"
-                    end
-                  _ -> "none"
-                end
-              _ -> "none"
-            end
+      [] -> "none"
+      [command | rest] -> check_flags(command, rest)
+      _ -> "none"
+    end
+  end
+
+  def check_flags(command, rest) do
+    case command do
+      "help" -> "help"
+      "doctor" -> "doctor"
+      "gates" -> "gates"
+      "bench" -> "bench"
+      "release" -> 
+        case rest do
+          ["--dry-run" | _] -> "release"
+          _ -> "release_error"
+        end
+      _ ->
+        case rest do
+          [] -> "none"
+          [next_command | next_rest] -> check_flags(next_command, next_rest)
           _ -> "none"
         end
-      _ -> "none"
     end
   end
 
@@ -97,6 +51,7 @@ defmodule TonicCtl do
       "gates" -> execute_gates(gates_plan())
       "bench" -> execute_bench_strict(bench_strict_plan())
       "release" -> execute_release_dry_run(release_dry_run_plan())
+      "release_error" -> err("error: 'release' command requires the '--dry-run' flag")
       _ -> err("unknown command: #{command}")
     end
   end
@@ -163,10 +118,10 @@ defmodule TonicCtl do
         "tonic run examples/apps/tonicctl bench"
       ],
       artifacts: [
-        ".tonic/release/native-compiler-summary.json",
-        ".tonic/release/native-compiler-summary.md",
-        ".tonic/release/native-compiled-summary.json",
-        ".tonic/release/native-compiled-summary.md"
+        ".tonic/native-gates/native-compiler-summary.json",
+        ".tonic/native-gates/native-compiler-summary.md",
+        ".tonic/native-gates/native-compiled-summary.json",
+        ".tonic/native-gates/native-compiled-summary.md"
       ],
       policy: "tag cut is blocked unless both strict policy verdicts are pass"
     }
@@ -231,10 +186,10 @@ defmodule TonicCtl do
          _doctor <- execute_command("tonic run examples/apps/tonicctl doctor")?,
          _gates <- execute_command("tonic run examples/apps/tonicctl gates")?,
          _bench <- execute_command("tonic run examples/apps/tonicctl bench")?,
-         _compiler_json <- check_file(".tonic/release/native-compiler-summary.json")?,
-         _compiler_md <- check_file(".tonic/release/native-compiler-summary.md")?,
-         _compiled_json <- check_file(".tonic/release/native-compiled-summary.json")?,
-         _compiled_md <- check_file(".tonic/release/native-compiled-summary.md")? do
+         _compiler_json <- check_file(".tonic/native-gates/native-compiler-summary.json")?,
+         _compiler_md <- check_file(".tonic/native-gates/native-compiler-summary.md")?,
+         _compiled_json <- check_file(".tonic/native-gates/native-compiled-summary.json")?,
+         _compiled_md <- check_file(".tonic/native-gates/native-compiled-summary.md")? do
       ok(:ok)
     end
   end

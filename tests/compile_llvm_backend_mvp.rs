@@ -86,7 +86,7 @@ fn compile_llvm_backend_keeps_for_reduce_option_failure_deterministic() {
 }
 
 #[test]
-fn compile_rejects_backend_flag() {
+fn compile_rejects_backend_flag_as_unexpected_argument() {
     let temp_dir = common::unique_temp_dir("compile-backend-unexpected");
     let source_path = temp_dir.join("single.tn");
     fs::write(

@@ -15,7 +15,7 @@ fn compile_help_lists_usage() {
 }
 
 #[test]
-fn compile_emit_flag_fails_with_usage_error() {
+fn compile_rejects_emit_flag_as_unexpected_argument() {
     let temp_dir = common::unique_temp_dir("compile-emit-rejected");
     let source_path = temp_dir.join("hello.tn");
     fs::write(
@@ -37,7 +37,7 @@ fn compile_emit_flag_fails_with_usage_error() {
 }
 
 #[test]
-fn compile_emit_any_value_fails_with_usage_error() {
+fn compile_rejects_emit_any_value_as_unexpected_argument() {
     let temp_dir = common::unique_temp_dir("compile-emit-any-value");
     let source_path = temp_dir.join("hello.tn");
     fs::write(
@@ -60,7 +60,7 @@ fn compile_emit_any_value_fails_with_usage_error() {
 }
 
 #[test]
-fn compile_backend_flag_is_not_supported() {
+fn compile_rejects_backend_flag_as_unexpected_argument() {
     let temp_dir = common::unique_temp_dir("compile-backend-unsupported");
     let source_path = temp_dir.join("hello.tn");
     fs::write(
@@ -82,7 +82,7 @@ fn compile_backend_flag_is_not_supported() {
 }
 
 #[test]
-fn compile_dump_mir_flag_is_not_supported() {
+fn compile_rejects_dump_mir_flag_as_unexpected_argument() {
     let temp_dir = common::unique_temp_dir("compile-dump-mir-unsupported");
     let source_path = temp_dir.join("hello.tn");
     fs::write(

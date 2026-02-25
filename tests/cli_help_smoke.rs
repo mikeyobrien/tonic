@@ -11,6 +11,7 @@ fn tonic_help_lists_v0_commands() {
             .and(contains("check"))
             .and(contains("test"))
             .and(contains("fmt"))
+            .and(contains("compile"))
             .and(contains("cache"))
             .and(contains("verify"))
             .and(contains("deps")),
