@@ -25,12 +25,12 @@ pub fn compute_percentile(mut samples: Vec<f64>, percentile: f64) -> f64 {
 
 /// Compute a robust p95 using Tukey upper-fence winsorization.
 ///
-/// Before computing the 95th-percentile, any sample above the Tukey upper
-/// fence (Q3 + 1.5 × IQR) is capped at the fence value.  This prevents a
-/// single OS-scheduling spike from inflating the reported p95 while still
-/// preserving the full signal for sustained regressions: when the entire
-/// latency distribution is elevated, Q3 and the fence rise with it, so the
-/// regression continues to surface in the p95 reading.
+/// Before computing the 95th-percentile, this caps a *single isolated* sample
+/// above the Tukey upper fence (Q3 + 1.5 × IQR) to the fence value.
+///
+/// If multiple samples exceed the fence, we leave the distribution unchanged
+/// to avoid masking meaningful tail regressions. This targets one-off
+/// scheduling spikes while preserving persistent tail signal.
 ///
 /// p50 is intentionally computed via the plain `compute_percentile` path; it
 /// is naturally robust to tail outliers and should not be altered.
@@ -46,13 +46,25 @@ pub fn compute_robust_p95(mut samples: Vec<f64>) -> f64 {
     let iqr = q3 - q1;
     let upper_fence = q3 + 1.5 * iqr;
 
-    // Winsorize: cap samples that exceed the upper fence.
-    let winsorized: Vec<f64> = samples
-        .into_iter()
-        .map(|v| if v > upper_fence { upper_fence } else { v })
+    // Winsorize only if there is exactly one fence outlier.
+    let outlier_indices: Vec<usize> = samples
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, value)| {
+            if *value > upper_fence {
+                Some(idx)
+            } else {
+                None
+            }
+        })
         .collect();
 
-    compute_percentile(winsorized, 95.0)
+    if outlier_indices.len() == 1 {
+        let idx = outlier_indices[0];
+        samples[idx] = upper_fence;
+    }
+
+    compute_percentile(samples, 95.0)
 }
 
 /// Compute a percentile on a pre-sorted slice without re-sorting.
@@ -527,6 +539,23 @@ mod tests {
         assert_eq!(
             robust, 10.0,
             "sustained regression should not be winsorized away"
+        );
+    }
+
+    #[test]
+    fn compute_robust_p95_preserves_tail_signal_when_not_isolated() {
+        // 20% of samples are slower. This is not an isolated outlier and should
+        // remain visible in p95.
+        let mut samples: Vec<f64> = vec![1.0; 12];
+        samples.extend([2.0, 2.0, 2.0]);
+
+        let robust = compute_robust_p95(samples.clone());
+        let raw = compute_percentile(samples, 95.0);
+
+        assert_eq!(raw, 2.0, "sanity: raw p95 should capture the slower tail");
+        assert_eq!(
+            robust, raw,
+            "multiple high-tail samples must not be winsorized away"
         );
     }
 

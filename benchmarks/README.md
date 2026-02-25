@@ -156,8 +156,9 @@ Reference baseline metadata is also included in contract report output.
 ## p95 stabilization
 
 The benchsuite computes `p95_ms` via **Tukey upper-fence winsorization**: before
-taking the 95th percentile, any sample above `Q3 + 1.5 × IQR` is capped at the
-fence value.
+taking the 95th percentile, a *single isolated* sample above `Q3 + 1.5 × IQR`
+is capped at the fence value. If multiple samples exceed the fence, the
+distribution is left unchanged to preserve true tail-regression signal.
 
 **Why this helps:**  short-lived processes are susceptible to OS scheduling
 jitter — a single run that lands in a cache-cold or scheduler-preempted slot
