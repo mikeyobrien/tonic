@@ -25,6 +25,9 @@ pub(crate) struct GitDep {
 const OPTIONAL_STDLIB_ENUM_SOURCE: &str =
     "defmodule Enum do\n  def identity() do\n    1\n  end\nend\n";
 
+const OPTIONAL_STDLIB_SYSTEM_SOURCE: &str =
+    "defmodule System do\n  def run(command) do\n    host_call(:sys_run, command)\n  end\n\n  def path_exists(path) do\n    host_call(:sys_path_exists, path)\n  end\n\n  def ensure_dir(path) do\n    host_call(:sys_ensure_dir, path)\n  end\n\n  def write_text(path, content) do\n    host_call(:sys_write_text, path, content)\n  end\n\n  def env(name) do\n    host_call(:sys_env, name)\n  end\n\n  def which(name) do\n    host_call(:sys_which, name)\n  end\n\n  def cwd() do\n    host_call(:sys_cwd)\n  end\nend\n";
+
 pub(crate) fn load_run_source(requested_path: &str) -> Result<String, String> {
     let path = Path::new(requested_path);
 
@@ -72,7 +75,7 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
         }
     }
 
-    if should_lazy_load_enum_stdlib(&analysis) {
+    if should_lazy_load_optional_stdlib(&analysis, "Enum") {
         if !source.is_empty() {
             source.push_str("\n\n");
         }
@@ -81,6 +84,18 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
 
         if should_trace_module_loads() {
             trace_module_load("stdlib", "Enum");
+        }
+    }
+
+    if should_lazy_load_optional_stdlib(&analysis, "System") {
+        if !source.is_empty() {
+            source.push_str("\n\n");
+        }
+
+        source.push_str(OPTIONAL_STDLIB_SYSTEM_SOURCE);
+
+        if should_trace_module_loads() {
+            trace_module_load("stdlib", "System");
         }
     }
 
@@ -150,14 +165,22 @@ fn load_dependency_sources(
 #[derive(Debug, Default)]
 struct ProjectSourceAnalysis {
     module_names: Vec<String>,
-    references_enum: bool,
+    referenced_modules: Vec<String>,
 }
 
 fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {
     let Some(ast) = parse_project_ast(source) else {
+        let mut referenced_modules = Vec::new();
+        if source.contains("Enum.") {
+            referenced_modules.push("Enum".to_string());
+        }
+        if source.contains("System.") {
+            referenced_modules.push("System".to_string());
+        }
+
         return Ok(ProjectSourceAnalysis {
             module_names: Vec::new(),
-            references_enum: source.contains("Enum."),
+            referenced_modules,
         });
     };
 
@@ -167,9 +190,16 @@ fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String>
         module_names.push(module.name.clone());
     }
 
+    let mut referenced_modules = Vec::new();
+    for module_name in ["Enum", "System"] {
+        if ast_references_module(&ast, module_name) {
+            referenced_modules.push(module_name.to_string());
+        }
+    }
+
     Ok(ProjectSourceAnalysis {
         module_names,
-        references_enum: ast_references_module(&ast, "Enum"),
+        referenced_modules,
     })
 }
 
@@ -281,8 +311,15 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
     }
 }
 
-fn should_lazy_load_enum_stdlib(analysis: &ProjectSourceAnalysis) -> bool {
-    analysis.references_enum && !analysis.module_names.iter().any(|module| module == "Enum")
+fn should_lazy_load_optional_stdlib(analysis: &ProjectSourceAnalysis, module_name: &str) -> bool {
+    analysis
+        .referenced_modules
+        .iter()
+        .any(|candidate| candidate == module_name)
+        && !analysis
+            .module_names
+            .iter()
+            .any(|defined_module| defined_module == module_name)
 }
 
 fn should_trace_module_loads() -> bool {

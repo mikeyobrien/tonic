@@ -30,6 +30,10 @@ fn run_trace_skips_optional_stdlib_modules_when_unreferenced() {
         !stderr.contains("module-load stdlib:Enum"),
         "expected optional stdlib Enum module to stay unloaded when unreferenced, got: {stderr:?}"
     );
+    assert!(
+        !stderr.contains("module-load stdlib:System"),
+        "expected optional stdlib System module to stay unloaded when unreferenced, got: {stderr:?}"
+    );
 }
 
 #[test]
@@ -59,6 +63,32 @@ fn run_trace_lazy_loads_optional_stdlib_module_when_referenced() {
     assert!(
         stderr.contains("module-load stdlib:Enum"),
         "expected module-load trace to include lazy-loaded Enum stdlib module, got: {stderr:?}"
+    );
+}
+
+#[test]
+fn run_trace_lazy_loads_system_stdlib_module_when_referenced() {
+    let fixture_root = create_project_fixture(
+        "run-lazy-system-stdlib-referenced",
+        "defmodule Demo do\n  def run() do\n    System.path_exists(\".\")\n  end\nend\n",
+    );
+
+    let output = run_with_module_trace(&fixture_root);
+
+    assert!(
+        output.status.success(),
+        "expected successful run for System-stdlib fixture, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert_eq!(stdout, "true\n");
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("module-load stdlib:System"),
+        "expected module-load trace to include lazy-loaded System stdlib module, got: {stderr:?}"
     );
 }
 

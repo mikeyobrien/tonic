@@ -7,6 +7,8 @@ use crate::runtime::RuntimeValue;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
+mod system;
+
 /// Host function signature: takes runtime values, returns result
 pub type HostFn = fn(&[RuntimeValue]) -> Result<RuntimeValue, HostError>;
 
@@ -32,7 +34,7 @@ impl std::fmt::Display for HostError {
 
 impl std::error::Error for HostError {}
 
-fn host_value_kind(value: &RuntimeValue) -> &'static str {
+pub(super) fn host_value_kind(value: &RuntimeValue) -> &'static str {
     match value {
         RuntimeValue::Int(_) => "int",
         RuntimeValue::Float(_) => "float",
@@ -79,7 +81,7 @@ impl HostRegistry {
         function(args)
     }
 
-    /// Register sample host functions for testing
+    /// Register sample host functions for testing and tooling interop.
     fn register_sample_functions(&self) {
         // :identity - returns its single argument unchanged
         self.register("identity", |args| {
@@ -124,6 +126,9 @@ impl HostRegistry {
                 .unwrap_or_else(|| "unknown error".to_string());
             Err(HostError::new(message))
         });
+
+        // System interop primitives for tonicctl and similar tooling.
+        system::register_system_host_functions(self);
     }
 }
 
@@ -139,6 +144,20 @@ pub static HOST_REGISTRY: LazyLock<HostRegistry> = LazyLock::new(HostRegistry::n
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn map_lookup<'a>(map: &'a RuntimeValue, key: &str) -> Option<&'a RuntimeValue> {
+        let RuntimeValue::Map(entries) = map else {
+            return None;
+        };
+
+        entries.iter().find_map(|(entry_key, entry_value)| {
+            if matches!(entry_key, RuntimeValue::Atom(atom) if atom == key) {
+                Some(entry_value)
+            } else {
+                None
+            }
+        })
+    }
 
     #[test]
     fn host_registry_registers_and_calls_functions() {
@@ -237,5 +256,109 @@ mod tests {
             &[RuntimeValue::String("test error".to_string())],
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn host_registry_system_path_exists_and_write_text_work() {
+        let fixture_root = std::env::temp_dir().join(format!(
+            "tonic-interop-system-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+
+        let target_dir = fixture_root.join("nested");
+        let target_file = target_dir.join("report.txt");
+
+        let ensure_result = HOST_REGISTRY
+            .call(
+                "sys_ensure_dir",
+                &[RuntimeValue::String(target_dir.display().to_string())],
+            )
+            .expect("sys_ensure_dir should succeed");
+        assert_eq!(ensure_result, RuntimeValue::Bool(true));
+
+        let write_result = HOST_REGISTRY
+            .call(
+                "sys_write_text",
+                &[
+                    RuntimeValue::String(target_file.display().to_string()),
+                    RuntimeValue::String("hello".to_string()),
+                ],
+            )
+            .expect("sys_write_text should succeed");
+        assert_eq!(write_result, RuntimeValue::Bool(true));
+
+        let exists_result = HOST_REGISTRY
+            .call(
+                "sys_path_exists",
+                &[RuntimeValue::String(target_file.display().to_string())],
+            )
+            .expect("sys_path_exists should succeed");
+        assert_eq!(exists_result, RuntimeValue::Bool(true));
+
+        let content =
+            std::fs::read_to_string(&target_file).expect("report file should be readable");
+        assert_eq!(content, "hello");
+
+        let _ = std::fs::remove_dir_all(&fixture_root);
+    }
+
+    #[test]
+    fn host_registry_system_env_and_which_work() {
+        let missing = HOST_REGISTRY
+            .call(
+                "sys_env",
+                &[RuntimeValue::String(
+                    "TONIC_INTEROP_MISSING_KEY".to_string(),
+                )],
+            )
+            .expect("sys_env should succeed for missing values");
+        assert_eq!(missing, RuntimeValue::Nil);
+
+        let shell_path = HOST_REGISTRY
+            .call("sys_which", &[RuntimeValue::String("sh".to_string())])
+            .expect("sys_which should succeed");
+
+        assert!(
+            matches!(shell_path, RuntimeValue::String(_) | RuntimeValue::Nil),
+            "expected string-or-nil from sys_which, got {:?}",
+            shell_path
+        );
+
+        let cwd = HOST_REGISTRY
+            .call("sys_cwd", &[])
+            .expect("sys_cwd should succeed");
+        assert!(matches!(cwd, RuntimeValue::String(_)));
+    }
+
+    #[test]
+    fn host_registry_system_run_returns_exit_code_and_output() {
+        let success = HOST_REGISTRY
+            .call(
+                "sys_run",
+                &[RuntimeValue::String("printf 'hello'".to_string())],
+            )
+            .expect("sys_run should succeed for valid command");
+
+        assert_eq!(
+            map_lookup(&success, "exit_code"),
+            Some(&RuntimeValue::Int(0))
+        );
+        assert_eq!(
+            map_lookup(&success, "output"),
+            Some(&RuntimeValue::String("hello".to_string()))
+        );
+
+        let failure = HOST_REGISTRY
+            .call("sys_run", &[RuntimeValue::String("exit 3".to_string())])
+            .expect("sys_run should still return map for non-zero exit");
+
+        assert_eq!(
+            map_lookup(&failure, "exit_code"),
+            Some(&RuntimeValue::Int(3))
+        );
     }
 }
