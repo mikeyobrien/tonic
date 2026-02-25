@@ -180,3 +180,28 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 
 10. [x] **Developer-loop hardening: real `tonic test` runner + rich diagnostics**  
     `tonic test` now supports directory/file discovery (`*_test.tn` / `test_*.tn` and explicit file targets), deterministic pass/fail summaries, non-zero exits on failures, and `--format json` machine output. Parser/resolver/typing diagnostics now include line/column/snippet context while preserving stable diagnostic code families (`src/test_runner.rs`, `src/main.rs`, `src/cli_diag.rs`, `src/resolver_diag.rs`, `src/typing_diag.rs`, `tests/test_runner_rich_diagnostics.rs`).
+
+## 11) Objective execution summary (elixir-prod-parity tasks 01-10)
+
+Completed task files and corresponding commits on `main`:
+
+| Task | Task file | Commit | Status |
+|---|---|---|---|
+| 01 | `.agents/tasks/tonic/elixir-prod-parity/01-map-fat-arrow-parity.code-task.md` | `17742f3` | ✅ complete |
+| 02 | `.agents/tasks/tonic/elixir-prod-parity/02-struct-syntax-parity.code-task.md` | `fcd4a49` | ✅ complete |
+| 03 | `.agents/tasks/tonic/elixir-prod-parity/03-protocol-defimpl-parity.code-task.md` | `4c8cb4d` | ✅ complete |
+| 04 | `.agents/tasks/tonic/elixir-prod-parity/04-use-require-semantics.code-task.md` | `594a563` | ✅ complete |
+| 05 | `.agents/tasks/tonic/elixir-prod-parity/05-import-only-except-parity.code-task.md` | `cad404c` | ✅ complete |
+| 06 | `.agents/tasks/tonic/elixir-prod-parity/06-guard-builtins-backend-parity.code-task.md` | `b7346f0` | ✅ complete |
+| 07 | `.agents/tasks/tonic/elixir-prod-parity/07-function-capture-anon-clauses.code-task.md` | `c0fe6a7` | ✅ complete |
+| 08 | `.agents/tasks/tonic/elixir-prod-parity/08-comprehension-parity-completion.code-task.md` | `9015ff5` | ✅ complete |
+| 09 | `.agents/tasks/tonic/elixir-prod-parity/09-exception-form-parity.code-task.md` | `bb57849` | ✅ complete |
+| 10 | `.agents/tasks/tonic/elixir-prod-parity/10-test-runner-and-rich-diagnostics.code-task.md` | `5f66b94` | ✅ complete |
+
+Remaining parity gaps (from unchecked/partial items above):
+
+- Numeric literal parity gaps: hex/octal/binary forms, numeric separators, char literals.
+- Operator parity gaps: strict equality (`===`/`!==`), `div`/`rem`, `not in`, bitwise family, stepped ranges.
+- Advanced pattern/runtime gaps: bitstring/binary patterns.
+- Compile-time/module gaps: full macro semantics for `use`, richer module attributes semantics, nested `defmodule`, additional `alias` forms, `__MODULE__/__ENV__/__CALLER__`.
+- Tooling gap: `tonic docs` / ExDoc-like docs generation.
