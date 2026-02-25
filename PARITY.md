@@ -105,7 +105,7 @@ _Last updated: 2026-02-25_
 - [x] `for` generator guards (`when`) (`examples/parity/06-control-flow/for_generator_guard.tn`, `tests/run_comprehensions_smoke.rs`)
 - [x] `try/rescue/catch/after` baseline (`tests/check_dump_ast_try_raise.rs`, `tests/run_try_raise_smoke.rs`)
 - [x] `raise` string forms (`raise("msg")`, `raise "msg"`) (`tests/check_dump_ast_try_raise.rs`)
-- [ ] exception struct/module raise forms (`raise FooError, message: ...`) (`src/parser.rs`)
+- [x] exception struct/module raise forms (`raise FooError, message: ...`) with module rescue matching/value extraction (`src/parser.rs`, `src/runtime.rs`, `tests/check_dump_ast_try_raise.rs`, `tests/run_try_raise_smoke.rs`, `examples/parity/08-errors/structured_raise_rescue_module.tn`)
 
 ## 7) Module/compile-time forms
 
@@ -175,8 +175,8 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 8. [x] **Comprehension parity completion** (`for reduce:`, generator guards, non-list collectables for `into:`)  
    Added end-to-end parser/lowering/runtime support for guarded generators, `reduce:` accumulator mode, and map/keyword `into:` collection semantics with deterministic failure contracts (`src/parser.rs`, `src/ir.rs`, `src/runtime.rs`, `src/c_backend/stubs.rs`, `tests/run_comprehensions_smoke.rs`, `tests/runtime_llvm_strings_lists_for.rs`, `examples/parity/06-control-flow/for_reduce.tn`, `examples/parity/06-control-flow/for_generator_guard.tn`, `examples/parity/06-control-flow/for_into_map.tn`, `examples/parity/06-control-flow/for_into_keyword.tn`).
 
-9. [ ] **Exception form parity** (`raise Module, opts`, structured rescue matching)  
-   Required for consistent production error design and interoperability with richer exception types.
+9. [x] **Exception form parity** (`raise Module, opts`, structured rescue matching)  
+   Added structured `raise Module, key: value` lowering to typed exception maps (`:__exception__`, `:message`, `:metadata`) plus rescue module matching (`Module ->`) and value extraction (`err in Module -> ...`) with deterministic invalid-form diagnostics (`src/parser.rs`, `src/runtime.rs`, `tests/check_dump_ast_try_raise.rs`, `tests/run_try_raise_smoke.rs`, `examples/parity/08-errors/structured_raise_rescue_module.tn`).
 
 10. [ ] **Developer-loop hardening: real `tonic test` runner + rich diagnostics**  
     Implement actual test discovery/execution plus line/column/snippet diagnostics to support large-team maintenance and CI triage.

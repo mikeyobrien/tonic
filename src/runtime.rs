@@ -118,17 +118,40 @@ impl RuntimeError {
     }
 
     fn raised(value: RuntimeValue, offset: usize) -> Self {
-        let message = match &value {
-            RuntimeValue::String(s) => s.clone(),
-            RuntimeValue::Atom(a) => a.clone(),
-            _ => "exception raised".to_string(),
-        };
+        let message = extract_raised_message(&value);
         Self {
             message,
             offset: Some(offset),
             raised_value: Some(value),
         }
     }
+}
+
+fn extract_raised_message(value: &RuntimeValue) -> String {
+    match value {
+        RuntimeValue::String(s) => s.clone(),
+        RuntimeValue::Atom(a) => a.clone(),
+        RuntimeValue::Map(entries) => map_lookup_atom(entries, "message")
+            .map(|message| match message {
+                RuntimeValue::String(text) => text.clone(),
+                other => other.render(),
+            })
+            .unwrap_or_else(|| "exception raised".to_string()),
+        _ => "exception raised".to_string(),
+    }
+}
+
+fn map_lookup_atom<'a>(
+    entries: &'a [(RuntimeValue, RuntimeValue)],
+    key: &str,
+) -> Option<&'a RuntimeValue> {
+    entries.iter().find_map(|(entry_key, value)| {
+        if let RuntimeValue::Atom(atom) = entry_key {
+            (atom == key).then_some(value)
+        } else {
+            None
+        }
+    })
 }
 
 impl fmt::Display for RuntimeError {

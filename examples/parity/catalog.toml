@@ -575,6 +575,15 @@ stdout = '''"oops"
 status = "active"
 
 [[example]]
+path = "examples/parity/08-errors/structured_raise_rescue_module.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{"bad input", 42}
+'''
+status = "blocked"
+blocked_reason = "c backend try helper cannot lower map constructor ops inside try/rescue yet"
+
+[[example]]
 path = "examples/parity/08-errors/raise_fail.tn"
 check_exit = 1
 run_exit = 1

@@ -1,0 +1,10 @@
+defmodule Demo do
+  def run() do
+    try do
+      raise ValidationError, message: "bad input", field: 42
+    rescue
+      TimeoutError -> :timeout
+      err in ValidationError -> {err.message, err.metadata[:field]}
+    end
+  end
+end
