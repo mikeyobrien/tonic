@@ -1,17 +1,31 @@
-# Tonicctl Meta-Tool Evolution
+# Tonicctl Meta-Tool (Executable) — Task Sequence
 
-**Goal:** Evolve `examples/apps/tonicctl` from a pure planner into an executable meta-tool for tonic, capable of managing tonic projects, running tests, formatting, and invoking the tonic compiler natively.
+Goal: evolve `examples/apps/tonicctl` from a pure plan emitter into an executable meta-tool for Tonic repositories.
 
-**Sequence:**
-1. Setup and CLI parsing
-2. Core compiler integration (`tonic compile <path>`)
-3. Manifest and workspace management
-4. Developer tools (fmt, test)
-5. Executable generation and distribution
-6. Testing and documentation
+## Why this backlog exists
 
-**Definition of Done:**
-- `tonicctl` can be compiled into a standalone executable using `tonic compile examples/apps/tonicctl/main.tn`.
-- The meta-tool can orchestrate tonic workflows (build, test, format) without relying on external bash scripts.
-- All 10 tasks in the sequence are completed and verified against the dual strict gates policy.
-- Zero references to legacy `--backend` flags exist in the meta-tool's implementation.
+The current example can describe workflows, but cannot execute them. To become operational, tonicctl needs:
+- system capabilities (process/filesystem/env) exposed safely to Tonic code
+- a small stdlib-facing system API layer
+- command dispatch + deterministic exit semantics
+- strict benchmark and release dry-run orchestration
+
+## Sequence
+
+1. `01-system-capability-contract-and-safety-model.code-task.md`
+2. `02-host-interop-process-exec-and-exit-contract.code-task.md`
+3. `03-host-interop-filesystem-primitives-and-artifact-io.code-task.md`
+4. `04-host-interop-env-and-tool-discovery-primitives.code-task.md`
+5. `05-stdlib-system-module-v1-for-tonicctl.code-task.md`
+6. `06-tonicctl-cli-arg-dispatch-and-command-contract.code-task.md`
+7. `07-tonicctl-doctor-command-runtime-execution.code-task.md`
+8. `08-tonicctl-gates-and-bench-strict-command-execution.code-task.md`
+9. `09-tonicctl-release-dry-run-and-reporting.code-task.md`
+10. `10-tonicctl-e2e-tests-ci-docs-and-example-contract.code-task.md`
+
+## Definition of Done
+
+- `tonicctl doctor|gates|bench --strict|release --dry-run` execute with deterministic output and non-zero failures when contracts fail.
+- `tonic compile examples/apps/tonicctl` (or `--out`) produces a runnable native executable preserving behavior.
+- Interpreter and compiled runs of tonicctl agree for core success/failure paths.
+- CI/docs are updated and no stale legacy compile flag wording is introduced.

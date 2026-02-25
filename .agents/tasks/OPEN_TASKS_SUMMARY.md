@@ -4,7 +4,7 @@ Current task sets:
 
 1. `.agents/tasks/2026-02-25-tonicctl-meta-tool/` (10-task sequence)
    - Status: all tasks `pending` (`HEARTBEAT_TASK_STATUS: todo`)
-   - Focus: evolve `examples/apps/tonicctl` from a pure planner into an executable meta-tool for tonic.
+   - Focus: evolve `examples/apps/tonicctl` from a pure planner into an executable meta-tool for tonic, including minimal system stdlib/interop support.
 
 2. `.agents/tasks/2026-02-24-llvm-catalog-parity/` (9-task sequence)
    - Status: all tasks `completed` (`HEARTBEAT_TASK_STATUS: done`)
