@@ -69,6 +69,10 @@ impl TypingError {
         }
     }
 
+    pub fn offset(&self) -> Option<usize> {
+        self.offset
+    }
+
     #[cfg(test)]
     pub fn code(&self) -> Option<TypingDiagnosticCode> {
         self.code

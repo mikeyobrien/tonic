@@ -80,8 +80,8 @@ fn check_rejects_cross_module_calls_to_private_functions() {
     assert_eq!(output.status.code(), Some(1));
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: [E1002] private function 'Math.hidden' cannot be called from Demo.run\n"
-    );
+    assert!(stderr
+        .contains("error: [E1002] private function 'Math.hidden' cannot be called from Demo.run"));
+    assert!(stderr.contains("--> line 9, column 5"));
+    assert!(stderr.contains("9 |     Math.hidden()"));
 }

@@ -272,10 +272,9 @@ fn run_check_rejects_non_int_comparison_right_operand_with_type_mismatch() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: [E2001] type mismatch: expected int, found bool at offset 41\n"
-    );
+    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool at offset 41"));
+    assert!(stderr.contains("--> line 3, column 9"));
+    assert!(stderr.contains("3 |     1 < false"));
 }
 
 #[test]
@@ -334,10 +333,9 @@ fn run_check_rejects_non_int_left_operand_with_type_mismatch() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: [E2001] type mismatch: expected int, found bool at offset 37\n"
-    );
+    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool at offset 37"));
+    assert!(stderr.contains("--> line 3, column 5"));
+    assert!(stderr.contains("3 |     true + 1"));
 }
 
 #[test]
@@ -396,10 +394,9 @@ fn run_check_rejects_unary_minus_on_non_int_operand() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: [E2001] type mismatch: expected int, found bool at offset 38\n"
-    );
+    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool at offset 38"));
+    assert!(stderr.contains("--> line 3, column 6"));
+    assert!(stderr.contains("3 |     -true"));
 }
 
 #[test]

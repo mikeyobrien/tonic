@@ -54,8 +54,9 @@ fn check_rejects_guard_builtin_calls_outside_guards() {
     assert_eq!(output.status.code(), Some(1));
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: [E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run\n"
-    );
+    assert!(stderr.contains(
+        "error: [E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
+    ));
+    assert!(stderr.contains("--> line 3, column 5"));
+    assert!(stderr.contains("3 |     is_integer(1)"));
 }

@@ -28,8 +28,9 @@ fn check_reports_deterministic_error_for_question_on_non_result_expression() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
 
-    assert_eq!(
-        stderr,
-        "error: [E3001] ? operator requires Result value, found int at offset 74\n"
+    assert!(
+        stderr.contains("error: [E3001] ? operator requires Result value, found int at offset 74")
     );
+    assert!(stderr.contains("--> line 7, column"));
+    assert!(stderr.contains("7 |     value()?"));
 }

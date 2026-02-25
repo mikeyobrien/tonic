@@ -20,6 +20,7 @@ mod profiling;
 mod resolver;
 mod resolver_diag;
 mod runtime;
+mod test_runner;
 mod typing;
 
 use acceptance::{load_acceptance_yaml, load_feature_scenarios, BenchmarkMetrics};
@@ -36,6 +37,7 @@ use mir::{lower_ir_to_mir, optimize_for_native_backend};
 use parser::parse_ast;
 use resolver::resolve_ast;
 use runtime::{evaluate_entrypoint, RuntimeValue};
+use test_runner::{TestOutputFormat, TestRunnerError};
 use typing::infer_types;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -327,7 +329,10 @@ fn handle_check(args: Vec<String>) -> i32 {
 
     let ast = match parse_ast(&tokens) {
         Ok(ast) => ast,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+        Err(error) => {
+            return CliDiagnostic::failure_with_source(error.to_string(), &source, error.offset())
+                .emit();
+        }
     };
 
     if dump_ast {
@@ -343,12 +348,16 @@ fn handle_check(args: Vec<String>) -> i32 {
     }
 
     if let Err(error) = resolve_ast(&ast) {
-        return CliDiagnostic::failure(error.to_string()).emit();
+        return CliDiagnostic::failure_with_source(error.to_string(), &source, error.offset())
+            .emit();
     }
 
     let type_summary = match infer_types(&ast) {
         Ok(summary) => summary,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+        Err(error) => {
+            return CliDiagnostic::failure_with_source(error.to_string(), &source, error.offset())
+                .emit();
+        }
     };
     maybe_trace_type_summary(type_summary.len());
 
@@ -413,17 +422,58 @@ fn handle_test(args: Vec<String>) -> i32 {
     }
 
     let source_path = args[0].clone();
+    let mut format = TestOutputFormat::Text;
+    let mut index = 1;
 
-    if let Some(argument) = args.get(1) {
-        return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
+    while index < args.len() {
+        match args[index].as_str() {
+            "--format" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage("missing value for --format").emit();
+                };
+
+                let Some(parsed) = TestOutputFormat::parse(value) else {
+                    return CliDiagnostic::usage(format!(
+                        "unsupported format '{value}' (expected 'text' or 'json')"
+                    ))
+                    .emit();
+                };
+
+                format = parsed;
+                index += 2;
+            }
+            other => {
+                return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
+            }
+        }
     }
 
-    if let Err(error) = load_run_source(&source_path) {
-        return CliDiagnostic::failure(error).emit();
+    let report = match test_runner::run(&source_path) {
+        Ok(report) => report,
+        Err(TestRunnerError::Failure(message)) => return CliDiagnostic::failure(message).emit(),
+        Err(TestRunnerError::SourceDiagnostic {
+            message,
+            source,
+            offset,
+        }) => return CliDiagnostic::failure_with_source(message, &source, offset).emit(),
+    };
+
+    match format {
+        TestOutputFormat::Text => {
+            for line in report.render_text() {
+                println!("{line}");
+            }
+        }
+        TestOutputFormat::Json => {
+            println!("{}", report.render_json());
+        }
     }
 
-    println!("test: ok");
-    EXIT_OK
+    if report.succeeded() {
+        EXIT_OK
+    } else {
+        EXIT_FAILURE
+    }
 }
 
 fn handle_fmt(args: Vec<String>) -> i32 {
@@ -1020,7 +1070,7 @@ fn print_check_help() {
 }
 
 fn print_test_help() {
-    println!("Usage:\n  tonic test <path>\n");
+    println!("Usage:\n  tonic test <path> [--format <text|json>]\n");
 }
 
 fn print_fmt_help() {

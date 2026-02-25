@@ -408,6 +408,7 @@ impl ModuleGraph {
         current_module: &str,
         function_name: &str,
         arity: usize,
+        offset: usize,
     ) -> Option<ResolverError> {
         let scopes = self.imports.get(current_module)?;
 
@@ -440,21 +441,27 @@ impl ModuleGraph {
         allowed_modules.dedup();
 
         if allowed_modules.len() > 1 {
-            return Some(ResolverError::ambiguous_import_call(
-                function_name,
-                arity,
-                current_module,
-                &allowed_modules,
-            ));
+            return Some(
+                ResolverError::ambiguous_import_call(
+                    function_name,
+                    arity,
+                    current_module,
+                    &allowed_modules,
+                )
+                .with_offset(offset),
+            );
         }
 
         if allowed_modules.is_empty() && !modules_with_symbol.is_empty() {
-            return Some(ResolverError::import_filter_excludes_call(
-                function_name,
-                arity,
-                current_module,
-                &modules_with_symbol,
-            ));
+            return Some(
+                ResolverError::import_filter_excludes_call(
+                    function_name,
+                    arity,
+                    current_module,
+                    &modules_with_symbol,
+                )
+                .with_offset(offset),
+            );
         }
 
         None
@@ -525,14 +532,18 @@ fn resolve_expr_with_guard_context(
             Ok(())
         }
         Expr::Struct {
-            module, entries, ..
+            module,
+            entries,
+            offset,
+            ..
         } => {
             if !context.module_graph.has_struct_module(module) {
                 return Err(ResolverError::undefined_struct_module(
                     module,
                     context.module_name,
                     context.function_name,
-                ));
+                )
+                .with_offset(*offset));
             }
 
             for entry in entries {
@@ -542,7 +553,8 @@ fn resolve_expr_with_guard_context(
                         module,
                         context.module_name,
                         context.function_name,
-                    ));
+                    )
+                    .with_offset(*offset));
                 }
                 resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
             }
@@ -565,6 +577,7 @@ fn resolve_expr_with_guard_context(
             module,
             base,
             updates,
+            offset,
             ..
         } => {
             if !context.module_graph.has_struct_module(module) {
@@ -572,7 +585,8 @@ fn resolve_expr_with_guard_context(
                     module,
                     context.module_name,
                     context.function_name,
-                ));
+                )
+                .with_offset(*offset));
             }
 
             resolve_expr_with_guard_context(base, context, in_guard_context)?;
@@ -583,7 +597,8 @@ fn resolve_expr_with_guard_context(
                         module,
                         context.module_name,
                         context.function_name,
-                    ));
+                    )
+                    .with_offset(*offset));
                 }
                 resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
             }
@@ -596,7 +611,12 @@ fn resolve_expr_with_guard_context(
             resolve_expr_with_guard_context(base, context, in_guard_context)?;
             resolve_expr_with_guard_context(index, context, in_guard_context)
         }
-        Expr::Call { callee, args, .. } => {
+        Expr::Call {
+            callee,
+            args,
+            offset,
+            ..
+        } => {
             if guard_builtins::is_guard_builtin(callee) {
                 if !in_guard_context {
                     return Err(ResolverError::guard_builtin_outside_guard(
@@ -604,7 +624,8 @@ fn resolve_expr_with_guard_context(
                         guard_builtins::guard_builtin_arity(callee).unwrap_or(args.len()),
                         context.module_name,
                         context.function_name,
-                    ));
+                    )
+                    .with_offset(*offset));
                 }
             } else {
                 match context.module_graph.resolve_call_target(
@@ -619,6 +640,7 @@ fn resolve_expr_with_guard_context(
                                 context.module_name,
                                 callee,
                                 args.len(),
+                                *offset,
                             ) {
                                 return Err(error);
                             }
@@ -628,14 +650,16 @@ fn resolve_expr_with_guard_context(
                             callee,
                             context.module_name,
                             context.function_name,
-                        ));
+                        )
+                        .with_offset(*offset));
                     }
                     CallResolution::Private => {
                         return Err(ResolverError::private_function(
                             callee,
                             context.module_name,
                             context.function_name,
-                        ));
+                        )
+                        .with_offset(*offset));
                     }
                 }
             }
@@ -848,10 +872,10 @@ mod tests {
             error.code(),
             ResolverDiagnosticCode::ImportFilterExcludesCall
         );
-        assert_eq!(
-            error.to_string(),
-            "[E1013] import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math"
-        );
+        assert!(error
+            .to_string()
+            .starts_with("[E1013] import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math"));
+        assert_eq!(error.offset(), Some(132));
     }
 
     #[test]
@@ -864,10 +888,10 @@ mod tests {
             .expect_err("resolver should reject ambiguous calls after import filtering");
 
         assert_eq!(error.code(), ResolverDiagnosticCode::AmbiguousImportCall);
-        assert_eq!(
-            error.to_string(),
+        assert!(error.to_string().starts_with(
             "[E1014] ambiguous imported call 'helper/1' in Demo; matches: Helpers, Math"
-        );
+        ));
+        assert_eq!(error.offset(), Some(239));
     }
 
     #[test]
@@ -920,10 +944,10 @@ mod tests {
             error.code(),
             ResolverDiagnosticCode::GuardBuiltinOutsideGuard
         );
-        assert_eq!(
-            error.to_string(),
-            "[E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
-        );
+        assert!(error
+            .to_string()
+            .starts_with("[E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"));
+        assert_eq!(error.offset(), Some(37));
     }
 
     #[test]
@@ -935,10 +959,10 @@ mod tests {
         let error = resolve_ast(&ast).expect_err("resolver should reject undefined calls");
 
         assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedSymbol);
-        assert_eq!(
-            error.to_string(),
-            "[E1001] undefined symbol 'missing' in Demo.run"
-        );
+        assert!(error
+            .to_string()
+            .starts_with("[E1001] undefined symbol 'missing' in Demo.run"));
+        assert_eq!(error.offset(), Some(37));
     }
 
     #[test]
@@ -950,10 +974,10 @@ mod tests {
         let error =
             resolve_ast(&ast).expect_err("resolver should reject undefined module-qualified calls");
 
-        assert_eq!(
-            error.to_string(),
-            "[E1001] undefined symbol 'Math.unknown' in Demo.run"
-        );
+        assert!(error
+            .to_string()
+            .starts_with("[E1001] undefined symbol 'Math.unknown' in Demo.run"));
+        assert_eq!(error.offset(), Some(90));
     }
 
     #[test]
@@ -977,10 +1001,10 @@ mod tests {
             .expect_err("resolver should reject cross-module calls to private functions");
 
         assert_eq!(error.code(), ResolverDiagnosticCode::PrivateFunction);
-        assert_eq!(
-            error.to_string(),
-            "[E1002] private function 'Math.hidden' cannot be called from Demo.run"
-        );
+        assert!(error
+            .to_string()
+            .starts_with("[E1002] private function 'Math.hidden' cannot be called from Demo.run"));
+        assert_eq!(error.offset(), Some(91));
     }
 
     #[test]
@@ -1041,10 +1065,10 @@ mod tests {
         let error = resolve_ast(&ast).expect_err("resolver should reject undefined struct modules");
 
         assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedStructModule);
-        assert_eq!(
-            error.to_string(),
-            "[E1004] undefined struct module 'Missing' in Demo.run"
-        );
+        assert!(error
+            .to_string()
+            .starts_with("[E1004] undefined struct module 'Missing' in Demo.run"));
+        assert_eq!(error.offset(), Some(37));
     }
 
     #[test]
@@ -1057,10 +1081,10 @@ mod tests {
         let error = resolve_ast(&ast).expect_err("resolver should reject unknown struct fields");
 
         assert_eq!(error.code(), ResolverDiagnosticCode::UnknownStructField);
-        assert_eq!(
-            error.to_string(),
-            "[E1005] unknown struct field 'agez' for User in User.run"
-        );
+        assert!(error
+            .to_string()
+            .starts_with("[E1005] unknown struct field 'agez' for User in User.run"));
+        assert_eq!(error.offset(), Some(67));
     }
 
     #[test]

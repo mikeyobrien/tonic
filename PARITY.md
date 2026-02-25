@@ -128,12 +128,12 @@ _Last updated: 2026-02-25_
 - [x] `fmt` rewrite + idempotence (`tests/fmt_parity_smoke.rs`)
 - [x] `fmt --check` non-mutating contract (`tests/fmt_parity_smoke.rs`)
 - [x] `compile` contract and flag diagnostics (`tests/cli_contract_compile.rs`)
-- [~] `test` command is contract-stable but currently syntax-load stub (no rich test runner semantics) (`src/main.rs`, `tests/check_test_fmt_command_paths.rs`)
+- [x] `test` command now executes discovered test files/functions with deterministic summary, non-zero failures, and optional `--format json` output (`src/test_runner.rs`, `src/main.rs`, `tests/test_runner_rich_diagnostics.rs`, `tests/check_test_fmt_command_paths.rs`)
 - [x] parity fixture sweep (`examples/parity/catalog.toml`, `tests/run_parity_examples.rs`)
 - [x] translated fixture smoke coverage (`tests/run_translated_fixtures_smoke.rs`)
 - [x] stable diagnostic code families (`E1xxx`, `E2xxx`, `E3xxx`) (`src/resolver_diag.rs`, `src/typing_diag.rs`)
 - [~] actionable hints exist but are not universal (`src/cli_diag.rs`)
-- [ ] line/column + snippet diagnostics parity (`src/typing_diag.rs`)
+- [x] line/column + snippet diagnostics parity for parser/resolver/typing failures in `check`/`test` (`src/cli_diag.rs`, `src/main.rs`, `src/resolver_diag.rs`, `src/typing_diag.rs`, `tests/test_runner_rich_diagnostics.rs`)
 - [ ] docs generation command (`tonic docs`) / ExDoc-like output (`src/main.rs`)
 
 ---
@@ -144,7 +144,7 @@ _Last updated: 2026-02-25_
 - [x] Map key/value syntax fully matches Elixir (`=>` forms in literals + patterns).
 - [x] Remaining high-priority function/control-flow syntax gaps are closed (`&Module.fun/arity`, `for reduce`, generator guards, and non-list `into:`).
 - [ ] Module compile-time forms have semantic parity beyond parse-only stubs (`use`, `require`, attributes).
-- [ ] Diagnostics provide line/column + contextual snippets for syntax/type errors.
+- [x] Diagnostics provide line/column + contextual snippets for parser/resolver/typing errors in `check` and `test` paths.
 - [ ] Docs generation parity exists (at least baseline extraction of `@doc` / `@moduledoc`).
 
 ## 10) Top 10 production-grade parity priorities
@@ -178,5 +178,5 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 9. [x] **Exception form parity** (`raise Module, opts`, structured rescue matching)  
    Added structured `raise Module, key: value` lowering to typed exception maps (`:__exception__`, `:message`, `:metadata`) plus rescue module matching (`Module ->`) and value extraction (`err in Module -> ...`) with deterministic invalid-form diagnostics (`src/parser.rs`, `src/runtime.rs`, `tests/check_dump_ast_try_raise.rs`, `tests/run_try_raise_smoke.rs`, `examples/parity/08-errors/structured_raise_rescue_module.tn`).
 
-10. [ ] **Developer-loop hardening: real `tonic test` runner + rich diagnostics**  
-    Implement actual test discovery/execution plus line/column/snippet diagnostics to support large-team maintenance and CI triage.
+10. [x] **Developer-loop hardening: real `tonic test` runner + rich diagnostics**  
+    `tonic test` now supports directory/file discovery (`*_test.tn` / `test_*.tn` and explicit file targets), deterministic pass/fail summaries, non-zero exits on failures, and `--format json` machine output. Parser/resolver/typing diagnostics now include line/column/snippet context while preserving stable diagnostic code families (`src/test_runner.rs`, `src/main.rs`, `src/cli_diag.rs`, `src/resolver_diag.rs`, `src/typing_diag.rs`, `tests/test_runner_rich_diagnostics.rs`).

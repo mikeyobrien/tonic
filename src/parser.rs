@@ -1048,6 +1048,10 @@ impl ParserError {
             span: token.map(Token::span),
         }
     }
+
+    pub fn offset(&self) -> Option<usize> {
+        self.span.map(|span| span.start())
+    }
 }
 
 impl fmt::Display for ParserError {

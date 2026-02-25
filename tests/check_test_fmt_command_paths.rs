@@ -44,7 +44,7 @@ fn test_accepts_project_root_path_and_emits_ok_contract() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert_eq!(stdout, "test: ok\n");
+    assert_eq!(stdout, "test result: ok. 0 passed; 0 failed; 0 total\n");
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert_eq!(stderr, "");

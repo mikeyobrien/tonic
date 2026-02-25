@@ -45,6 +45,7 @@ impl ResolverDiagnosticCode {
 pub struct ResolverError {
     code: ResolverDiagnosticCode,
     message: String,
+    offset: Option<usize>,
 }
 
 impl ResolverError {
@@ -52,6 +53,7 @@ impl ResolverError {
         Self {
             code: ResolverDiagnosticCode::UndefinedSymbol,
             message: format!("undefined symbol '{symbol}' in {module}.{function}"),
+            offset: None,
         }
     }
 
@@ -61,6 +63,7 @@ impl ResolverError {
             message: format!(
                 "private function '{symbol}' cannot be called from {module}.{function}"
             ),
+            offset: None,
         }
     }
 
@@ -68,6 +71,7 @@ impl ResolverError {
         Self {
             code: ResolverDiagnosticCode::DuplicateModule,
             message: format!("duplicate module definition '{module}'"),
+            offset: None,
         }
     }
 
@@ -75,6 +79,7 @@ impl ResolverError {
         Self {
             code: ResolverDiagnosticCode::UndefinedStructModule,
             message: format!("undefined struct module '{struct_module}' in {module}.{function}"),
+            offset: None,
         }
     }
 
@@ -89,6 +94,7 @@ impl ResolverError {
             message: format!(
                 "unknown struct field '{field}' for {struct_module} in {module}.{function}"
             ),
+            offset: None,
         }
     }
 
@@ -96,6 +102,7 @@ impl ResolverError {
         Self {
             code: ResolverDiagnosticCode::DuplicateProtocol,
             message: format!("duplicate protocol definition '{protocol}'"),
+            offset: None,
         }
     }
 
@@ -105,6 +112,7 @@ impl ResolverError {
             message: format!(
                 "duplicate protocol function '{function}/{arity}' in protocol '{protocol}'"
             ),
+            offset: None,
         }
     }
 
@@ -112,6 +120,7 @@ impl ResolverError {
         Self {
             code: ResolverDiagnosticCode::UnknownProtocol,
             message: format!("unknown protocol '{protocol}' for defimpl target '{target}'"),
+            offset: None,
         }
     }
 
@@ -119,6 +128,7 @@ impl ResolverError {
         Self {
             code: ResolverDiagnosticCode::DuplicateProtocolImpl,
             message: format!("duplicate defimpl for protocol '{protocol}' and target '{target}'"),
+            offset: None,
         }
     }
 
@@ -134,6 +144,7 @@ impl ResolverError {
             message: format!(
                 "invalid defimpl for protocol '{protocol}' target '{target}': {function}/{arity} {reason}"
             ),
+            offset: None,
         }
     }
 
@@ -143,6 +154,7 @@ impl ResolverError {
             message: format!(
                 "required module '{required_module}' is not defined for {module}; add the module or remove require"
             ),
+            offset: None,
         }
     }
 
@@ -152,6 +164,7 @@ impl ResolverError {
             message: format!(
                 "used module '{used_module}' is not defined for {module}; add the module or remove use"
             ),
+            offset: None,
         }
     }
 
@@ -167,6 +180,7 @@ impl ResolverError {
             message: format!(
                 "import filters exclude call '{function}/{arity}' in {module}; imported modules with this symbol: {imports}"
             ),
+            offset: None,
         }
     }
 
@@ -182,6 +196,7 @@ impl ResolverError {
             message: format!(
                 "ambiguous imported call '{function}/{arity}' in {module}; matches: {joined}"
             ),
+            offset: None,
         }
     }
 
@@ -196,7 +211,17 @@ impl ResolverError {
             message: format!(
                 "guard builtin '{builtin}/{arity}' is only allowed in guard expressions (when) in {module}.{function}"
             ),
+            offset: None,
         }
+    }
+
+    pub fn with_offset(mut self, offset: usize) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    pub fn offset(&self) -> Option<usize> {
+        self.offset
     }
 
     #[cfg(test)]
@@ -212,7 +237,15 @@ impl ResolverError {
 
 impl fmt::Display for ResolverError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code.as_str(), self.message)
+        match self.offset {
+            Some(offset) => write!(
+                f,
+                "[{}] {} at offset {offset}",
+                self.code.as_str(),
+                self.message
+            ),
+            None => write!(f, "[{}] {}", self.code.as_str(), self.message),
+        }
     }
 }
 
@@ -458,6 +491,19 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
+        );
+    }
+
+    #[test]
+    fn with_offset_appends_offset_without_changing_code_or_message() {
+        let error = ResolverError::undefined_symbol("missing", "Demo", "run").with_offset(37);
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedSymbol);
+        assert_eq!(error.message(), "undefined symbol 'missing' in Demo.run");
+        assert_eq!(error.offset(), Some(37));
+        assert_eq!(
+            error.to_string(),
+            "[E1001] undefined symbol 'missing' in Demo.run at offset 37"
         );
     }
 }

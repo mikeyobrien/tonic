@@ -35,11 +35,9 @@ end
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: [E1001] undefined symbol 'missing' in Demo.run
-"
-    );
+    assert!(stderr.contains("error: [E1001] undefined symbol 'missing' in Demo.run"));
+    assert!(stderr.contains("--> line 4, column 7"));
+    assert!(stderr.contains("4 |       missing()"));
 }
 
 #[test]
@@ -72,9 +70,7 @@ end
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: [E1001] undefined symbol 'missing' in Demo.run
-"
-    );
+    assert!(stderr.contains("error: [E1001] undefined symbol 'missing' in Demo.run"));
+    assert!(stderr.contains("--> line 3, column 11"));
+    assert!(stderr.contains("3 |     raise(missing())"));
 }

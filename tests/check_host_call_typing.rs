@@ -28,8 +28,7 @@ fn check_rejects_host_call_with_non_atom_key() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
 
-    assert_eq!(
-        stderr,
-        "error: [E2001] type mismatch: expected atom, found int at offset 47\n"
-    );
+    assert!(stderr.contains("error: [E2001] type mismatch: expected atom, found int at offset 47"));
+    assert!(stderr.contains("--> line 3, column 15"));
+    assert!(stderr.contains("3 |     host_call(1, 2)"));
 }

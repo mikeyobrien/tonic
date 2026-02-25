@@ -28,8 +28,9 @@ fn check_reports_non_exhaustive_case_when_wildcard_branch_is_missing() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
 
-    assert_eq!(
-        stderr,
-        "error: [E3002] non-exhaustive case expression: missing wildcard branch at offset 37\n"
-    );
+    assert!(stderr.contains(
+        "error: [E3002] non-exhaustive case expression: missing wildcard branch at offset 37"
+    ));
+    assert!(stderr.contains("--> line 3, column 5"));
+    assert!(stderr.contains("3 |     case value() do"));
 }

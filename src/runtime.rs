@@ -170,6 +170,13 @@ pub fn evaluate_entrypoint(program: &IrProgram) -> Result<RuntimeValue, RuntimeE
     evaluate_function(program, ENTRYPOINT, &[], 0)
 }
 
+pub fn evaluate_named_function(
+    program: &IrProgram,
+    function_name: &str,
+) -> Result<RuntimeValue, RuntimeError> {
+    evaluate_function(program, function_name, &[], 0)
+}
+
 fn evaluate_function(
     program: &IrProgram,
     function_name: &str,

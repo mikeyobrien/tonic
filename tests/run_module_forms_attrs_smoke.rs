@@ -56,8 +56,9 @@ fn check_rejects_unsupported_module_form_option() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: unsupported alias option 'via'; supported syntax: alias Module, as: Name at offset 32\n"
-    );
+    assert!(stderr.contains(
+        "error: unsupported alias option 'via'; supported syntax: alias Module, as: Name at offset 32"
+    ));
+    assert!(stderr.contains("--> line 2, column 15"));
+    assert!(stderr.contains("2 |   alias Math, via: M"));
 }
