@@ -82,6 +82,10 @@ fn fixture_contracts() -> Vec<(&'static str, &'static str)> {
             "examples/parity/04-patterns/pin_pattern_and_guard.tn",
             "20\n",
         ),
+        (
+            "examples/parity/05-functions/guard_builtins_parity.tn",
+            "{{:integer, :binary}, {{:list, {:map, {:nil, :other}}}, {:float, {:number, {:atom, {:tuple, :fallback}}}}}}\n",
+        ),
         ("examples/parity/06-control-flow/cond_branches.tn", "2\n"),
         ("examples/parity/06-control-flow/with_happy_path.tn", "30\n"),
         (

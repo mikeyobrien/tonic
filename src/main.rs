@@ -4,6 +4,7 @@ mod cache;
 mod cli_diag;
 mod deps;
 mod formatter;
+mod guard_builtins;
 mod interop;
 mod ir;
 mod lexer;

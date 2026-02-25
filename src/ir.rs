@@ -1,3 +1,4 @@
+use crate::guard_builtins;
 use crate::parser::{
     Ast, BinaryOp, Expr, ModuleForm, Parameter, Pattern, ProtocolFunctionSignature,
     ProtocolImplFunction,
@@ -1635,7 +1636,7 @@ fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
         "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
-    )
+    ) || guard_builtins::is_guard_builtin(callee)
 }
 
 #[cfg(test)]

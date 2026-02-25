@@ -1,3 +1,4 @@
+use crate::guard_builtins;
 use crate::parser::{Ast, BinaryOp, Expr, ModuleForm, ParameterAnnotation, Pattern};
 #[path = "typing_diag.rs"]
 mod diag;
@@ -618,6 +619,17 @@ fn infer_builtin_call_type(
     arg_types: &[Type],
     solver: &mut ConstraintSolver,
 ) -> Result<Option<Type>, TypingError> {
+    if let Some(expected_arity) = guard_builtins::guard_builtin_arity(callee) {
+        if arg_types.len() != expected_arity {
+            return Err(TypingError::new(format!(
+                "arity mismatch for {callee}: expected {expected_arity} args, found {}",
+                arg_types.len()
+            )));
+        }
+
+        return Ok(Some(Type::Bool));
+    }
+
     match callee {
         "ok" => {
             if arg_types.len() != 1 {

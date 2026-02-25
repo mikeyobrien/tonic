@@ -123,6 +123,15 @@ static TnVal tn_make_box(size_t id) {
 static int tn_runtime_is_truthy(TnVal value);
 static int tn_runtime_value_equal(TnVal left, TnVal right);
 static const char *tn_runtime_value_kind(TnVal value);
+static TnVal tn_runtime_guard_is_integer(TnVal value);
+static TnVal tn_runtime_guard_is_float(TnVal value);
+static TnVal tn_runtime_guard_is_number(TnVal value);
+static TnVal tn_runtime_guard_is_atom(TnVal value);
+static TnVal tn_runtime_guard_is_binary(TnVal value);
+static TnVal tn_runtime_guard_is_list(TnVal value);
+static TnVal tn_runtime_guard_is_tuple(TnVal value);
+static TnVal tn_runtime_guard_is_map(TnVal value);
+static TnVal tn_runtime_guard_is_nil(TnVal value);
 static void tn_render_value(FILE *out, TnVal value);
 
 static TnVal tn_runtime_fail(const char *message) {
@@ -395,6 +404,54 @@ static const char *tn_runtime_value_kind(TnVal value) {
     default:
       return "unknown";
   }
+}
+
+static TnVal tn_runtime_guard_is_integer(TnVal value) {
+  return tn_is_boxed(value) ? 0 : 1;
+}
+
+static TnVal tn_runtime_guard_is_float(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_FLOAT) ? 1 : 0;
+}
+
+static TnVal tn_runtime_guard_is_number(TnVal value) {
+  if (!tn_is_boxed(value)) {
+    return 1;
+  }
+
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_FLOAT) ? 1 : 0;
+}
+
+static TnVal tn_runtime_guard_is_atom(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_ATOM) ? 1 : 0;
+}
+
+static TnVal tn_runtime_guard_is_binary(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_STRING) ? 1 : 0;
+}
+
+static TnVal tn_runtime_guard_is_list(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && (obj->kind == TN_OBJ_LIST || obj->kind == TN_OBJ_KEYWORD)) ? 1 : 0;
+}
+
+static TnVal tn_runtime_guard_is_tuple(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_TUPLE) ? 1 : 0;
+}
+
+static TnVal tn_runtime_guard_is_map(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_MAP) ? 1 : 0;
+}
+
+static TnVal tn_runtime_guard_is_nil(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_NIL) ? 1 : 0;
 }
 
 static long tn_map_like_find_index(const TnObj *map_like, TnVal key) {

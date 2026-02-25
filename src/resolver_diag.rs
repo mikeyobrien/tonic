@@ -16,6 +16,7 @@ pub enum ResolverDiagnosticCode {
     UndefinedUseModule,
     ImportFilterExcludesCall,
     AmbiguousImportCall,
+    GuardBuiltinOutsideGuard,
 }
 
 impl ResolverDiagnosticCode {
@@ -35,6 +36,7 @@ impl ResolverDiagnosticCode {
             Self::UndefinedUseModule => "E1012",
             Self::ImportFilterExcludesCall => "E1013",
             Self::AmbiguousImportCall => "E1014",
+            Self::GuardBuiltinOutsideGuard => "E1015",
         }
     }
 }
@@ -179,6 +181,20 @@ impl ResolverError {
             code: ResolverDiagnosticCode::AmbiguousImportCall,
             message: format!(
                 "ambiguous imported call '{function}/{arity}' in {module}; matches: {joined}"
+            ),
+        }
+    }
+
+    pub fn guard_builtin_outside_guard(
+        builtin: &str,
+        arity: usize,
+        module: &str,
+        function: &str,
+    ) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::GuardBuiltinOutsideGuard,
+            message: format!(
+                "guard builtin '{builtin}/{arity}' is only allowed in guard expressions (when) in {module}.{function}"
             ),
         }
     }
@@ -424,6 +440,24 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1014] ambiguous imported call 'helper/1' in Demo; matches: Math, Helpers"
+        );
+    }
+
+    #[test]
+    fn guard_builtin_outside_guard_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::guard_builtin_outside_guard("is_integer", 1, "Demo", "run");
+
+        assert_eq!(
+            error.code(),
+            ResolverDiagnosticCode::GuardBuiltinOutsideGuard
+        );
+        assert_eq!(
+            error.message(),
+            "guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
         );
     }
 }

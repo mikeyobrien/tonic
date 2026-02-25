@@ -274,6 +274,14 @@ stdout = '''{1, 2}
 status = "active"
 
 [[example]]
+path = "examples/parity/05-functions/guard_builtins_parity.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{{:integer, :binary}, {{:list, {:map, {:nil, :other}}}, {:float, {:number, {:atom, {:tuple, :fallback}}}}}}
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/05-functions/multi_clause_pattern_dispatch.tn"
 check_exit = 0
 run_exit = 0

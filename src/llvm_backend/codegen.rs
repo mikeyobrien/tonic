@@ -1,4 +1,5 @@
 use super::{mangle_function_name, value_register, LlvmBackendError, LLVM_COMPATIBILITY_VERSION};
+use crate::guard_builtins;
 use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern};
 use crate::mir::{MirBinaryKind, MirBlock, MirFunction, MirInstruction, MirProgram, MirTerminator};
 use std::collections::{BTreeMap, BTreeSet};
@@ -63,6 +64,15 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "declare i64 @tn_runtime_keyword_append(i64, i64, i64)".to_string(),
         "declare i64 (i64, ...) @tn_runtime_host_call".to_string(),
         "declare i64 @tn_runtime_protocol_dispatch(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_integer(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_float(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_number(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_atom(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_binary(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_list(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_tuple(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_map(i64)".to_string(),
+        "declare i64 @tn_runtime_guard_is_nil(i64)".to_string(),
         "declare i64 @tn_runtime_concat(i64, i64)".to_string(),
         "declare i64 @tn_runtime_in(i64, i64)".to_string(),
         "declare i64 @tn_runtime_list_concat(i64, i64)".to_string(),
@@ -858,6 +868,20 @@ fn emit_builtin_call_from_registers(
     offset: usize,
     lines: &mut Vec<String>,
 ) -> Result<(), LlvmBackendError> {
+    if let Some(helper) = guard_builtins::llvm_helper_name(builtin) {
+        if rendered_args.len() != guard_builtins::GUARD_BUILTIN_ARITY {
+            return Err(LlvmBackendError::new(format!(
+                "llvm backend builtin {builtin} arity mismatch in function {function_name} at offset {offset}"
+            )));
+        }
+
+        lines.push(format!(
+            "  {dest} = call i64 @{helper}({})",
+            rendered_args[0]
+        ));
+        return Ok(());
+    }
+
     match builtin {
         "ok" => {
             if rendered_args.len() != 1 {

@@ -6,6 +6,7 @@ pub(crate) mod pattern;
 #[cfg(test)]
 mod tests;
 
+use crate::guard_builtins;
 use crate::runtime::RuntimeValue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +67,19 @@ pub(crate) fn evaluate_builtin_call(
     args: Vec<RuntimeValue>,
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
+    if guard_builtins::is_guard_builtin(name) {
+        let value = expect_single_builtin_arg(name, args, offset)?;
+        let result = guard_builtins::evaluate_guard_builtin(name, &value).ok_or_else(|| {
+            NativeRuntimeError::at_offset(
+                NativeRuntimeErrorCode::UnsupportedBuiltin,
+                format!("unsupported builtin call in runtime evaluator: {name}"),
+                offset,
+            )
+        })?;
+
+        return Ok(RuntimeValue::Bool(result));
+    }
+
     match name {
         "ok" => {
             let arg = expect_single_builtin_arg(name, args, offset)?;

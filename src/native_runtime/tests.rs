@@ -201,6 +201,79 @@ fn helper_errors_are_deterministic() {
 }
 
 #[test]
+fn guard_builtins_match_runtime_value_shapes() {
+    assert_eq!(
+        evaluate_builtin_call("is_integer", vec![RuntimeValue::Int(9)], 50)
+            .expect("is_integer should evaluate")
+            .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call("is_float", vec![RuntimeValue::Float("1.5".to_string())], 51)
+            .expect("is_float should evaluate")
+            .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call(
+            "is_number",
+            vec![RuntimeValue::Float("2.0".to_string())],
+            52
+        )
+        .expect("is_number should evaluate")
+        .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call("is_atom", vec![RuntimeValue::Atom("ok".to_string())], 53)
+            .expect("is_atom should evaluate")
+            .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call(
+            "is_binary",
+            vec![RuntimeValue::String("hi".to_string())],
+            54
+        )
+        .expect("is_binary should evaluate")
+        .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call("is_list", vec![RuntimeValue::Keyword(Vec::new())], 55)
+            .expect("is_list should evaluate")
+            .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call(
+            "is_tuple",
+            vec![RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Int(1)),
+                Box::new(RuntimeValue::Int(2))
+            )],
+            56,
+        )
+        .expect("is_tuple should evaluate")
+        .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call("is_map", vec![RuntimeValue::Map(Vec::new())], 57)
+            .expect("is_map should evaluate")
+            .render(),
+        "true"
+    );
+    assert_eq!(
+        evaluate_builtin_call("is_nil", vec![RuntimeValue::Nil], 58)
+            .expect("is_nil should evaluate")
+            .render(),
+        "true"
+    );
+}
+
+#[test]
 fn boundary_entrypoints_are_callable_via_abi() {
     let _add_sig: extern "C" fn(TCallContext) -> crate::native_abi::TCallResult = tonic_rt_add_int;
     let _cmp_sig: extern "C" fn(TCallContext) -> crate::native_abi::TCallResult =

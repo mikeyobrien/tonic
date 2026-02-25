@@ -1,3 +1,4 @@
+use crate::guard_builtins;
 use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern};
 use crate::mir::{MirBlock, MirFunction, MirTypedName};
 use std::collections::BTreeMap;
@@ -278,10 +279,19 @@ pub(super) fn emit_c_guard_condition(
                         }
                     }
                     IrCallTarget::Builtin { name } => {
-                        // Inline a simplified version for guards
-                        out.push_str(&format!(
-                            "  TnVal {reg} = tn_stub_abort(\"guard builtin {name}\");\n"
-                        ));
+                        if let Some(helper) = guard_builtins::c_helper_name(name) {
+                            if call_args.len() != guard_builtins::GUARD_BUILTIN_ARITY {
+                                return Err(CBackendError::new(format!(
+                                    "c backend guard builtin {name} arity mismatch in function {function_name} at offset {offset}"
+                                )));
+                            }
+
+                            out.push_str(&format!("  TnVal {reg} = {helper}({rendered_args});\n"));
+                        } else {
+                            out.push_str(&format!(
+                                "  TnVal {reg} = tn_stub_abort(\"guard builtin {name}\");\n"
+                            ));
+                        }
                     }
                 }
                 stack.push(reg);

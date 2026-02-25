@@ -1,3 +1,4 @@
+use crate::guard_builtins;
 use crate::lexer::{Span, Token, TokenKind};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -1603,7 +1604,7 @@ fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
         "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
-    )
+    ) || guard_builtins::is_guard_builtin(callee)
 }
 
 fn token_can_start_no_paren_arg(kind: TokenKind) -> bool {

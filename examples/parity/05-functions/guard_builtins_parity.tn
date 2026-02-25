@@ -1,0 +1,45 @@
+defmodule Demo do
+  def guarded(value) when is_integer(value) do
+    :integer
+  end
+
+  def guarded(value) when is_binary(value) do
+    :binary
+  end
+
+  def guarded(value) when is_list(value) do
+    :list
+  end
+
+  def guarded(value) when is_map(value) do
+    :map
+  end
+
+  def guarded(value) when is_nil(value) do
+    :nil
+  end
+
+  def guarded(_value) do
+    :other
+  end
+
+  def classify(value) do
+    case value do
+      _ when is_float(value) -> :float
+      _ when is_number(value) -> :number
+      _ when is_atom(value) -> :atom
+      _ when is_tuple(value) -> :tuple
+      _ -> :fallback
+    end
+  end
+
+  def run() do
+    {
+      {guarded(1), guarded("hi")},
+      {
+        {guarded(list(1)), {guarded(map(:ok, 1)), {guarded(nil), guarded(true)}}},
+        {classify(1.5), {classify(1), {classify(:ok), {classify(tuple(1, 2)), classify(list(1))}}}}
+      }
+    }
+  end
+end

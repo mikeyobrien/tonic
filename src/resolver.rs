@@ -1,3 +1,4 @@
+use crate::guard_builtins;
 use crate::parser::{Ast, Expr, ModuleForm, Pattern};
 use crate::resolver_diag::ResolverError;
 use std::collections::{HashMap, HashSet};
@@ -23,7 +24,7 @@ pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
             }
 
             if let Some(guard) = function.guard() {
-                resolve_expr(guard, &context)?;
+                resolve_guard_expr(guard, &context)?;
             }
 
             resolve_expr(&function.body, &context)?;
@@ -484,6 +485,18 @@ struct ResolveContext<'a> {
 }
 
 fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
+    resolve_expr_with_guard_context(expr, context, false)
+}
+
+fn resolve_guard_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
+    resolve_expr_with_guard_context(expr, context, true)
+}
+
+fn resolve_expr_with_guard_context(
+    expr: &Expr,
+    context: &ResolveContext<'_>,
+    in_guard_context: bool,
+) -> Result<(), ResolverError> {
     match expr {
         Expr::Int { .. }
         | Expr::Float { .. }
@@ -493,21 +506,21 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
         Expr::InterpolatedString { segments, .. } => {
             for segment in segments {
                 if let crate::parser::InterpolationSegment::Expr { expr } = segment {
-                    resolve_expr(expr, context)?;
+                    resolve_expr_with_guard_context(expr, context, in_guard_context)?;
                 }
             }
             Ok(())
         }
         Expr::Tuple { items, .. } | Expr::List { items, .. } => {
             for item in items {
-                resolve_expr(item, context)?;
+                resolve_expr_with_guard_context(item, context, in_guard_context)?;
             }
             Ok(())
         }
         Expr::Map { entries, .. } => {
             for entry in entries {
-                resolve_expr(entry.key(), context)?;
-                resolve_expr(entry.value(), context)?;
+                resolve_expr_with_guard_context(entry.key(), context, in_guard_context)?;
+                resolve_expr_with_guard_context(entry.value(), context, in_guard_context)?;
             }
             Ok(())
         }
@@ -531,20 +544,20 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
                         context.function_name,
                     ));
                 }
-                resolve_expr(&entry.value, context)?;
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
             }
             Ok(())
         }
         Expr::Keyword { entries, .. } => {
             for entry in entries {
-                resolve_expr(&entry.value, context)?;
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
             }
             Ok(())
         }
         Expr::MapUpdate { base, updates, .. } => {
-            resolve_expr(base, context)?;
+            resolve_expr_with_guard_context(base, context, in_guard_context)?;
             for entry in updates {
-                resolve_expr(&entry.value, context)?;
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
             }
             Ok(())
         }
@@ -562,7 +575,7 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
                 ));
             }
 
-            resolve_expr(base, context)?;
+            resolve_expr_with_guard_context(base, context, in_guard_context)?;
             for entry in updates {
                 if !context.module_graph.struct_has_field(module, &entry.key) {
                     return Err(ResolverError::unknown_struct_field(
@@ -572,78 +585,93 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
                         context.function_name,
                     ));
                 }
-                resolve_expr(&entry.value, context)?;
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
             }
             Ok(())
         }
-        Expr::FieldAccess { base, .. } => resolve_expr(base, context),
+        Expr::FieldAccess { base, .. } => {
+            resolve_expr_with_guard_context(base, context, in_guard_context)
+        }
         Expr::IndexAccess { base, index, .. } => {
-            resolve_expr(base, context)?;
-            resolve_expr(index, context)
+            resolve_expr_with_guard_context(base, context, in_guard_context)?;
+            resolve_expr_with_guard_context(index, context, in_guard_context)
         }
         Expr::Call { callee, args, .. } => {
-            match context.module_graph.resolve_call_target(
-                context.module_name,
-                callee,
-                Some(args.len()),
-            ) {
-                CallResolution::Found => {}
-                CallResolution::Missing => {
-                    if !callee.contains('.') {
-                        if let Some(error) = context.module_graph.import_filter_diagnostic(
-                            context.module_name,
-                            callee,
-                            args.len(),
-                        ) {
-                            return Err(error);
+            if guard_builtins::is_guard_builtin(callee) {
+                if !in_guard_context {
+                    return Err(ResolverError::guard_builtin_outside_guard(
+                        callee,
+                        guard_builtins::guard_builtin_arity(callee).unwrap_or(args.len()),
+                        context.module_name,
+                        context.function_name,
+                    ));
+                }
+            } else {
+                match context.module_graph.resolve_call_target(
+                    context.module_name,
+                    callee,
+                    Some(args.len()),
+                ) {
+                    CallResolution::Found => {}
+                    CallResolution::Missing => {
+                        if !callee.contains('.') {
+                            if let Some(error) = context.module_graph.import_filter_diagnostic(
+                                context.module_name,
+                                callee,
+                                args.len(),
+                            ) {
+                                return Err(error);
+                            }
                         }
+
+                        return Err(ResolverError::undefined_symbol(
+                            callee,
+                            context.module_name,
+                            context.function_name,
+                        ));
                     }
-
-                    return Err(ResolverError::undefined_symbol(
-                        callee,
-                        context.module_name,
-                        context.function_name,
-                    ));
-                }
-                CallResolution::Private => {
-                    return Err(ResolverError::private_function(
-                        callee,
-                        context.module_name,
-                        context.function_name,
-                    ));
+                    CallResolution::Private => {
+                        return Err(ResolverError::private_function(
+                            callee,
+                            context.module_name,
+                            context.function_name,
+                        ));
+                    }
                 }
             }
 
             for arg in args {
-                resolve_expr(arg, context)?;
+                resolve_expr_with_guard_context(arg, context, in_guard_context)?;
             }
 
             Ok(())
         }
-        Expr::Fn { body, .. } => resolve_expr(body, context),
+        Expr::Fn { body, .. } => resolve_expr_with_guard_context(body, context, in_guard_context),
         Expr::Invoke { callee, args, .. } => {
-            resolve_expr(callee, context)?;
+            resolve_expr_with_guard_context(callee, context, in_guard_context)?;
             for arg in args {
-                resolve_expr(arg, context)?;
+                resolve_expr_with_guard_context(arg, context, in_guard_context)?;
             }
             Ok(())
         }
-        Expr::Question { value, .. } | Expr::Unary { value, .. } => resolve_expr(value, context),
+        Expr::Question { value, .. } | Expr::Unary { value, .. } => {
+            resolve_expr_with_guard_context(value, context, in_guard_context)
+        }
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
-            resolve_expr(left, context)?;
-            resolve_expr(right, context)
+            resolve_expr_with_guard_context(left, context, in_guard_context)?;
+            resolve_expr_with_guard_context(right, context, in_guard_context)
         }
         Expr::Case {
             subject, branches, ..
         } => {
-            resolve_expr(subject, context)?;
+            resolve_expr_with_guard_context(subject, context, in_guard_context)?;
 
             for branch in branches {
                 resolve_pattern(branch.head(), context)?;
                 if let Some(guard) = branch.guard() {
-                    resolve_expr(guard, context)?;
+                    resolve_guard_expr(guard, context)?;
                 }
-                resolve_expr(branch.body(), context)?;
+                resolve_expr_with_guard_context(branch.body(), context, in_guard_context)?;
             }
 
             Ok(())
@@ -656,14 +684,16 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
         } => {
             for (pattern, generator) in generators {
                 resolve_pattern(pattern, context)?;
-                resolve_expr(generator, context)?;
+                resolve_expr_with_guard_context(generator, context, in_guard_context)?;
             }
             if let Some(into_expr) = into {
-                resolve_expr(into_expr, context)?;
+                resolve_expr_with_guard_context(into_expr, context, in_guard_context)?;
             }
-            resolve_expr(body, context)
+            resolve_expr_with_guard_context(body, context, in_guard_context)
         }
-        Expr::Group { inner, .. } => resolve_expr(inner, context),
+        Expr::Group { inner, .. } => {
+            resolve_expr_with_guard_context(inner, context, in_guard_context)
+        }
         Expr::Try {
             body,
             rescue,
@@ -671,25 +701,27 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             after,
             ..
         } => {
-            resolve_expr(body, context)?;
+            resolve_expr_with_guard_context(body, context, in_guard_context)?;
             for branch in rescue {
                 if let Some(guard) = branch.guard() {
-                    resolve_expr(guard, context)?;
+                    resolve_guard_expr(guard, context)?;
                 }
-                resolve_expr(branch.body(), context)?;
+                resolve_expr_with_guard_context(branch.body(), context, in_guard_context)?;
             }
             for branch in catch {
                 if let Some(guard) = branch.guard() {
-                    resolve_expr(guard, context)?;
+                    resolve_guard_expr(guard, context)?;
                 }
-                resolve_expr(branch.body(), context)?;
+                resolve_expr_with_guard_context(branch.body(), context, in_guard_context)?;
             }
             if let Some(after) = after {
-                resolve_expr(after, context)?;
+                resolve_expr_with_guard_context(after, context, in_guard_context)?;
             }
             Ok(())
         }
-        Expr::Raise { error, .. } => resolve_expr(error, context),
+        Expr::Raise { error, .. } => {
+            resolve_expr_with_guard_context(error, context, in_guard_context)
+        }
         Expr::Variable { .. } | Expr::Atom { .. } => Ok(()),
     }
 }
@@ -857,6 +889,34 @@ mod tests {
         let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
 
         resolve_ast(&ast).expect("resolver should accept protocol dispatch builtin calls");
+    }
+
+    #[test]
+    fn resolve_ast_accepts_guard_builtins_in_when_clauses() {
+        let source = "defmodule Demo do\n  def choose(value) when is_integer(value) do\n    value\n  end\n\n  def choose(value) do\n    value\n  end\n\n  def run() do\n    case 1 do\n      current when is_number(current) -> choose(current)\n      _ -> 0\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize guard builtin fixture");
+        let ast = parse_ast(&tokens).expect("parser should build guard builtin fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept guard builtins in when clauses");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_guard_builtin_outside_guard_with_code() {
+        let source = "defmodule Demo do\n  def run() do\n    is_integer(1)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize guard misuse fixture");
+        let ast = parse_ast(&tokens).expect("parser should build guard misuse fixture ast");
+
+        let error =
+            resolve_ast(&ast).expect_err("resolver should reject guard builtin call outside guard");
+
+        assert_eq!(
+            error.code(),
+            ResolverDiagnosticCode::GuardBuiltinOutsideGuard
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
+        );
     }
 
     #[test]

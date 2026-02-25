@@ -87,7 +87,7 @@ _Last updated: 2026-02-25_
 - [x] anonymous functions (`fn ... -> ... end`) (`examples/parity/05-functions/anonymous_fn_capture_invoke.tn`)
 - [x] capture shorthand (`&`, `&1`) (`examples/parity/05-functions/anonymous_fn_capture_invoke.tn`)
 - [x] closure capture and invocation (`fun.(x)`) (`tests/run_anon_fn_capture_smoke.rs`)
-- [~] guard builtin parity incomplete (`is_integer/1`, etc. not fully wired in compiled backend) (`src/c_backend/terminator.rs`)
+- [x] guard builtin parity (`is_integer/1`, `is_float/1`, `is_number/1`, `is_atom/1`, `is_binary/1`, `is_list/1`, `is_tuple/1`, `is_map/1`, `is_nil/1`) with guard-only diagnostics (`src/guard_builtins.rs`, `src/resolver.rs`, `src/native_runtime/mod.rs`, `src/c_backend/terminator.rs`, `tests/run_guard_builtin_parity_smoke.rs`, `examples/parity/05-functions/guard_builtins_parity.tn`)
 - [ ] multi-clause anonymous functions (`fn ...; ... end`) (`src/parser.rs`)
 - [ ] named function capture (`&Module.fun/arity`) (`src/parser.rs`)
 
@@ -166,8 +166,8 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 5. [x] **`import ... only:/except:` support**  
    `import Module, only: [...]` and `import Module, except: [...]` now parse, canonicalize, and resolve with deterministic malformed-payload/filtered/ambiguous diagnostics.
 
-6. [ ] **Guard builtin parity across backends**  
-   Fully support guard builtins like `is_integer/1`, `is_binary/1`, `is_list/1`, etc. in both interpreter and native/compiled paths.
+6. [x] **Guard builtin parity across backends**  
+   Guard builtins (`is_integer/1`, `is_float/1`, `is_number/1`, `is_atom/1`, `is_binary/1`, `is_list/1`, `is_tuple/1`, `is_map/1`, `is_nil/1`) now share a central contract and deterministic guard-only diagnostics (`E1015`) across resolver, typing, interpreter runtime, and native backend lowering.
 
 7. [ ] **Function capture parity** (`&Module.fun/arity`) + richer anonymous-function clauses  
    Widely used in pipelines and callback APIs; required for idiomatic functional composition.

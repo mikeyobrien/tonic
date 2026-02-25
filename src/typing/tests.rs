@@ -93,6 +93,35 @@ fn infer_types_accepts_protocol_dispatch_builtin_calls() {
 }
 
 #[test]
+fn infer_types_accepts_guard_builtin_calls_in_when_clauses() {
+    let source = "defmodule Demo do\n  def choose(value) when is_integer(value) do\n    value\n  end\n\n  def choose(value) do\n    value\n  end\n\n  def run() do\n    case 1 do\n      current when is_number(current) -> choose(current)\n      _ -> 0\n    end\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize guard builtin typing fixture");
+    let ast = parse_ast(&tokens).expect("parser should build guard builtin typing fixture ast");
+
+    let summary =
+        infer_types(&ast).expect("type inference should accept guard builtins in when clauses");
+
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
+}
+
+#[test]
+fn infer_types_rejects_guard_builtin_arity_mismatch() {
+    let source = "defmodule Demo do\n  def choose(value) when is_integer(value, 1) do\n    value\n  end\n\n  def choose(value) do\n    value\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize guard builtin arity mismatch fixture");
+    let ast =
+        parse_ast(&tokens).expect("parser should build guard builtin arity mismatch fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject guard arity mismatch");
+
+    assert_eq!(error.code(), None);
+    assert_eq!(
+        error.message(),
+        "arity mismatch for is_integer: expected 1 args, found 2"
+    );
+}
+
+#[test]
 fn infer_types_accepts_defprotocol_call_targets() {
     let source = "defmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  def run() do\n    Size.size(tuple(1, 2))\n  end\nend\n";
     let tokens = scan_tokens(source).expect("scanner should tokenize protocol call fixture");
