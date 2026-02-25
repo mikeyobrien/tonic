@@ -183,6 +183,16 @@ fn host_sys_cwd(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     Ok(RuntimeValue::String(cwd.display().to_string()))
 }
 
+fn host_sys_argv(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("sys_argv", args, 0)?;
+
+    let argv_list = std::env::args()
+        .map(RuntimeValue::String)
+        .collect::<Vec<_>>();
+
+    Ok(RuntimeValue::List(argv_list))
+}
+
 pub(super) fn register_system_host_functions(registry: &HostRegistry) {
     registry.register("sys_run", host_sys_run);
     registry.register("sys_path_exists", host_sys_path_exists);
@@ -191,4 +201,5 @@ pub(super) fn register_system_host_functions(registry: &HostRegistry) {
     registry.register("sys_env", host_sys_env);
     registry.register("sys_which", host_sys_which);
     registry.register("sys_cwd", host_sys_cwd);
+    registry.register("sys_argv", host_sys_argv);
 }

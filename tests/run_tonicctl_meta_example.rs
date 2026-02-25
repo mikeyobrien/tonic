@@ -23,7 +23,7 @@ fn run_tonicctl_example_emits_expected_plan_sections() {
 
     for needle in [
         ":tool => :tonicctl",
-        ":mode => :plan_only",
+        ":mode => :executable",
         ":doctor",
         ":gates",
         ":bench_strict",

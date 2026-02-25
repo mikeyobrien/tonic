@@ -94,35 +94,6 @@ fn run_nonexistent_file_is_runtime_error() {
     );
 }
 
-/// Test: run with extra argument returns usage error
-#[test]
-fn run_extra_arg_is_usage_error() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
-        .args(["run", "test.ex", "extra_arg"])
-        .output()
-        .expect("run command should execute");
-
-    // Extra arg is usage error (exit 64)
-    assert!(
-        !output.status.success(),
-        "expected failure for extra arg, got status {:?}",
-        output.status.code()
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(64),
-        "expected exit 64 for usage error, got {:?}",
-        output.status.code()
-    );
-
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("error: unexpected argument"),
-        "expected usage error about unexpected argument, got: {}",
-        stderr
-    );
-}
-
 /// Test: run with valid file succeeds
 #[test]
 fn run_valid_file_succeeds() {

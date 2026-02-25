@@ -2,24 +2,30 @@ defmodule TonicCtl do
   def run() do
     %{
       tool: :tonicctl,
-      mode: :plan_only,
+      mode: :executable,
       commands: [:doctor, :gates, :bench_strict, :release_dry_run],
       usage: usage(),
-      plans: %{
-        doctor: doctor_plan(),
-        gates: gates_plan(),
-        bench_strict: bench_strict_plan(),
-        release_dry_run: release_dry_run_plan()
-      },
       notes: notes()
     }
   end
 
+  def dispatch(command) do
+    case command do
+      "help" -> ok(run())
+      "doctor" -> execute_doctor(doctor_plan())
+      "gates" -> execute_gates(gates_plan())
+      "bench" -> execute_bench_strict(bench_strict_plan())
+      "release" -> execute_release_dry_run(release_dry_run_plan())
+      _ -> err("unknown command: #{command}")
+    end
+  end
+
   def usage() do
     [
-      "tonic run examples/apps/tonicctl",
-      "tonic check examples/apps/tonicctl",
-      "tonic compile examples/apps/tonicctl --out ./.tonic/build/tonicctl-plan"
+      "tonic run examples/apps/tonicctl doctor",
+      "tonic run examples/apps/tonicctl gates",
+      "tonic run examples/apps/tonicctl bench",
+      "tonic run examples/apps/tonicctl release"
     ]
   end
 
@@ -28,7 +34,7 @@ defmodule TonicCtl do
       %{check: :command, value: "cargo", required: true},
       %{check: :command, value: "rustc", required: true},
       %{check: :command, value: "python3", required: true},
-      %{check: :command, value: "cc|gcc|clang", required: true},
+      %{check: :command, value: "cc", required: true},
       %{check: :file, value: "scripts/native-gates.sh", required: true},
       %{check: :file, value: "benchmarks/native-compiler-suite.toml", required: true},
       %{check: :file, value: "benchmarks/native-compiled-suite.toml", required: true}
@@ -69,11 +75,11 @@ defmodule TonicCtl do
     %{
       preflight: [
         "git status --short",
-        "tonicctl doctor"
+        "tonic run examples/apps/tonicctl doctor"
       ],
       required_gates: [
-        "tonicctl gates",
-        "tonicctl bench --strict --target both"
+        "tonic run examples/apps/tonicctl gates",
+        "tonic run examples/apps/tonicctl bench"
       ],
       artifacts: [
         ".tonic/release/native-compiler-summary.json",
@@ -87,9 +93,63 @@ defmodule TonicCtl do
 
   def notes() do
     [
-      "This is a pure-tonic planner example: it emits deterministic execution plans.",
-      "Use the Rust tonicctl binary for command execution in CI/local automation.",
+      "This is a pure-tonic executable command dispatcher.",
       "Keep this example aligned with scripts/native-gates.sh and docs/release-checklist.md."
     ]
+  end
+
+  def execute_doctor(plan) do
+    with _results <- for step <- plan do
+      case step.check do
+        :command -> check_command(step.value)?
+        :file -> check_file(step.value)?
+        _ -> err("unknown check type")?
+      end
+    end do
+      ok(:ok)
+    end
+  end
+
+  def check_command(cmd) do
+    case System.which(cmd) do
+      nil -> err("doctor failed: required command '#{cmd}' not found")
+      path -> ok(:ok)
+    end
+  end
+
+  def check_file(path) do
+    case System.path_exists(path) do
+      false -> err("doctor failed: required file '#{path}' not found")
+      true -> ok(:ok)
+      _ -> err("unexpected result from path_exists")
+    end
+  end
+
+  def execute_gates(plan) do
+    with _results <- for command <- plan do execute_command(command)? end do
+      ok(:ok)
+    end
+  end
+
+  def execute_bench_strict(plan) do
+    with _results <- for target <- plan, command <- target.commands do execute_command(command)? end do
+      ok(:ok)
+    end
+  end
+
+  def execute_release_dry_run(plan) do
+    with _preflight <- for command <- plan.preflight do execute_command(command)? end,
+         _gates <- for command <- plan.required_gates do execute_command(command)? end,
+         _artifacts <- for file <- plan.artifacts do check_file(file)? end do
+      ok(:ok)
+    end
+  end
+
+  def execute_command(command) do
+    case System.run(command) do
+      %{exit_code: 0} -> ok(:ok)
+      %{exit_code: code, output: output} -> err("command failed with exit code #{code} and output:\n#{output}")
+      _ -> err("unexpected result from System.run")
+    end
   end
 end

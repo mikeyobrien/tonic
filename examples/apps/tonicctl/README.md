@@ -8,12 +8,17 @@ It demonstrates how a Tonic app can model:
 - strict benchmark policy flows (interpreter + compiled)
 - release dry-run checklist structure
 
-Because this is pure Tonic, it emits deterministic plan data instead of executing shell commands.
+With the addition of `System.argv()`, the tool now dispatches specific commands via CLI arguments. Because this is pure Tonic, it emits deterministic plan data instead of executing shell commands.
 
 ## Run
 
+You can dispatch various subcommands by passing arguments to the script:
+
 ```bash
-tonic run examples/apps/tonicctl
+tonic run examples/apps/tonicctl doctor
+tonic run examples/apps/tonicctl gates
+tonic run examples/apps/tonicctl bench --strict
+tonic run examples/apps/tonicctl release --dry-run
 ```
 
 ## Validate
@@ -26,7 +31,7 @@ tonic check examples/apps/tonicctl
 
 ```bash
 tonic compile examples/apps/tonicctl --out ./.tonic/build/tonicctl-plan
-./.tonic/build/tonicctl-plan
+./.tonic/build/tonicctl-plan doctor
 ```
 
 ## Notes

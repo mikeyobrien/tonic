@@ -68,6 +68,10 @@ fn common_path_commands_no_args_is_usage_error() {
 #[test]
 fn common_path_commands_extra_args_is_usage_error() {
     for cmd in PATH_COMMANDS {
+        if *cmd == "run" {
+            continue; // `run` accepts extra arguments for `System.argv()`
+        }
+
         let mut command = Command::new(get_tonic_bin());
         command.arg(cmd).arg("dummy_path.tn");
 

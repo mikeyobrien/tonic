@@ -695,7 +695,13 @@ static void tn_runtime_println(TnVal value) {
     );
     out.push_str("}\n\n");
 
-    out.push_str("static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n");
+    out.push_str(
+        "// Globals for sys_argv
+int tn_global_argc = 0;
+char **tn_global_argv = NULL;
+
+static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
+    );
     out.push_str("  if (count < 1) {\n");
     out.push_str(
         "    return tn_runtime_fail(\"host_call requires at least 1 argument (host function key)\");\n",
@@ -889,6 +895,25 @@ static void tn_runtime_println(TnVal value) {
     }
     free(args);
     return tn_runtime_const_string((TnVal)(intptr_t)cwd_buffer);
+  }
+
+  if (strcmp(key, "sys_argv") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: sys_argv expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    
+    // allocate list of strings for sys_argv
+    TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+    list_obj->as.list.len = tn_global_argc;
+    list_obj->as.list.items = tn_global_argc == 0 ? NULL : (TnVal *)calloc(tn_global_argc, sizeof(TnVal));
+    if (tn_global_argc > 0 && list_obj->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    for (int i = 0; i < tn_global_argc; i++) {
+      list_obj->as.list.items[i] = tn_runtime_const_string((TnVal)(intptr_t)tn_global_argv[i]);
+    }
+    return (TnVal)(intptr_t)list_obj;
   }
 
   if (strcmp(key, "sys_run") == 0) {

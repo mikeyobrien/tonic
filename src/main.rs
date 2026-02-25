@@ -119,10 +119,6 @@ fn handle_run(args: Vec<String>) -> i32 {
 
     let source_path = args[0].clone();
 
-    if let Some(argument) = args.get(1) {
-        return CliDiagnostic::usage(format!("unexpected argument '{argument}'")).emit();
-    }
-
     let mut profiler = profiling::PhaseProfiler::from_env("run");
 
     if native_artifact::is_native_artifact_path(&source_path) {
