@@ -36,7 +36,7 @@ Eliminate literal/call-surface compile failures preventing LLVM backend from com
 - Regression tests for these fixtures under LLVM compile mode.
 
 ## Acceptance Criteria
-- All listed fixtures match catalog `check_exit` under `compile --backend llvm`.
+- All listed fixtures match catalog `check_exit` under `tonic compile <path>` executable output.
 - No C compiler arity/signature errors in generated output for map access fixtures.
 - Existing compile diagnostics remain deterministic.
 

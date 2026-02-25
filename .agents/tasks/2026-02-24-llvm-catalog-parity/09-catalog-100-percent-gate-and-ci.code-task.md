@@ -24,7 +24,7 @@ Lock in full LLVM parity by enforcing catalog-derived compile/run contracts in l
 1. **Compile Contract Complete**
    - Given active catalog entries
    - When running parity gate
-   - Then all entries match `check_exit` under `compile --backend llvm`.
+   - Then all entries match `check_exit` under `tonic compile <path>` executable output.
 
 2. **Runtime Contract Complete**
    - Given entries with `check_exit = 0`

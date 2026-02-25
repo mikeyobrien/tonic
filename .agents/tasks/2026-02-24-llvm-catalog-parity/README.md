@@ -1,6 +1,6 @@
 # LLVM Catalog Parity to 100% — Task Sequence
 
-Goal: bring `tonic compile --backend llvm` + direct executable runtime to full parity with `examples/parity/catalog.toml`.
+Goal: bring `tonic compile <path>` executable output + direct executable runtime to full parity with `examples/parity/catalog.toml`.
 
 ## Baseline (2026-02-24 snapshot)
 
@@ -41,6 +41,6 @@ Top gap buckets:
 
 ## Definition of Done
 
-- All active catalog entries satisfy `check_exit` under `compile --backend llvm`.
+- All active catalog entries satisfy `check_exit` under `tonic compile <path>` executable output.
 - For all entries with `check_exit = 0`, direct executable output matches catalog `run_exit/stdout/stderr_contains`.
 - Deterministic parity report produced in CI and enforceable.
