@@ -546,6 +546,16 @@ fn handle_compile(args: Vec<String>) -> i32 {
         None => sidecar_base.clone(),
     };
 
+    // Reject --out paths that already exist as directories — the linker
+    // would fail with an opaque "Is a directory" error; surface it early.
+    if exe_path.is_dir() {
+        return CliDiagnostic::usage(format!(
+            "--out path '{}' is a directory",
+            exe_path.display()
+        ))
+        .emit();
+    }
+
     for path in [&ll_path, &c_path, &ir_path, &manifest_path, &exe_path] {
         if let Err(message) = ensure_artifact_parent(path) {
             return CliDiagnostic::failure(message).emit();

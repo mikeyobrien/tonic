@@ -194,6 +194,34 @@ fn compile_custom_out_path() {
 }
 
 #[test]
+fn compile_out_path_is_directory_is_usage_error() {
+    let temp_dir = common::unique_temp_dir("compile-out-is-dir");
+    let source_path = temp_dir.join("hello.tn");
+    fs::write(
+        &source_path,
+        "defmodule Hello do\n  def run() do\n    1\n  end\nend\n",
+    )
+    .unwrap();
+
+    // Create a directory at the --out path so the guard triggers.
+    let out_dir = temp_dir.join("existing-dir");
+    fs::create_dir_all(&out_dir).unwrap();
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
+    cmd.current_dir(&temp_dir);
+
+    cmd.arg("compile")
+        .arg("hello.tn")
+        .arg("--out")
+        .arg(out_dir.to_str().unwrap())
+        .assert()
+        .failure()
+        .code(64)
+        .stderr(contains("error: --out path"))
+        .stderr(contains("is a directory"));
+}
+
+#[test]
 fn compile_failure_invalid_source() {
     let temp_dir = common::unique_temp_dir("invalid-source");
     let source_path = temp_dir.join("invalid.tn");
