@@ -28,8 +28,8 @@ A small, end-to-end MVP de-risks toolchain, artifact emission, and backend archi
 ## Technical Requirements
 1. Add LLVM backend crate/module wiring (`inkwell` or equivalent) with pinned LLVM compatibility.
 2. Lower MIR subset (consts, add/sub/mul/div, cmp, call, return) to LLVM IR.
-3. Emit `.ll` and `.o` artifacts from `tonic compile --backend llvm`.
-4. Add command-line flag to select backend (`interp` default, `llvm` experimental).
+3. Emit `.ll` and `.o` artifacts from `tonic compile`.
+4. Ensure compile command routes through native backend path for MVP subset programs.
 5. Provide graceful unsupported-op diagnostics for out-of-subset programs.
 
 ## Dependencies
@@ -46,7 +46,7 @@ A small, end-to-end MVP de-risks toolchain, artifact emission, and backend archi
 
 1. **LLVM MVP Compiles Subset Correctly**
    - Given subset-compatible programs
-   - When compiling with `--backend llvm`
+   - When compiling with `tonic compile`
    - Then `.ll`/`.o` artifacts are produced successfully.
 
 2. **Unsupported Features Fail Deterministically**
@@ -54,10 +54,10 @@ A small, end-to-end MVP de-risks toolchain, artifact emission, and backend archi
    - When compiling with LLVM backend
    - Then compilation fails with actionable unsupported-op diagnostics.
 
-3. **CLI Backend Selection Works**
+3. **CLI Compile Contract Works for MVP Path**
    - Given compile command invocations
-   - When backend flag is omitted or set
-   - Then default behavior is preserved and LLVM mode is explicitly selected.
+   - When `tonic compile` is executed on subset fixtures
+   - Then native backend artifacts are produced with deterministic diagnostics.
 
 4. **Unit/Integration Tests Cover LLVM MVP Path**
    - Given LLVM codegen modules
