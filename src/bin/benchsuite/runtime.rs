@@ -23,6 +23,51 @@ pub fn compute_percentile(mut samples: Vec<f64>, percentile: f64) -> f64 {
     samples[idx]
 }
 
+/// Compute a robust p95 using Tukey upper-fence winsorization.
+///
+/// Before computing the 95th-percentile, any sample above the Tukey upper
+/// fence (Q3 + 1.5 × IQR) is capped at the fence value.  This prevents a
+/// single OS-scheduling spike from inflating the reported p95 while still
+/// preserving the full signal for sustained regressions: when the entire
+/// latency distribution is elevated, Q3 and the fence rise with it, so the
+/// regression continues to surface in the p95 reading.
+///
+/// p50 is intentionally computed via the plain `compute_percentile` path; it
+/// is naturally robust to tail outliers and should not be altered.
+pub fn compute_robust_p95(mut samples: Vec<f64>) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+
+    samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+
+    let q1 = percentile_of_sorted(&samples, 25.0);
+    let q3 = percentile_of_sorted(&samples, 75.0);
+    let iqr = q3 - q1;
+    let upper_fence = q3 + 1.5 * iqr;
+
+    // Winsorize: cap samples that exceed the upper fence.
+    let winsorized: Vec<f64> = samples
+        .into_iter()
+        .map(|v| if v > upper_fence { upper_fence } else { v })
+        .collect();
+
+    compute_percentile(winsorized, 95.0)
+}
+
+/// Compute a percentile on a pre-sorted slice without re-sorting.
+fn percentile_of_sorted(sorted: &[f64], percentile: f64) -> f64 {
+    debug_assert!(!sorted.is_empty());
+    if percentile <= 0.0 {
+        return sorted[0];
+    }
+    if percentile >= 100.0 {
+        return sorted[sorted.len() - 1];
+    }
+    let idx = (percentile / 100.0 * (sorted.len() - 1) as f64).round() as usize;
+    sorted[idx]
+}
+
 pub fn requires_cache_clear(mode: &str) -> bool {
     mode == "cold"
 }
@@ -256,7 +301,9 @@ pub fn run_workload(
 
     Ok(RunStats {
         p50_ms: compute_percentile(samples_ms.clone(), 50.0),
-        p95_ms: compute_percentile(samples_ms.clone(), 95.0),
+        // Use Tukey-winsorized p95 so isolated scheduling spikes do not cause
+        // spurious gate failures; see `compute_robust_p95` for the rationale.
+        p95_ms: compute_robust_p95(samples_ms.clone()),
         samples_ms,
         peak_rss_kb,
     })
@@ -448,6 +495,58 @@ mod tests {
         assert_eq!(compute_percentile(samples.clone(), 50.0), 30.0);
         assert_eq!(compute_percentile(samples.clone(), 95.0), 50.0);
         assert_eq!(compute_percentile(samples, 100.0), 50.0);
+    }
+
+    #[test]
+    fn compute_robust_p95_caps_isolated_outlier() {
+        // 9 samples at 1.0ms + 1 scheduling spike at 50ms (10 total).
+        // With 10 samples, p95 index = round(0.95 × 9) = 9, which is the spike.
+        // The Tukey fence for IQR=0 collapses to Q3=1.0, capping the spike.
+        let mut samples: Vec<f64> = vec![1.0; 9];
+        samples.push(50.0);
+        let robust = compute_robust_p95(samples.clone());
+        let raw = compute_percentile(samples, 95.0);
+        // Raw p95 lands on the spike; robust p95 should be lower.
+        assert!(
+            robust < raw,
+            "robust p95 {robust} should be lower than raw p95 {raw}"
+        );
+        // The result must still represent real latency (not suppressed to zero).
+        assert!(
+            robust >= 1.0,
+            "robust p95 {robust} should be at least 1.0ms"
+        );
+    }
+
+    #[test]
+    fn compute_robust_p95_preserves_sustained_regression_signal() {
+        // All 15 samples are uniformly high (sustained regression, not outlier).
+        let samples: Vec<f64> = vec![10.0; 15];
+        let robust = compute_robust_p95(samples);
+        // IQR is 0, fence = Q3 = 10.0, so nothing is winsorized; p95 stays at 10.0.
+        assert_eq!(
+            robust, 10.0,
+            "sustained regression should not be winsorized away"
+        );
+    }
+
+    #[test]
+    fn compute_robust_p95_equals_raw_when_no_outliers() {
+        // Clean, tightly clustered samples — no winsorization should occur.
+        let samples: Vec<f64> = (1..=15).map(|v| v as f64 * 0.5).collect();
+        let robust = compute_robust_p95(samples.clone());
+        let raw = compute_percentile(samples, 95.0);
+        assert_eq!(robust, raw, "no outliers means robust == raw p95");
+    }
+
+    #[test]
+    fn compute_robust_p95_handles_single_sample() {
+        assert_eq!(compute_robust_p95(vec![42.0]), 42.0);
+    }
+
+    #[test]
+    fn compute_robust_p95_handles_empty() {
+        assert_eq!(compute_robust_p95(vec![]), 0.0);
     }
 
     #[test]

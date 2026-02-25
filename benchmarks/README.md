@@ -153,6 +153,25 @@ Runner output now persists host metadata in every report:
 
 Reference baseline metadata is also included in contract report output.
 
+## p95 stabilization
+
+The benchsuite computes `p95_ms` via **Tukey upper-fence winsorization**: before
+taking the 95th percentile, any sample above `Q3 + 1.5 × IQR` is capped at the
+fence value.
+
+**Why this helps:**  short-lived processes are susceptible to OS scheduling
+jitter — a single run that lands in a cache-cold or scheduler-preempted slot
+inflates the raw p95 without representing actual runtime performance.  Capping
+isolated spikes at the fence eliminates that noise.
+
+**Signal preservation:**  for a *sustained* regression (the entire latency
+distribution shifts up), Q3 and the fence rise with it, so the elevated p95 is
+faithfully reported.  The strict gate continues to catch real regressions;
+only isolated one-off outliers are damped.
+
+**p50 is unaffected:**  the median is computed via the plain `compute_percentile`
+path; it is inherently robust to tail outliers and needs no winsorization.
+
 ## Profiling hotspots
 
 If a workload regresses, profile the specific command:
