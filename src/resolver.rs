@@ -50,6 +50,7 @@ struct ModuleGraph {
     modules: HashMap<String, HashMap<String, FunctionVisibility>>,
     structs: HashMap<String, HashSet<String>>,
     protocols: HashMap<String, ProtocolDefinition>,
+    imports: HashMap<String, Vec<ImportScope>>,
 }
 
 #[derive(Debug, Default)]
@@ -64,6 +65,56 @@ struct FunctionVisibility {
     private: bool,
 }
 
+#[derive(Debug, Clone)]
+struct ImportScope {
+    module: String,
+    only: Option<HashSet<(String, usize)>>,
+    except: HashSet<(String, usize)>,
+}
+
+impl ImportScope {
+    fn from_form(
+        module: &str,
+        only: &Option<Vec<crate::parser::ImportFunctionSpec>>,
+        except: &Option<Vec<crate::parser::ImportFunctionSpec>>,
+    ) -> Self {
+        let only = only.as_ref().map(|entries| {
+            entries
+                .iter()
+                .map(|entry| (entry.name.clone(), entry.arity))
+                .collect::<HashSet<_>>()
+        });
+
+        let except = except
+            .as_ref()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|entry| (entry.name.clone(), entry.arity))
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
+
+        Self {
+            module: module.to_string(),
+            only,
+            except,
+        }
+    }
+
+    fn allows(&self, name: &str, arity: usize) -> bool {
+        if self.except.contains(&(name.to_string(), arity)) {
+            return false;
+        }
+
+        if let Some(only) = &self.only {
+            return only.contains(&(name.to_string(), arity));
+        }
+
+        true
+    }
+}
+
 enum CallResolution {
     Found,
     Missing,
@@ -75,6 +126,7 @@ impl ModuleGraph {
         let mut modules: HashMap<String, HashMap<String, FunctionVisibility>> = HashMap::new();
         let mut structs: HashMap<String, HashSet<String>> = HashMap::new();
         let mut protocols: HashMap<String, ProtocolDefinition> = HashMap::new();
+        let mut imports: HashMap<String, Vec<ImportScope>> = HashMap::new();
 
         for module in &ast.modules {
             let symbols = modules.entry(module.name.clone()).or_default();
@@ -100,6 +152,20 @@ impl ModuleGraph {
                 }
             }) {
                 structs.insert(module.name.clone(), fields);
+            }
+
+            for form in &module.forms {
+                if let ModuleForm::Import {
+                    module: imported_module,
+                    only,
+                    except,
+                } = form
+                {
+                    imports
+                        .entry(module.name.clone())
+                        .or_default()
+                        .push(ImportScope::from_form(imported_module, only, except));
+                }
             }
         }
 
@@ -257,10 +323,16 @@ impl ModuleGraph {
             modules,
             structs,
             protocols,
+            imports,
         })
     }
 
-    fn resolve_call_target(&self, current_module: &str, callee: &str) -> CallResolution {
+    fn resolve_call_target(
+        &self,
+        current_module: &str,
+        callee: &str,
+        arity: Option<usize>,
+    ) -> CallResolution {
         if is_builtin_call_target(callee) {
             return CallResolution::Found;
         }
@@ -293,11 +365,98 @@ impl ModuleGraph {
             };
         }
 
-        self.modules
+        if self
+            .modules
             .get(current_module)
             .and_then(|symbols| symbols.get(callee))
-            .map(|_| CallResolution::Found)
-            .unwrap_or(CallResolution::Missing)
+            .is_some()
+        {
+            return CallResolution::Found;
+        }
+
+        if let Some(arity) = arity {
+            let mut candidates = self
+                .imports
+                .get(current_module)
+                .into_iter()
+                .flatten()
+                .filter_map(|scope| {
+                    let visibility = self
+                        .modules
+                        .get(&scope.module)
+                        .and_then(|symbols| symbols.get(callee))?;
+                    if !visibility.public || !scope.allows(callee, arity) {
+                        return None;
+                    }
+                    Some(scope.module.as_str())
+                })
+                .collect::<Vec<_>>();
+            candidates.sort_unstable();
+            candidates.dedup();
+
+            if candidates.len() == 1 {
+                return CallResolution::Found;
+            }
+        }
+
+        CallResolution::Missing
+    }
+
+    fn import_filter_diagnostic(
+        &self,
+        current_module: &str,
+        function_name: &str,
+        arity: usize,
+    ) -> Option<ResolverError> {
+        let scopes = self.imports.get(current_module)?;
+
+        let mut modules_with_symbol = Vec::new();
+        let mut allowed_modules = Vec::new();
+
+        for scope in scopes {
+            let Some(symbols) = self.modules.get(&scope.module) else {
+                continue;
+            };
+
+            let Some(visibility) = symbols.get(function_name) else {
+                continue;
+            };
+
+            if !visibility.public {
+                continue;
+            }
+
+            modules_with_symbol.push(scope.module.clone());
+
+            if scope.allows(function_name, arity) {
+                allowed_modules.push(scope.module.clone());
+            }
+        }
+
+        modules_with_symbol.sort_unstable();
+        modules_with_symbol.dedup();
+        allowed_modules.sort_unstable();
+        allowed_modules.dedup();
+
+        if allowed_modules.len() > 1 {
+            return Some(ResolverError::ambiguous_import_call(
+                function_name,
+                arity,
+                current_module,
+                &allowed_modules,
+            ));
+        }
+
+        if allowed_modules.is_empty() && !modules_with_symbol.is_empty() {
+            return Some(ResolverError::import_filter_excludes_call(
+                function_name,
+                arity,
+                current_module,
+                &modules_with_symbol,
+            ));
+        }
+
+        None
     }
 
     fn has_struct_module(&self, module_name: &str) -> bool {
@@ -423,12 +582,23 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             resolve_expr(index, context)
         }
         Expr::Call { callee, args, .. } => {
-            match context
-                .module_graph
-                .resolve_call_target(context.module_name, callee)
-            {
+            match context.module_graph.resolve_call_target(
+                context.module_name,
+                callee,
+                Some(args.len()),
+            ) {
                 CallResolution::Found => {}
                 CallResolution::Missing => {
+                    if !callee.contains('.') {
+                        if let Some(error) = context.module_graph.import_filter_diagnostic(
+                            context.module_name,
+                            callee,
+                            args.len(),
+                        ) {
+                            return Err(error);
+                        }
+                    }
+
                     return Err(ResolverError::undefined_symbol(
                         callee,
                         context.module_name,
@@ -615,6 +785,50 @@ mod tests {
         let ast = parse_ast(&tokens).expect("parser should build use fixture ast");
 
         resolve_ast(&ast).expect("resolver should accept use with a defined module target");
+    }
+
+    #[test]
+    fn resolve_ast_accepts_import_only_and_except_filters() {
+        let source = "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\n\n  def unsafe(value) do\n    value - 1\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [add: 2]\n\n  def run() do\n    add(20, 22)\n  end\nend\n\ndefmodule SafeDemo do\n  import Math, except: [unsafe: 1]\n\n  def run() do\n    add(2, 3)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize import filter fixture");
+        let ast = parse_ast(&tokens).expect("parser should build import filter fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept valid import only/except filters");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_calls_excluded_by_import_filters() {
+        let source = "defmodule Math do\n  def helper(value) do\n    value\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [other: 1]\n\n  def run() do\n    helper(1)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize filtered import fixture");
+        let ast = parse_ast(&tokens).expect("parser should build filtered import fixture ast");
+
+        let error =
+            resolve_ast(&ast).expect_err("resolver should reject calls excluded by import filters");
+
+        assert_eq!(
+            error.code(),
+            ResolverDiagnosticCode::ImportFilterExcludesCall
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1013] import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_rejects_ambiguous_calls_after_import_filtering() {
+        let source = "defmodule Math do\n  def helper(value) do\n    value\n  end\nend\n\ndefmodule Helpers do\n  def helper(value) do\n    value + 1\n  end\nend\n\ndefmodule Demo do\n  import Math, except: [other: 1]\n  import Helpers, only: [helper: 1]\n\n  def run() do\n    helper(1)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize ambiguous import fixture");
+        let ast = parse_ast(&tokens).expect("parser should build ambiguous import fixture ast");
+
+        let error = resolve_ast(&ast)
+            .expect_err("resolver should reject ambiguous calls after import filtering");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::AmbiguousImportCall);
+        assert_eq!(
+            error.to_string(),
+            "[E1014] ambiguous imported call 'helper/1' in Demo; matches: Helpers, Math"
+        );
     }
 
     #[test]

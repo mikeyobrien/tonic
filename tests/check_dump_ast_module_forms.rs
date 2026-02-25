@@ -57,3 +57,55 @@ fn check_dump_ast_includes_module_forms_and_attributes() {
         })
     );
 }
+
+#[test]
+fn check_dump_ast_includes_import_only_and_except_filters() {
+    let fixture_root = common::unique_fixture_root("check-dump-ast-import-filters");
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    fs::write(
+        examples_dir.join("module_forms_import_filters.tn"),
+        "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\n\n  def unsafe(value) do\n    value - 1\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [add: 2]\n  import Math, except: [unsafe: 1]\n\n  def run() do\n    add(20, 22)\n  end\nend\n",
+    )
+    .expect("fixture setup should write module forms source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args([
+            "check",
+            "examples/module_forms_import_filters.tn",
+            "--dump-ast",
+        ])
+        .output()
+        .expect("check command should run");
+
+    assert!(
+        output.status.success(),
+        "expected successful check invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let ast: serde_json::Value = serde_json::from_str(&stdout).expect("stdout should be json");
+
+    assert_eq!(
+        ast["modules"][1]["forms"],
+        serde_json::json!([
+            {"kind":"import","module":"Math","only":[{"name":"add","arity":2}]},
+            {"kind":"import","module":"Math","except":[{"name":"unsafe","arity":1}]}
+        ])
+    );
+    assert_eq!(
+        ast["modules"][1]["functions"][0]["body"],
+        serde_json::json!({
+            "kind":"call",
+            "callee":"Math.add",
+            "args":[
+                {"kind":"int","value":20},
+                {"kind":"int","value":22}
+            ]
+        })
+    );
+}

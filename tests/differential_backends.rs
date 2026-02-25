@@ -20,6 +20,7 @@ const PARITY_DIFF_SUBSET: &[&str] = &[
     "examples/parity/05-functions/multi_clause_pattern_dispatch.tn",
     "examples/parity/06-control-flow/cond_branches.tn",
     "examples/parity/06-control-flow/with_happy_path.tn",
+    "examples/parity/07-modules/import_only_except_semantics.tn",
     "examples/parity/07-modules/use_require_scoped_semantics.tn",
     "examples/parity/08-errors/question_operator_success.tn",
 ];

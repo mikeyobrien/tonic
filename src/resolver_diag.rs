@@ -14,6 +14,8 @@ pub enum ResolverDiagnosticCode {
     InvalidProtocolImpl,
     UndefinedRequiredModule,
     UndefinedUseModule,
+    ImportFilterExcludesCall,
+    AmbiguousImportCall,
 }
 
 impl ResolverDiagnosticCode {
@@ -31,6 +33,8 @@ impl ResolverDiagnosticCode {
             Self::InvalidProtocolImpl => "E1010",
             Self::UndefinedRequiredModule => "E1011",
             Self::UndefinedUseModule => "E1012",
+            Self::ImportFilterExcludesCall => "E1013",
+            Self::AmbiguousImportCall => "E1014",
         }
     }
 }
@@ -145,6 +149,36 @@ impl ResolverError {
             code: ResolverDiagnosticCode::UndefinedUseModule,
             message: format!(
                 "used module '{used_module}' is not defined for {module}; add the module or remove use"
+            ),
+        }
+    }
+
+    pub fn import_filter_excludes_call(
+        function: &str,
+        arity: usize,
+        module: &str,
+        import_modules: &[String],
+    ) -> Self {
+        let imports = import_modules.join(", ");
+        Self {
+            code: ResolverDiagnosticCode::ImportFilterExcludesCall,
+            message: format!(
+                "import filters exclude call '{function}/{arity}' in {module}; imported modules with this symbol: {imports}"
+            ),
+        }
+    }
+
+    pub fn ambiguous_import_call(
+        function: &str,
+        arity: usize,
+        module: &str,
+        candidates: &[String],
+    ) -> Self {
+        let joined = candidates.join(", ");
+        Self {
+            code: ResolverDiagnosticCode::AmbiguousImportCall,
+            message: format!(
+                "ambiguous imported call '{function}/{arity}' in {module}; matches: {joined}"
             ),
         }
     }
@@ -347,6 +381,49 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1012] used module 'Feature' is not defined for Demo; add the module or remove use"
+        );
+    }
+
+    #[test]
+    fn import_filter_excludes_call_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::import_filter_excludes_call(
+            "helper",
+            1,
+            "Demo",
+            &["Math".to_string(), "Helpers".to_string()],
+        );
+
+        assert_eq!(
+            error.code(),
+            ResolverDiagnosticCode::ImportFilterExcludesCall
+        );
+        assert_eq!(
+            error.message(),
+            "import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math, Helpers"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1013] import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math, Helpers"
+        );
+    }
+
+    #[test]
+    fn ambiguous_import_call_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::ambiguous_import_call(
+            "helper",
+            1,
+            "Demo",
+            &["Math".to_string(), "Helpers".to_string()],
+        );
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::AmbiguousImportCall);
+        assert_eq!(
+            error.message(),
+            "ambiguous imported call 'helper/1' in Demo; matches: Math, Helpers"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1014] ambiguous imported call 'helper/1' in Demo; matches: Math, Helpers"
         );
     }
 }

@@ -1,0 +1,28 @@
+defmodule Math do
+  def add(value, other) do
+    value + other
+  end
+
+  def unsafe(value) do
+    value - 1
+  end
+end
+
+defmodule Text do
+  def shout(value) do
+    value <> "!"
+  end
+
+  def drop(value) do
+    value
+  end
+end
+
+defmodule Demo do
+  import Math, only: [add: 2]
+  import Text, except: [drop: 1]
+
+  def run() do
+    tuple(add(20, 22), shout("ok"))
+  end
+end

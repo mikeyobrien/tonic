@@ -51,6 +51,10 @@ pub enum ModuleForm {
     },
     Import {
         module: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        only: Option<Vec<ImportFunctionSpec>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        except: Option<Vec<ImportFunctionSpec>>,
     },
     Require {
         module: String,
@@ -71,6 +75,12 @@ pub enum ModuleForm {
         target: String,
         functions: Vec<ProtocolImplFunction>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
+pub struct ImportFunctionSpec {
+    pub name: String,
+    pub arity: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -1000,7 +1010,103 @@ impl fmt::Display for ParserError {
 
 impl std::error::Error for ParserError {}
 
-fn canonicalize_module_call_targets(module: &mut Module) {
+fn collect_module_callable_signatures(
+    modules: &[Module],
+) -> HashMap<String, HashSet<(String, usize)>> {
+    let mut callable = HashMap::new();
+
+    for module in modules {
+        let mut signatures = HashSet::new();
+
+        for function in &module.functions {
+            if function.is_private() {
+                continue;
+            }
+
+            let max_arity = function.params.len();
+            let default_count = function
+                .params
+                .iter()
+                .rev()
+                .take_while(|param| param.has_default())
+                .count();
+            let min_arity = max_arity.saturating_sub(default_count);
+
+            for arity in min_arity..=max_arity {
+                signatures.insert((function.name.clone(), arity));
+            }
+        }
+
+        callable.insert(module.name.clone(), signatures);
+    }
+
+    callable
+}
+
+#[derive(Debug, Clone)]
+struct ImportScope {
+    module: String,
+    only: Option<HashSet<(String, usize)>>,
+    except: HashSet<(String, usize)>,
+    exported_signatures: Option<HashSet<(String, usize)>>,
+}
+
+impl ImportScope {
+    fn from_module_form(
+        module: &str,
+        only: &Option<Vec<ImportFunctionSpec>>,
+        except: &Option<Vec<ImportFunctionSpec>>,
+        callable_modules: &HashMap<String, HashSet<(String, usize)>>,
+    ) -> Self {
+        let only = only.as_ref().map(|entries| {
+            entries
+                .iter()
+                .map(|entry| (entry.name.clone(), entry.arity))
+                .collect::<HashSet<_>>()
+        });
+
+        let except = except
+            .as_ref()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|entry| (entry.name.clone(), entry.arity))
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
+
+        Self {
+            module: module.to_string(),
+            only,
+            except,
+            exported_signatures: callable_modules.get(module).cloned(),
+        }
+    }
+
+    fn allows(&self, name: &str, arity: usize) -> bool {
+        if self
+            .exported_signatures
+            .as_ref()
+            .is_some_and(|signatures| !signatures.contains(&(name.to_string(), arity)))
+        {
+            return false;
+        }
+        if self.except.contains(&(name.to_string(), arity)) {
+            return false;
+        }
+
+        if let Some(only) = &self.only {
+            return only.contains(&(name.to_string(), arity));
+        }
+
+        true
+    }
+}
+
+fn canonicalize_module_call_targets(
+    module: &mut Module,
+    callable_modules: &HashMap<String, HashSet<(String, usize)>>,
+) {
     // Scoped module-form semantics (parity task 04):
     // - `import Module` keeps existing behavior for unqualified call rewriting.
     // - `use Module` provides a limited compile-time effect by acting as an import fallback
@@ -1019,10 +1125,17 @@ fn canonicalize_module_call_targets(module: &mut Module) {
     let mut use_fallback_modules = Vec::new();
     for form in &module.forms {
         match form {
-            ModuleForm::Import { module } => {
-                if !imports.contains(module) {
-                    imports.push(module.clone());
-                }
+            ModuleForm::Import {
+                module,
+                only,
+                except,
+            } => {
+                imports.push(ImportScope::from_module_form(
+                    module,
+                    only,
+                    except,
+                    callable_modules,
+                ));
             }
             ModuleForm::Use { module } => {
                 if !use_fallback_modules.contains(module) {
@@ -1125,7 +1238,7 @@ fn canonicalize_module_call_targets(module: &mut Module) {
 fn canonicalize_expr_call_targets(
     expr: &mut Expr,
     aliases: &HashMap<String, String>,
-    imports: &[String],
+    imports: &[ImportScope],
     use_fallback_modules: &[String],
     local_functions: &HashSet<String>,
 ) {
@@ -1243,7 +1356,8 @@ fn canonicalize_expr_call_targets(
             );
         }
         Expr::Call { callee, args, .. } => {
-            for arg in args {
+            let arity = args.len();
+            for arg in args.iter_mut() {
                 canonicalize_expr_call_targets(
                     arg,
                     aliases,
@@ -1264,8 +1378,16 @@ fn canonicalize_expr_call_targets(
                 return;
             }
 
-            if imports.len() == 1 {
-                *callee = format!("{}.{}", imports[0], callee);
+            let mut import_matches = imports
+                .iter()
+                .filter(|scope| scope.allows(callee, arity))
+                .map(|scope| scope.module.as_str())
+                .collect::<Vec<_>>();
+            import_matches.sort_unstable();
+            import_matches.dedup();
+
+            if import_matches.len() == 1 {
+                *callee = format!("{}.{}", import_matches[0], callee);
             } else if imports.is_empty() && use_fallback_modules.len() == 1 {
                 *callee = format!("{}.{}", use_fallback_modules[0], callee);
             }
@@ -1541,6 +1663,11 @@ impl<'a> Parser<'a> {
             modules.push(self.parse_module()?);
         }
 
+        let callable_modules = collect_module_callable_signatures(&modules);
+        for module in &mut modules {
+            canonicalize_module_call_targets(module, &callable_modules);
+        }
+
         Ok(Ast { modules })
     }
 
@@ -1580,9 +1707,7 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::End, "end")?;
 
-        let mut module = Module::with_id(id, name, forms, attributes, functions);
-        canonicalize_module_call_targets(&mut module);
-        Ok(module)
+        Ok(Module::with_id(id, name, forms, attributes, functions))
     }
 
     fn parse_function(&mut self) -> Result<Function, ParserError> {
@@ -1647,7 +1772,7 @@ impl<'a> Parser<'a> {
 
         match form_name.as_str() {
             "alias" => self.parse_alias_form(),
-            "import" => self.parse_named_module_form("import"),
+            "import" => self.parse_import_form(),
             "require" => self.parse_named_module_form("require"),
             "use" => self.parse_named_module_form("use"),
             "defstruct" => self.parse_defstruct_form(),
@@ -1683,6 +1808,105 @@ impl<'a> Parser<'a> {
         Ok(ModuleForm::Alias { module, as_name })
     }
 
+    fn parse_import_form(&mut self) -> Result<ModuleForm, ParserError> {
+        let module = self.parse_module_reference("module name")?;
+        let mut only = None;
+        let mut except = None;
+
+        if self.match_kind(TokenKind::Comma) {
+            let option_token = self.expect_token(TokenKind::Ident, "import option")?;
+            let option_name = option_token.lexeme();
+            if !matches!(option_name, "only" | "except") {
+                return Err(ParserError::at_current(
+                    format!(
+                        "unsupported import option '{}'; supported syntax: import Module, only: [name: arity] or except: [name: arity]",
+                        option_name
+                    ),
+                    Some(option_token),
+                ));
+            }
+
+            self.expect(TokenKind::Colon, ":")?;
+            let entries = self.parse_import_filter_entries(option_name)?;
+
+            match option_name {
+                "only" => only = Some(entries),
+                "except" => except = Some(entries),
+                _ => unreachable!("validated import option"),
+            }
+
+            if self.match_kind(TokenKind::Comma) {
+                return Err(ParserError::at_current(
+                    "import accepts exactly one filter option (`only:` or `except:`)",
+                    self.current(),
+                ));
+            }
+        }
+
+        Ok(ModuleForm::Import {
+            module,
+            only,
+            except,
+        })
+    }
+
+    fn parse_import_filter_entries(
+        &mut self,
+        option_name: &str,
+    ) -> Result<Vec<ImportFunctionSpec>, ParserError> {
+        self.expect(TokenKind::LBracket, "[")?;
+
+        let mut entries = Vec::new();
+        let mut seen = HashSet::new();
+        if self.match_kind(TokenKind::RBracket) {
+            return Ok(entries);
+        }
+
+        loop {
+            let function_name = self
+                .expect_token(TokenKind::Ident, "import filter function name")
+                .map_err(|_| self.invalid_import_filter_shape(option_name))?
+                .lexeme()
+                .to_string();
+            self.expect(TokenKind::Colon, ":")
+                .map_err(|_| self.invalid_import_filter_shape(option_name))?;
+            let arity_token = self
+                .expect_token(TokenKind::Integer, "import filter arity")
+                .map_err(|_| self.invalid_import_filter_shape(option_name))?;
+            let arity = arity_token
+                .lexeme()
+                .parse::<usize>()
+                .map_err(|_| self.invalid_import_filter_shape(option_name))?;
+
+            if seen.insert((function_name.clone(), arity)) {
+                entries.push(ImportFunctionSpec {
+                    name: function_name,
+                    arity,
+                });
+            }
+
+            if self.match_kind(TokenKind::Comma) {
+                continue;
+            }
+
+            break;
+        }
+
+        self.expect(TokenKind::RBracket, "]")
+            .map_err(|_| self.invalid_import_filter_shape(option_name))?;
+
+        Ok(entries)
+    }
+
+    fn invalid_import_filter_shape(&self, option_name: &str) -> ParserError {
+        ParserError::at_current(
+            format!(
+                "invalid import {option_name} option; expected {option_name}: [name: arity, ...]"
+            ),
+            self.current(),
+        )
+    }
+
     fn parse_named_module_form(&mut self, form_name: &str) -> Result<ModuleForm, ParserError> {
         let module = self.parse_module_reference("module name")?;
 
@@ -1698,7 +1922,6 @@ impl<'a> Parser<'a> {
         }
 
         let form = match form_name {
-            "import" => ModuleForm::Import { module },
             "require" => ModuleForm::Require { module },
             "use" => ModuleForm::Use { module },
             _ => {
@@ -4163,18 +4386,56 @@ mod tests {
     }
 
     #[test]
-    fn parse_ast_rejects_unsupported_import_options_with_actionable_hint() {
+    fn parse_ast_supports_import_only_and_except_filters() {
         let tokens = scan_tokens(
-            "defmodule Demo do\n  import Math, only: [helper: 1]\n\n  def run() do\n    helper(1)\n  end\nend\n",
+            "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\n\n  def unsafe(value) do\n    value - 1\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [add: 2]\n\n  def run() do\n    add(20, 22)\n  end\nend\n\ndefmodule SafeDemo do\n  import Math, except: [unsafe: 1]\n\n  def run() do\n    add(2, 3)\n  end\nend\n",
         )
         .expect("scanner should tokenize parser fixture");
 
-        let error =
-            parse_ast(&tokens).expect_err("parser should reject unsupported import options");
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
 
         assert_eq!(
-            error.to_string(),
-            "unsupported import option 'only'; remove options from import for now at offset 33"
+            serde_json::to_value(&ast.modules[1].forms).expect("module forms should serialize"),
+            serde_json::json!([
+                {
+                    "kind":"import",
+                    "module":"Math",
+                    "only":[{"name":"add","arity":2}]
+                }
+            ])
+        );
+        assert_eq!(
+            serde_json::to_value(&ast.modules[1].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({"kind":"call","callee":"Math.add","args":[{"kind":"int","value":20},{"kind":"int","value":22}]})
+        );
+        assert_eq!(
+            serde_json::to_value(&ast.modules[2].forms).expect("module forms should serialize"),
+            serde_json::json!([
+                {
+                    "kind":"import",
+                    "module":"Math",
+                    "except":[{"name":"unsafe","arity":1}]
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_ast_rejects_malformed_import_filter_options() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  import Math, only: [helper]\n\n  def run() do\n    helper(1)\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let error = parse_ast(&tokens)
+            .expect_err("parser should reject malformed import filter option payload");
+
+        assert!(
+            error.to_string().starts_with(
+                "invalid import only option; expected only: [name: arity, ...] at offset"
+            ),
+            "unexpected parser error: {error}"
         );
     }
 
