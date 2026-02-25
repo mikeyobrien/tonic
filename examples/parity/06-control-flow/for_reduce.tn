@@ -1,6 +1,6 @@
 defmodule Demo do
   def run() do
-    for x <- [1, 2], into: [], reduce: 0 do
+    for x <- [1, 2, 3], reduce: 0 do
       acc -> acc + x
     end
   end

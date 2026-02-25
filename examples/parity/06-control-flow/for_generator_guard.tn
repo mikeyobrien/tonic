@@ -1,0 +1,7 @@
+defmodule Demo do
+  def run() do
+    for x when x > 2 <- [1, 2, 3, 4] do
+      x
+    end
+  end
+end

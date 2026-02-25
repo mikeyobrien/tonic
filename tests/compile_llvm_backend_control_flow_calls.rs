@@ -95,7 +95,7 @@ fn compile_llvm_backend_handles_control_flow_catalog_cfg_fixtures() {
 }
 
 #[test]
-fn compile_llvm_backend_handles_for_catalog_fixtures_and_reduce_failure_contract() {
+fn compile_llvm_backend_handles_for_catalog_fixtures_with_reduce_and_into_variants() {
     let repo_root = std::env::current_dir().expect("repo root should be readable");
     let temp_dir = common::unique_temp_dir("compile-llvm-for-catalog");
 
@@ -104,6 +104,7 @@ fn compile_llvm_backend_handles_for_catalog_fixtures_and_reduce_failure_contract
         "examples/parity/06-control-flow/for_multi_generator.tn",
         "examples/parity/06-control-flow/for_into.tn",
         "examples/parity/06-control-flow/for_into_runtime_fail.tn",
+        "examples/parity/06-control-flow/for_reduce.tn",
     ] {
         let source = repo_root.join(fixture);
         assert!(source.exists(), "expected fixture {fixture} to exist");
@@ -126,18 +127,18 @@ fn compile_llvm_backend_handles_for_catalog_fixtures_and_reduce_failure_contract
         );
     }
 
-    let unsupported_source = repo_root.join("examples/parity/06-control-flow/for_reduce_fail.tn");
+    let invalid_source = repo_root.join("examples/parity/06-control-flow/for_reduce_fail.tn");
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
         .args([
             "compile",
-            unsupported_source
+            invalid_source
                 .to_str()
                 .expect("fixture path should be utf8"),
         ])
         .assert()
         .failure()
         .stderr(contains(
-            "error: unsupported for option 'reduce'; remove options from for for now",
+            "error: for options 'reduce' and 'into' cannot be combined",
         ));
 }

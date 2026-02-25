@@ -24,6 +24,14 @@ pub(crate) struct IrFunction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct IrForGenerator {
+    pub(crate) pattern: IrPattern,
+    pub(crate) source_ops: Vec<IrOp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) guard_ops: Option<Vec<IrOp>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub(crate) enum IrOp {
     ConstInt {
@@ -80,8 +88,9 @@ pub(crate) enum IrOp {
         offset: usize,
     },
     For {
-        generators: Vec<(IrPattern, Vec<IrOp>)>,
+        generators: Vec<IrForGenerator>,
         into_ops: Option<Vec<IrOp>>,
+        reduce_ops: Option<Vec<IrOp>>,
         body_ops: Vec<IrOp>,
         offset: usize,
     },
@@ -1373,15 +1382,34 @@ fn lower_expr(
         Expr::For {
             generators,
             into,
+            reduce,
             body,
             offset,
             ..
         } => {
             let mut ir_generators = Vec::new();
-            for (pattern, generator) in generators {
-                let mut gen_ops = Vec::new();
-                lower_expr(generator, current_module, struct_definitions, &mut gen_ops)?;
-                ir_generators.push((lower_pattern(pattern)?, gen_ops));
+            for generator in generators {
+                let mut source_ops = Vec::new();
+                lower_expr(
+                    generator.source(),
+                    current_module,
+                    struct_definitions,
+                    &mut source_ops,
+                )?;
+
+                let guard_ops = if let Some(guard) = generator.guard() {
+                    let mut guard_ops = Vec::new();
+                    lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
+                    Some(guard_ops)
+                } else {
+                    None
+                };
+
+                ir_generators.push(IrForGenerator {
+                    pattern: lower_pattern(generator.pattern())?,
+                    source_ops,
+                    guard_ops,
+                });
             }
 
             let mut body_ops = Vec::new();
@@ -1396,9 +1424,19 @@ fn lower_expr(
                 None => None,
             };
 
+            let reduce_ops = match reduce {
+                Some(reduce_expr) => {
+                    let mut ops = Vec::new();
+                    lower_expr(reduce_expr, current_module, struct_definitions, &mut ops)?;
+                    Some(ops)
+                }
+                None => None,
+            };
+
             ops.push(IrOp::For {
                 generators: ir_generators,
                 into_ops,
+                reduce_ops,
                 body_ops,
                 offset: *offset,
             });
@@ -1833,15 +1871,16 @@ mod tests {
                 {
                     "op":"for",
                     "into_ops": null,
+                    "reduce_ops": null,
                     "generators":[
-                        [
-                            {"kind":"bind","name":"x"},
-                            [
+                        {
+                            "pattern":{"kind":"bind","name":"x"},
+                            "source_ops":[
                                 {"op":"const_int","value":1,"offset":51},
                                 {"op":"const_int","value":2,"offset":54},
                                 {"op":"call","callee":{"kind":"builtin","name":"list"},"argc":2,"offset":46}
                             ]
-                        ]
+                        }
                     ],
                     "body_ops":[
                         {"op":"load_variable","name":"x","offset":66},

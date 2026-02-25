@@ -98,14 +98,21 @@ fn collect_capture_names_from_ops(
             IrOp::For {
                 generators,
                 into_ops,
+                reduce_ops,
                 body_ops,
                 ..
             } => {
-                for (_, gen_ops) in generators {
-                    collect_capture_names_from_ops(gen_ops, params, captures);
+                for generator in generators {
+                    collect_capture_names_from_ops(&generator.source_ops, params, captures);
+                    if let Some(guard_ops) = &generator.guard_ops {
+                        collect_capture_names_from_ops(guard_ops, params, captures);
+                    }
                 }
                 if let Some(into) = into_ops {
                     collect_capture_names_from_ops(into, params, captures);
+                }
+                if let Some(reduce) = reduce_ops {
+                    collect_capture_names_from_ops(reduce, params, captures);
                 }
                 collect_capture_names_from_ops(body_ops, params, captures);
             }

@@ -1,0 +1,7 @@
+defmodule Demo do
+  def run() do
+    for x <- [1, 2], into: map(:seed, 0) do
+      {x, x * 10}
+    end
+  end
+end

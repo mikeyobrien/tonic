@@ -483,14 +483,23 @@ fn infer_expression_type(
         Expr::For {
             generators,
             into,
+            reduce,
             body,
             ..
         } => {
-            for (_, generator) in generators {
-                infer_expression_type(generator, current_module, signatures, solver)?;
+            for generator in generators {
+                infer_expression_type(generator.source(), current_module, signatures, solver)?;
+                if let Some(guard) = generator.guard() {
+                    let guard_type =
+                        infer_expression_type(guard, current_module, signatures, solver)?;
+                    solver.unify(Type::Bool, guard_type, Some(guard.offset()))?;
+                }
             }
             if let Some(into_expr) = into {
                 infer_expression_type(into_expr, current_module, signatures, solver)?;
+            }
+            if let Some(reduce_expr) = reduce {
+                infer_expression_type(reduce_expr, current_module, signatures, solver)?;
             }
             infer_expression_type(body, current_module, signatures, solver)?;
             Ok(Type::Dynamic)

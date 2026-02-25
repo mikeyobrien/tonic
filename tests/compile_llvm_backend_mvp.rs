@@ -66,23 +66,20 @@ fn compile_llvm_backend_emits_executable_artifact_for_subset_program() {
 }
 
 #[test]
-fn compile_llvm_backend_keeps_for_reduce_option_failure_deterministic() {
-    let temp_dir = common::unique_temp_dir("compile-llvm-unsupported");
-    let source_path = temp_dir.join("unsupported.tn");
+fn compile_llvm_backend_supports_for_reduce_option() {
+    let temp_dir = common::unique_temp_dir("compile-llvm-for-reduce");
+    let source_path = temp_dir.join("for_reduce.tn");
     fs::write(
         &source_path,
-        "defmodule Unsupported do\n  def run() do\n    for x <- [1, 2, 3], reduce: 0 do\n      x\n    end\n  end\nend\n",
+        "defmodule Demo do\n  def run() do\n    for x <- [1, 2, 3], reduce: 0 do\n      acc -> acc + x\n    end\n  end\nend\n",
     )
     .unwrap();
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "unsupported.tn"])
+        .args(["compile", "for_reduce.tn"])
         .assert()
-        .failure()
-        .stderr(contains(
-            "error: unsupported for option 'reduce'; remove options from for for now",
-        ));
+        .success();
 }
 
 #[test]

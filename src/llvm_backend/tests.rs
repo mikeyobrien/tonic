@@ -184,6 +184,7 @@ fn lower_mir_subset_lowers_for_legacy_instruction_to_runtime_helper() {
                     source: IrOp::For {
                         generators: vec![],
                         into_ops: None,
+                        reduce_ops: None,
                         body_ops: vec![],
                         offset: 21,
                     },

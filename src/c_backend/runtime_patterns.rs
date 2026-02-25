@@ -247,18 +247,29 @@ fn register_patterns_from_op(
         IrOp::For {
             generators,
             into_ops,
+            reduce_ops,
             body_ops,
             ..
         } => {
-            for (pattern, generator_ops) in generators {
-                register_pattern(pattern, patterns)?;
-                for generator_op in generator_ops {
+            for generator in generators {
+                register_pattern(&generator.pattern, patterns)?;
+                for generator_op in &generator.source_ops {
                     register_patterns_from_op(generator_op, patterns)?;
+                }
+                if let Some(guard_ops) = &generator.guard_ops {
+                    for guard_op in guard_ops {
+                        register_patterns_from_op(guard_op, patterns)?;
+                    }
                 }
             }
             if let Some(into_ops) = into_ops {
                 for into_op in into_ops {
                     register_patterns_from_op(into_op, patterns)?;
+                }
+            }
+            if let Some(reduce_ops) = reduce_ops {
+                for reduce_op in reduce_ops {
+                    register_patterns_from_op(reduce_op, patterns)?;
                 }
             }
             for body_op in body_ops {

@@ -1,9 +1,10 @@
-use crate::ir::{IrCallTarget, IrOp, IrPattern, IrProgram};
+use crate::ir::{IrCallTarget, IrForGenerator, IrOp, IrPattern, IrProgram};
 use crate::native_runtime;
 use std::collections::HashMap;
 use std::fmt;
 
 const ENTRYPOINT: &str = "Demo.run";
+const FOR_REDUCE_ACC_BINDING: &str = "__tonic_for_acc";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeClosure {
@@ -674,55 +675,133 @@ fn evaluate_ops(
             IrOp::For {
                 generators,
                 into_ops,
+                reduce_ops,
                 body_ops,
                 offset,
             } => {
-                let mut results = if let Some(ops) = into_ops {
-                    let mut into_stack = Vec::new();
-                    if let Some(ret) = evaluate_ops(program, ops, env, &mut into_stack)? {
-                        return Ok(Some(ret));
-                    }
-                    let into_val = pop_value(&mut into_stack, *offset, "into")?;
-                    match into_val {
-                        RuntimeValue::List(values) => values,
-                        other => {
+                enum ForCollector {
+                    List(Vec<RuntimeValue>),
+                    Map(Vec<(RuntimeValue, RuntimeValue)>),
+                    Keyword(Vec<(RuntimeValue, RuntimeValue)>),
+                    Reduce(RuntimeValue),
+                }
+
+                fn collect_for_value(
+                    collector: &mut ForCollector,
+                    value: RuntimeValue,
+                    offset: usize,
+                ) -> Result<(), RuntimeError> {
+                    match collector {
+                        ForCollector::List(values) => values.push(value),
+                        ForCollector::Map(entries) => {
+                            let RuntimeValue::Tuple(key, entry_value) = value else {
+                                return Err(RuntimeError::at_offset(
+                                    format!(
+                                        "for into map expects tuple {{key, value}}, found {}",
+                                        value.kind_label()
+                                    ),
+                                    offset,
+                                ));
+                            };
+
+                            let key = *key;
+                            let entry_value = *entry_value;
+                            if let Some(existing) =
+                                entries.iter_mut().find(|(entry_key, _)| *entry_key == key)
+                            {
+                                existing.1 = entry_value;
+                            } else {
+                                entries.push((key, entry_value));
+                            }
+                        }
+                        ForCollector::Keyword(entries) => {
+                            let RuntimeValue::Tuple(key, entry_value) = value else {
+                                return Err(RuntimeError::at_offset(
+                                    format!(
+                                        "for into keyword expects tuple {{key, value}}, found {}",
+                                        value.kind_label()
+                                    ),
+                                    offset,
+                                ));
+                            };
+
+                            let key = *key;
+                            if !matches!(key, RuntimeValue::Atom(_)) {
+                                return Err(RuntimeError::at_offset(
+                                    format!(
+                                        "for into keyword expects atom key, found {}",
+                                        key.kind_label()
+                                    ),
+                                    offset,
+                                ));
+                            }
+
+                            entries.push((key, *entry_value));
+                        }
+                        ForCollector::Reduce(_) => {
                             return Err(RuntimeError::at_offset(
-                                format!(
-                                    "for into destination must be a list, found {}",
-                                    other.kind_label()
-                                ),
-                                *offset,
+                                "for internal error: reduce collector cannot accept yielded values",
+                                offset,
                             ));
                         }
                     }
-                } else {
-                    Vec::new()
-                };
+
+                    Ok(())
+                }
 
                 fn evaluate_generators(
                     program: &IrProgram,
-                    generators: &[(IrPattern, Vec<IrOp>)],
+                    generators: &[IrForGenerator],
                     gen_idx: usize,
                     env: &mut HashMap<String, RuntimeValue>,
                     body_ops: &[IrOp],
                     offset: usize,
-                    results: &mut Vec<RuntimeValue>,
+                    collector: &mut ForCollector,
                 ) -> Result<Option<RuntimeValue>, RuntimeError> {
                     if gen_idx >= generators.len() {
-                        let mut iteration_stack = Vec::new();
-                        if let Some(ret) =
-                            evaluate_ops(program, body_ops, env, &mut iteration_stack)?
-                        {
-                            return Ok(Some(ret));
+                        match collector {
+                            ForCollector::Reduce(accumulator) => {
+                                let mut reduce_env = env.clone();
+                                reduce_env.insert(
+                                    FOR_REDUCE_ACC_BINDING.to_string(),
+                                    accumulator.clone(),
+                                );
+
+                                let mut reduce_stack = Vec::new();
+                                if let Some(ret) = evaluate_ops(
+                                    program,
+                                    body_ops,
+                                    &mut reduce_env,
+                                    &mut reduce_stack,
+                                )? {
+                                    return Ok(Some(ret));
+                                }
+
+                                let next_acc =
+                                    pop_value(&mut reduce_stack, offset, "for reduce body")?;
+                                *accumulator = next_acc;
+                            }
+                            _ => {
+                                let mut iteration_stack = Vec::new();
+                                if let Some(ret) =
+                                    evaluate_ops(program, body_ops, env, &mut iteration_stack)?
+                                {
+                                    return Ok(Some(ret));
+                                }
+                                let body_value =
+                                    pop_value(&mut iteration_stack, offset, "for body")?;
+                                collect_for_value(collector, body_value, offset)?;
+                            }
                         }
-                        let body_value = pop_value(&mut iteration_stack, offset, "for body")?;
-                        results.push(body_value);
+
                         return Ok(None);
                     }
 
-                    let (pattern, gen_ops) = &generators[gen_idx];
+                    let generator = &generators[gen_idx];
                     let mut gen_stack = Vec::new();
-                    if let Some(ret) = evaluate_ops(program, gen_ops, env, &mut gen_stack)? {
+                    if let Some(ret) =
+                        evaluate_ops(program, &generator.source_ops, env, &mut gen_stack)?
+                    {
                         return Ok(Some(ret));
                     }
                     let enumerable = pop_value(&mut gen_stack, offset, "for generator")?;
@@ -738,13 +817,19 @@ fn evaluate_ops(
 
                     for value in values {
                         let mut bindings = HashMap::new();
-                        if !match_pattern(&value, pattern, env, &mut bindings) {
+                        if !match_pattern(&value, &generator.pattern, env, &mut bindings) {
                             continue;
                         }
 
                         let mut iteration_env = env.clone();
                         for (name, bound_value) in bindings {
                             iteration_env.insert(name, bound_value);
+                        }
+
+                        if let Some(guard_ops) = &generator.guard_ops {
+                            if !evaluate_guard_ops(program, guard_ops, &mut iteration_env)? {
+                                continue;
+                            }
                         }
 
                         if let Some(ret) = evaluate_generators(
@@ -754,7 +839,7 @@ fn evaluate_ops(
                             &mut iteration_env,
                             body_ops,
                             offset,
-                            results,
+                            collector,
                         )? {
                             return Ok(Some(ret));
                         }
@@ -763,6 +848,44 @@ fn evaluate_ops(
                     Ok(None)
                 }
 
+                if into_ops.is_some() && reduce_ops.is_some() {
+                    return Err(RuntimeError::at_offset(
+                        "for options 'reduce' and 'into' cannot be combined",
+                        *offset,
+                    ));
+                }
+
+                let mut collector = if let Some(ops) = reduce_ops {
+                    let mut reduce_stack = Vec::new();
+                    if let Some(ret) = evaluate_ops(program, ops, env, &mut reduce_stack)? {
+                        return Ok(Some(ret));
+                    }
+                    let reduce_value = pop_value(&mut reduce_stack, *offset, "reduce")?;
+                    ForCollector::Reduce(reduce_value)
+                } else if let Some(ops) = into_ops {
+                    let mut into_stack = Vec::new();
+                    if let Some(ret) = evaluate_ops(program, ops, env, &mut into_stack)? {
+                        return Ok(Some(ret));
+                    }
+                    let into_val = pop_value(&mut into_stack, *offset, "into")?;
+                    match into_val {
+                        RuntimeValue::List(values) => ForCollector::List(values),
+                        RuntimeValue::Map(entries) => ForCollector::Map(entries),
+                        RuntimeValue::Keyword(entries) => ForCollector::Keyword(entries),
+                        other => {
+                            return Err(RuntimeError::at_offset(
+                                format!(
+                                    "for into destination must be a list, map, or keyword, found {}",
+                                    other.kind_label()
+                                ),
+                                *offset,
+                            ));
+                        }
+                    }
+                } else {
+                    ForCollector::List(Vec::new())
+                };
+
                 if let Some(ret) = evaluate_generators(
                     program,
                     generators,
@@ -770,12 +893,19 @@ fn evaluate_ops(
                     env,
                     body_ops,
                     *offset,
-                    &mut results,
+                    &mut collector,
                 )? {
                     return Ok(Some(ret));
                 }
 
-                stack.push(RuntimeValue::List(results));
+                let result = match collector {
+                    ForCollector::List(values) => RuntimeValue::List(values),
+                    ForCollector::Map(entries) => RuntimeValue::Map(entries),
+                    ForCollector::Keyword(entries) => RuntimeValue::Keyword(entries),
+                    ForCollector::Reduce(value) => value,
+                };
+
+                stack.push(result);
             }
         }
     }

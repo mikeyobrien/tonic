@@ -679,15 +679,22 @@ fn resolve_expr_with_guard_context(
         Expr::For {
             generators,
             into,
+            reduce,
             body,
             ..
         } => {
-            for (pattern, generator) in generators {
-                resolve_pattern(pattern, context)?;
-                resolve_expr_with_guard_context(generator, context, in_guard_context)?;
+            for generator in generators {
+                resolve_pattern(generator.pattern(), context)?;
+                resolve_expr_with_guard_context(generator.source(), context, in_guard_context)?;
+                if let Some(guard) = generator.guard() {
+                    resolve_guard_expr(guard, context)?;
+                }
             }
             if let Some(into_expr) = into {
                 resolve_expr_with_guard_context(into_expr, context, in_guard_context)?;
+            }
+            if let Some(reduce_expr) = reduce {
+                resolve_expr_with_guard_context(reduce_expr, context, in_guard_context)?;
             }
             resolve_expr_with_guard_context(body, context, in_guard_context)
         }

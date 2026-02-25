@@ -4,6 +4,8 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+const FOR_REDUCE_ACC_BINDING: &str = "__tonic_for_acc";
+
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Ast {
     pub modules: Vec<Module>,
@@ -488,8 +490,9 @@ pub enum Expr {
         id: NodeId,
         #[serde(skip_serializing)]
         offset: usize,
-        generators: Vec<(Pattern, Expr)>,
+        generators: Vec<ForGenerator>,
         into: Option<Box<Expr>>,
+        reduce: Option<Box<Expr>>,
         body: Box<Expr>,
     },
     Variable {
@@ -506,6 +509,44 @@ pub enum Expr {
         offset: usize,
         value: String,
     },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ForGenerator {
+    pattern: Pattern,
+    source: Expr,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guard: Option<Expr>,
+}
+
+impl ForGenerator {
+    fn new(pattern: Pattern, source: Expr, guard: Option<Expr>) -> Self {
+        Self {
+            pattern,
+            source,
+            guard,
+        }
+    }
+
+    pub fn pattern(&self) -> &Pattern {
+        &self.pattern
+    }
+
+    pub fn source(&self) -> &Expr {
+        &self.source
+    }
+
+    pub fn guard(&self) -> Option<&Expr> {
+        self.guard.as_ref()
+    }
+
+    fn source_mut(&mut self) -> &mut Expr {
+        &mut self.source
+    }
+
+    fn guard_mut(&mut self) -> Option<&mut Expr> {
+        self.guard.as_mut()
+    }
 }
 
 pub type CaseBranch = Branch<Pattern>;
@@ -894,8 +935,9 @@ impl Expr {
     fn for_comprehension(
         id: NodeId,
         offset: usize,
-        generators: Vec<(Pattern, Expr)>,
+        generators: Vec<ForGenerator>,
         into: Option<Expr>,
+        reduce: Option<Expr>,
         body: Expr,
     ) -> Self {
         Self::For {
@@ -903,6 +945,7 @@ impl Expr {
             offset,
             generators,
             into: into.map(Box::new),
+            reduce: reduce.map(Box::new),
             body: Box::new(body),
         }
     }
@@ -1479,21 +1522,40 @@ fn canonicalize_expr_call_targets(
         Expr::For {
             generators,
             into,
+            reduce,
             body,
             ..
         } => {
-            for (_, generator) in generators {
+            for generator in generators {
                 canonicalize_expr_call_targets(
-                    generator,
+                    generator.source_mut(),
+                    aliases,
+                    imports,
+                    use_fallback_modules,
+                    local_functions,
+                );
+                if let Some(guard) = generator.guard_mut() {
+                    canonicalize_expr_call_targets(
+                        guard,
+                        aliases,
+                        imports,
+                        use_fallback_modules,
+                        local_functions,
+                    );
+                }
+            }
+            if let Some(into_expr) = into {
+                canonicalize_expr_call_targets(
+                    into_expr,
                     aliases,
                     imports,
                     use_fallback_modules,
                     local_functions,
                 );
             }
-            if let Some(into_expr) = into {
+            if let Some(reduce_expr) = reduce {
                 canonicalize_expr_call_targets(
-                    into_expr,
+                    reduce_expr,
                     aliases,
                     imports,
                     use_fallback_modules,
@@ -2908,6 +2970,8 @@ impl<'a> Parser<'a> {
 
         let mut generators = Vec::new();
         let mut into_expr = None;
+        let mut reduce_expr = None;
+
         loop {
             if self.check(TokenKind::Ident)
                 && self
@@ -2917,16 +2981,33 @@ impl<'a> Parser<'a> {
                 let option_token = self.expect_token(TokenKind::Ident, "for option")?;
                 self.expect(TokenKind::Colon, ":")?;
 
-                if option_token.lexeme() == "into" {
-                    into_expr = Some(self.parse_expression()?);
-                } else {
-                    return Err(ParserError::at_current(
-                        format!(
-                            "unsupported for option '{}'; remove options from for for now",
-                            option_token.lexeme()
-                        ),
-                        Some(option_token),
-                    ));
+                match option_token.lexeme() {
+                    "into" => {
+                        if into_expr.is_some() {
+                            return Err(ParserError::at_current(
+                                "duplicate for option 'into'",
+                                Some(option_token),
+                            ));
+                        }
+                        into_expr = Some(self.parse_expression()?);
+                    }
+                    "reduce" => {
+                        if reduce_expr.is_some() {
+                            return Err(ParserError::at_current(
+                                "duplicate for option 'reduce'",
+                                Some(option_token),
+                            ));
+                        }
+                        reduce_expr = Some(self.parse_expression()?);
+                    }
+                    other => {
+                        return Err(ParserError::at_current(
+                            format!(
+                                "unsupported for option '{other}'; supported options are into and reduce"
+                            ),
+                            Some(option_token),
+                        ));
+                    }
                 }
 
                 if self.match_kind(TokenKind::Comma) {
@@ -2936,9 +3017,14 @@ impl<'a> Parser<'a> {
             }
 
             let pattern = self.parse_pattern()?;
+            let guard = if self.match_kind(TokenKind::When) {
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
             self.expect(TokenKind::LeftArrow, "<-")?;
             let generator = self.parse_expression()?;
-            generators.push((pattern, generator));
+            generators.push(ForGenerator::new(pattern, generator, guard));
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
@@ -2946,8 +3032,26 @@ impl<'a> Parser<'a> {
             break;
         }
 
+        if generators.is_empty() {
+            return Err(ParserError::at_current(
+                "for expects at least one generator",
+                self.current(),
+            ));
+        }
+
+        if reduce_expr.is_some() && into_expr.is_some() {
+            return Err(ParserError::at_current(
+                "for options 'reduce' and 'into' cannot be combined",
+                self.current(),
+            ));
+        }
+
         self.expect(TokenKind::Do, "do")?;
-        let body = self.parse_expression()?;
+        let body = if reduce_expr.is_some() {
+            self.parse_for_reduce_body(offset)?
+        } else {
+            self.parse_expression()?
+        };
         self.expect(TokenKind::End, "end")?;
 
         Ok(Expr::for_comprehension(
@@ -2955,7 +3059,40 @@ impl<'a> Parser<'a> {
             offset,
             generators,
             into_expr,
+            reduce_expr,
             body,
+        ))
+    }
+
+    fn parse_for_reduce_body(&mut self, offset: usize) -> Result<Expr, ParserError> {
+        let mut branches = Vec::new();
+
+        while !self.check(TokenKind::End) {
+            if self.is_at_end() {
+                return Err(self.expected("for reduce clause"));
+            }
+            branches.push(self.parse_case_branch()?);
+            if self.match_kind(TokenKind::Semicolon) {
+                continue;
+            }
+        }
+
+        if branches.is_empty() {
+            return Err(ParserError::at_current(
+                "for reduce expects at least one accumulator clause",
+                self.current(),
+            ));
+        }
+
+        Ok(Expr::case(
+            self.node_ids.next_expr(),
+            offset,
+            Expr::variable(
+                self.node_ids.next_expr(),
+                offset,
+                FOR_REDUCE_ACC_BINDING.to_string(),
+            ),
+            branches,
         ))
     }
 
@@ -4452,10 +4589,11 @@ mod tests {
             serde_json::json!({
                 "kind":"for",
                 "into": null,
+                "reduce": null,
                 "generators":[
-                    [
-                        {"kind":"bind","name":"x"},
-                        {
+                    {
+                        "pattern":{"kind":"bind","name":"x"},
+                        "source":{
                             "kind":"call",
                             "callee":"list",
                             "args":[
@@ -4464,7 +4602,7 @@ mod tests {
                                 {"kind":"int","value":3}
                             ]
                         }
-                    ]
+                    }
                 ],
                 "body":{
                     "kind":"binary",
@@ -4491,9 +4629,27 @@ mod tests {
     }
 
     #[test]
-    fn parse_ast_rejects_for_with_options() {
+    fn parse_ast_supports_for_reduce_and_generator_guards() {
         let tokens = scan_tokens(
-            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), reduce: [] do\n      x\n    end\n  end\nend\n",
+            "defmodule Demo do\n  def run() do\n    for x when x > 1 <- list(1, 2), reduce: 0 do\n      acc -> acc + x\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should support reduce/guard for forms");
+        let body_json = serde_json::to_value(&ast.modules[0].functions[0].body)
+            .expect("expression should serialize");
+
+        assert_eq!(body_json["kind"], "for");
+        assert_eq!(body_json["reduce"]["kind"], "int");
+        assert_eq!(body_json["reduce"]["value"], 0);
+        assert_eq!(body_json["generators"][0]["guard"]["kind"], "binary");
+        assert_eq!(body_json["body"]["kind"], "case");
+    }
+
+    #[test]
+    fn parse_ast_rejects_unsupported_for_options() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), uniq: true do\n      x\n    end\n  end\nend\n",
         )
         .expect("scanner should tokenize parser fixture");
 
@@ -4501,7 +4657,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "unsupported for option 'reduce'; remove options from for for now at offset 58"
+            "unsupported for option 'uniq'; supported options are into and reduce at offset 58"
         );
     }
 
@@ -4847,15 +5003,22 @@ mod tests {
                 id,
                 generators,
                 into,
+                reduce,
                 body,
                 ..
             } => {
                 ids.push(id.0.clone());
-                for (_, generator) in generators {
-                    collect_expr_ids(generator, ids);
+                for generator in generators {
+                    collect_expr_ids(generator.source(), ids);
+                    if let Some(guard) = generator.guard() {
+                        collect_expr_ids(guard, ids);
+                    }
                 }
                 if let Some(into_expr) = into {
                     collect_expr_ids(into_expr, ids);
+                }
+                if let Some(reduce_expr) = reduce {
+                    collect_expr_ids(reduce_expr, ids);
                 }
                 collect_expr_ids(body, ids);
             }

@@ -521,17 +521,49 @@ stdout = '''[0, 2, 4]
 status = "active"
 
 [[example]]
+path = "examples/parity/06-control-flow/for_into_map.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''%{:seed => 0, 1 => 10, 2 => 20}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_into_keyword.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[seed: 0, v: 1, v: 2]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_generator_guard.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[3, 4]
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/06-control-flow/for_into_runtime_fail.tn"
 check_exit = 0
 run_exit = 1
-stderr_contains = '''error: for into destination must be a list, found map'''
+stderr_contains = '''error: for into map expects tuple {key, value}, found int'''
+status = "active"
+
+[[example]]
+path = "examples/parity/06-control-flow/for_reduce.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''6
+'''
 status = "active"
 
 [[example]]
 path = "examples/parity/06-control-flow/for_reduce_fail.tn"
 check_exit = 1
 run_exit = 1
-stderr_contains = '''error: unsupported for option 'reduce'; remove options from for for now'''
+stderr_contains = '''error: for options 'reduce' and 'into' cannot be combined'''
 status = "active"
 
 [[example]]

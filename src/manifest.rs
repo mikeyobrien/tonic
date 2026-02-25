@@ -309,15 +309,21 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
         Expr::For {
             generators,
             into,
+            reduce,
             body,
             ..
         } => {
-            generators
-                .iter()
-                .any(|(_, generator)| expr_references_module(generator, module_name))
-                || into
+            generators.iter().any(|generator| {
+                expr_references_module(generator.source(), module_name)
+                    || generator
+                        .guard()
+                        .is_some_and(|guard| expr_references_module(guard, module_name))
+            }) || into
+                .as_ref()
+                .is_some_and(|into_expr| expr_references_module(into_expr, module_name))
+                || reduce
                     .as_ref()
-                    .is_some_and(|into_expr| expr_references_module(into_expr, module_name))
+                    .is_some_and(|reduce_expr| expr_references_module(reduce_expr, module_name))
                 || expr_references_module(body, module_name)
         }
         Expr::Group { inner, .. } => expr_references_module(inner, module_name),

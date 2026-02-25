@@ -139,10 +139,36 @@ fn for_generator_contracts() -> Vec<RuntimeFixtureContract> {
             expected_stderr_contains: None,
         },
         RuntimeFixtureContract {
+            fixture: "examples/parity/06-control-flow/for_into_map.tn",
+            expected_exit: 0,
+            expected_stdout: Some("%{:seed => 0, 1 => 10, 2 => 20}\n"),
+            expected_stderr_contains: None,
+        },
+        RuntimeFixtureContract {
+            fixture: "examples/parity/06-control-flow/for_into_keyword.tn",
+            expected_exit: 0,
+            expected_stdout: Some("[seed: 0, v: 1, v: 2]\n"),
+            expected_stderr_contains: None,
+        },
+        RuntimeFixtureContract {
+            fixture: "examples/parity/06-control-flow/for_generator_guard.tn",
+            expected_exit: 0,
+            expected_stdout: Some("[3, 4]\n"),
+            expected_stderr_contains: None,
+        },
+        RuntimeFixtureContract {
+            fixture: "examples/parity/06-control-flow/for_reduce.tn",
+            expected_exit: 0,
+            expected_stdout: Some("6\n"),
+            expected_stderr_contains: None,
+        },
+        RuntimeFixtureContract {
             fixture: "examples/parity/06-control-flow/for_into_runtime_fail.tn",
             expected_exit: 1,
             expected_stdout: Some(""),
-            expected_stderr_contains: Some("error: for into destination must be a list, found map"),
+            expected_stderr_contains: Some(
+                "error: for into map expects tuple {key, value}, found int",
+            ),
         },
     ]
 }

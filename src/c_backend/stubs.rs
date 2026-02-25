@@ -1,4 +1,4 @@
-use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern};
+use crate::ir::{CmpKind, IrCallTarget, IrForGenerator, IrOp, IrPattern};
 use crate::llvm_backend::mangle_function_name;
 use crate::mir::{MirInstruction, MirProgram};
 use std::collections::BTreeMap;
@@ -1301,6 +1301,8 @@ struct ForSpec {
     op: IrOp,
 }
 
+const FOR_REDUCE_ACC_BINDING: &str = "__tonic_for_acc";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StaticForValue {
     Int(i64),
@@ -1312,6 +1314,7 @@ enum StaticForValue {
     Tuple(Box<StaticForValue>, Box<StaticForValue>),
     List(Vec<StaticForValue>),
     Map(Vec<(StaticForValue, StaticForValue)>),
+    Keyword(Vec<(StaticForValue, StaticForValue)>),
 }
 
 impl StaticForValue {
@@ -1326,6 +1329,7 @@ impl StaticForValue {
             StaticForValue::Tuple(_, _) => "tuple",
             StaticForValue::List(_) => "list",
             StaticForValue::Map(_) => "map",
+            StaticForValue::Keyword(_) => "keyword",
         }
     }
 }
@@ -1547,13 +1551,45 @@ fn emit_static_for_value(
                 temp
             }
         }
+        StaticForValue::Keyword(entries) => {
+            if entries.is_empty() {
+                "tn_runtime_make_list_varargs((TnVal)0)".to_string()
+            } else {
+                let temp = format!("tn_for_value_{}", *temp_index);
+                *temp_index += 1;
+                let (first_key, first_value) = &entries[0];
+                let rendered_first_key = emit_static_for_value(first_key, out, temp_index);
+                let rendered_first_value = emit_static_for_value(first_value, out, temp_index);
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_keyword({rendered_first_key}, {rendered_first_value});\n"
+                ));
+
+                for (key, value) in entries.iter().skip(1) {
+                    let rendered_key = emit_static_for_value(key, out, temp_index);
+                    let rendered_value = emit_static_for_value(value, out, temp_index);
+                    out.push_str(&format!(
+                        "  {temp} = tn_runtime_keyword_append({temp}, {rendered_key}, {rendered_value});\n"
+                    ));
+                }
+
+                temp
+            }
+        }
     }
+}
+
+enum StaticForCollector {
+    List(Vec<StaticForValue>),
+    Map(Vec<(StaticForValue, StaticForValue)>),
+    Keyword(Vec<(StaticForValue, StaticForValue)>),
+    Reduce(StaticForValue),
 }
 
 fn evaluate_for_spec(for_op: &IrOp) -> Result<StaticForValue, StaticForEvalIssue> {
     let IrOp::For {
         generators,
         into_ops,
+        reduce_ops,
         body_ops,
         ..
     } = for_op
@@ -1563,40 +1599,64 @@ fn evaluate_for_spec(for_op: &IrOp) -> Result<StaticForValue, StaticForEvalIssue
         ));
     };
 
-    let mut results = if let Some(into_ops) = into_ops {
+    if into_ops.is_some() && reduce_ops.is_some() {
+        return Err(StaticForEvalIssue::Runtime(
+            "for options 'reduce' and 'into' cannot be combined".to_string(),
+        ));
+    }
+
+    let mut collector = if let Some(reduce_ops) = reduce_ops {
+        StaticForCollector::Reduce(evaluate_static_for_ops(reduce_ops, &BTreeMap::new())?)
+    } else if let Some(into_ops) = into_ops {
         match evaluate_static_for_ops(into_ops, &BTreeMap::new())? {
-            StaticForValue::List(values) => values,
+            StaticForValue::List(values) => StaticForCollector::List(values),
+            StaticForValue::Map(entries) => StaticForCollector::Map(entries),
+            StaticForValue::Keyword(entries) => StaticForCollector::Keyword(entries),
             other => {
                 return Err(StaticForEvalIssue::Runtime(format!(
-                    "for into destination must be a list, found {}",
+                    "for into destination must be a list, map, or keyword, found {}",
                     other.kind_label()
                 )));
             }
         }
     } else {
-        Vec::new()
+        StaticForCollector::List(Vec::new())
     };
 
-    evaluate_for_generators(generators, 0, &BTreeMap::new(), body_ops, &mut results)?;
+    evaluate_for_generators(generators, 0, &BTreeMap::new(), body_ops, &mut collector)?;
 
-    Ok(StaticForValue::List(results))
+    Ok(match collector {
+        StaticForCollector::List(values) => StaticForValue::List(values),
+        StaticForCollector::Map(entries) => StaticForValue::Map(entries),
+        StaticForCollector::Keyword(entries) => StaticForValue::Keyword(entries),
+        StaticForCollector::Reduce(value) => value,
+    })
 }
 
 fn evaluate_for_generators(
-    generators: &[(IrPattern, Vec<IrOp>)],
+    generators: &[IrForGenerator],
     index: usize,
     env: &BTreeMap<String, StaticForValue>,
     body_ops: &[IrOp],
-    results: &mut Vec<StaticForValue>,
+    collector: &mut StaticForCollector,
 ) -> Result<(), StaticForEvalIssue> {
     if index >= generators.len() {
-        let body_value = evaluate_static_for_ops(body_ops, env)?;
-        results.push(body_value);
+        match collector {
+            StaticForCollector::Reduce(accumulator) => {
+                let mut reduce_env = env.clone();
+                reduce_env.insert(FOR_REDUCE_ACC_BINDING.to_string(), accumulator.clone());
+                *accumulator = evaluate_static_for_ops(body_ops, &reduce_env)?;
+            }
+            _ => {
+                let body_value = evaluate_static_for_ops(body_ops, env)?;
+                collect_for_value(collector, body_value)?;
+            }
+        }
         return Ok(());
     }
 
-    let (pattern, generator_ops) = &generators[index];
-    let enumerable = evaluate_static_for_ops(generator_ops, env)?;
+    let generator = &generators[index];
+    let enumerable = evaluate_static_for_ops(&generator.source_ops, env)?;
     let values = match enumerable {
         StaticForValue::List(values) => values,
         other => {
@@ -1609,11 +1669,75 @@ fn evaluate_for_generators(
 
     for value in values {
         let mut iteration_env = env.clone();
-        if !apply_pattern_bindings(pattern, &value, &mut iteration_env)? {
+        if !apply_pattern_bindings(&generator.pattern, &value, &mut iteration_env)? {
             continue;
         }
 
-        evaluate_for_generators(generators, index + 1, &iteration_env, body_ops, results)?;
+        if let Some(guard_ops) = &generator.guard_ops {
+            let guard_value = evaluate_static_for_ops(guard_ops, &iteration_env)?;
+            let StaticForValue::Bool(guard_result) = guard_value else {
+                return Err(StaticForEvalIssue::Runtime(format!(
+                    "for generator guard must evaluate to bool, found {}",
+                    guard_value.kind_label()
+                )));
+            };
+
+            if !guard_result {
+                continue;
+            }
+        }
+
+        evaluate_for_generators(generators, index + 1, &iteration_env, body_ops, collector)?;
+    }
+
+    Ok(())
+}
+
+fn collect_for_value(
+    collector: &mut StaticForCollector,
+    value: StaticForValue,
+) -> Result<(), StaticForEvalIssue> {
+    match collector {
+        StaticForCollector::List(values) => values.push(value),
+        StaticForCollector::Map(entries) => {
+            let StaticForValue::Tuple(key, entry_value) = value else {
+                return Err(StaticForEvalIssue::Runtime(format!(
+                    "for into map expects tuple {{key, value}}, found {}",
+                    value.kind_label()
+                )));
+            };
+
+            let key = *key;
+            let entry_value = *entry_value;
+            if let Some(existing) = entries.iter_mut().find(|(entry_key, _)| *entry_key == key) {
+                existing.1 = entry_value;
+            } else {
+                entries.push((key, entry_value));
+            }
+        }
+        StaticForCollector::Keyword(entries) => {
+            let StaticForValue::Tuple(key, entry_value) = value else {
+                return Err(StaticForEvalIssue::Runtime(format!(
+                    "for into keyword expects tuple {{key, value}}, found {}",
+                    value.kind_label()
+                )));
+            };
+
+            let key = *key;
+            if !matches!(key, StaticForValue::Atom(_)) {
+                return Err(StaticForEvalIssue::Runtime(format!(
+                    "for into keyword expects atom key, found {}",
+                    key.kind_label()
+                )));
+            }
+
+            entries.push((key, *entry_value));
+        }
+        StaticForCollector::Reduce(_) => {
+            return Err(StaticForEvalIssue::Runtime(
+                "for internal error: reduce collector cannot accept yielded values".to_string(),
+            ));
+        }
     }
 
     Ok(())
@@ -1662,6 +1786,55 @@ fn evaluate_static_for_ops(
                 let left = pop_static_for_int(&mut stack, "div left")?;
                 stack.push(StaticForValue::Int(left / right));
             }
+            IrOp::Case { branches, .. } => {
+                let subject = pop_static_for_value(&mut stack, "case subject")?;
+                let mut matched_value = None;
+
+                for branch in branches {
+                    let mut branch_env = env.clone();
+                    if !apply_pattern_bindings(&branch.pattern, &subject, &mut branch_env)? {
+                        continue;
+                    }
+
+                    if let Some(guard_ops) = &branch.guard_ops {
+                        let guard_value = evaluate_static_for_ops(guard_ops, &branch_env)?;
+                        let StaticForValue::Bool(guard_result) = guard_value else {
+                            return Err(StaticForEvalIssue::Runtime(format!(
+                                "for helper case guard must evaluate to bool, found {}",
+                                guard_value.kind_label()
+                            )));
+                        };
+
+                        if !guard_result {
+                            continue;
+                        }
+                    }
+
+                    matched_value = Some(evaluate_static_for_ops(&branch.ops, &branch_env)?);
+                    break;
+                }
+
+                if let Some(value) = matched_value {
+                    stack.push(value);
+                } else {
+                    return Err(StaticForEvalIssue::Runtime(
+                        "no case clause matching".to_string(),
+                    ));
+                }
+            }
+            IrOp::CmpInt { kind, .. } => {
+                let right = pop_static_for_int(&mut stack, "cmp right")?;
+                let left = pop_static_for_int(&mut stack, "cmp left")?;
+                let result = match kind {
+                    CmpKind::Eq => left == right,
+                    CmpKind::NotEq => left != right,
+                    CmpKind::Lt => left < right,
+                    CmpKind::Lte => left <= right,
+                    CmpKind::Gt => left > right,
+                    CmpKind::Gte => left >= right,
+                };
+                stack.push(StaticForValue::Bool(result));
+            }
             IrOp::Call { callee, argc, .. } => {
                 let mut args = Vec::with_capacity(*argc);
                 for _ in 0..*argc {
@@ -1692,6 +1865,103 @@ fn evaluate_static_for_ops(
                                 )));
                             }
                             stack.push(StaticForValue::Map(Vec::new()));
+                        }
+                        "map" => {
+                            if args.len() != 2 {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper map expected 2 args, found {}",
+                                    args.len()
+                                )));
+                            }
+                            stack.push(StaticForValue::Map(vec![(
+                                args[0].clone(),
+                                args[1].clone(),
+                            )]));
+                        }
+                        "map_put" => {
+                            if args.len() != 3 {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper map_put expected 3 args, found {}",
+                                    args.len()
+                                )));
+                            }
+
+                            let mut entries = match args[0].clone() {
+                                StaticForValue::Map(entries) => entries,
+                                other => {
+                                    return Err(StaticForEvalIssue::Runtime(format!(
+                                        "for helper map_put expected map base, found {}",
+                                        other.kind_label()
+                                    )));
+                                }
+                            };
+
+                            let key = args[1].clone();
+                            let value = args[2].clone();
+                            if let Some(existing) =
+                                entries.iter_mut().find(|(entry_key, _)| *entry_key == key)
+                            {
+                                existing.1 = value;
+                            } else {
+                                entries.push((key, value));
+                            }
+                            stack.push(StaticForValue::Map(entries));
+                        }
+                        "keyword" => {
+                            if args.len() != 2 {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper keyword expected 2 args, found {}",
+                                    args.len()
+                                )));
+                            }
+                            stack.push(StaticForValue::Keyword(vec![(
+                                args[0].clone(),
+                                args[1].clone(),
+                            )]));
+                        }
+                        "keyword_append" => {
+                            if args.len() != 3 {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper keyword_append expected 3 args, found {}",
+                                    args.len()
+                                )));
+                            }
+
+                            let mut entries = match args[0].clone() {
+                                StaticForValue::Keyword(entries) => entries,
+                                other => {
+                                    return Err(StaticForEvalIssue::Runtime(format!(
+                                        "for helper keyword_append expected keyword base, found {}",
+                                        other.kind_label()
+                                    )));
+                                }
+                            };
+                            entries.push((args[1].clone(), args[2].clone()));
+                            stack.push(StaticForValue::Keyword(entries));
+                        }
+                        "is_integer" => {
+                            if args.len() != 1 {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper is_integer expected 1 args, found {}",
+                                    args.len()
+                                )));
+                            }
+                            stack.push(StaticForValue::Bool(matches!(
+                                args.first(),
+                                Some(StaticForValue::Int(_))
+                            )));
+                        }
+                        "is_number" => {
+                            if args.len() != 1 {
+                                return Err(StaticForEvalIssue::Unsupported(format!(
+                                    "for helper is_number expected 1 args, found {}",
+                                    args.len()
+                                )));
+                            }
+                            stack.push(StaticForValue::Bool(matches!(
+                                args.first(),
+                                Some(StaticForValue::Int(_) | StaticForValue::Float(_))
+                            )));
                         }
                         other => {
                             return Err(StaticForEvalIssue::Unsupported(format!(

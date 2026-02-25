@@ -100,9 +100,9 @@ _Last updated: 2026-02-25_
 - [x] `for` single generator (`examples/parity/06-control-flow/for_single_generator.tn`)
 - [x] `for` multi-generator (`examples/parity/06-control-flow/for_multi_generator.tn`)
 - [x] `for ... into: list` (`examples/parity/06-control-flow/for_into.tn`)
-- [~] `for ... into:` only supports list destination (`examples/parity/06-control-flow/for_into_runtime_fail.tn`)
-- [ ] `for reduce:` option (`examples/parity/06-control-flow/for_reduce_fail.tn`)
-- [ ] `for` generator guards (`when`) (`src/parser.rs`)
+- [x] `for ... into:` supports list/map/keyword destinations with deterministic tuple-shape constraints (`examples/parity/06-control-flow/for_into_map.tn`, `examples/parity/06-control-flow/for_into_keyword.tn`, `examples/parity/06-control-flow/for_into_runtime_fail.tn`)
+- [x] `for reduce:` option (`examples/parity/06-control-flow/for_reduce.tn`, `tests/run_comprehensions_smoke.rs`)
+- [x] `for` generator guards (`when`) (`examples/parity/06-control-flow/for_generator_guard.tn`, `tests/run_comprehensions_smoke.rs`)
 - [x] `try/rescue/catch/after` baseline (`tests/check_dump_ast_try_raise.rs`, `tests/run_try_raise_smoke.rs`)
 - [x] `raise` string forms (`raise("msg")`, `raise "msg"`) (`tests/check_dump_ast_try_raise.rs`)
 - [ ] exception struct/module raise forms (`raise FooError, message: ...`) (`src/parser.rs`)
@@ -142,7 +142,7 @@ _Last updated: 2026-02-25_
 
 - [ ] Idiomatic Elixir syntax examples (non-OTP) run without structural rewrites.
 - [x] Map key/value syntax fully matches Elixir (`=>` forms in literals + patterns).
-- [ ] Remaining function/control-flow syntax gaps are closed (`&Module.fun/arity`, `for reduce`, etc.).
+- [x] Remaining high-priority function/control-flow syntax gaps are closed (`&Module.fun/arity`, `for reduce`, generator guards, and non-list `into:`).
 - [ ] Module compile-time forms have semantic parity beyond parse-only stubs (`use`, `require`, attributes).
 - [ ] Diagnostics provide line/column + contextual snippets for syntax/type errors.
 - [ ] Docs generation parity exists (at least baseline extraction of `@doc` / `@moduledoc`).
@@ -172,8 +172,8 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 7. [x] **Function capture parity** (`&Module.fun/arity`, optional local `&fun/arity`) + richer anonymous-function clauses  
    Added parser/lowering support for named captures and multi-clause anonymous functions with guard-aware clause dispatch (`src/parser.rs`, `tests/check_capture_diagnostics.rs`, `tests/run_anon_fn_capture_smoke.rs`, `examples/parity/05-functions/function_capture_named_arity.tn`, `examples/parity/05-functions/function_capture_multi_clause_anon.tn`).
 
-8. [ ] **Comprehension parity completion** (`for reduce:`, generator guards, non-list collectables for `into:`)  
-   Necessary for data-transformation heavy application code.
+8. [x] **Comprehension parity completion** (`for reduce:`, generator guards, non-list collectables for `into:`)  
+   Added end-to-end parser/lowering/runtime support for guarded generators, `reduce:` accumulator mode, and map/keyword `into:` collection semantics with deterministic failure contracts (`src/parser.rs`, `src/ir.rs`, `src/runtime.rs`, `src/c_backend/stubs.rs`, `tests/run_comprehensions_smoke.rs`, `tests/runtime_llvm_strings_lists_for.rs`, `examples/parity/06-control-flow/for_reduce.tn`, `examples/parity/06-control-flow/for_generator_guard.tn`, `examples/parity/06-control-flow/for_into_map.tn`, `examples/parity/06-control-flow/for_into_keyword.tn`).
 
 9. [ ] **Exception form parity** (`raise Module, opts`, structured rescue matching)  
    Required for consistent production error design and interoperability with richer exception types.
