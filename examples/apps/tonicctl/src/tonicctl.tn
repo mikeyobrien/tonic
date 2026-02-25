@@ -1,0 +1,95 @@
+defmodule TonicCtl do
+  def run() do
+    %{
+      tool: :tonicctl,
+      mode: :plan_only,
+      commands: [:doctor, :gates, :bench_strict, :release_dry_run],
+      usage: usage(),
+      plans: %{
+        doctor: doctor_plan(),
+        gates: gates_plan(),
+        bench_strict: bench_strict_plan(),
+        release_dry_run: release_dry_run_plan()
+      },
+      notes: notes()
+    }
+  end
+
+  def usage() do
+    [
+      "tonic run examples/apps/tonicctl",
+      "tonic check examples/apps/tonicctl",
+      "tonic compile examples/apps/tonicctl --out ./.tonic/build/tonicctl-plan"
+    ]
+  end
+
+  def doctor_plan() do
+    [
+      %{check: :command, value: "cargo", required: true},
+      %{check: :command, value: "rustc", required: true},
+      %{check: :command, value: "python3", required: true},
+      %{check: :command, value: "cc|gcc|clang", required: true},
+      %{check: :file, value: "scripts/native-gates.sh", required: true},
+      %{check: :file, value: "benchmarks/native-compiler-suite.toml", required: true},
+      %{check: :file, value: "benchmarks/native-compiled-suite.toml", required: true}
+    ]
+  end
+
+  def gates_plan() do
+    [
+      "cargo fmt --all -- --check",
+      "cargo clippy --all-targets --all-features -- -D warnings",
+      "cargo test",
+      "./scripts/differential-enforce.sh",
+      "./scripts/llvm-catalog-parity-enforce.sh",
+      "./scripts/native-gates.sh"
+    ]
+  end
+
+  def bench_strict_plan() do
+    [
+      %{
+        target: :interpreter,
+        commands: [
+          "TONIC_BENCH_ENFORCE=0 TONIC_BENCH_JSON_OUT=.tonic/native-gates/native-compiler-summary.json TONIC_BENCH_MARKDOWN_OUT=.tonic/native-gates/native-compiler-summary.md ./scripts/bench-native-contract-enforce.sh benchmarks/native-compiler-suite.toml",
+          "./scripts/native-regression-policy.sh .tonic/native-gates/native-compiler-summary.json --mode strict"
+        ]
+      },
+      %{
+        target: :compiled,
+        commands: [
+          "TONIC_BENCH_ENFORCE=0 TONIC_BENCH_TARGET_NAME=compiled TONIC_BENCH_JSON_OUT=.tonic/native-gates/native-compiled-summary.json TONIC_BENCH_MARKDOWN_OUT=.tonic/native-gates/native-compiled-summary.md ./scripts/bench-native-contract-enforce.sh benchmarks/native-compiled-suite.toml",
+          "./scripts/native-regression-policy.sh .tonic/native-gates/native-compiled-summary.json --mode strict"
+        ]
+      }
+    ]
+  end
+
+  def release_dry_run_plan() do
+    %{
+      preflight: [
+        "git status --short",
+        "tonicctl doctor"
+      ],
+      required_gates: [
+        "tonicctl gates",
+        "tonicctl bench --strict --target both"
+      ],
+      artifacts: [
+        ".tonic/release/native-compiler-summary.json",
+        ".tonic/release/native-compiler-summary.md",
+        ".tonic/release/native-compiled-summary.json",
+        ".tonic/release/native-compiled-summary.md"
+      ],
+      policy: "tag cut is blocked unless both strict policy verdicts are pass"
+    }
+  end
+
+  def notes() do
+    [
+      "This is a pure-tonic planner example: it emits deterministic execution plans.",
+      "Use the Rust tonicctl binary for command execution in CI/local automation.",
+      "Keep this example aligned with scripts/native-gates.sh and docs/release-checklist.md."
+    ]
+  end
+end

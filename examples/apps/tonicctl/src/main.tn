@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    TonicCtl.run()
+  end
+end
