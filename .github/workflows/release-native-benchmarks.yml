@@ -18,23 +18,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Run native benchmark contract (artifact mode)
+      - name: Run alpha release readiness gate
         env:
-          TONIC_BENCH_JSON_OUT: .tonic/release/native-compiler-summary.json
-          TONIC_BENCH_MARKDOWN_OUT: .tonic/release/native-compiler-summary.md
-          TONIC_BENCH_ENFORCE: "0"
-        run: ./scripts/bench-native-contract-enforce.sh
-      - name: Evaluate regression policy (strict)
-        run: ./scripts/native-regression-policy.sh .tonic/release/native-compiler-summary.json --mode strict
-      - name: Run native compiled benchmark contract (artifact mode)
-        env:
-          TONIC_BENCH_JSON_OUT: .tonic/release/native-compiled-summary.json
-          TONIC_BENCH_MARKDOWN_OUT: .tonic/release/native-compiled-summary.md
-          TONIC_BENCH_TARGET_NAME: "compiled"
-          TONIC_BENCH_ENFORCE: "0"
-        run: ./scripts/bench-native-contract-enforce.sh benchmarks/native-compiled-suite.toml
-      - name: Evaluate compiled regression policy (strict)
-        run: ./scripts/native-regression-policy.sh .tonic/release/native-compiled-summary.json --mode strict
+          TONIC_ALPHA_ARTIFACT_DIR: .tonic/release
+        run: ./scripts/release-alpha-readiness.sh
       - name: Upload release benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4

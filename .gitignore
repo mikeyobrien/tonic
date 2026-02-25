@@ -13,3 +13,6 @@ devenv.local.yaml
 
 # ralph state directory
 .ralph/
+
+# agent planning/scratch artifacts
+.agents/
