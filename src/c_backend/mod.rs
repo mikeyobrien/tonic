@@ -54,8 +54,8 @@ pub(crate) fn lower_mir_to_c(mir: &MirProgram) -> Result<String, CBackendError> 
     let mut out = String::new();
 
     emit_header(&mut out);
-    emit_runtime_stubs(mir, &mut out)?;
     emit_forward_declarations(&groups, mir, &clause_symbols, &callable_symbols, &mut out);
+    emit_runtime_stubs(mir, &mut out)?;
 
     for group in &groups {
         let use_dispatcher = group_requires_dispatcher(group, mir);

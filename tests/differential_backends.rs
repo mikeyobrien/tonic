@@ -18,6 +18,7 @@ const PARITY_DIFF_SUBSET: &[&str] = &[
     "examples/parity/04-patterns/case_list_bind.tn",
     "examples/parity/04-patterns/pin_pattern_and_guard.tn",
     "examples/parity/05-functions/multi_clause_pattern_dispatch.tn",
+    "examples/parity/05-functions/function_capture_named_arity.tn",
     "examples/parity/05-functions/guard_builtins_parity.tn",
     "examples/parity/06-control-flow/cond_branches.tn",
     "examples/parity/06-control-flow/with_happy_path.tn",

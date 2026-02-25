@@ -258,6 +258,22 @@ stdout = '''{10, 6}
 status = "active"
 
 [[example]]
+path = "examples/parity/05-functions/function_capture_named_arity.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/05-functions/function_capture_multi_clause_anon.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{42, {7, 0}}
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/05-functions/default_args.tn"
 check_exit = 0
 run_exit = 0

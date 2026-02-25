@@ -1,0 +1,25 @@
+defmodule Math do
+  def add(left, right) do
+    left + right
+  end
+end
+
+defmodule Demo do
+  def run() do
+    tuple(
+      (&Math.add/2).(20, 22),
+      tuple(
+        (fn
+          {:ok, value} when is_integer(value) -> value
+          {:ok, _} -> -1
+          _ -> 0
+        end).({:ok, 7}),
+        (fn
+          {:ok, value} when is_integer(value) -> value
+          {:ok, _} -> -1
+          _ -> 0
+        end).(:error)
+      )
+    )
+  end
+end

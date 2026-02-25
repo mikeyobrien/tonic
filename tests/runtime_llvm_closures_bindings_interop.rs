@@ -103,6 +103,10 @@ fn fixture_contracts() -> Vec<(&'static str, &'static str)> {
             "examples/parity/05-functions/anonymous_fn_capture_invoke.tn",
             "{10, 6}\n",
         ),
+        (
+            "examples/parity/05-functions/function_capture_named_arity.tn",
+            "42\n",
+        ),
         ("examples/parity/06-control-flow/cond_branches.tn", "2\n"),
         (
             "examples/parity/08-errors/host_call_and_protocol_dispatch.tn",

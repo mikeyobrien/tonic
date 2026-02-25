@@ -88,8 +88,8 @@ _Last updated: 2026-02-25_
 - [x] capture shorthand (`&`, `&1`) (`examples/parity/05-functions/anonymous_fn_capture_invoke.tn`)
 - [x] closure capture and invocation (`fun.(x)`) (`tests/run_anon_fn_capture_smoke.rs`)
 - [x] guard builtin parity (`is_integer/1`, `is_float/1`, `is_number/1`, `is_atom/1`, `is_binary/1`, `is_list/1`, `is_tuple/1`, `is_map/1`, `is_nil/1`) with guard-only diagnostics (`src/guard_builtins.rs`, `src/resolver.rs`, `src/native_runtime/mod.rs`, `src/c_backend/terminator.rs`, `tests/run_guard_builtin_parity_smoke.rs`, `examples/parity/05-functions/guard_builtins_parity.tn`)
-- [ ] multi-clause anonymous functions (`fn ...; ... end`) (`src/parser.rs`)
-- [ ] named function capture (`&Module.fun/arity`) (`src/parser.rs`)
+- [x] multi-clause anonymous functions (`fn ...; ... end`) (`src/parser.rs`, `tests/run_anon_fn_capture_smoke.rs`, `examples/parity/05-functions/function_capture_multi_clause_anon.tn`)
+- [x] named function capture (`&Module.fun/arity`, plus local `&fun/arity`) (`src/parser.rs`, `tests/check_capture_diagnostics.rs`, `tests/run_anon_fn_capture_smoke.rs`, `examples/parity/05-functions/function_capture_named_arity.tn`)
 
 ## 6) Control flow
 
@@ -169,8 +169,8 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 6. [x] **Guard builtin parity across backends**  
    Guard builtins (`is_integer/1`, `is_float/1`, `is_number/1`, `is_atom/1`, `is_binary/1`, `is_list/1`, `is_tuple/1`, `is_map/1`, `is_nil/1`) now share a central contract and deterministic guard-only diagnostics (`E1015`) across resolver, typing, interpreter runtime, and native backend lowering.
 
-7. [ ] **Function capture parity** (`&Module.fun/arity`) + richer anonymous-function clauses  
-   Widely used in pipelines and callback APIs; required for idiomatic functional composition.
+7. [x] **Function capture parity** (`&Module.fun/arity`, optional local `&fun/arity`) + richer anonymous-function clauses  
+   Added parser/lowering support for named captures and multi-clause anonymous functions with guard-aware clause dispatch (`src/parser.rs`, `tests/check_capture_diagnostics.rs`, `tests/run_anon_fn_capture_smoke.rs`, `examples/parity/05-functions/function_capture_named_arity.tn`, `examples/parity/05-functions/function_capture_multi_clause_anon.tn`).
 
 8. [ ] **Comprehension parity completion** (`for reduce:`, generator guards, non-list collectables for `into:`)  
    Necessary for data-transformation heavy application code.

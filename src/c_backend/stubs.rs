@@ -1,4 +1,5 @@
 use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern};
+use crate::llvm_backend::mangle_function_name;
 use crate::mir::{MirInstruction, MirProgram};
 use std::collections::BTreeMap;
 
@@ -2482,9 +2483,8 @@ fn emit_closure_call(
             }
         },
         IrCallTarget::Function { name } => {
-            out.push_str(&format!(
-                "  TnVal {temp} = tn_runtime_fail(\"unsupported closure function call target: {name}\");\n"
-            ));
+            let symbol = mangle_function_name(name, argc);
+            out.push_str(&format!("  TnVal {temp} = {symbol}({rendered_args});\n"));
         }
     }
 

@@ -75,6 +75,7 @@ pub enum TokenKind {
     At,
     Colon,
     Comma,
+    Semicolon,
     Dot,
     DotDot,
     Caret,
@@ -183,6 +184,7 @@ impl Token {
             TokenKind::At => "AT".to_string(),
             TokenKind::Colon => "COLON".to_string(),
             TokenKind::Comma => "COMMA".to_string(),
+            TokenKind::Semicolon => "SEMICOLON".to_string(),
             TokenKind::Dot => "DOT".to_string(),
             TokenKind::DotDot => "DOT_DOT".to_string(),
             TokenKind::Caret => "CARET".to_string(),
@@ -365,6 +367,11 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         let start = idx;
                         idx += 1;
                         tokens.push(Token::simple(TokenKind::Comma, Span::new(start, idx)));
+                    }
+                    ';' => {
+                        let start = idx;
+                        idx += 1;
+                        tokens.push(Token::simple(TokenKind::Semicolon, Span::new(start, idx)));
                     }
                     '.' => {
                         let start = idx;
@@ -1152,7 +1159,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_supports_capture_and_function_value_invocation() {
-        let labels = dump_labels("&(&1 + 1) fun.(2)");
+        let labels = dump_labels("&(&1 + 1) (&Math.add/2).(2, 3); fun.(2)");
 
         assert_eq!(
             labels,
@@ -1164,6 +1171,21 @@ mod tests {
                 "PLUS",
                 "INT(1)",
                 "RPAREN",
+                "LPAREN",
+                "AMPERSAND",
+                "IDENT(Math)",
+                "DOT",
+                "IDENT(add)",
+                "SLASH",
+                "INT(2)",
+                "RPAREN",
+                "DOT",
+                "LPAREN",
+                "INT(2)",
+                "COMMA",
+                "INT(3)",
+                "RPAREN",
+                "SEMICOLON",
                 "IDENT(fun)",
                 "DOT",
                 "LPAREN",

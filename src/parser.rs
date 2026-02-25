@@ -2343,6 +2343,13 @@ impl<'a> Parser<'a> {
 
             if self
                 .peek(1)
+                .is_some_and(|token| token.kind() == TokenKind::Ident)
+            {
+                return self.parse_named_capture_expression();
+            }
+
+            if self
+                .peek(1)
                 .is_some_and(|token| token.kind() == TokenKind::Integer)
             {
                 let offset = self
@@ -2385,7 +2392,7 @@ impl<'a> Parser<'a> {
             }
 
             return Err(ParserError::at_current(
-                "unsupported capture expression form",
+                "unsupported capture expression form; expected &(expr), &1, or &Module.fun/arity",
                 self.current(),
             ));
         }
@@ -2567,23 +2574,137 @@ impl<'a> Parser<'a> {
 
     fn parse_anonymous_function_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::Fn, "fn")?.span().start();
-        let mut params = Vec::new();
+        let mut clauses = Vec::new();
+        let mut expected_arity = None;
+
+        loop {
+            let clause = self.parse_anonymous_function_clause()?;
+            if let Some(arity) = expected_arity {
+                if arity != clause.0.len() {
+                    return Err(ParserError::at_current(
+                        format!(
+                            "anonymous function clause arity mismatch: expected {arity}, found {}",
+                            clause.0.len()
+                        ),
+                        self.current(),
+                    ));
+                }
+            } else {
+                expected_arity = Some(clause.0.len());
+            }
+
+            clauses.push(clause);
+
+            if self.match_kind(TokenKind::Semicolon) {
+                if self.check(TokenKind::End) {
+                    break;
+                }
+                continue;
+            }
+
+            if self.check(TokenKind::End) {
+                break;
+            }
+
+            if self.is_at_end() {
+                return Err(self.expected("anonymous function clause or end"));
+            }
+        }
+
+        self.expect(TokenKind::End, "end")?;
+        self.lower_anonymous_function_clauses(offset, clauses)
+    }
+
+    fn parse_anonymous_function_clause(
+        &mut self,
+    ) -> Result<(Vec<Pattern>, Option<Expr>, Expr), ParserError> {
+        let mut patterns = Vec::new();
 
         if !self.check(TokenKind::Arrow) {
             loop {
-                params.push(self.expect_ident("anonymous function parameter")?);
-
+                patterns.push(self.parse_pattern()?);
                 if self.match_kind(TokenKind::Comma) {
                     continue;
                 }
-
                 break;
             }
         }
 
+        let guard = if self.match_kind(TokenKind::When) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
         self.expect(TokenKind::Arrow, "->")?;
         let body = self.parse_expression()?;
-        self.expect(TokenKind::End, "end")?;
+        Ok((patterns, guard, body))
+    }
+
+    fn lower_anonymous_function_clauses(
+        &mut self,
+        offset: usize,
+        clauses: Vec<(Vec<Pattern>, Option<Expr>, Expr)>,
+    ) -> Result<Expr, ParserError> {
+        let Some((patterns, guard, body)) = clauses.first() else {
+            return Err(ParserError::at_current(
+                "anonymous function requires at least one clause",
+                self.current(),
+            ));
+        };
+
+        if clauses.len() == 1
+            && guard.is_none()
+            && patterns
+                .iter()
+                .all(|pattern| matches!(pattern, Pattern::Bind { name } if name != "_"))
+        {
+            let params = patterns
+                .iter()
+                .map(|pattern| match pattern {
+                    Pattern::Bind { name } => name.clone(),
+                    _ => unreachable!("validated bind-only parameter list"),
+                })
+                .collect::<Vec<_>>();
+
+            return Ok(Expr::anonymous_fn(
+                self.node_ids.next_expr(),
+                offset,
+                params,
+                body.clone(),
+            ));
+        }
+
+        let arity = patterns.len();
+        let params = (0..arity)
+            .map(|index| format!("__arg{index}"))
+            .collect::<Vec<_>>();
+
+        let subject = match arity {
+            0 => Expr::nil(self.node_ids.next_expr(), offset),
+            1 => Expr::variable(self.node_ids.next_expr(), offset, params[0].clone()),
+            _ => {
+                let items = params
+                    .iter()
+                    .map(|name| Expr::variable(self.node_ids.next_expr(), offset, name.clone()))
+                    .collect::<Vec<_>>();
+                Expr::tuple(self.node_ids.next_expr(), offset, items)
+            }
+        };
+
+        let branches = clauses
+            .into_iter()
+            .map(|(patterns, guard, body)| {
+                let head = match arity {
+                    0 => Pattern::Nil,
+                    1 => patterns.into_iter().next().unwrap_or(Pattern::Wildcard),
+                    _ => Pattern::Tuple { items: patterns },
+                };
+                CaseBranch::new(head, guard, body)
+            })
+            .collect::<Vec<_>>();
+
+        let body = Expr::case(self.node_ids.next_expr(), offset, subject, branches);
 
         Ok(Expr::anonymous_fn(
             self.node_ids.next_expr(),
@@ -2616,6 +2737,58 @@ impl<'a> Parser<'a> {
         let params = (1..=max_capture_index)
             .map(|index| format!("__capture{index}"))
             .collect::<Vec<_>>();
+
+        Ok(Expr::anonymous_fn(
+            self.node_ids.next_expr(),
+            offset,
+            params,
+            body,
+        ))
+    }
+
+    fn parse_named_capture_expression(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.expect_token(TokenKind::Ampersand, "&")?.span().start();
+        let mut segments = vec![self.expect_ident("captured function name")?];
+
+        while self.match_kind(TokenKind::Dot) {
+            segments.push(self.expect_ident("captured module or function segment")?);
+        }
+
+        self.expect(TokenKind::Slash, "/ in function capture")?;
+
+        let arity = self
+            .expect_token(TokenKind::Integer, "function capture arity")?
+            .lexeme()
+            .parse::<usize>()
+            .map_err(|_| {
+                ParserError::at_current(
+                    "function capture arity must be a positive integer",
+                    self.current(),
+                )
+            })?;
+
+        if arity == 0 {
+            return Err(ParserError::at_current(
+                "function capture arity must be >= 1",
+                self.current(),
+            ));
+        }
+
+        let callee = if segments.len() == 1 {
+            segments.pop().expect("single segment should exist")
+        } else {
+            let function = segments.pop().expect("function segment should exist");
+            format!("{}.{}", segments.join("."), function)
+        };
+
+        let params = (1..=arity)
+            .map(|index| format!("__capture{index}"))
+            .collect::<Vec<_>>();
+        let args = params
+            .iter()
+            .map(|name| Expr::variable(self.node_ids.next_expr(), offset, name.clone()))
+            .collect::<Vec<_>>();
+        let body = Expr::call(self.node_ids.next_expr(), offset, callee, args);
 
         Ok(Expr::anonymous_fn(
             self.node_ids.next_expr(),
@@ -4179,6 +4352,73 @@ mod tests {
                 "args":[{"kind":"int","value":2}]
             })
         );
+    }
+
+    #[test]
+    fn parse_ast_supports_named_function_capture_shorthand() {
+        let tokens = scan_tokens(
+            "defmodule Math do\n  def add(left, right) do\n    left + right\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    (&Math.add/2).(1, 2)\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[1].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"invoke",
+                "callee":{
+                    "kind":"group",
+                    "inner":{
+                        "kind":"fn",
+                        "params":["__capture1", "__capture2"],
+                        "body":{
+                            "kind":"call",
+                            "callee":"Math.add",
+                            "args":[
+                                {"kind":"variable","name":"__capture1"},
+                                {"kind":"variable","name":"__capture2"}
+                            ]
+                        }
+                    }
+                },
+                "args":[{"kind":"int","value":1}, {"kind":"int","value":2}]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_multi_clause_anonymous_functions_with_guards() {
+        let tokens = scan_tokens(
+            "defmodule Demo do\n  def run() do\n    (fn {:ok, value} when is_integer(value) -> value; {:ok, _} -> -1; _ -> 0 end).({:ok, 4})\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        let Expr::Invoke { callee, .. } = &ast.modules[0].functions[0].body else {
+            panic!("expected invoke expression body");
+        };
+
+        let Expr::Group { inner, .. } = callee.as_ref() else {
+            panic!("expected grouped anonymous function callee");
+        };
+
+        let Expr::Fn { params, body, .. } = inner.as_ref() else {
+            panic!("expected anonymous function callee");
+        };
+
+        assert_eq!(params, &vec!["__arg0".to_string()]);
+
+        let Expr::Case { branches, .. } = body.as_ref() else {
+            panic!("expected lowered case dispatch for anonymous function clauses");
+        };
+
+        assert_eq!(branches.len(), 3);
+        assert!(branches[0].guard().is_some());
+        assert!(branches[1].guard().is_none());
+        assert!(branches[2].guard().is_none());
     }
 
     #[test]

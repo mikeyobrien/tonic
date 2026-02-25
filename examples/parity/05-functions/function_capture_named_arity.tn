@@ -1,0 +1,11 @@
+defmodule Math do
+  def add(left, right) do
+    left + right
+  end
+end
+
+defmodule Demo do
+  def run() do
+    (&Math.add/2).(20, 22)
+  end
+end
