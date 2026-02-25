@@ -1,20 +1,5 @@
 defmodule Demo do
   def run() do
-    System.argv() |> extract_command() |> TonicCtl.dispatch()
-  end
-
-  def extract_command(args) do
-    case args do
-      [head | tail] -> 
-        case head do
-          "doctor" -> "doctor"
-          "gates" -> "gates"
-          "bench" -> "bench"
-          "release" -> "release"
-          _ -> extract_command(tail)
-        end
-      [] -> "help"
-      _ -> "help"
-    end
+    TonicCtl.run()
   end
 end
