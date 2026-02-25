@@ -15,7 +15,7 @@ fn compile_llvm_backend_lowers_control_flow_dispatch_and_main_entrypoint() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "control_flow.tn", "--backend", "llvm"])
+        .args(["compile", "control_flow.tn"])
         .output()
         .expect("compile command should execute");
 
@@ -49,7 +49,7 @@ fn compile_llvm_backend_emits_deterministic_no_clause_helper_calls() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "no_clause.tn", "--backend", "llvm"])
+        .args(["compile", "no_clause.tn"])
         .assert()
         .success()
         .stderr("")
@@ -80,8 +80,6 @@ fn compile_llvm_backend_handles_control_flow_catalog_cfg_fixtures() {
             .args([
                 "compile",
                 source.to_str().expect("fixture path should be utf8"),
-                "--backend",
-                "llvm",
             ])
             .output()
             .expect("compile command should execute");
@@ -115,8 +113,6 @@ fn compile_llvm_backend_handles_for_catalog_fixtures_and_reduce_failure_contract
             .args([
                 "compile",
                 source.to_str().expect("fixture path should be utf8"),
-                "--backend",
-                "llvm",
             ])
             .output()
             .expect("compile command should execute");
@@ -138,8 +134,6 @@ fn compile_llvm_backend_handles_for_catalog_fixtures_and_reduce_failure_contract
             unsupported_source
                 .to_str()
                 .expect("fixture path should be utf8"),
-            "--backend",
-            "llvm",
         ])
         .assert()
         .failure()

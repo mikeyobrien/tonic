@@ -11,9 +11,7 @@ fn compile_help_lists_usage() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(contains(
-            "tonic compile <path> [--backend <interp|llvm>] [--out <artifact-path>|--dump-mir]",
-        ));
+        .stdout(contains("tonic compile <path> [--out <artifact-path>]"));
 }
 
 #[test]
@@ -29,7 +27,6 @@ fn compile_emit_flag_fails_with_usage_error() {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
     cmd.current_dir(&temp_dir);
 
-    // --emit is not part of the compile CLI contract; any value must fail
     cmd.arg("compile")
         .arg("hello.tn")
         .arg("--emit")
@@ -63,6 +60,49 @@ fn compile_emit_any_value_fails_with_usage_error() {
 }
 
 #[test]
+fn compile_backend_flag_is_not_supported() {
+    let temp_dir = common::unique_temp_dir("compile-backend-unsupported");
+    let source_path = temp_dir.join("hello.tn");
+    fs::write(
+        &source_path,
+        "defmodule Hello do\n  def run() do\n    1\n  end\nend\n",
+    )
+    .unwrap();
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
+    cmd.current_dir(&temp_dir);
+
+    cmd.arg("compile")
+        .arg("hello.tn")
+        .arg("--backend")
+        .arg("llvm")
+        .assert()
+        .failure()
+        .stderr(contains("error: unexpected argument '--backend'"));
+}
+
+#[test]
+fn compile_dump_mir_flag_is_not_supported() {
+    let temp_dir = common::unique_temp_dir("compile-dump-mir-unsupported");
+    let source_path = temp_dir.join("hello.tn");
+    fs::write(
+        &source_path,
+        "defmodule Hello do\n  def run() do\n    1\n  end\nend\n",
+    )
+    .unwrap();
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
+    cmd.current_dir(&temp_dir);
+
+    cmd.arg("compile")
+        .arg("hello.tn")
+        .arg("--dump-mir")
+        .assert()
+        .failure()
+        .stderr(contains("error: unexpected argument '--dump-mir'"));
+}
+
+#[test]
 fn compile_single_file_success() {
     let temp_dir = common::unique_temp_dir("single-file");
     let source_path = temp_dir.join("single.tn");
@@ -81,12 +121,12 @@ fn compile_single_file_success() {
         .success()
         .stderr("")
         .stdout(contains("compile: ok"))
-        .stdout(contains(".tonic/build/single.tir.json"));
+        .stdout(contains(".tonic/build/single"));
 
-    let artifact_path = temp_dir.join(".tonic/build/single.tir.json");
+    let artifact_path = temp_dir.join(".tonic/build/single");
     assert!(artifact_path.exists());
-    let content = fs::read_to_string(&artifact_path).unwrap();
-    assert!(content.contains(r#""Single.run""#));
+    let bytes = fs::read(&artifact_path).unwrap();
+    assert_eq!(&bytes[..4], b"\x7fELF");
 }
 
 #[test]
@@ -115,12 +155,12 @@ fn compile_project_root_success() {
         .success()
         .stderr("")
         .stdout(contains("compile: ok"))
-        .stdout(contains(".tonic/build/main.tir.json"));
+        .stdout(contains(".tonic/build/main"));
 
-    let artifact_path = temp_dir.join(".tonic/build/main.tir.json");
+    let artifact_path = temp_dir.join(".tonic/build/main");
     assert!(artifact_path.exists());
-    let content = fs::read_to_string(&artifact_path).unwrap();
-    assert!(content.contains(r#""Demo.run""#));
+    let bytes = fs::read(&artifact_path).unwrap();
+    assert_eq!(&bytes[..4], b"\x7fELF");
 }
 
 #[test]
@@ -133,7 +173,7 @@ fn compile_custom_out_path() {
     )
     .unwrap();
 
-    let custom_out_path = temp_dir.join("out-dir").join("my-artifact.json");
+    let custom_out_path = temp_dir.join("out-dir").join("my-artifact");
 
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
     cmd.current_dir(&temp_dir);
@@ -146,54 +186,11 @@ fn compile_custom_out_path() {
         .success()
         .stderr("")
         .stdout(contains("compile: ok"))
-        .stdout(contains("my-artifact.json"));
+        .stdout(contains("my-artifact"));
 
     assert!(custom_out_path.exists());
-    let content = fs::read_to_string(&custom_out_path).unwrap();
-    assert!(content.contains(r#""Custom.run""#));
-}
-
-#[test]
-fn compile_artifact_content_is_deterministic() {
-    let temp_dir = common::unique_temp_dir("deterministic");
-    let source_path = temp_dir.join("deterministic.tn");
-    fs::write(
-        &source_path,
-        "defmodule Deterministic do\n  def run() do\n    1 + 2\n  end\nend\n",
-    )
-    .unwrap();
-
-    let out_a = temp_dir.join("out-a.json");
-    let out_b = temp_dir.join("out-b.json");
-
-    let mut first = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
-    first.current_dir(&temp_dir);
-    first
-        .arg("compile")
-        .arg("deterministic.tn")
-        .arg("--out")
-        .arg(out_a.to_str().unwrap())
-        .assert()
-        .success()
-        .stderr("")
-        .stdout(contains("compile: ok"));
-
-    let mut second = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
-    second.current_dir(&temp_dir);
-    second
-        .arg("compile")
-        .arg("deterministic.tn")
-        .arg("--out")
-        .arg(out_b.to_str().unwrap())
-        .assert()
-        .success()
-        .stderr("")
-        .stdout(contains("compile: ok"));
-
-    let first_artifact = fs::read_to_string(out_a).unwrap();
-    let second_artifact = fs::read_to_string(out_b).unwrap();
-
-    assert_eq!(first_artifact, second_artifact);
+    let bytes = fs::read(&custom_out_path).unwrap();
+    assert_eq!(&bytes[..4], b"\x7fELF");
 }
 
 #[test]

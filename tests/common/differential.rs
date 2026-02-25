@@ -174,12 +174,7 @@ fn run_native_path(tonic_bin: &Path, cwd: &Path, fixture: &str) -> Result<Comman
     let compile = run_command(
         tonic_bin,
         cwd,
-        &[
-            "compile".to_string(),
-            fixture.to_string(),
-            "--backend".to_string(),
-            "llvm".to_string(),
-        ],
+        &["compile".to_string(), fixture.to_string()],
         "compile",
     )?;
 
@@ -187,17 +182,45 @@ fn run_native_path(tonic_bin: &Path, cwd: &Path, fixture: &str) -> Result<Comman
         return Ok(compile);
     }
 
-    let manifest_path = native_manifest_path(fixture);
-    run_command(tonic_bin, cwd, &["run".to_string(), manifest_path], "run")
+    let artifact = parse_compile_artifact_path(&compile.stdout)
+        .ok_or_else(|| "compile succeeded but artifact path missing from stdout".to_string())?;
+
+    let executable = if Path::new(&artifact).is_absolute() {
+        Path::new(&artifact).to_path_buf()
+    } else {
+        cwd.join(&artifact)
+    };
+
+    run_executable(cwd, &executable)
 }
 
-fn native_manifest_path(fixture: &str) -> String {
-    let stem = Path::new(fixture)
-        .file_stem()
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "out".to_string());
+fn parse_compile_artifact_path(stdout: &str) -> Option<String> {
+    stdout
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix("compile: ok ").map(str::trim))
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+}
 
-    format!(".tonic/build/{stem}.tnx.json")
+fn run_executable(cwd: &Path, executable: &Path) -> Result<CommandOutcome, String> {
+    let output = std::process::Command::new(executable)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| {
+            format!(
+                "failed to execute compiled artifact {}: {error}",
+                executable.display()
+            )
+        })?;
+
+    Ok(CommandOutcome {
+        phase: "run".to_string(),
+        exit_code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        command: vec![executable.display().to_string()],
+    })
 }
 
 fn run_command(

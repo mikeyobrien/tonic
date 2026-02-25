@@ -15,7 +15,7 @@ fn compile_llvm_backend_lowers_host_call_and_protocol_dispatch_helpers() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "host_interop.tn", "--backend", "llvm"])
+        .args(["compile", "host_interop.tn"])
         .assert()
         .success()
         .stderr("")

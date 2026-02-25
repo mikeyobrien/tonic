@@ -2,7 +2,7 @@
 #
 # This suite benchmarks the same workload in two execution targets:
 # - target = "interpreter": run through `tonic run <source>`
-# - target = "compiled": compile via `tonic compile --backend llvm --out ...`
+# - target = "compiled": compile via `tonic compile --out ...`
 #   and then execute the produced native binary directly.
 
 [[workload]]

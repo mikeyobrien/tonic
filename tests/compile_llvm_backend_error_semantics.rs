@@ -15,7 +15,7 @@ fn compile_llvm_backend_lowers_result_question_raise_and_try_helpers() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "error_semantics.tn", "--backend", "llvm"])
+        .args(["compile", "error_semantics.tn"])
         .assert()
         .success()
         .stderr("")

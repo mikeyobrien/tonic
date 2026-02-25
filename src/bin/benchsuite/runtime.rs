@@ -121,7 +121,7 @@ fn prepare_workload(binary_path: &Path, workload: &Workload) -> Result<PreparedW
             }
 
             let output = Command::new(binary_path)
-                .args(["compile", source, "--backend", "llvm", "--out"])
+                .args(["compile", source, "--out"])
                 .arg(&executable)
                 .output()
                 .map_err(|error| {

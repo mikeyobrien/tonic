@@ -15,7 +15,7 @@ fn compile_llvm_backend_lowers_collection_builtins_and_pattern_matching_helpers(
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "collections_patterns.tn", "--backend", "llvm"])
+        .args(["compile", "collections_patterns.tn"])
         .assert()
         .success()
         .stderr("")
@@ -51,7 +51,7 @@ fn compile_llvm_backend_keeps_deterministic_mismatch_helpers_for_case_and_match(
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "mismatch_helpers.tn", "--backend", "llvm"])
+        .args(["compile", "mismatch_helpers.tn"])
         .assert()
         .success()
         .stderr("")

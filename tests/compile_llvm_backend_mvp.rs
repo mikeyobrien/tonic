@@ -15,7 +15,7 @@ fn compile_llvm_backend_emits_executable_artifact_for_subset_program() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "math.tn", "--backend", "llvm"])
+        .args(["compile", "math.tn"])
         .output()
         .expect("compile command should execute");
 
@@ -77,7 +77,7 @@ fn compile_llvm_backend_keeps_for_reduce_option_failure_deterministic() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "unsupported.tn", "--backend", "llvm"])
+        .args(["compile", "unsupported.tn"])
         .assert()
         .failure()
         .stderr(contains(
@@ -86,8 +86,8 @@ fn compile_llvm_backend_keeps_for_reduce_option_failure_deterministic() {
 }
 
 #[test]
-fn compile_rejects_unknown_backend_value() {
-    let temp_dir = common::unique_temp_dir("compile-backend-unknown");
+fn compile_rejects_backend_flag() {
+    let temp_dir = common::unique_temp_dir("compile-backend-unexpected");
     let source_path = temp_dir.join("single.tn");
     fs::write(
         &source_path,
@@ -97,8 +97,8 @@ fn compile_rejects_unknown_backend_value() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "single.tn", "--backend", "nope"])
+        .args(["compile", "single.tn", "--backend", "llvm"])
         .assert()
         .failure()
-        .stderr(contains("error: unsupported backend 'nope'"));
+        .stderr(contains("error: unexpected argument '--backend'"));
 }

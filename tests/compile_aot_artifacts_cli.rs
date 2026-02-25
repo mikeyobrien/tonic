@@ -8,7 +8,7 @@ mod common;
 // Core artifact contract
 // ---------------------------------------------------------------------------
 
-/// `tonic compile --backend llvm` MUST produce a real ELF executable at the
+/// `tonic compile` MUST produce a real ELF executable at the
 /// reported path.  Sidecar artifacts (.ll, .tir.json, .tnx.json) are internal
 /// implementation details and are kept for compatibility.
 #[test]
@@ -23,7 +23,7 @@ fn compile_llvm_produces_real_elf_executable() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "native.tn", "--backend", "llvm"])
+        .args(["compile", "native.tn"])
         .output()
         .expect("compile command should execute");
 
@@ -110,7 +110,7 @@ fn compiled_elf_runs_directly_with_expected_output() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "demo.tn", "--backend", "llvm"])
+        .args(["compile", "demo.tn"])
         .assert()
         .success();
 
@@ -164,7 +164,7 @@ fn compiled_elf_output_matches_interpreter_for_arithmetic() {
     // Compile to native ELF
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "arith.tn", "--backend", "llvm"])
+        .args(["compile", "arith.tn"])
         .assert()
         .success();
 
@@ -190,7 +190,7 @@ fn compiled_elf_output_matches_interpreter_for_arithmetic() {
 // --out contract
 // ---------------------------------------------------------------------------
 
-/// `tonic compile --backend llvm --out ./someexe` writes the ELF exactly at
+/// `tonic compile --out ./someexe` writes the ELF exactly at
 /// that path and the binary is directly executable.
 #[test]
 fn compile_llvm_out_flag_writes_executable_at_specified_path() {
@@ -209,8 +209,6 @@ fn compile_llvm_out_flag_writes_executable_at_specified_path() {
         .args([
             "compile",
             "out_test.tn",
-            "--backend",
-            "llvm",
             "--out",
             exe_path.to_str().unwrap(),
         ])
@@ -248,14 +246,7 @@ fn compile_llvm_out_relative_path_supports_dot_slash_execution_contract() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args([
-            "compile",
-            "dot_out.tn",
-            "--backend",
-            "llvm",
-            "--out",
-            "./someexe",
-        ])
+        .args(["compile", "dot_out.tn", "--out", "./someexe"])
         .assert()
         .success()
         .stdout(contains("compile: ok ./someexe"));
@@ -324,7 +315,7 @@ fn run_native_manifest_sidecar_still_works_with_interpreter() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "native_run.tn", "--backend", "llvm"])
+        .args(["compile", "native_run.tn"])
         .assert()
         .success();
 
@@ -383,7 +374,7 @@ fn run_native_artifact_rejects_target_mismatch_with_deterministic_diagnostic() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "native_target.tn", "--backend", "llvm"])
+        .args(["compile", "native_target.tn"])
         .assert()
         .success();
 

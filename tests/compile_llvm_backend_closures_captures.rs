@@ -15,7 +15,7 @@ fn compile_llvm_backend_lowers_closure_creation_and_invocation_helpers() {
 
     std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&temp_dir)
-        .args(["compile", "closures.tn", "--backend", "llvm"])
+        .args(["compile", "closures.tn"])
         .assert()
         .success()
         .stderr("")

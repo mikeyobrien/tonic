@@ -20,8 +20,6 @@ fn compile_llvm_matches_catalog_for_literals_and_call_surface_fixtures() {
             .args([
                 "compile",
                 source.to_str().expect("fixture path should be utf8"),
-                "--backend",
-                "llvm",
             ])
             .output()
             .expect("compile command should execute");

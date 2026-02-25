@@ -16,8 +16,6 @@ fn compiled_llvm_runtime_matches_catalog_for_core_values_and_collections() {
             .args([
                 "compile",
                 source.to_str().expect("fixture path should be utf8"),
-                "--backend",
-                "llvm",
             ])
             .output()
             .expect("compile command should execute");

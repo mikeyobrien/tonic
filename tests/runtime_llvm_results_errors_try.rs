@@ -102,8 +102,6 @@ fn compile_and_run_fixture(temp_dir: &Path, source: &Path) -> std::process::Outp
         .args([
             "compile",
             source.to_str().expect("fixture path should be utf8"),
-            "--backend",
-            "llvm",
         ])
         .output()
         .expect("compile command should execute");

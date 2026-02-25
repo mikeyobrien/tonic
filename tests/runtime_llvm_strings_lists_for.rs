@@ -39,8 +39,6 @@ fn assert_fixture_runtime(contract: RuntimeFixtureContract) {
         .args([
             "compile",
             source.to_str().expect("fixture path should be utf8"),
-            "--backend",
-            "llvm",
         ])
         .output()
         .expect("compile command should execute");

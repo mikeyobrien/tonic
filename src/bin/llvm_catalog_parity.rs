@@ -287,12 +287,7 @@ fn run_catalog_parity(cli: &Cli, cwd: &Path, tonic_bin: &Path) -> Result<ParityR
     let mut grouped_causes: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
     for entry in active {
-        let compile = run_command(
-            tonic_bin,
-            cwd,
-            &["compile", &entry.path, "--backend", "llvm"],
-            "compile",
-        );
+        let compile = run_command(tonic_bin, cwd, &["compile", &entry.path], "compile");
 
         let mut mismatches = Vec::new();
 

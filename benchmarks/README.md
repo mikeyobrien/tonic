@@ -55,7 +55,7 @@ cargo run --bin benchsuite -- \
 ```
 
 `target = "compiled"` workloads are prepared by compiling each source with
-`tonic compile --backend llvm --out .tonic/bench-compiled/<workload-name>` and then
+`tonic compile --out .tonic/bench-compiled/<workload-name>` and then
 executing the produced binary directly.
 
 Wrapper script (recommended):
@@ -163,7 +163,7 @@ For built-in phase timing (frontend/codegen/runtime), set a profile sink:
 
 ```bash
 TONIC_PROFILE_OUT=benchmarks/phase-profile.jsonl \
-  target/release/tonic compile examples/parity/06-control-flow/for_multi_generator.tn --backend llvm --emit object
+  target/release/tonic compile examples/parity/06-control-flow/for_multi_generator.tn --out .tonic/build/for_multi_generator
 ```
 
 Each command appends one JSON line with `command`, `total_ms`, and per-phase `elapsed_ms` so regressions can be localized before full flamegraph runs.

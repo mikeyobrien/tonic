@@ -1,6 +1,6 @@
 # Differential Correctness and Fuzzing Workflow
 
-This project includes a differential gate that compares interpreter behavior (`tonic run <source>`) against native AOT behavior (`tonic compile --backend llvm --emit executable` + `tonic run <.tnx.json>`).
+This project includes a differential gate that compares interpreter behavior (`tonic run <source>`) against native AOT behavior (`tonic compile <source>` + direct executable run).
 
 ## Run the gate
 
@@ -65,8 +65,8 @@ Given a failing fixture `<path>`:
 
 ```bash
 tonic run <path>
-tonic compile <path> --backend llvm --emit executable
-tonic run .tonic/build/<stem>.tnx.json
+tonic compile <path>
+./.tonic/build/<stem>
 ```
 
 Compare exit code, stdout, and stderr exactly.

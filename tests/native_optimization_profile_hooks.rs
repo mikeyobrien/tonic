@@ -27,8 +27,6 @@ fn llvm_compile_profiles_phases_and_folds_constant_int_ops() {
         .args([
             "compile",
             "demo.tn",
-            "--backend",
-            "llvm",
             "--out",
             artifact_base
                 .to_str()
