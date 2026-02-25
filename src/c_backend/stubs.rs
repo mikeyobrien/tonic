@@ -913,7 +913,8 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     for (int i = 0; i < tn_global_argc; i++) {
       list_obj->as.list.items[i] = tn_runtime_const_string((TnVal)(intptr_t)tn_global_argv[i]);
     }
-    return (TnVal)(intptr_t)list_obj;
+    free(args);
+    return tn_heap_store(list_obj);
   }
 
   if (strcmp(key, "sys_run") == 0) {

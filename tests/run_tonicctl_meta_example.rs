@@ -84,3 +84,63 @@ fn compile_tonicctl_example_outputs_runnable_plan_binary() {
         "expected compiled tonicctl output to include tool marker, got: {stdout}"
     );
 }
+
+#[test]
+fn tonicctl_doctor_failure_is_deterministic_in_interpreter_and_compiled() {
+    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let temp_dir = common::unique_temp_dir("compile-tonicctl-meta-example-failure-parity");
+    let out_path = temp_dir.join("tonicctl-plan");
+
+    let compile_output = Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&repo_root)
+        .args([
+            "compile",
+            "examples/apps/tonicctl",
+            "--out",
+            out_path.to_str().expect("out path should be utf8"),
+        ])
+        .output()
+        .expect("compile command should execute");
+
+    assert!(
+        compile_output.status.success(),
+        "expected tonicctl compile success, got status {:?}\nstdout:\n{}\nstderr:\n{}",
+        compile_output.status.code(),
+        String::from_utf8_lossy(&compile_output.stdout),
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let interp_output = Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&repo_root)
+        .env("PATH", "")
+        .args(["run", "examples/apps/tonicctl", "doctor"])
+        .output()
+        .expect("interpreter doctor command should execute");
+
+    assert!(
+        !interp_output.status.success(),
+        "expected interpreter doctor failure with empty PATH"
+    );
+    let interp_stderr = String::from_utf8(interp_output.stderr).expect("stderr should be utf8");
+    assert!(
+        interp_stderr.contains("doctor failed: required command 'cargo' not found"),
+        "expected deterministic doctor failure message, got: {interp_stderr}"
+    );
+
+    let compiled_output = Command::new(&out_path)
+        .current_dir(&repo_root)
+        .env("PATH", "")
+        .arg("doctor")
+        .output()
+        .expect("compiled doctor command should execute");
+
+    assert!(
+        !compiled_output.status.success(),
+        "expected compiled doctor failure with empty PATH"
+    );
+    let compiled_stderr = String::from_utf8(compiled_output.stderr).expect("stderr should be utf8");
+    assert!(
+        compiled_stderr.contains("doctor failed: required command 'cargo' not found"),
+        "expected deterministic doctor failure message, got: {compiled_stderr}"
+    );
+}
