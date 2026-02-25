@@ -12,7 +12,7 @@ Create a deterministic harness that measures LLVM compiled parity directly again
 
 ## Scope
 - Add a parity harness that, for each active catalog entry:
-  1. runs `tonic compile <path> --backend llvm`
+  1. runs `tonic compile <path>`
   2. verifies compile exit against `check_exit`
   3. for successful compile entries, runs compiled executable directly (`./artifact`)
   4. validates `run_exit`, `stdout`, and `stderr_contains` expectations from catalog
