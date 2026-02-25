@@ -1,4 +1,4 @@
-use crate::parser::{Ast, Expr};
+use crate::parser::{Ast, Expr, ModuleForm, Pattern};
 use crate::resolver_diag::ResolverError;
 use std::collections::{HashMap, HashSet};
 
@@ -16,6 +16,7 @@ pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
             };
 
             for param in &function.params {
+                resolve_pattern(param.pattern(), &context)?;
                 if let Some(default) = param.default() {
                     resolve_expr(default, &context)?;
                 }
@@ -47,6 +48,7 @@ fn ensure_no_duplicate_modules(ast: &Ast) -> Result<(), ResolverError> {
 #[derive(Debug, Default)]
 struct ModuleGraph {
     modules: HashMap<String, HashMap<String, FunctionVisibility>>,
+    structs: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -64,6 +66,7 @@ enum CallResolution {
 impl ModuleGraph {
     fn from_ast(ast: &Ast) -> Self {
         let mut modules: HashMap<String, HashMap<String, FunctionVisibility>> = HashMap::new();
+        let mut structs: HashMap<String, HashSet<String>> = HashMap::new();
 
         for module in &ast.modules {
             let symbols = modules.entry(module.name.clone()).or_default();
@@ -75,9 +78,24 @@ impl ModuleGraph {
                     visibility.public = true;
                 }
             }
+
+            if let Some(fields) = module.forms.iter().find_map(|form| {
+                if let ModuleForm::Defstruct { fields } = form {
+                    Some(
+                        fields
+                            .iter()
+                            .map(|field| field.name.clone())
+                            .collect::<HashSet<_>>(),
+                    )
+                } else {
+                    None
+                }
+            }) {
+                structs.insert(module.name.clone(), fields);
+            }
         }
 
-        Self { modules }
+        Self { modules, structs }
     }
 
     fn resolve_call_target(&self, current_module: &str, callee: &str) -> CallResolution {
@@ -110,6 +128,16 @@ impl ModuleGraph {
             .and_then(|symbols| symbols.get(callee))
             .map(|_| CallResolution::Found)
             .unwrap_or(CallResolution::Missing)
+    }
+
+    fn has_struct_module(&self, module_name: &str) -> bool {
+        self.structs.contains_key(module_name)
+    }
+
+    fn struct_has_field(&self, module_name: &str, field: &str) -> bool {
+        self.structs
+            .get(module_name)
+            .is_some_and(|fields| fields.contains(field))
     }
 }
 
@@ -154,6 +182,30 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             }
             Ok(())
         }
+        Expr::Struct {
+            module, entries, ..
+        } => {
+            if !context.module_graph.has_struct_module(module) {
+                return Err(ResolverError::undefined_struct_module(
+                    module,
+                    context.module_name,
+                    context.function_name,
+                ));
+            }
+
+            for entry in entries {
+                if !context.module_graph.struct_has_field(module, &entry.key) {
+                    return Err(ResolverError::unknown_struct_field(
+                        &entry.key,
+                        module,
+                        context.module_name,
+                        context.function_name,
+                    ));
+                }
+                resolve_expr(&entry.value, context)?;
+            }
+            Ok(())
+        }
         Expr::Keyword { entries, .. } => {
             for entry in entries {
                 resolve_expr(&entry.value, context)?;
@@ -163,6 +215,34 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
         Expr::MapUpdate { base, updates, .. } => {
             resolve_expr(base, context)?;
             for entry in updates {
+                resolve_expr(&entry.value, context)?;
+            }
+            Ok(())
+        }
+        Expr::StructUpdate {
+            module,
+            base,
+            updates,
+            ..
+        } => {
+            if !context.module_graph.has_struct_module(module) {
+                return Err(ResolverError::undefined_struct_module(
+                    module,
+                    context.module_name,
+                    context.function_name,
+                ));
+            }
+
+            resolve_expr(base, context)?;
+            for entry in updates {
+                if !context.module_graph.struct_has_field(module, &entry.key) {
+                    return Err(ResolverError::unknown_struct_field(
+                        &entry.key,
+                        module,
+                        context.module_name,
+                        context.function_name,
+                    ));
+                }
                 resolve_expr(&entry.value, context)?;
             }
             Ok(())
@@ -219,6 +299,7 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             resolve_expr(subject, context)?;
 
             for branch in branches {
+                resolve_pattern(branch.head(), context)?;
                 if let Some(guard) = branch.guard() {
                     resolve_expr(guard, context)?;
                 }
@@ -233,7 +314,8 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
             body,
             ..
         } => {
-            for (_, generator) in generators {
+            for (pattern, generator) in generators {
+                resolve_pattern(pattern, context)?;
                 resolve_expr(generator, context)?;
             }
             if let Some(into_expr) = into {
@@ -269,6 +351,65 @@ fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), Resolve
         }
         Expr::Raise { error, .. } => resolve_expr(error, context),
         Expr::Variable { .. } | Expr::Atom { .. } => Ok(()),
+    }
+}
+
+fn resolve_pattern(pattern: &Pattern, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
+    match pattern {
+        Pattern::Atom { .. }
+        | Pattern::Bind { .. }
+        | Pattern::Pin { .. }
+        | Pattern::Wildcard
+        | Pattern::Integer { .. }
+        | Pattern::Bool { .. }
+        | Pattern::Nil
+        | Pattern::String { .. } => Ok(()),
+        Pattern::Tuple { items } => {
+            for item in items {
+                resolve_pattern(item, context)?;
+            }
+            Ok(())
+        }
+        Pattern::List { items, tail } => {
+            for item in items {
+                resolve_pattern(item, context)?;
+            }
+            if let Some(tail) = tail {
+                resolve_pattern(tail, context)?;
+            }
+            Ok(())
+        }
+        Pattern::Map { entries } => {
+            for entry in entries {
+                resolve_pattern(entry.key(), context)?;
+                resolve_pattern(entry.value(), context)?;
+            }
+            Ok(())
+        }
+        Pattern::Struct {
+            module, entries, ..
+        } => {
+            if !context.module_graph.has_struct_module(module) {
+                return Err(ResolverError::undefined_struct_module(
+                    module,
+                    context.module_name,
+                    context.function_name,
+                ));
+            }
+
+            for entry in entries {
+                if !context.module_graph.struct_has_field(module, entry.key()) {
+                    return Err(ResolverError::unknown_struct_field(
+                        entry.key(),
+                        module,
+                        context.module_name,
+                        context.function_name,
+                    ));
+                }
+                resolve_pattern(entry.value(), context)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -394,6 +535,37 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1003] duplicate module definition 'Shared'"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_rejects_undefined_struct_module() {
+        let source = "defmodule Demo do\n  def run() do\n    %Missing{name: 1}\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize struct module fixture");
+        let ast = parse_ast(&tokens).expect("parser should build struct module fixture ast");
+
+        let error = resolve_ast(&ast).expect_err("resolver should reject undefined struct modules");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedStructModule);
+        assert_eq!(
+            error.to_string(),
+            "[E1004] undefined struct module 'Missing' in Demo.run"
+        );
+    }
+
+    #[test]
+    fn resolve_ast_rejects_unknown_struct_fields() {
+        let source = "defmodule User do\n  defstruct name: \"\", age: 0\n\n  def run() do\n    %User{name: \"A\", agez: 42}\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize unknown struct field fixture");
+        let ast = parse_ast(&tokens).expect("parser should build unknown struct field fixture ast");
+
+        let error = resolve_ast(&ast).expect_err("resolver should reject unknown struct fields");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UnknownStructField);
+        assert_eq!(
+            error.to_string(),
+            "[E1005] unknown struct field 'agez' for User in User.run"
         );
     }
 }

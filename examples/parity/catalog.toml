@@ -186,6 +186,14 @@ stdout = '''%{:a => 2}
 status = "active"
 
 [[example]]
+path = "examples/parity/03-collections/struct_literal_update_pattern.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{%{:__struct__ => :User, :name => "A", :age => 43}, {"A", 43}}
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/03-collections/tuple_literal_and_match.tn"
 check_exit = 0
 run_exit = 0

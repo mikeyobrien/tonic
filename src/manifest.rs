@@ -239,11 +239,31 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
             expr_references_module(entry.key(), module_name)
                 || expr_references_module(entry.value(), module_name)
         }),
+        Expr::Struct {
+            module, entries, ..
+        } => {
+            module == module_name
+                || entries
+                    .iter()
+                    .any(|entry| expr_references_module(&entry.value, module_name))
+        }
         Expr::Keyword { entries, .. } => entries
             .iter()
             .any(|entry| expr_references_module(&entry.value, module_name)),
         Expr::MapUpdate { base, updates, .. } => {
             expr_references_module(base, module_name)
+                || updates
+                    .iter()
+                    .any(|entry| expr_references_module(&entry.value, module_name))
+        }
+        Expr::StructUpdate {
+            module,
+            base,
+            updates,
+            ..
+        } => {
+            module == module_name
+                || expr_references_module(base, module_name)
                 || updates
                     .iter()
                     .any(|entry| expr_references_module(&entry.value, module_name))

@@ -5,6 +5,8 @@ pub enum ResolverDiagnosticCode {
     UndefinedSymbol,
     PrivateFunction,
     DuplicateModule,
+    UndefinedStructModule,
+    UnknownStructField,
 }
 
 impl ResolverDiagnosticCode {
@@ -13,6 +15,8 @@ impl ResolverDiagnosticCode {
             Self::UndefinedSymbol => "E1001",
             Self::PrivateFunction => "E1002",
             Self::DuplicateModule => "E1003",
+            Self::UndefinedStructModule => "E1004",
+            Self::UnknownStructField => "E1005",
         }
     }
 }
@@ -44,6 +48,27 @@ impl ResolverError {
         Self {
             code: ResolverDiagnosticCode::DuplicateModule,
             message: format!("duplicate module definition '{module}'"),
+        }
+    }
+
+    pub fn undefined_struct_module(struct_module: &str, module: &str, function: &str) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::UndefinedStructModule,
+            message: format!("undefined struct module '{struct_module}' in {module}.{function}"),
+        }
+    }
+
+    pub fn unknown_struct_field(
+        field: &str,
+        struct_module: &str,
+        module: &str,
+        function: &str,
+    ) -> Self {
+        Self {
+            code: ResolverDiagnosticCode::UnknownStructField,
+            message: format!(
+                "unknown struct field '{field}' for {struct_module} in {module}.{function}"
+            ),
         }
     }
 
@@ -106,6 +131,36 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1003] duplicate module definition 'Shared'"
+        );
+    }
+
+    #[test]
+    fn undefined_struct_module_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::undefined_struct_module("User", "Demo", "run");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedStructModule);
+        assert_eq!(
+            error.message(),
+            "undefined struct module 'User' in Demo.run"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1004] undefined struct module 'User' in Demo.run"
+        );
+    }
+
+    #[test]
+    fn unknown_struct_field_constructor_uses_stable_code_and_message() {
+        let error = ResolverError::unknown_struct_field("agez", "User", "Demo", "run");
+
+        assert_eq!(error.code(), ResolverDiagnosticCode::UnknownStructField);
+        assert_eq!(
+            error.message(),
+            "unknown struct field 'agez' for User in Demo.run"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E1005] unknown struct field 'agez' for User in Demo.run"
         );
     }
 }

@@ -118,3 +118,36 @@ fn fmt_check_succeeds_when_source_is_already_formatted() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert_eq!(stderr, "");
 }
+
+#[test]
+fn fmt_rewrites_struct_syntax_without_mutating_expressions() {
+    let fixture_root = common::unique_fixture_root("fmt-struct-syntax");
+    let examples_dir = fixture_root.join("examples");
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+
+    let source_path = examples_dir.join("fmt_struct_syntax.tn");
+    fs::write(
+        &source_path,
+        "defmodule User do\ndefstruct name: \"\", age: 0\ndef run(user) do\ncase %User{user | age: 43} do\n%User{name: name} ->\n%User{name: name}\n_ ->\n%User{}\nend\nend\nend\n",
+    )
+    .expect("fixture setup should write unformatted struct source");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["fmt", "examples/fmt_struct_syntax.tn"])
+        .output()
+        .expect("fmt command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected fmt command to succeed, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let formatted = fs::read_to_string(&source_path).expect("formatted source should be readable");
+    assert_eq!(
+        formatted,
+        "defmodule User do\n  defstruct name: \"\", age: 0\n  def run(user) do\n    case %User{user | age: 43} do\n      %User{name: name} ->\n        %User{name: name}\n      _ ->\n        %User{}\n    end\n  end\nend\n"
+    );
+}

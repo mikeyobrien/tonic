@@ -58,6 +58,15 @@ pub enum ModuleForm {
     Use {
         module: String,
     },
+    Defstruct {
+        fields: Vec<StructFieldEntry>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct StructFieldEntry {
+    pub name: String,
+    pub default: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -302,11 +311,28 @@ pub enum Expr {
         offset: usize,
         entries: Vec<MapExprEntry>,
     },
+    Struct {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        module: String,
+        entries: Vec<LabelExprEntry>,
+    },
     MapUpdate {
         #[serde(skip_serializing)]
         id: NodeId,
         #[serde(skip_serializing)]
         offset: usize,
+        base: Box<Expr>,
+        updates: Vec<LabelExprEntry>,
+    },
+    StructUpdate {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        module: String,
         base: Box<Expr>,
         updates: Vec<LabelExprEntry>,
     },
@@ -545,6 +571,10 @@ pub enum Pattern {
     Map {
         entries: Vec<MapPatternEntry>,
     },
+    Struct {
+        module: String,
+        entries: Vec<LabelPatternEntry>,
+    },
 }
 
 impl BranchHead for Pattern {
@@ -559,6 +589,22 @@ pub struct MapPatternEntry {
 
 impl MapPatternEntry {
     pub(crate) fn key(&self) -> &Pattern {
+        &self.key
+    }
+
+    pub(crate) fn value(&self) -> &Pattern {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LabelPatternEntry {
+    pub(crate) key: String,
+    pub(crate) value: Pattern,
+}
+
+impl LabelPatternEntry {
+    pub(crate) fn key(&self) -> &str {
         &self.key
     }
 
@@ -634,10 +680,40 @@ impl Expr {
         }
     }
 
+    fn struct_literal(
+        id: NodeId,
+        offset: usize,
+        module: String,
+        entries: Vec<LabelExprEntry>,
+    ) -> Self {
+        Self::Struct {
+            id,
+            offset,
+            module,
+            entries,
+        }
+    }
+
     fn map_update(id: NodeId, offset: usize, base: Expr, updates: Vec<LabelExprEntry>) -> Self {
         Self::MapUpdate {
             id,
             offset,
+            base: Box::new(base),
+            updates,
+        }
+    }
+
+    fn struct_update(
+        id: NodeId,
+        offset: usize,
+        module: String,
+        base: Expr,
+        updates: Vec<LabelExprEntry>,
+    ) -> Self {
+        Self::StructUpdate {
+            id,
+            offset,
+            module,
             base: Box::new(base),
             updates,
         }
@@ -814,7 +890,9 @@ impl Expr {
             | Self::Tuple { offset, .. }
             | Self::List { offset, .. }
             | Self::Map { offset, .. }
+            | Self::Struct { offset, .. }
             | Self::MapUpdate { offset, .. }
+            | Self::StructUpdate { offset, .. }
             | Self::Keyword { offset, .. }
             | Self::Call { offset, .. }
             | Self::FieldAccess { offset, .. }
@@ -922,6 +1000,19 @@ fn canonicalize_module_call_targets(module: &mut Module) {
         .map(|function| function.name.clone())
         .collect::<HashSet<_>>();
 
+    for form in &mut module.forms {
+        if let ModuleForm::Defstruct { fields } = form {
+            for field in fields {
+                canonicalize_expr_call_targets(
+                    &mut field.default,
+                    &aliases,
+                    &imports,
+                    &local_functions,
+                );
+            }
+        }
+    }
+
     for function in &mut module.functions {
         for param in &mut function.params {
             if let Some(default) = &mut param.default {
@@ -955,12 +1046,23 @@ fn canonicalize_expr_call_targets(
                 canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
             }
         }
+        Expr::Struct { entries, .. } => {
+            for entry in entries {
+                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+            }
+        }
         Expr::Keyword { entries, .. } => {
             for entry in entries {
                 canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
             }
         }
         Expr::MapUpdate { base, updates, .. } => {
+            canonicalize_expr_call_targets(base, aliases, imports, local_functions);
+            for entry in updates {
+                canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
+            }
+        }
+        Expr::StructUpdate { base, updates, .. } => {
             canonicalize_expr_call_targets(base, aliases, imports, local_functions);
             for entry in updates {
                 canonicalize_expr_call_targets(&mut entry.value, aliases, imports, local_functions);
@@ -1237,7 +1339,10 @@ impl<'a> Parser<'a> {
     fn current_starts_module_form(&self) -> bool {
         self.current().is_some_and(|token| {
             token.kind() == TokenKind::Ident
-                && matches!(token.lexeme(), "alias" | "import" | "require" | "use")
+                && matches!(
+                    token.lexeme(),
+                    "alias" | "import" | "require" | "use" | "defstruct"
+                )
         })
     }
 
@@ -1249,6 +1354,7 @@ impl<'a> Parser<'a> {
             "import" => self.parse_named_module_form("import"),
             "require" => self.parse_named_module_form("require"),
             "use" => self.parse_named_module_form("use"),
+            "defstruct" => self.parse_defstruct_form(),
             _ => Err(ParserError::at_current(
                 format!("unsupported module form '{form_name}'"),
                 self.current(),
@@ -1306,6 +1412,25 @@ impl<'a> Parser<'a> {
         };
 
         Ok(form)
+    }
+
+    fn parse_defstruct_form(&mut self) -> Result<ModuleForm, ParserError> {
+        let mut fields = Vec::new();
+
+        loop {
+            let name = self.expect_ident("struct field")?;
+            self.expect(TokenKind::Colon, ":")?;
+            let default = self.parse_expression()?;
+            fields.push(StructFieldEntry { name, default });
+
+            if self.match_kind(TokenKind::Comma) {
+                continue;
+            }
+
+            break;
+        }
+
+        Ok(ModuleForm::Defstruct { fields })
     }
 
     fn parse_module_attribute(&mut self) -> Result<ModuleAttribute, ParserError> {
@@ -1749,7 +1874,7 @@ impl<'a> Parser<'a> {
         }
 
         if self.check(TokenKind::Percent) {
-            return self.parse_map_literal_expression();
+            return self.parse_percent_expression();
         }
 
         if self.check(TokenKind::Ident) {
@@ -2158,8 +2283,20 @@ impl<'a> Parser<'a> {
         Ok(Expr::list(self.node_ids.next_expr(), offset, items))
     }
 
-    fn parse_map_literal_expression(&mut self) -> Result<Expr, ParserError> {
+    fn parse_percent_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::Percent, "%")?.span().start();
+
+        if self.check(TokenKind::LBrace) {
+            return self.parse_map_literal_expression_after_percent(offset);
+        }
+
+        self.parse_struct_literal_expression(offset)
+    }
+
+    fn parse_map_literal_expression_after_percent(
+        &mut self,
+        offset: usize,
+    ) -> Result<Expr, ParserError> {
         self.expect(TokenKind::LBrace, "{")?;
 
         if self.match_kind(TokenKind::RBrace) {
@@ -2192,6 +2329,42 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RBrace, "}")?;
 
         Ok(Expr::map(self.node_ids.next_expr(), offset, entries))
+    }
+
+    fn parse_struct_literal_expression(&mut self, offset: usize) -> Result<Expr, ParserError> {
+        let module = self.parse_module_reference("struct module")?;
+        self.expect(TokenKind::LBrace, "{")?;
+
+        if self.match_kind(TokenKind::RBrace) {
+            return Ok(Expr::struct_literal(
+                self.node_ids.next_expr(),
+                offset,
+                module,
+                Vec::new(),
+            ));
+        }
+
+        if self.starts_keyword_literal_entry() {
+            let entries = self.parse_label_entries(TokenKind::RBrace, "struct field")?;
+            return Ok(Expr::struct_literal(
+                self.node_ids.next_expr(),
+                offset,
+                module,
+                entries,
+            ));
+        }
+
+        let base = self.parse_expression()?;
+        self.expect(TokenKind::Pipe, "|")?;
+        let updates = self.parse_label_entries(TokenKind::RBrace, "struct update field")?;
+
+        Ok(Expr::struct_update(
+            self.node_ids.next_expr(),
+            offset,
+            module,
+            base,
+            updates,
+        ))
     }
 
     fn starts_keyword_literal_entry(&self) -> bool {
@@ -2452,7 +2625,7 @@ impl<'a> Parser<'a> {
         }
 
         if self.match_kind(TokenKind::Percent) {
-            return self.parse_map_pattern();
+            return self.parse_percent_pattern();
         }
 
         if self.check(TokenKind::Atom) {
@@ -2512,6 +2685,14 @@ impl<'a> Parser<'a> {
         Ok((items, tail))
     }
 
+    fn parse_percent_pattern(&mut self) -> Result<Pattern, ParserError> {
+        if self.check(TokenKind::LBrace) {
+            return self.parse_map_pattern();
+        }
+
+        self.parse_struct_pattern()
+    }
+
     fn parse_map_pattern(&mut self) -> Result<Pattern, ParserError> {
         self.expect(TokenKind::LBrace, "{")?;
 
@@ -2552,6 +2733,31 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::RBrace, "}")?;
 
         Ok(Pattern::Map { entries })
+    }
+
+    fn parse_struct_pattern(&mut self) -> Result<Pattern, ParserError> {
+        let module = self.parse_module_reference("struct module")?;
+        self.expect(TokenKind::LBrace, "{")?;
+
+        let mut entries = Vec::new();
+        if !self.check(TokenKind::RBrace) {
+            loop {
+                let key = self.expect_ident("struct pattern key")?;
+                self.expect(TokenKind::Colon, ":")?;
+                let value = self.parse_pattern()?;
+                entries.push(LabelPatternEntry { key, value });
+
+                if self.match_kind(TokenKind::Comma) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        self.expect(TokenKind::RBrace, "}")?;
+
+        Ok(Pattern::Struct { module, entries })
     }
 
     fn current_binary_operator(&self) -> Option<(u8, u8, BinaryOp)> {
@@ -3126,6 +3332,89 @@ mod tests {
     }
 
     #[test]
+    fn parse_ast_supports_defstruct_literals_and_updates() {
+        let tokens = scan_tokens(
+            "defmodule User do\n  defstruct name: \"\", age: 0\n\n  def run(user) do\n    {%User{name: \"A\"}, %User{user | age: 43}}\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].forms).expect("module forms should serialize"),
+            serde_json::json!([
+                {
+                    "kind":"defstruct",
+                    "fields":[
+                        {"name":"name","default":{"kind":"string","value":""}},
+                        {"name":"age","default":{"kind":"int","value":0}}
+                    ]
+                }
+            ])
+        );
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"tuple",
+                "items":[
+                    {
+                        "kind":"struct",
+                        "module":"User",
+                        "entries":[
+                            {"key":"name","value":{"kind":"string","value":"A"}}
+                        ]
+                    },
+                    {
+                        "kind":"structupdate",
+                        "module":"User",
+                        "base":{"kind":"variable","name":"user"},
+                        "updates":[
+                            {"key":"age","value":{"kind":"int","value":43}}
+                        ]
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_ast_supports_struct_patterns() {
+        let tokens = scan_tokens(
+            "defmodule User do\n  defstruct name: \"\", age: 0\n\n  def run(value) do\n    case value do\n      %User{name: name} -> name\n      _ -> \"none\"\n    end\n  end\nend\n",
+        )
+        .expect("scanner should tokenize parser fixture");
+
+        let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+        assert_eq!(
+            serde_json::to_value(&ast.modules[0].functions[0].body)
+                .expect("expression should serialize"),
+            serde_json::json!({
+                "kind":"case",
+                "subject":{"kind":"variable","name":"value"},
+                "branches":[
+                    {
+                        "pattern":{
+                            "kind":"struct",
+                            "module":"User",
+                            "entries":[
+                                {"key":"name","value":{"kind":"bind","name":"name"}}
+                            ]
+                        },
+                        "body":{"kind":"variable","name":"name"}
+                    },
+                    {
+                        "pattern":{"kind":"wildcard"},
+                        "body":{"kind":"string","value":"none"}
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
     fn parse_ast_reports_deterministic_map_entry_diagnostics() {
         let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    %{1 2}\n  end\nend\n")
             .expect("scanner should tokenize parser fixture");
@@ -3544,6 +3833,13 @@ mod tests {
                     collect_expr_ids(&entry.value, ids);
                 }
             }
+            Expr::Struct { id, entries, .. } => {
+                ids.push(id.0.clone());
+
+                for entry in entries {
+                    collect_expr_ids(&entry.value, ids);
+                }
+            }
             Expr::Keyword { id, entries, .. } => {
                 ids.push(id.0.clone());
 
@@ -3552,6 +3848,9 @@ mod tests {
                 }
             }
             Expr::MapUpdate {
+                id, base, updates, ..
+            }
+            | Expr::StructUpdate {
                 id, base, updates, ..
             } => {
                 ids.push(id.0.clone());

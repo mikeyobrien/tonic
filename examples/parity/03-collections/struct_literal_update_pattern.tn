@@ -1,0 +1,12 @@
+defmodule User do
+  defstruct name: "", age: 0
+end
+
+defmodule Demo do
+  def run() do
+    case %User{%User{name: "A", age: 42} | age: 43} do
+      %User{name: name, age: age} -> {%User{name: name, age: age}, {name, age}}
+      _ -> :error
+    end
+  end
+end

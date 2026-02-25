@@ -60,7 +60,7 @@ _Last updated: 2026-02-25_
 - [x] map updates (`%{m | k: v}`) (`tests/check_dump_ast_map_update.rs`)
 - [x] map access (`m.key`, `m[:key]`) (`examples/parity/03-collections/map_dot_and_index_access.tn`)
 - [x] map fat-arrow entries (`%{"k" => v}`) (`src/lexer.rs`, `src/parser.rs`, `examples/parity/03-collections/map_fat_arrow_literal.tn`)
-- [ ] struct literals (`%Foo{field: v}`) (`src/parser.rs`)
+- [x] struct literals + updates (`%Foo{field: v}`, `%Foo{base | field: v}`) (`src/parser.rs`, `tests/check_dump_ast_struct_syntax.rs`, `examples/parity/03-collections/struct_literal_update_pattern.tn`)
 
 ## 4) Pattern matching
 
@@ -70,6 +70,7 @@ _Last updated: 2026-02-25_
 - [x] list patterns + cons/tail (`[h | t]`) (`examples/parity/99-stretch/list_cons_pattern.tn`)
 - [x] map patterns with label syntax (`%{ok: v}`) (`examples/parity/99-stretch/map_colon_pattern.tn`)
 - [x] map key/value patterns support Elixir syntax (`%{:ok => v}` / `%{"k" => v}`) (`src/parser.rs`, `examples/parity/04-patterns/case_map_arrow_pattern.tn`)
+- [x] struct patterns (`%Foo{field: v}`) (`src/parser.rs`, `tests/check_dump_ast_struct_syntax.rs`, `examples/parity/03-collections/struct_literal_update_pattern.tn`)
 - [x] pin operator `^var` (`examples/parity/04-patterns/pin_pattern_and_guard.tn`)
 - [x] `when` guards in case/function branches (`examples/parity/04-patterns/pin_pattern_and_guard.tn`, `examples/parity/05-functions/function_guards_when.tn`)
 - [x] match operator `=` (`examples/parity/04-patterns/match_operator_bindings.tn`)
@@ -153,8 +154,8 @@ These are the highest-leverage gaps to close before calling Tonic "production-gr
 1. [x] **Map `=>` key syntax parity (literals + patterns)**  
    `%{"k" => v}` literals and `%{"k" => x}` map-pattern forms are now supported alongside atom-label shorthand.
 
-2. [ ] **Struct syntax parity** (`%Module{...}`, updates, struct patterns)  
-   Structs are core to real-world domain modeling, validation, and typed data boundaries.
+2. [x] **Struct syntax parity** (`%Module{...}`, updates, struct patterns)  
+   `defstruct` forms, struct literal/update parsing, struct-pattern matching, resolver diagnostics, and runtime `__struct__` tagging are now wired end-to-end.
 
 3. [ ] **`defprotocol` / `defimpl` syntax + dispatch semantics**  
    Replace builtin-only protocol shortcuts with first-class language-level protocol definitions and impl blocks.

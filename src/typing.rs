@@ -280,6 +280,12 @@ fn infer_expression_type(
             }
             Ok(Type::Dynamic)
         }
+        Expr::Struct { entries, .. } => {
+            for entry in entries {
+                infer_expression_type(&entry.value, current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
         Expr::Keyword { entries, .. } => {
             for entry in entries {
                 infer_expression_type(&entry.value, current_module, signatures, solver)?;
@@ -287,6 +293,13 @@ fn infer_expression_type(
             Ok(Type::Dynamic)
         }
         Expr::MapUpdate { base, updates, .. } => {
+            infer_expression_type(base, current_module, signatures, solver)?;
+            for entry in updates {
+                infer_expression_type(&entry.value, current_module, signatures, solver)?;
+            }
+            Ok(Type::Dynamic)
+        }
+        Expr::StructUpdate { base, updates, .. } => {
             infer_expression_type(base, current_module, signatures, solver)?;
             for entry in updates {
                 infer_expression_type(&entry.value, current_module, signatures, solver)?;

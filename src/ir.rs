@@ -1,5 +1,6 @@
-use crate::parser::{Ast, BinaryOp, Expr, Pattern};
+use crate::parser::{Ast, BinaryOp, Expr, ModuleForm, Pattern};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -241,20 +242,23 @@ impl fmt::Display for LoweringError {
 
 impl std::error::Error for LoweringError {}
 
+type StructDefinitions = HashMap<String, Vec<(String, Expr)>>;
+
 pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
     let mut functions = Vec::new();
+    let struct_definitions = collect_struct_definitions(ast);
 
     for module in &ast.modules {
         for function in &module.functions {
             let mut ops = Vec::new();
-            lower_expr(&function.body, &module.name, &mut ops)?;
+            lower_expr(&function.body, &module.name, &struct_definitions, &mut ops)?;
             ops.push(IrOp::Return {
                 offset: function.body.offset(),
             });
 
             let guard_ops = if let Some(guard) = function.guard() {
                 let mut guard_ops = Vec::new();
-                lower_expr(guard, &module.name, &mut guard_ops)?;
+                lower_expr(guard, &module.name, &struct_definitions, &mut guard_ops)?;
                 Some(guard_ops)
             } else {
                 None
@@ -275,12 +279,39 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
                 ops,
             });
 
-            let wrappers = lower_default_argument_wrappers(module.name.as_str(), function)?;
+            let wrappers = lower_default_argument_wrappers(
+                module.name.as_str(),
+                function,
+                &struct_definitions,
+            )?;
             functions.extend(wrappers);
         }
     }
 
     Ok(IrProgram { functions })
+}
+
+fn collect_struct_definitions(ast: &Ast) -> StructDefinitions {
+    let mut definitions = HashMap::new();
+
+    for module in &ast.modules {
+        if let Some(fields) = module.forms.iter().find_map(|form| {
+            if let ModuleForm::Defstruct { fields } = form {
+                Some(
+                    fields
+                        .iter()
+                        .map(|field| (field.name.clone(), field.default.clone()))
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                None
+            }
+        }) {
+            definitions.insert(module.name.clone(), fields);
+        }
+    }
+
+    definitions
 }
 
 fn lower_function_param_patterns(
@@ -307,6 +338,7 @@ fn lower_function_param_patterns(
 fn lower_default_argument_wrappers(
     module_name: &str,
     function: &crate::parser::Function,
+    struct_definitions: &StructDefinitions,
 ) -> Result<Vec<IrFunction>, LoweringError> {
     let trailing_default_count = function
         .params
@@ -343,7 +375,7 @@ fn lower_default_argument_wrappers(
             let default = parameter
                 .default()
                 .ok_or_else(|| LoweringError::unsupported("default argument shape", call_offset))?;
-            lower_expr(default, module_name, &mut ops)?;
+            lower_expr(default, module_name, struct_definitions, &mut ops)?;
         }
 
         ops.push(IrOp::Call {
@@ -369,7 +401,12 @@ fn lower_default_argument_wrappers(
     Ok(wrappers)
 }
 
-fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<(), LoweringError> {
+fn lower_expr(
+    expr: &Expr,
+    current_module: &str,
+    struct_definitions: &StructDefinitions,
+    ops: &mut Vec<IrOp>,
+) -> Result<(), LoweringError> {
     match expr {
         Expr::Int { value, offset, .. } => {
             ops.push(IrOp::ConstInt {
@@ -423,7 +460,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                         });
                     }
                     crate::parser::InterpolationSegment::Expr { expr } => {
-                        lower_expr(expr, current_module, ops)?;
+                        lower_expr(expr, current_module, struct_definitions, ops)?;
                         ops.push(IrOp::ToString { offset: *offset });
                     }
                 }
@@ -440,7 +477,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             }
 
             for item in items {
-                lower_expr(item, current_module, ops)?;
+                lower_expr(item, current_module, struct_definitions, ops)?;
             }
 
             ops.push(IrOp::Call {
@@ -454,7 +491,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
         }
         Expr::List { items, offset, .. } => {
             for item in items {
-                lower_expr(item, current_module, ops)?;
+                lower_expr(item, current_module, struct_definitions, ops)?;
             }
 
             ops.push(IrOp::Call {
@@ -481,8 +518,8 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             }
 
             let first = &entries[0];
-            lower_expr(first.key(), current_module, ops)?;
-            lower_expr(first.value(), current_module, ops)?;
+            lower_expr(first.key(), current_module, struct_definitions, ops)?;
+            lower_expr(first.value(), current_module, struct_definitions, ops)?;
 
             ops.push(IrOp::Call {
                 callee: IrCallTarget::Builtin {
@@ -493,8 +530,55 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             });
 
             for entry in entries.iter().skip(1) {
-                lower_expr(entry.key(), current_module, ops)?;
-                lower_expr(entry.value(), current_module, ops)?;
+                lower_expr(entry.key(), current_module, struct_definitions, ops)?;
+                lower_expr(entry.value(), current_module, struct_definitions, ops)?;
+                ops.push(IrOp::Call {
+                    callee: IrCallTarget::Builtin {
+                        name: "map_put".to_string(),
+                    },
+                    argc: 3,
+                    offset: *offset,
+                });
+            }
+
+            Ok(())
+        }
+        Expr::Struct {
+            module,
+            entries,
+            offset,
+            ..
+        } => {
+            let Some(struct_fields) = struct_definitions.get(module) else {
+                return Err(LoweringError::unsupported("struct module", *offset));
+            };
+
+            ops.push(IrOp::ConstAtom {
+                value: "__struct__".to_string(),
+                offset: *offset,
+            });
+            ops.push(IrOp::ConstAtom {
+                value: module.clone(),
+                offset: *offset,
+            });
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "map".to_string(),
+                },
+                argc: 2,
+                offset: *offset,
+            });
+
+            for (field_name, default) in struct_fields {
+                ops.push(IrOp::ConstAtom {
+                    value: field_name.clone(),
+                    offset: *offset,
+                });
+                let field_value = entries
+                    .iter()
+                    .find_map(|entry| (entry.key == *field_name).then_some(&entry.value))
+                    .unwrap_or(default);
+                lower_expr(field_value, current_module, struct_definitions, ops)?;
                 ops.push(IrOp::Call {
                     callee: IrCallTarget::Builtin {
                         name: "map_put".to_string(),
@@ -516,14 +600,43 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 return Err(LoweringError::unsupported("map update arity", *offset));
             }
 
-            lower_expr(base, current_module, ops)?;
+            lower_expr(base, current_module, struct_definitions, ops)?;
 
             for entry in updates {
                 ops.push(IrOp::ConstAtom {
                     value: entry.key.clone(),
                     offset: *offset,
                 });
-                lower_expr(&entry.value, current_module, ops)?;
+                lower_expr(&entry.value, current_module, struct_definitions, ops)?;
+
+                ops.push(IrOp::Call {
+                    callee: IrCallTarget::Builtin {
+                        name: "map_update".to_string(),
+                    },
+                    argc: 3,
+                    offset: *offset,
+                });
+            }
+            Ok(())
+        }
+        Expr::StructUpdate {
+            base,
+            updates,
+            offset,
+            ..
+        } => {
+            if updates.is_empty() {
+                return Err(LoweringError::unsupported("struct update arity", *offset));
+            }
+
+            lower_expr(base, current_module, struct_definitions, ops)?;
+
+            for entry in updates {
+                ops.push(IrOp::ConstAtom {
+                    value: entry.key.clone(),
+                    offset: *offset,
+                });
+                lower_expr(&entry.value, current_module, struct_definitions, ops)?;
 
                 ops.push(IrOp::Call {
                     callee: IrCallTarget::Builtin {
@@ -547,7 +660,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 value: first.key.clone(),
                 offset: *offset,
             });
-            lower_expr(&first.value, current_module, ops)?;
+            lower_expr(&first.value, current_module, struct_definitions, ops)?;
 
             ops.push(IrOp::Call {
                 callee: IrCallTarget::Builtin {
@@ -562,7 +675,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                     value: entry.key.clone(),
                     offset: *offset,
                 });
-                lower_expr(&entry.value, current_module, ops)?;
+                lower_expr(&entry.value, current_module, struct_definitions, ops)?;
 
                 ops.push(IrOp::Call {
                     callee: IrCallTarget::Builtin {
@@ -582,7 +695,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ..
         } => {
             for arg in args {
-                lower_expr(arg, current_module, ops)?;
+                lower_expr(arg, current_module, struct_definitions, ops)?;
             }
 
             ops.push(IrOp::Call {
@@ -600,7 +713,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ..
         } => {
             let mut closure_ops = Vec::new();
-            lower_expr(body, current_module, &mut closure_ops)?;
+            lower_expr(body, current_module, struct_definitions, &mut closure_ops)?;
             closure_ops.push(IrOp::Return {
                 offset: body.offset(),
             });
@@ -619,10 +732,10 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             offset,
             ..
         } => {
-            lower_expr(callee, current_module, ops)?;
+            lower_expr(callee, current_module, struct_definitions, ops)?;
 
             for arg in args {
-                lower_expr(arg, current_module, ops)?;
+                lower_expr(arg, current_module, struct_definitions, ops)?;
             }
 
             ops.push(IrOp::CallValue {
@@ -638,7 +751,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             offset,
             ..
         } => {
-            lower_expr(base, current_module, ops)?;
+            lower_expr(base, current_module, struct_definitions, ops)?;
             ops.push(IrOp::ConstAtom {
                 value: label.clone(),
                 offset: *offset,
@@ -660,8 +773,8 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             offset,
             ..
         } => {
-            lower_expr(base, current_module, ops)?;
-            lower_expr(index, current_module, ops)?;
+            lower_expr(base, current_module, struct_definitions, ops)?;
+            lower_expr(index, current_module, struct_definitions, ops)?;
 
             ops.push(IrOp::Call {
                 callee: IrCallTarget::Builtin {
@@ -682,18 +795,18 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                         value: 0,
                         offset: *offset,
                     });
-                    lower_expr(value, current_module, ops)?;
+                    lower_expr(value, current_module, struct_definitions, ops)?;
                     ops.push(IrOp::SubInt { offset: *offset });
                 }
                 crate::parser::UnaryOp::Plus => {
-                    lower_expr(value, current_module, ops)?;
+                    lower_expr(value, current_module, struct_definitions, ops)?;
                 }
                 crate::parser::UnaryOp::Not => {
-                    lower_expr(value, current_module, ops)?;
+                    lower_expr(value, current_module, struct_definitions, ops)?;
                     ops.push(IrOp::Not { offset: *offset });
                 }
                 crate::parser::UnaryOp::Bang => {
-                    lower_expr(value, current_module, ops)?;
+                    lower_expr(value, current_module, struct_definitions, ops)?;
                     ops.push(IrOp::Bang { offset: *offset });
                 }
             }
@@ -707,7 +820,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ..
         } => {
             if *op == BinaryOp::Match {
-                lower_expr(right, current_module, ops)?;
+                lower_expr(right, current_module, struct_definitions, ops)?;
                 let pattern = lower_expr_pattern(left)?;
                 ops.push(IrOp::Match {
                     pattern,
@@ -716,12 +829,12 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 return Ok(());
             }
 
-            lower_expr(left, current_module, ops)?;
+            lower_expr(left, current_module, struct_definitions, ops)?;
 
             match op {
                 BinaryOp::AndAnd => {
                     let mut right_ops = Vec::new();
-                    lower_expr(right, current_module, &mut right_ops)?;
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
                     ops.push(IrOp::AndAnd {
                         right_ops,
                         offset: *offset,
@@ -730,7 +843,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 }
                 BinaryOp::OrOr => {
                     let mut right_ops = Vec::new();
-                    lower_expr(right, current_module, &mut right_ops)?;
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
                     ops.push(IrOp::OrOr {
                         right_ops,
                         offset: *offset,
@@ -739,7 +852,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 }
                 BinaryOp::And => {
                     let mut right_ops = Vec::new();
-                    lower_expr(right, current_module, &mut right_ops)?;
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
                     ops.push(IrOp::And {
                         right_ops,
                         offset: *offset,
@@ -748,7 +861,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 }
                 BinaryOp::Or => {
                     let mut right_ops = Vec::new();
-                    lower_expr(right, current_module, &mut right_ops)?;
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
                     ops.push(IrOp::Or {
                         right_ops,
                         offset: *offset,
@@ -758,7 +871,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 _ => {}
             }
 
-            lower_expr(right, current_module, ops)?;
+            lower_expr(right, current_module, struct_definitions, ops)?;
             let ir_op = match op {
                 BinaryOp::Plus => IrOp::AddInt { offset: *offset },
                 BinaryOp::Minus => IrOp::SubInt { offset: *offset },
@@ -803,7 +916,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             Ok(())
         }
         Expr::Question { value, offset, .. } => {
-            lower_expr(value, current_module, ops)?;
+            lower_expr(value, current_module, struct_definitions, ops)?;
             ops.push(IrOp::Question { offset: *offset });
             Ok(())
         }
@@ -812,24 +925,36 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             right,
             offset,
             ..
-        } => lower_pipe_expr(left, right, *offset, current_module, ops),
+        } => lower_pipe_expr(
+            left,
+            right,
+            *offset,
+            current_module,
+            struct_definitions,
+            ops,
+        ),
         Expr::Case {
             subject,
             branches,
             offset,
             ..
         } => {
-            lower_expr(subject, current_module, ops)?;
+            lower_expr(subject, current_module, struct_definitions, ops)?;
 
             let lowered_branches = branches
                 .iter()
                 .map(|branch| {
                     let mut branch_ops = Vec::new();
-                    lower_expr(branch.body(), current_module, &mut branch_ops)?;
+                    lower_expr(
+                        branch.body(),
+                        current_module,
+                        struct_definitions,
+                        &mut branch_ops,
+                    )?;
 
                     let guard_ops = if let Some(guard) = branch.guard() {
                         let mut guard_ops = Vec::new();
-                        lower_expr(guard, current_module, &mut guard_ops)?;
+                        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
                         Some(guard_ops)
                     } else {
                         None
@@ -858,17 +983,22 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             ..
         } => {
             let mut body_ops = Vec::new();
-            lower_expr(body, current_module, &mut body_ops)?;
+            lower_expr(body, current_module, struct_definitions, &mut body_ops)?;
 
             let rescue_branches = rescue
                 .iter()
                 .map(|branch| {
                     let mut branch_ops = Vec::new();
-                    lower_expr(branch.body(), current_module, &mut branch_ops)?;
+                    lower_expr(
+                        branch.body(),
+                        current_module,
+                        struct_definitions,
+                        &mut branch_ops,
+                    )?;
 
                     let guard_ops = if let Some(guard) = branch.guard() {
                         let mut guard_ops = Vec::new();
-                        lower_expr(guard, current_module, &mut guard_ops)?;
+                        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
                         Some(guard_ops)
                     } else {
                         None
@@ -886,11 +1016,16 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
                 .iter()
                 .map(|branch| {
                     let mut branch_ops = Vec::new();
-                    lower_expr(branch.body(), current_module, &mut branch_ops)?;
+                    lower_expr(
+                        branch.body(),
+                        current_module,
+                        struct_definitions,
+                        &mut branch_ops,
+                    )?;
 
                     let guard_ops = if let Some(guard) = branch.guard() {
                         let mut guard_ops = Vec::new();
-                        lower_expr(guard, current_module, &mut guard_ops)?;
+                        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
                         Some(guard_ops)
                     } else {
                         None
@@ -906,7 +1041,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
 
             let after_ops = if let Some(after_expr) = after {
                 let mut ops = Vec::new();
-                lower_expr(after_expr, current_module, &mut ops)?;
+                lower_expr(after_expr, current_module, struct_definitions, &mut ops)?;
                 Some(ops)
             } else {
                 None
@@ -922,7 +1057,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             Ok(())
         }
         Expr::Raise { error, offset, .. } => {
-            lower_expr(error, current_module, ops)?;
+            lower_expr(error, current_module, struct_definitions, ops)?;
             ops.push(IrOp::Raise { offset: *offset });
             Ok(())
         }
@@ -936,17 +1071,17 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             let mut ir_generators = Vec::new();
             for (pattern, generator) in generators {
                 let mut gen_ops = Vec::new();
-                lower_expr(generator, current_module, &mut gen_ops)?;
+                lower_expr(generator, current_module, struct_definitions, &mut gen_ops)?;
                 ir_generators.push((lower_pattern(pattern)?, gen_ops));
             }
 
             let mut body_ops = Vec::new();
-            lower_expr(body, current_module, &mut body_ops)?;
+            lower_expr(body, current_module, struct_definitions, &mut body_ops)?;
 
             let into_ops = match into {
                 Some(into_expr) => {
                     let mut ops = Vec::new();
-                    lower_expr(into_expr, current_module, &mut ops)?;
+                    lower_expr(into_expr, current_module, struct_definitions, &mut ops)?;
                     Some(ops)
                 }
                 None => None,
@@ -960,7 +1095,7 @@ fn lower_expr(expr: &Expr, current_module: &str, ops: &mut Vec<IrOp>) -> Result<
             });
             Ok(())
         }
-        Expr::Group { inner, .. } => lower_expr(inner, current_module, ops),
+        Expr::Group { inner, .. } => lower_expr(inner, current_module, struct_definitions, ops),
         Expr::Variable { name, offset, .. } => {
             ops.push(IrOp::LoadVariable {
                 name: name.clone(),
@@ -983,9 +1118,10 @@ fn lower_pipe_expr(
     right: &Expr,
     pipe_offset: usize,
     current_module: &str,
+    struct_definitions: &StructDefinitions,
     ops: &mut Vec<IrOp>,
 ) -> Result<(), LoweringError> {
-    lower_expr(left, current_module, ops)?;
+    lower_expr(left, current_module, struct_definitions, ops)?;
 
     let Expr::Call {
         callee,
@@ -998,7 +1134,7 @@ fn lower_pipe_expr(
     };
 
     for arg in args {
-        lower_expr(arg, current_module, ops)?;
+        lower_expr(arg, current_module, struct_definitions, ops)?;
     }
 
     ops.push(IrOp::Call {
@@ -1054,6 +1190,31 @@ fn lower_expr_pattern(expr: &Expr) -> Result<IrPattern, LoweringError> {
                 })
                 .collect::<Result<Vec<_>, LoweringError>>()?;
             Ok(IrPattern::Map { entries })
+        }
+        Expr::Struct {
+            module, entries, ..
+        } => {
+            let mut lowered_entries = vec![IrMapPatternEntry {
+                key: IrPattern::Atom {
+                    value: "__struct__".to_string(),
+                },
+                value: IrPattern::Atom {
+                    value: module.clone(),
+                },
+            }];
+
+            for entry in entries {
+                lowered_entries.push(IrMapPatternEntry {
+                    key: IrPattern::Atom {
+                        value: entry.key.clone(),
+                    },
+                    value: lower_expr_pattern(&entry.value)?,
+                });
+            }
+
+            Ok(IrPattern::Map {
+                entries: lowered_entries,
+            })
         }
         Expr::Binary {
             op: BinaryOp::Match,
@@ -1113,6 +1274,31 @@ fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
                 .collect::<Result<Vec<_>, LoweringError>>()?;
 
             Ok(IrPattern::Map { entries })
+        }
+        Pattern::Struct {
+            module, entries, ..
+        } => {
+            let mut lowered_entries = vec![IrMapPatternEntry {
+                key: IrPattern::Atom {
+                    value: "__struct__".to_string(),
+                },
+                value: IrPattern::Atom {
+                    value: module.clone(),
+                },
+            }];
+
+            for entry in entries {
+                lowered_entries.push(IrMapPatternEntry {
+                    key: IrPattern::Atom {
+                        value: entry.key.clone(),
+                    },
+                    value: lower_pattern(entry.value())?,
+                });
+            }
+
+            Ok(IrPattern::Map {
+                entries: lowered_entries,
+            })
         }
     }
 }
