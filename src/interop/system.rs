@@ -1,9 +1,16 @@
 use super::{host_value_kind, HostError, HostRegistry};
 use crate::runtime::RuntimeValue;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use hmac::{Hmac, Mac};
+use rand::RngCore;
 use reqwest::Method;
+use sha2::Sha256;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+const RANDOM_TOKEN_MIN_BYTES: i64 = 16;
+const RANDOM_TOKEN_MAX_BYTES: i64 = 256;
 
 const HTTP_TIMEOUT_DEFAULT_MS: i64 = 30_000;
 const HTTP_TIMEOUT_MIN_MS: i64 = 100;
@@ -57,6 +64,26 @@ fn expect_string_arg(
         RuntimeValue::String(text) => Ok(text.clone()),
         other => Err(HostError::new(format!(
             "{} expects string argument {}; found {}",
+            function,
+            index + 1,
+            host_value_kind(other)
+        ))),
+    }
+}
+
+fn expect_int_arg(function: &str, args: &[RuntimeValue], index: usize) -> Result<i64, HostError> {
+    let Some(value) = args.get(index) else {
+        return Err(HostError::new(format!(
+            "{} missing required argument {}",
+            function,
+            index + 1
+        )));
+    };
+
+    match value {
+        RuntimeValue::Int(n) => Ok(*n),
+        other => Err(HostError::new(format!(
+            "{} expects int argument {}; found {}",
             function,
             index + 1,
             host_value_kind(other)
@@ -226,7 +253,9 @@ fn parse_http_headers(items: &[RuntimeValue]) -> Result<Vec<(String, String)>, H
     Ok(headers)
 }
 
-fn parse_http_opts(entries: &[(RuntimeValue, RuntimeValue)]) -> Result<HttpRequestOptions, HostError> {
+fn parse_http_opts(
+    entries: &[(RuntimeValue, RuntimeValue)],
+) -> Result<HttpRequestOptions, HostError> {
     let mut opts = HttpRequestOptions {
         timeout_ms: HTTP_TIMEOUT_DEFAULT_MS,
         max_response_bytes: HTTP_MAX_RESPONSE_DEFAULT_BYTES,
@@ -511,9 +540,60 @@ fn host_sys_cwd(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
 fn host_sys_argv(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("sys_argv", args, 0)?;
 
-    let argv_list = std::env::args().map(RuntimeValue::String).collect::<Vec<_>>();
+    let argv_list = std::env::args()
+        .map(RuntimeValue::String)
+        .collect::<Vec<_>>();
 
     Ok(RuntimeValue::List(argv_list))
+}
+
+fn host_sys_random_token(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("sys_random_token", args, 1)?;
+    let bytes = expect_int_arg("sys_random_token", args, 0)?;
+
+    if bytes < RANDOM_TOKEN_MIN_BYTES || bytes > RANDOM_TOKEN_MAX_BYTES {
+        return Err(HostError::new(format!(
+            "sys_random_token bytes out of range: {bytes}"
+        )));
+    }
+
+    let mut buffer = vec![0u8; bytes as usize];
+    rand::rng().fill_bytes(&mut buffer);
+
+    Ok(RuntimeValue::String(URL_SAFE_NO_PAD.encode(&buffer)))
+}
+
+fn host_sys_hmac_sha256_hex(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("sys_hmac_sha256_hex", args, 2)?;
+    let secret = expect_string_arg("sys_hmac_sha256_hex", args, 0)?;
+    let message = expect_string_arg("sys_hmac_sha256_hex", args, 1)?;
+
+    if secret.is_empty() {
+        return Err(HostError::new(
+            "sys_hmac_sha256_hex secret must not be empty",
+        ));
+    }
+
+    if message.is_empty() {
+        return Err(HostError::new(
+            "sys_hmac_sha256_hex message must not be empty",
+        ));
+    }
+
+    type HmacSha256 = Hmac<Sha256>;
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| HostError::new(format!("sys_hmac_sha256_hex failed: {e}")))?;
+    mac.update(message.as_bytes());
+
+    let result = mac.finalize();
+    let hex: String = result
+        .into_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+
+    Ok(RuntimeValue::String(hex))
 }
 
 pub(super) fn register_system_host_functions(registry: &HostRegistry) {
@@ -528,4 +608,6 @@ pub(super) fn register_system_host_functions(registry: &HostRegistry) {
     registry.register("sys_which", host_sys_which);
     registry.register("sys_cwd", host_sys_cwd);
     registry.register("sys_argv", host_sys_argv);
+    registry.register("sys_random_token", host_sys_random_token);
+    registry.register("sys_hmac_sha256_hex", host_sys_hmac_sha256_hex);
 }
