@@ -91,6 +91,14 @@ pub(super) fn emit_c_instructions(
                 offset,
                 ..
             } => {
+                let root_frame = format!("tn_root_frame_v{dest}");
+                out.push_str(&format!(
+                    "  size_t {root_frame} = tn_runtime_root_frame_push();\n"
+                ));
+                for arg in args {
+                    out.push_str(&format!("  tn_runtime_root_register(v{arg});\n"));
+                }
+
                 emit_c_call(
                     *dest,
                     callee,
@@ -100,10 +108,20 @@ pub(super) fn emit_c_instructions(
                     *offset,
                     out,
                 )?;
+                out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
             }
             MirInstruction::CallValue {
                 dest, callee, args, ..
             } => {
+                let root_frame = format!("tn_root_frame_v{dest}");
+                out.push_str(&format!(
+                    "  size_t {root_frame} = tn_runtime_root_frame_push();\n"
+                ));
+                out.push_str(&format!("  tn_runtime_root_register(v{callee});\n"));
+                for arg in args {
+                    out.push_str(&format!("  tn_runtime_root_register(v{arg});\n"));
+                }
+
                 // Variadic closure call via stub
                 let all_args = std::iter::once(format!("v{callee}"))
                     .chain(std::iter::once(format!("(TnVal){}", args.len())))
@@ -113,6 +131,7 @@ pub(super) fn emit_c_instructions(
                 out.push_str(&format!(
                     "  v{dest} = tn_runtime_call_closure_varargs({all_args});\n"
                 ));
+                out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
             }
             MirInstruction::MakeClosure {
                 dest, params, ops, ..

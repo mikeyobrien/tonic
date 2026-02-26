@@ -65,6 +65,8 @@ typedef struct {
 
 typedef struct TnObj {
   TnObjKind kind;
+  uint64_t alloc_id;
+  uint32_t gc_flags;
   union {
     int bool_value;
     struct {
@@ -102,10 +104,22 @@ static TnObj **tn_heap = NULL;
 static size_t tn_heap_len = 0;
 static size_t tn_heap_cap = 0;
 
+static TnVal *tn_root_stack = NULL;
+static size_t tn_root_stack_len = 0;
+static size_t tn_root_stack_cap = 0;
+
 static uint64_t tn_memory_objects_total = 0;
+static uint64_t tn_memory_object_alloc_id_high_water = 0;
 static uint64_t tn_memory_heap_slots_high_water = 0;
 static uint64_t tn_memory_heap_capacity_high_water = 0;
+static uint64_t tn_memory_roots_registered_total = 0;
+static uint64_t tn_memory_root_frames_active = 0;
+static uint64_t tn_memory_root_frames_high_water = 0;
+static uint64_t tn_memory_root_slots_high_water = 0;
+static uint64_t tn_memory_next_alloc_id = 1;
 static int tn_memory_stats_enabled = -1;
+
+static int tn_is_boxed(TnVal value);
 
 static int tn_runtime_memory_stats_enabled(void) {
   if (tn_memory_stats_enabled >= 0) {
@@ -127,12 +141,71 @@ static void tn_runtime_memory_stats_print(void) {
       stderr,
       "memory.stats c_runtime objects_total=%" PRIu64
       " heap_slots=%zu heap_slots_hwm=%" PRIu64
-      " heap_capacity=%zu heap_capacity_hwm=%" PRIu64 "\n",
+      " heap_capacity=%zu heap_capacity_hwm=%" PRIu64
+      " object_alloc_id_hwm=%" PRIu64
+      " roots_registered_total=%" PRIu64
+      " root_frames_active=%" PRIu64
+      " root_frames_hwm=%" PRIu64
+      " root_slots=%zu root_slots_hwm=%" PRIu64 "\n",
       tn_memory_objects_total,
       tn_heap_len,
       tn_memory_heap_slots_high_water,
       tn_heap_cap,
-      tn_memory_heap_capacity_high_water);
+      tn_memory_heap_capacity_high_water,
+      tn_memory_object_alloc_id_high_water,
+      tn_memory_roots_registered_total,
+      tn_memory_root_frames_active,
+      tn_memory_root_frames_high_water,
+      tn_root_stack_len,
+      tn_memory_root_slots_high_water);
+}
+
+static size_t tn_runtime_root_frame_push(void) {
+  tn_memory_root_frames_active += 1;
+  if (tn_memory_root_frames_high_water < tn_memory_root_frames_active) {
+    tn_memory_root_frames_high_water = tn_memory_root_frames_active;
+  }
+  return tn_root_stack_len;
+}
+
+static void tn_runtime_root_register(TnVal value) {
+  if (!tn_is_boxed(value)) {
+    return;
+  }
+
+  if (tn_root_stack_len == tn_root_stack_cap) {
+    size_t next_cap = tn_root_stack_cap == 0 ? 64 : tn_root_stack_cap * 2;
+    TnVal *next_stack = (TnVal *)realloc(tn_root_stack, next_cap * sizeof(TnVal));
+    if (next_stack == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+
+    tn_root_stack = next_stack;
+    tn_root_stack_cap = next_cap;
+  }
+
+  tn_root_stack[tn_root_stack_len] = value;
+  tn_root_stack_len += 1;
+  tn_memory_roots_registered_total += 1;
+  if (tn_memory_root_slots_high_water < tn_root_stack_len) {
+    tn_memory_root_slots_high_water = (uint64_t)tn_root_stack_len;
+  }
+}
+
+static void tn_runtime_root_frame_pop(size_t frame_start) {
+  if (frame_start > tn_root_stack_len) {
+    fprintf(stderr, "error: native runtime root frame corruption\n");
+    exit(1);
+  }
+
+  if (tn_memory_root_frames_active == 0) {
+    fprintf(stderr, "error: native runtime root frame underflow\n");
+    exit(1);
+  }
+
+  tn_root_stack_len = frame_start;
+  tn_memory_root_frames_active -= 1;
 }
 
 static TnVal tn_true_value = 0;
@@ -203,6 +276,15 @@ static TnObj *tn_new_obj(TnObjKind kind) {
   }
 
   obj->kind = kind;
+  obj->gc_flags = 0;
+  obj->alloc_id = tn_memory_next_alloc_id;
+  if (tn_memory_next_alloc_id < UINT64_MAX) {
+    tn_memory_next_alloc_id += 1;
+  }
+  if (tn_memory_object_alloc_id_high_water < obj->alloc_id) {
+    tn_memory_object_alloc_id_high_water = obj->alloc_id;
+  }
+
   tn_memory_objects_total += 1;
   return obj;
 }
@@ -1115,6 +1197,8 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
         "    return tn_runtime_failf(\"arity mismatch for anonymous function: expected %lld args, found %lld\", (long long)closure_obj->as.closure.param_count, (long long)count);\n",
     );
     out.push_str("  }\n\n");
+    out.push_str("  size_t root_frame = tn_runtime_root_frame_push();\n");
+    out.push_str("  tn_runtime_root_register(closure);\n");
     out.push_str("  size_t argc = (size_t)count;\n");
     out.push_str("  TnVal *args = argc == 0 ? NULL : (TnVal *)calloc(argc, sizeof(TnVal));\n");
     out.push_str("  if (argc > 0 && args == NULL) {\n");
@@ -1125,12 +1209,14 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("  va_start(vargs, count);\n");
     out.push_str("  for (size_t i = 0; i < argc; i += 1) {\n");
     out.push_str("    args[i] = va_arg(vargs, TnVal);\n");
+    out.push_str("    tn_runtime_root_register(args[i]);\n");
     out.push_str("  }\n");
     out.push_str("  va_end(vargs);\n\n");
     out.push_str(
         "  TnVal result = tn_runtime_call_compiled_closure(closure_obj->as.closure.descriptor_hash, args, argc);\n",
     );
     out.push_str("  free(args);\n");
+    out.push_str("  tn_runtime_root_frame_pop(root_frame);\n");
     out.push_str("  return result;\n");
     out.push_str("}\n\n");
 
@@ -2638,6 +2724,16 @@ fn emit_compiled_closure_body(
                 }
                 args.reverse();
                 let callee = pop_stack_value(&mut stack, "closure callee")?;
+
+                let root_frame = format!("root_frame_{temp_index}");
+                out.push_str(&format!(
+                    "  size_t {root_frame} = tn_runtime_root_frame_push();\n"
+                ));
+                out.push_str(&format!("  tn_runtime_root_register({callee});\n"));
+                for argument in &args {
+                    out.push_str(&format!("  tn_runtime_root_register({argument});\n"));
+                }
+
                 let call_args = std::iter::once(callee)
                     .chain(std::iter::once(format!("(TnVal){argc}")))
                     .chain(args.into_iter())
@@ -2649,6 +2745,7 @@ fn emit_compiled_closure_body(
                 out.push_str(&format!(
                     "  TnVal {temp} = tn_runtime_call_closure_varargs({call_args});\n"
                 ));
+                out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
                 stack.push(temp);
             }
             IrOp::Return { .. } => {
@@ -2711,7 +2808,15 @@ fn emit_closure_call(
 
     let rendered_args = args.join(", ");
     let temp = format!("tmp_{}", *temp_index);
+    let root_frame = format!("root_frame_{}", *temp_index);
     *temp_index += 1;
+
+    out.push_str(&format!(
+        "  size_t {root_frame} = tn_runtime_root_frame_push();\n"
+    ));
+    for argument in &args {
+        out.push_str(&format!("  tn_runtime_root_register({argument});\n"));
+    }
 
     match callee {
         IrCallTarget::Builtin { name } => match name.as_str() {
@@ -2798,6 +2903,7 @@ fn emit_closure_call(
         }
     }
 
+    out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
     stack.push(temp);
     Ok(())
 }
