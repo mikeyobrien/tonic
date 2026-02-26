@@ -229,6 +229,4 @@ See [PARITY.md](PARITY.md) for full tracking. Key near-term gaps:
 
 ## License
 
-No `LICENSE` file is currently committed in this repository.
-
-If Tonic is intended for broad open-source reuse, adding an explicit license should be treated as a release blocker.
+This project is licensed under the [MIT License](LICENSE).
