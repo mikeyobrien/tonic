@@ -45,4 +45,14 @@ TONIC_BENCH_ENFORCE=0 \
 printf '%s\n' '[native-gates] scripts/native-regression-policy.sh --mode strict (compiled)'
 ./scripts/native-regression-policy.sh "$compiled_summary_json" --mode strict
 
-printf '[native-gates] complete. benchmark artifacts:\n  %s\n  %s\n  %s\n  %s\n' "$summary_json" "$summary_md" "$compiled_summary_json" "$compiled_summary_md"
+memory_bakeoff_artifact_dir="${TONIC_MEMORY_BAKEOFF_ARTIFACT_DIR:-$artifact_dir/memory-bakeoff}"
+printf '%s\n' '[native-gates] scripts/memory-bakeoff.sh --ci'
+TONIC_MEMORY_BAKEOFF_ARTIFACT_DIR="$memory_bakeoff_artifact_dir" \
+./scripts/memory-bakeoff.sh --ci
+
+printf '[native-gates] complete. benchmark artifacts:\n  %s\n  %s\n  %s\n  %s\n  %s\n' \
+  "$summary_json" \
+  "$summary_md" \
+  "$compiled_summary_json" \
+  "$compiled_summary_md" \
+  "$memory_bakeoff_artifact_dir"

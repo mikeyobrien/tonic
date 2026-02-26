@@ -33,4 +33,10 @@ This is a tracked scaffold of the memory roadmap work in `docs/memory-management
 - Compare baseline vs RC vs tracing on startup, throughput, RSS growth, pause profile.
 - Choose default strategy and document rationale + rollback path.
 - Add CI guardrails for regressions.
+- Implementation notes:
+  - Repro harness: `scripts/memory-bakeoff.sh`
+  - CI guardrail mode: `scripts/memory-bakeoff.sh --ci`
+  - Report: `docs/runtime-memory-bakeoff.md`
+  - Selected default: tracing mark/sweep (unset `TONIC_MEMORY_MODE` resolves to `trace`)
+  - Rollback: `TONIC_MEMORY_MODE=append_only`
 - Exit criteria: reproducible report and explicit default strategy.

@@ -30,6 +30,7 @@ fn rc_mode_reclaims_acyclic_intermediates_and_reports_cycle_caveat() {
 
     let baseline_run = std::process::Command::new(&exe_path)
         .env("TONIC_MEMORY_STATS", "1")
+        .env("TONIC_MEMORY_MODE", "append_only")
         .output()
         .expect("baseline executable should run");
     assert!(

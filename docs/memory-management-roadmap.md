@@ -183,8 +183,11 @@ High.
 
 ### Phase 3: Bakeoff and default selection
 - Compare memory growth, pause behavior, and implementation complexity.
-- Choose default strategy (likely tracing for long-running robustness).
-- Keep other strategy behind an experiment flag if valuable.
+- Choose default strategy (selected: tracing mark/sweep; unset `TONIC_MEMORY_MODE` resolves to `trace`).
+- Keep other strategies behind explicit flags (`append_only` rollback and `rc` experiment mode).
+- Bakeoff report and CI guardrails:
+  - `docs/runtime-memory-bakeoff.md`
+  - `scripts/memory-bakeoff.sh --ci`
 
 ---
 

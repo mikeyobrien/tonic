@@ -169,7 +169,7 @@ static int tn_runtime_memory_trace_enabled(void) {
 
   const char *mode = getenv("TONIC_MEMORY_MODE");
   tn_memory_trace_enabled =
-      (mode != NULL && strcmp(mode, "trace") == 0) ? 1 : 0;
+      (mode == NULL || mode[0] == '\0' || strcmp(mode, "trace") == 0) ? 1 : 0;
   return tn_memory_trace_enabled;
 }
 

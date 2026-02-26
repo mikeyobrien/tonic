@@ -30,6 +30,7 @@ fn trace_mode_reclaims_cyclic_graphs_and_reports_mark_sweep_stats() {
 
     let baseline_run = std::process::Command::new(&exe_path)
         .env("TONIC_MEMORY_STATS", "1")
+        .env("TONIC_MEMORY_MODE", "append_only")
         .output()
         .expect("baseline executable should run");
     assert!(

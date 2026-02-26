@@ -96,10 +96,21 @@ Task 03 RC prototype additions:
 
 Task 04 tracing GC prototype additions:
 
-- Tracing mode is opt-in via `TONIC_MEMORY_MODE=trace`.
+- Tracing mode is available via `TONIC_MEMORY_MODE=trace`.
 - Tracing collector is non-moving mark/sweep over boxed heap objects.
 - Root traversal includes runtime root stack plus bool/nil singletons.
 - Main entrypoint performs deterministic stop-the-world collection before exit
   (`tn_runtime_gc_collect`) so cyclic garbage can be reclaimed.
 - Stats include `cycle_collection=mark_sweep` and `gc_collections_total` in
   trace mode.
+
+Task 05 bakeoff/default-selection additions:
+
+- Default mode: tracing mark/sweep (`TONIC_MEMORY_MODE` unset resolves to trace).
+- Rollback mode: `TONIC_MEMORY_MODE=append_only` restores pre-collector behavior.
+- Alternative experiment mode remains available via `TONIC_MEMORY_MODE=rc`.
+- Reproducible bakeoff harness + CI guardrails:
+  - `scripts/memory-bakeoff.sh`
+  - `scripts/memory-bakeoff.sh --ci`
+- Baseline-vs-RC-vs-trace report is tracked in
+  `docs/runtime-memory-bakeoff.md`.

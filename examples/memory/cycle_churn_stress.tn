@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    host_call(:memory_cycle_churn, 2400)
+  end
+end

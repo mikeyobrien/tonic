@@ -75,9 +75,16 @@ jobs:
         run: ./scripts/bench-native-contract-enforce.sh benchmarks/native-compiled-suite.toml
       - name: Evaluate compiled regression policy (strict)
         run: ./scripts/native-regression-policy.sh .tonic/native-gates/native-compiled-summary.json --mode strict
+      - name: Memory bakeoff guardrails
+        env:
+          TONIC_MEMORY_BAKEOFF_ARTIFACT_DIR: .tonic/memory-bakeoff
+          TONIC_MEMORY_BAKEOFF_ITERATIONS: "3"
+        run: ./scripts/memory-bakeoff.sh --ci
       - name: Upload native benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: native-gates-${{ github.sha }}
-          path: .tonic/native-gates/
+          path: |
+            .tonic/native-gates/
+            .tonic/memory-bakeoff/
