@@ -1,35 +1,61 @@
 # Tonic
 
-> Elixir-inspired language core in Rust (alpha).
+> **Elixir-inspired language design. Rust implementation. Native binaries.**
 >
-> Tonic supports two execution paths:
-> - `tonic run` for interpreter execution
-> - `tonic compile` for native executable output
+> Tonic is an alpha-stage language core for developers who want expressive functional syntax *and* a practical compiler/runtime workflow.
 
-## Why Tonic
+## Why Tonic?
 
-Tonic is a language-core project focused on **syntax ergonomics + fast feedback loops** for compiler/runtime development.
+Tonic is opinionated about developer experience:
 
-The design intentionally leans on Elixir-style constructs (pattern matching, clauses, immutable data flow) because they are readable, composable, and practical for LLM-assisted coding workflows.
+- **Readable, composable syntax** — modules, clauses, pattern matching, guards, and functional control flow.
+- **Fast inner loop** — run code immediately with `tonic run`.
+- **Native output path** — compile to a runnable executable with `tonic compile`.
+- **Serious engineering workflow** — parity tracking, differential tests, and native gate scripts are built into the repo.
+
+If you like Elixir-style code shape but want to explore language/runtime implementation in Rust, Tonic is built for that.
+
+## 60-second demo
+
+### 1) Run a program via interpreter
+
+```bash
+cargo run --bin tonic -- run examples/parity/02-operators/arithmetic_basic.tn
+```
+
+Output:
+
+```text
+{3, {2, {8, 5}}}
+```
+
+### 2) Compile the same program to a native executable
+
+```bash
+cargo run --bin tonic -- compile examples/parity/02-operators/arithmetic_basic.tn --out ./.tonic/build/arithmetic_basic
+./.tonic/build/arithmetic_basic
+```
+
+Same output, different execution path.
 
 ## Project status
 
 - **Version:** `0.1.0-alpha.1`
-- **Stability:** alpha (active development, interfaces may change)
-- **Primary focus:** language syntax/runtime parity workflows and native backend iteration
-- **Out of scope:** BEAM/OTP runtime behavior (processes, supervisors, distribution, hot reload lifecycle)
+- **Stability:** alpha (interfaces and behavior may still evolve)
+- **Scope:** language syntax/runtime parity work and native backend iteration
+- **Out of scope:** BEAM/OTP runtime model (processes, supervisors, distribution, hot upgrade lifecycle)
 
-For tracked parity coverage and gaps, see [PARITY.md](PARITY.md).
+For detailed parity coverage and planned gaps, see [PARITY.md](PARITY.md).
 
-## Features (today)
+## What you get today
 
 - Frontend pipeline: lexer → parser → resolver → type inference
-- IR + MIR lowering pipeline
-- Interpreter runtime execution (`tonic run`)
-- Native compile path with C/LLVM sidecars (`tonic compile`)
-- Project-level `tonic.toml` support for multi-file projects
-- `tonic test` runner with text/JSON output
-- Formatting and static-check flows (`fmt`, `check`)
+- IR + MIR lowering
+- Interpreter runtime (`tonic run`)
+- Native compile flow with C/LLVM sidecars (`tonic compile`)
+- Multi-file project entry via `tonic.toml`
+- `.tn` test runner with text/JSON output (`tonic test`)
+- Formatting and static checking (`tonic fmt`, `tonic check`)
 - Dependency lock/sync workflows (`tonic deps`)
 
 ## Quickstart
@@ -47,37 +73,13 @@ For tracked parity coverage and gaps, see [PARITY.md](PARITY.md).
 cargo build --bin tonic
 ```
 
-> Note: this repository contains multiple binaries. Use `--bin tonic` with `cargo run`.
+> This repository has multiple binaries, so use `--bin tonic` with `cargo run`.
 
-### Run your first program
-
-```bash
-cargo run --bin tonic -- run examples/parity/02-operators/arithmetic_basic.tn
-```
-
-Expected output:
-
-```text
-{3, {2, {8, 5}}}
-```
-
-### Check + dump AST
-
-```bash
-cargo run --bin tonic -- check examples/parity/06-control-flow/for_multi_generator.tn --dump-ast
-```
-
-### Compile to a native executable
-
-```bash
-cargo run --bin tonic -- compile examples/parity/02-operators/arithmetic_basic.tn --out ./.tonic/build/arithmetic_basic
-./.tonic/build/arithmetic_basic
-```
-
-### Run tests
+### Run checks
 
 ```bash
 cargo test
+cargo run --bin tonic -- fmt examples --check
 ```
 
 ## Minimal language example
@@ -99,7 +101,7 @@ Run it:
 cargo run --bin tonic -- run path/to/file.tn
 ```
 
-## CLI reference
+## CLI cheat sheet
 
 | Command | Purpose | Example |
 |---|---|---|
@@ -109,13 +111,13 @@ cargo run --bin tonic -- run path/to/file.tn
 | `tonic fmt <path> [--check]` | Format source files or verify formatting | `cargo run --bin tonic -- fmt examples --check` |
 | `tonic compile <path> [--out <artifact-path>]` | Produce native executable + sidecars | `cargo run --bin tonic -- compile examples/parity/02-operators/arithmetic_basic.tn` |
 | `tonic deps <sync\|fetch\|lock>` | Sync/fetch/lock dependencies for a `tonic.toml` project | `tonic deps lock` |
-| `tonic verify run <slice-id> [--mode <auto\|mixed\|manual>]` | Run acceptance verification workflow | `tonic verify run step-01 --mode auto` |
+| `tonic verify run <slice-id> [--mode <auto\|mixed\|manual>]` | Run acceptance verification flow | `tonic verify run step-01 --mode auto` |
 
-`tonic cache` exists as a placeholder command surface and is not a complete cache-management UX yet.
+`tonic cache` currently exists as a placeholder command surface.
 
 ## Native compile artifacts
 
-By default, compile outputs are written under `.tonic/build/<stem>`:
+By default, compile outputs are written to `.tonic/build/<stem>`:
 
 - Executable: `<stem>`
 - LLVM IR sidecar: `<stem>.ll`
@@ -144,19 +146,9 @@ graph TD
     LINK --> EXE[native executable]
 ```
 
-## Repository layout
+## Engineering quality gates
 
-- `src/` — compiler/runtime/backends
-- `tests/` — integration + contract tests
-- `examples/` — parity fixtures and app examples
-- `benchmarks/` — benchmark manifests and baselines
-- `scripts/` — gate, benchmark, and release scripts
-- `docs/` — focused technical docs
-- `PARITY.md` — syntax parity checklist and priorities
-
-## Quality gates and benchmarks
-
-High-signal local workflows:
+Tonic ships with high-signal validation workflows:
 
 ```bash
 ./scripts/differential-enforce.sh
@@ -176,9 +168,7 @@ Benchmark docs and manifests:
 - [benchmarks/native-compiler-suite.toml](benchmarks/native-compiler-suite.toml)
 - [benchmarks/native-compiled-suite.toml](benchmarks/native-compiled-suite.toml)
 
-## Diagnostics and profiling
-
-Useful environment switches:
+## Diagnostics and profiling hooks
 
 - `TONIC_DEBUG_CACHE=1` — cache hit/miss traces
 - `TONIC_DEBUG_MODULE_LOADS=1` — module-load traces
@@ -186,6 +176,16 @@ Useful environment switches:
 - `TONIC_PROFILE_STDERR=1` — per-phase timings on stderr
 - `TONIC_PROFILE_OUT=<path>` — JSONL timing output
 - `TONIC_MEMORY_MODE=<append_only|rc|trace>` + `TONIC_MEMORY_STATS=1` — memory diagnostics
+
+## Repository layout
+
+- `src/` — compiler/runtime/backends
+- `tests/` — integration + contract tests
+- `examples/` — parity fixtures and app examples
+- `benchmarks/` — benchmark manifests and baselines
+- `scripts/` — gate, benchmark, and release scripts
+- `docs/` — focused technical docs
+- `PARITY.md` — syntax parity checklist and priorities
 
 ## Documentation map
 
@@ -217,9 +217,9 @@ For parity-sensitive/runtime-sensitive changes, also run:
 
 Repository-specific working notes are in [AGENTS.md](AGENTS.md).
 
-## Roadmap (short-term)
+## Roadmap (near term)
 
-See [PARITY.md](PARITY.md) for the full tracked list. Near-term gaps include:
+See [PARITY.md](PARITY.md) for full tracking. Key near-term gaps:
 
 - Numeric literal parity (hex/octal/binary, numeric separators, char literals)
 - Operator parity (`===`, `!==`, `div`, `rem`, `not in`, stepped ranges, bitwise family)
@@ -231,4 +231,4 @@ See [PARITY.md](PARITY.md) for the full tracked list. Near-term gaps include:
 
 No `LICENSE` file is currently committed in this repository.
 
-If you plan to publish Tonic as open source for external use/reuse, adding an explicit license should be treated as a release blocker.
+If Tonic is intended for broad open-source reuse, adding an explicit license should be treated as a release blocker.
