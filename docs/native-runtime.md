@@ -90,7 +90,7 @@ Task 01 observability additions:
 
 Task 03 RC prototype additions:
 
-- RC mode is opt-in via `TONIC_MEMORY_MODE=rc` (default remains append-only).
+- RC mode is opt-in via `TONIC_MEMORY_MODE=rc` (at this stage default was append-only; superseded by Task 05 which selects trace as the new default).
 - Stats include `memory_mode`, `reclaims_total`, `heap_live_slots`, and
   `cycle_collection=off` (cycle caveat is explicit in RC mode).
 
