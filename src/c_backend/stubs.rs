@@ -139,6 +139,7 @@ static const char *tn_runtime_memory_mode_label(void);
 static const char *tn_runtime_cycle_collection_label(void);
 static void tn_runtime_gc_mark_value(TnVal value);
 static void tn_runtime_gc_collect(void);
+static void tn_runtime_gc_finalize(void);
 
 static int tn_runtime_memory_stats_enabled(void) {
   if (tn_memory_stats_enabled >= 0) {
@@ -187,13 +188,15 @@ static const char *tn_runtime_cycle_collection_label(void) {
   return tn_runtime_memory_trace_enabled() ? "mark_sweep" : "off";
 }
 
+static void tn_runtime_gc_finalize(void) {
+  if (tn_runtime_memory_trace_enabled()) {
+    tn_runtime_gc_collect();
+  }
+}
+
 static void tn_runtime_memory_stats_print(void) {
   if (!tn_runtime_memory_stats_enabled()) {
     return;
-  }
-
-  if (tn_runtime_memory_trace_enabled()) {
-    tn_runtime_gc_collect();
   }
 
   const char *memory_mode = tn_runtime_memory_mode_label();
@@ -1628,7 +1631,8 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str(
         "  TnVal result = tn_runtime_call_compiled_closure(closure_obj->as.closure.descriptor_hash, args, argc);\n",
     );
-    out.push_str("  tn_runtime_retain(result);\n");
+    // Callee already returns with rc=1 (from its terminator retain).
+    // Do not add an extra retain here: the call site handles registration.
     out.push_str("  free(args);\n");
     out.push_str("  tn_runtime_root_frame_pop(root_frame);\n");
     out.push_str("  return result;\n");

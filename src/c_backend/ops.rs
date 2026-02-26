@@ -108,7 +108,14 @@ pub(super) fn emit_c_instructions(
                     *offset,
                     out,
                 )?;
-                out.push_str(&format!("  tn_runtime_retain(v{dest});\n"));
+                // Named Tonic functions return with rc=1 from their terminator
+                // retain, so no extra retain is needed here; we balance with a
+                // register (+1) then release (−1) → net rc=1 in outer frame.
+                // Builtin calls return rc=0 (no terminator), so we do need an
+                // explicit retain first to hold the value across the frame pop.
+                if matches!(callee, IrCallTarget::Builtin { .. }) {
+                    out.push_str(&format!("  tn_runtime_retain(v{dest});\n"));
+                }
                 out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
                 out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
                 out.push_str(&format!("  tn_runtime_release(v{dest});\n"));
@@ -134,7 +141,9 @@ pub(super) fn emit_c_instructions(
                 out.push_str(&format!(
                     "  v{dest} = tn_runtime_call_closure_varargs({all_args});\n"
                 ));
-                out.push_str(&format!("  tn_runtime_retain(v{dest});\n"));
+                // Same ownership contract as named calls: callee returns rc=1,
+                // pop the call-site frame (releases closure+args), register
+                // result (+1) and release the callee retain (-1) → net rc=1.
                 out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
                 out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
                 out.push_str(&format!("  tn_runtime_release(v{dest});\n"));

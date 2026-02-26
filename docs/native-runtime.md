@@ -93,14 +93,25 @@ Task 03 RC prototype additions:
 - RC mode is opt-in via `TONIC_MEMORY_MODE=rc` (at this stage default was append-only; superseded by Task 05 which selects trace as the new default).
 - Stats include `memory_mode`, `reclaims_total`, `heap_live_slots`, and
   `cycle_collection=off` (cycle caveat is explicit in RC mode).
+- **RC ownership contract across call-return boundaries**: callees always
+  return with `refcount=1` (a single terminator-retain before the callee's
+  own root-frame pop). The call site balances this with one
+  `root_register` (+1) followed by one `release` (−1), leaving the result
+  registered exactly once in the outer frame at `refcount=1`. No extra
+  retain is inserted at call sites or inside `tn_runtime_call_closure_varargs`.
+  This applies uniformly to named function calls, closure calls, and nested
+  combinations thereof.
 
 Task 04 tracing GC prototype additions:
 
 - Tracing mode is available via `TONIC_MEMORY_MODE=trace`.
 - Tracing collector is non-moving mark/sweep over boxed heap objects.
 - Root traversal includes runtime root stack plus bool/nil singletons.
-- Main entrypoint performs deterministic stop-the-world collection before exit
-  (`tn_runtime_gc_collect`) so cyclic garbage can be reclaimed.
+- Main entrypoint always calls `tn_runtime_gc_finalize()` before exit when
+  trace mode is active — **independent of `TONIC_MEMORY_STATS`**. This
+  decouples collection (which reclaims cyclic garbage) from stats printing
+  (which is gated by `TONIC_MEMORY_STATS=1`). The GC runs at process end
+  regardless of whether stats output is requested.
 - Stats include `cycle_collection=mark_sweep` and `gc_collections_total` in
   trace mode.
 

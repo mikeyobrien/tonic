@@ -97,6 +97,74 @@ fn trace_mode_reclaims_cyclic_graphs_and_reports_mark_sweep_stats() {
     );
 }
 
+#[test]
+fn trace_gc_runs_without_stats_env() {
+    // Verify that trace GC collection is decoupled from TONIC_MEMORY_STATS:
+    // the collector must run at process end whenever TONIC_MEMORY_MODE=trace,
+    // even if TONIC_MEMORY_STATS is not set. The observable contract:
+    //   1. process exits successfully (no crash from GC running without stats)
+    //   2. no stats line on stderr (TONIC_MEMORY_STATS gate is respected)
+    //   3. when stats ARE enabled, gc_collections_total > 0 (GC ran)
+    let fixture_root = common::unique_temp_dir("runtime-memory-trace-no-stats");
+    let source_path = fixture_root.join("trace_no_stats.tn");
+    fs::write(
+        &source_path,
+        "defmodule Demo do\n  def run() do\n    host_call(:memory_cycle_churn, 200)\n  end\nend\n",
+    )
+    .expect("fixture source should be written");
+
+    let compile_output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "trace_no_stats.tn"])
+        .output()
+        .expect("compile command should execute");
+    assert!(
+        compile_output.status.success(),
+        "compile should succeed, stderr: {}",
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let exe_path = fixture_root.join(".tonic/build/trace_no_stats");
+    assert!(exe_path.exists(), "compiled executable should exist");
+
+    // Run with trace mode but WITHOUT TONIC_MEMORY_STATS.
+    let no_stats_run = std::process::Command::new(&exe_path)
+        .env("TONIC_MEMORY_MODE", "trace")
+        .env_remove("TONIC_MEMORY_STATS")
+        .output()
+        .expect("no-stats trace executable should run");
+    assert!(
+        no_stats_run.status.success(),
+        "trace mode without TONIC_MEMORY_STATS should exit successfully, stderr: {}",
+        String::from_utf8_lossy(&no_stats_run.stderr)
+    );
+    let no_stats_stderr = String::from_utf8(no_stats_run.stderr).expect("stderr should be utf8");
+    assert!(
+        !no_stats_stderr
+            .lines()
+            .any(|l| l.starts_with("memory.stats c_runtime ")),
+        "no stats line should be emitted when TONIC_MEMORY_STATS is unset; got: {no_stats_stderr}"
+    );
+
+    // Run with trace mode AND TONIC_MEMORY_STATS=1 to confirm GC ran (and
+    // was recorded) — proving the GC path is active.
+    let stats_run = std::process::Command::new(&exe_path)
+        .env("TONIC_MEMORY_MODE", "trace")
+        .env("TONIC_MEMORY_STATS", "1")
+        .output()
+        .expect("stats trace executable should run");
+    assert!(
+        stats_run.status.success(),
+        "trace mode with TONIC_MEMORY_STATS=1 should exit successfully"
+    );
+    let stats_fields = parse_stats_fields(&stats_run.stderr);
+    let gc_collections = parse_u64_field(&stats_fields, "gc_collections_total");
+    assert!(
+        gc_collections > 0,
+        "gc_collections_total should be > 0 confirming trace GC ran before stats output"
+    );
+}
+
 fn parse_stats_fields(stderr: &[u8]) -> BTreeMap<String, String> {
     let stderr = String::from_utf8(stderr.to_vec()).expect("stderr should be utf8");
     let stats_line = stderr

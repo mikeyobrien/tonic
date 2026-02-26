@@ -86,6 +86,101 @@ fn rc_mode_reclaims_acyclic_intermediates_and_reports_cycle_caveat() {
     );
 }
 
+#[test]
+fn rc_call_return_ownership_nested_smoke() {
+    // Verify that RC ownership is balanced across nested named function calls
+    // and closure call-return boundaries. If retain/release is imbalanced
+    // (over-retained), boxed return values leak and live_slots stays high.
+    let fixture_root = common::unique_temp_dir("runtime-memory-rc-nested");
+    let source_path = fixture_root.join("memory_rc_nested.tn");
+    // Fixture: named function returns a boxed list; a closure also returns a
+    // boxed list. Both paths are exercised from a single run() invocation so
+    // that named-function call-return AND closure call-return RC ownership is
+    // tested. Over-retained returns would accumulate live slots that are never
+    // reclaimed, causing rc_heap_live_slots >= baseline.
+    fs::write(
+        &source_path,
+        concat!(
+            "defmodule Demo do\n",
+            "  def make_pair(x) do\n",
+            "    [x, x + 1]\n",
+            "  end\n",
+            "\n",
+            "  def run() do\n",
+            "    case fn x -> [x, x * 2] end do\n",
+            "      f ->\n",
+            "        case [make_pair(1), make_pair(2), f.(5), f.(6)] do\n",
+            "          _ -> 0\n",
+            "        end\n",
+            "    end\n",
+            "  end\n",
+            "end\n",
+        ),
+    )
+    .expect("fixture source should be written");
+
+    let compile_output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "memory_rc_nested.tn"])
+        .output()
+        .expect("compile command should execute");
+    assert!(
+        compile_output.status.success(),
+        "compile should succeed, stderr: {}",
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let exe_path = fixture_root.join(".tonic/build/memory_rc_nested");
+    assert!(exe_path.exists(), "compiled executable should exist");
+
+    let baseline_run = std::process::Command::new(&exe_path)
+        .env("TONIC_MEMORY_STATS", "1")
+        .env("TONIC_MEMORY_MODE", "append_only")
+        .output()
+        .expect("baseline executable should run");
+    assert!(
+        baseline_run.status.success(),
+        "baseline executable should exit successfully, stderr: {}",
+        String::from_utf8_lossy(&baseline_run.stderr)
+    );
+
+    let rc_run = std::process::Command::new(&exe_path)
+        .env("TONIC_MEMORY_STATS", "1")
+        .env("TONIC_MEMORY_MODE", "rc")
+        .output()
+        .expect("rc nested executable should run");
+    assert!(
+        rc_run.status.success(),
+        "rc nested executable should exit successfully (no double-free), stderr: {}",
+        String::from_utf8_lossy(&rc_run.stderr)
+    );
+
+    let baseline_stdout =
+        String::from_utf8(baseline_run.stdout).expect("baseline stdout should be utf8");
+    let rc_stdout = String::from_utf8(rc_run.stdout).expect("rc stdout should be utf8");
+    assert_eq!(
+        rc_stdout, baseline_stdout,
+        "rc mode must preserve program output across nested calls"
+    );
+
+    let baseline_fields = parse_stats_fields(&baseline_run.stderr);
+    let rc_fields = parse_stats_fields(&rc_run.stderr);
+
+    let baseline_heap_slots = parse_u64_field(&baseline_fields, "heap_slots");
+    let rc_reclaims_total = parse_u64_field(&rc_fields, "reclaims_total");
+    let rc_heap_live_slots = parse_u64_field(&rc_fields, "heap_live_slots");
+
+    assert!(
+        rc_reclaims_total > 0,
+        "rc mode should reclaim intermediate lists from nested function+closure calls"
+    );
+    assert!(
+        rc_heap_live_slots < baseline_heap_slots,
+        "rc mode should leave fewer live slots than append-only baseline; \
+         over-retained returns would keep intermediate values alive"
+    );
+}
+
 fn parse_stats_fields(stderr: &[u8]) -> BTreeMap<String, String> {
     let stderr = String::from_utf8(stderr.to_vec()).expect("stderr should be utf8");
     let stats_line = stderr
