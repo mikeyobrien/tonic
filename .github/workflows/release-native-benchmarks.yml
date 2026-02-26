@@ -7,9 +7,6 @@ on:
         description: "Release candidate label (e.g. rc-2026-02-24)"
         required: true
         default: "manual-candidate"
-  push:
-    tags:
-      - "v*"
 
 jobs:
   native-release-candidate-gates:
