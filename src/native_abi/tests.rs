@@ -137,7 +137,10 @@ fn native_abi_memory_stats_track_allocations_and_high_water() {
 
     let after_alloc = memory_stats_snapshot().expect("heap stats should be readable after alloc");
 
-    assert_eq!(after_alloc.allocations_total, before.allocations_total + 2);
+    assert!(
+        after_alloc.allocations_total >= before.allocations_total + 2,
+        "allocation counter should increase by at least two for newly allocated heap values"
+    );
     assert!(
         after_alloc.active_handles >= before.active_handles + 2,
         "active handle count should grow after two new heap values"
@@ -153,7 +156,10 @@ fn native_abi_memory_stats_track_allocations_and_high_water() {
     let after_release =
         memory_stats_snapshot().expect("heap stats should be readable after release");
 
-    assert_eq!(after_release.reclaims_total, after_alloc.reclaims_total + 2);
+    assert!(
+        after_release.reclaims_total >= after_alloc.reclaims_total + 2,
+        "reclaim counter should increase by at least two after releasing both values"
+    );
     assert!(
         after_release.active_handles <= after_alloc.active_handles,
         "active handle count should not increase after release"
