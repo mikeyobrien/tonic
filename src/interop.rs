@@ -361,4 +361,256 @@ mod tests {
             Some(&RuntimeValue::Int(3))
         );
     }
+
+    #[test]
+    fn host_registry_system_read_text_reports_missing_file() {
+        let missing = HOST_REGISTRY
+            .call(
+                "sys_read_text",
+                &[RuntimeValue::String("/tmp/tonic-missing-file.txt".to_string())],
+            )
+            .expect_err("sys_read_text should report missing file");
+
+        assert!(
+            missing
+                .to_string()
+                .starts_with("host error: sys_read_text failed for '/tmp/tonic-missing-file.txt':"),
+            "expected deterministic read_text error prefix, got: {}",
+            missing
+        );
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_invalid_method() {
+        let invalid_method = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("TRACE".to_string()),
+                    RuntimeValue::String("https://example.com".to_string()),
+                    RuntimeValue::List(Vec::new()),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(Vec::new()),
+                ],
+            )
+            .expect_err("sys_http_request should reject unsupported methods");
+
+        assert_eq!(
+            invalid_method.to_string(),
+            "host error: sys_http_request invalid method: TRACE"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_unknown_opts_key() {
+        let invalid_opts = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("https://example.com".to_string()),
+                    RuntimeValue::List(Vec::new()),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(vec![(
+                        RuntimeValue::Atom("surprise".to_string()),
+                        RuntimeValue::Bool(true),
+                    )]),
+                ],
+            )
+            .expect_err("sys_http_request should reject unknown opts keys");
+
+        assert_eq!(
+            invalid_opts.to_string(),
+            "host error: sys_http_request unsupported opts key: surprise"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_read_text_rejects_non_string_path() {
+        let wrong_type = HOST_REGISTRY
+            .call("sys_read_text", &[RuntimeValue::Int(42)])
+            .expect_err("sys_read_text should reject non-string argument");
+
+        assert_eq!(
+            wrong_type.to_string(),
+            "host error: sys_read_text expects string argument 1; found int"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_read_text_reads_written_file() {
+        let fixture_root = std::env::temp_dir().join(format!(
+            "tonic-read-text-roundtrip-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&fixture_root).expect("fixture dir should be created");
+
+        let file_path = fixture_root.join("sample.txt");
+        std::fs::write(&file_path, "hello world").expect("fixture file should be writable");
+
+        let result = HOST_REGISTRY
+            .call(
+                "sys_read_text",
+                &[RuntimeValue::String(file_path.display().to_string())],
+            )
+            .expect("sys_read_text should succeed for existing file");
+
+        assert_eq!(result, RuntimeValue::String("hello world".to_string()));
+
+        let _ = std::fs::remove_dir_all(&fixture_root);
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_invalid_url() {
+        let invalid_url = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("not a url".to_string()),
+                    RuntimeValue::List(Vec::new()),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(Vec::new()),
+                ],
+            )
+            .expect_err("sys_http_request should reject invalid URL");
+
+        assert_eq!(
+            invalid_url.to_string(),
+            "host error: sys_http_request invalid url: not a url"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_unsupported_url_scheme() {
+        let ftp_scheme = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("ftp://example.com/file".to_string()),
+                    RuntimeValue::List(Vec::new()),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(Vec::new()),
+                ],
+            )
+            .expect_err("sys_http_request should reject ftp scheme");
+
+        assert_eq!(
+            ftp_scheme.to_string(),
+            "host error: sys_http_request unsupported url scheme: ftp"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_timeout_out_of_range() {
+        let too_low = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("https://example.com".to_string()),
+                    RuntimeValue::List(Vec::new()),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(vec![(
+                        RuntimeValue::Atom("timeout_ms".to_string()),
+                        RuntimeValue::Int(50),
+                    )]),
+                ],
+            )
+            .expect_err("sys_http_request should reject timeout below minimum");
+
+        assert_eq!(
+            too_low.to_string(),
+            "host error: sys_http_request timeout_ms out of range: 50"
+        );
+
+        let too_high = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("https://example.com".to_string()),
+                    RuntimeValue::List(Vec::new()),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(vec![(
+                        RuntimeValue::Atom("timeout_ms".to_string()),
+                        RuntimeValue::Int(200_000),
+                    )]),
+                ],
+            )
+            .expect_err("sys_http_request should reject timeout above maximum");
+
+        assert_eq!(
+            too_high.to_string(),
+            "host error: sys_http_request timeout_ms out of range: 200000"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_invalid_header_entry() {
+        let bad_header = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("https://example.com".to_string()),
+                    RuntimeValue::List(vec![RuntimeValue::String("not-a-tuple".to_string())]),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(Vec::new()),
+                ],
+            )
+            .expect_err("sys_http_request should reject non-tuple header entries");
+
+        assert_eq!(
+            bad_header.to_string(),
+            "host error: sys_http_request headers argument 3 entry 1 must be {string, string}; found string"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_wrong_arity() {
+        let too_few = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("https://example.com".to_string()),
+                ],
+            )
+            .expect_err("sys_http_request should reject wrong arity");
+
+        assert_eq!(
+            too_few.to_string(),
+            "host error: sys_http_request expects exactly 5 arguments, found 2"
+        );
+    }
+
+    #[test]
+    fn host_registry_system_http_request_rejects_max_redirects_out_of_range() {
+        let too_high = HOST_REGISTRY
+            .call(
+                "sys_http_request",
+                &[
+                    RuntimeValue::String("GET".to_string()),
+                    RuntimeValue::String("https://example.com".to_string()),
+                    RuntimeValue::List(Vec::new()),
+                    RuntimeValue::String(String::new()),
+                    RuntimeValue::Map(vec![(
+                        RuntimeValue::Atom("max_redirects".to_string()),
+                        RuntimeValue::Int(10),
+                    )]),
+                ],
+            )
+            .expect_err("sys_http_request should reject max_redirects above cap");
+
+        assert_eq!(
+            too_high.to_string(),
+            "host error: sys_http_request max_redirects out of range: 10"
+        );
+    }
 }

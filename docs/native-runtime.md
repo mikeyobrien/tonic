@@ -71,3 +71,10 @@ implementation mapping behavior used by interpreter mode.
 Host interop ABI policy constant:
 
 - `TONIC_HOST_INTEROP_ABI_VERSION = 1`
+
+## Memory management planning
+
+For runtime memory strategy research and implementation scaffolding, see:
+
+- `docs/memory-management-roadmap.md`
+- `docs/runtime-memory-task-scaffold.md`
