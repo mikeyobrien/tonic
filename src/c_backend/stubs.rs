@@ -124,12 +124,21 @@ static uint64_t tn_memory_root_frames_active = 0;
 static uint64_t tn_memory_root_frames_high_water = 0;
 static uint64_t tn_memory_root_slots_high_water = 0;
 static uint64_t tn_memory_next_alloc_id = 1;
+static uint64_t tn_memory_gc_collections_total = 0;
 static int tn_memory_stats_enabled = -1;
 static int tn_memory_rc_enabled = -1;
+static int tn_memory_trace_enabled = -1;
+
+static const uint32_t TN_GC_FLAG_MARK = UINT32_C(1);
 
 static int tn_is_boxed(TnVal value);
 static void tn_runtime_retain(TnVal value);
 static void tn_runtime_release(TnVal value);
+static int tn_runtime_memory_trace_enabled(void);
+static const char *tn_runtime_memory_mode_label(void);
+static const char *tn_runtime_cycle_collection_label(void);
+static void tn_runtime_gc_mark_value(TnVal value);
+static void tn_runtime_gc_collect(void);
 
 static int tn_runtime_memory_stats_enabled(void) {
   if (tn_memory_stats_enabled >= 0) {
@@ -153,19 +162,50 @@ static int tn_runtime_memory_rc_enabled(void) {
   return tn_memory_rc_enabled;
 }
 
+static int tn_runtime_memory_trace_enabled(void) {
+  if (tn_memory_trace_enabled >= 0) {
+    return tn_memory_trace_enabled;
+  }
+
+  const char *mode = getenv("TONIC_MEMORY_MODE");
+  tn_memory_trace_enabled =
+      (mode != NULL && strcmp(mode, "trace") == 0) ? 1 : 0;
+  return tn_memory_trace_enabled;
+}
+
+static const char *tn_runtime_memory_mode_label(void) {
+  if (tn_runtime_memory_trace_enabled()) {
+    return "trace";
+  }
+  if (tn_runtime_memory_rc_enabled()) {
+    return "rc";
+  }
+  return "append_only";
+}
+
+static const char *tn_runtime_cycle_collection_label(void) {
+  return tn_runtime_memory_trace_enabled() ? "mark_sweep" : "off";
+}
+
 static void tn_runtime_memory_stats_print(void) {
   if (!tn_runtime_memory_stats_enabled()) {
     return;
   }
 
-  const char *memory_mode = tn_runtime_memory_rc_enabled() ? "rc" : "append_only";
+  if (tn_runtime_memory_trace_enabled()) {
+    tn_runtime_gc_collect();
+  }
+
+  const char *memory_mode = tn_runtime_memory_mode_label();
+  const char *cycle_collection = tn_runtime_cycle_collection_label();
 
   fprintf(
       stderr,
       "memory.stats c_runtime memory_mode=%s"
-      " cycle_collection=off"
+      " cycle_collection=%s"
       " objects_total=%" PRIu64
       " reclaims_total=%" PRIu64
+      " gc_collections_total=%" PRIu64
       " heap_slots=%zu heap_slots_hwm=%" PRIu64
       " heap_live_slots=%" PRIu64 " heap_live_slots_hwm=%" PRIu64
       " heap_capacity=%zu heap_capacity_hwm=%" PRIu64
@@ -175,8 +215,10 @@ static void tn_runtime_memory_stats_print(void) {
       " root_frames_hwm=%" PRIu64
       " root_slots=%zu root_slots_hwm=%" PRIu64 "\n",
       memory_mode,
+      cycle_collection,
       tn_memory_objects_total,
       tn_memory_reclaims_total,
+      tn_memory_gc_collections_total,
       tn_heap_len,
       tn_memory_heap_slots_high_water,
       tn_memory_heap_live_slots,
@@ -397,6 +439,115 @@ static TnObj *tn_get_obj(TnVal value) {
   }
 
   return tn_heap[id - 1];
+}
+
+static void tn_runtime_gc_free_payload(TnObj *obj) {
+  switch (obj->kind) {
+    case TN_OBJ_ATOM:
+    case TN_OBJ_STRING:
+    case TN_OBJ_FLOAT:
+      free(obj->as.text.text);
+      return;
+    case TN_OBJ_LIST:
+      free(obj->as.list.items);
+      return;
+    case TN_OBJ_MAP:
+    case TN_OBJ_KEYWORD:
+      free(obj->as.map_like.items);
+      return;
+    case TN_OBJ_BOOL:
+    case TN_OBJ_NIL:
+    case TN_OBJ_TUPLE:
+    case TN_OBJ_RANGE:
+    case TN_OBJ_RESULT:
+    case TN_OBJ_CLOSURE:
+      return;
+  }
+}
+
+static void tn_runtime_gc_mark_value(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || (obj->gc_flags & TN_GC_FLAG_MARK) != 0) {
+    return;
+  }
+
+  obj->gc_flags |= TN_GC_FLAG_MARK;
+
+  switch (obj->kind) {
+    case TN_OBJ_TUPLE:
+      tn_runtime_gc_mark_value(obj->as.tuple.left);
+      tn_runtime_gc_mark_value(obj->as.tuple.right);
+      return;
+    case TN_OBJ_LIST:
+      for (size_t i = 0; i < obj->as.list.len; i += 1) {
+        tn_runtime_gc_mark_value(obj->as.list.items[i]);
+      }
+      return;
+    case TN_OBJ_MAP:
+    case TN_OBJ_KEYWORD:
+      for (size_t i = 0; i < obj->as.map_like.len; i += 1) {
+        tn_runtime_gc_mark_value(obj->as.map_like.items[i].key);
+        tn_runtime_gc_mark_value(obj->as.map_like.items[i].value);
+      }
+      return;
+    case TN_OBJ_RANGE:
+      tn_runtime_gc_mark_value(obj->as.range.start);
+      tn_runtime_gc_mark_value(obj->as.range.end);
+      return;
+    case TN_OBJ_RESULT:
+      tn_runtime_gc_mark_value(obj->as.result.value);
+      return;
+    case TN_OBJ_BOOL:
+    case TN_OBJ_NIL:
+    case TN_OBJ_ATOM:
+    case TN_OBJ_STRING:
+    case TN_OBJ_FLOAT:
+    case TN_OBJ_CLOSURE:
+      return;
+  }
+}
+
+static void tn_runtime_gc_collect(void) {
+  if (!tn_runtime_memory_trace_enabled()) {
+    return;
+  }
+
+  if (tn_true_value != 0) {
+    tn_runtime_gc_mark_value(tn_true_value);
+  }
+  if (tn_false_value != 0) {
+    tn_runtime_gc_mark_value(tn_false_value);
+  }
+  if (tn_nil_value != 0) {
+    tn_runtime_gc_mark_value(tn_nil_value);
+  }
+  for (size_t i = 0; i < tn_root_stack_len; i += 1) {
+    tn_runtime_gc_mark_value(tn_root_stack[i]);
+  }
+
+  for (size_t i = 0; i < tn_heap_len; i += 1) {
+    TnObj *obj = tn_heap[i];
+    if (obj == NULL) {
+      continue;
+    }
+
+    if ((obj->gc_flags & TN_GC_FLAG_MARK) != 0) {
+      obj->gc_flags &= ~TN_GC_FLAG_MARK;
+      continue;
+    }
+
+    tn_heap[i] = NULL;
+    tn_heap_push_free_id(i + 1);
+    if (tn_memory_heap_live_slots > 0) {
+      tn_memory_heap_live_slots -= 1;
+    }
+    tn_memory_reclaims_total += 1;
+
+    tn_runtime_gc_free_payload(obj);
+    free(obj);
+  }
+
+  tn_memory_gc_collections_total += 1;
 }
 
 static TnObj *tn_get_obj_for_rc(TnVal value, const char *action, size_t *id_out) {
@@ -1152,6 +1303,48 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("    }\n");
     out.push_str("    free(args);\n");
     out.push_str("    return (TnVal)total;\n");
+    out.push_str("  }\n\n");
+    out.push_str("  if (strcmp(key, \"memory_cycle_churn\") == 0) {\n");
+    out.push_str("    if (argc != 2) {\n");
+    out.push_str(
+        "      return tn_runtime_failf(\"host error: memory_cycle_churn expects exactly 1 argument, found %zu\", argc - 1);\n",
+    );
+    out.push_str("    }\n");
+    out.push_str("    if (tn_is_boxed(args[1])) {\n");
+    out.push_str(
+        "      return tn_runtime_failf(\"host error: memory_cycle_churn expects int argument 1; found %s\", tn_runtime_value_kind(args[1]));\n",
+    );
+    out.push_str("    }\n");
+    out.push_str("    int64_t churn = (int64_t)args[1];\n");
+    out.push_str("    if (churn < 0) {\n");
+    out.push_str(
+        "      return tn_runtime_fail(\"host error: memory_cycle_churn expects non-negative churn count\");\n",
+    );
+    out.push_str("    }\n");
+    out.push_str("    for (int64_t i = 0; i < churn; i += 1) {\n");
+    out.push_str("      TnObj *left_obj = tn_new_obj(TN_OBJ_LIST);\n");
+    out.push_str("      left_obj->as.list.len = 1;\n");
+    out.push_str("      left_obj->as.list.items = (TnVal *)calloc(1, sizeof(TnVal));\n");
+    out.push_str("      if (left_obj->as.list.items == NULL) {\n");
+    out.push_str("        fprintf(stderr, \"error: native runtime allocation failure\\n\");\n");
+    out.push_str("        exit(1);\n");
+    out.push_str("      }\n");
+    out.push_str("      TnVal left_value = tn_heap_store(left_obj);\n\n");
+    out.push_str("      TnObj *right_obj = tn_new_obj(TN_OBJ_LIST);\n");
+    out.push_str("      right_obj->as.list.len = 1;\n");
+    out.push_str("      right_obj->as.list.items = (TnVal *)calloc(1, sizeof(TnVal));\n");
+    out.push_str("      if (right_obj->as.list.items == NULL) {\n");
+    out.push_str("        fprintf(stderr, \"error: native runtime allocation failure\\n\");\n");
+    out.push_str("        exit(1);\n");
+    out.push_str("      }\n");
+    out.push_str("      TnVal right_value = tn_heap_store(right_obj);\n\n");
+    out.push_str("      left_obj->as.list.items[0] = right_value;\n");
+    out.push_str("      right_obj->as.list.items[0] = left_value;\n");
+    out.push_str("      tn_runtime_retain(right_value);\n");
+    out.push_str("      tn_runtime_retain(left_value);\n");
+    out.push_str("    }\n");
+    out.push_str("    free(args);\n");
+    out.push_str("    return (TnVal)churn;\n");
     out.push_str("  }\n\n");
     out.push_str(
         r###"  if (strcmp(key, "sys_path_exists") == 0) {

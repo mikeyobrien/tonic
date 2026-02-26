@@ -93,3 +93,13 @@ Task 03 RC prototype additions:
 - RC mode is opt-in via `TONIC_MEMORY_MODE=rc` (default remains append-only).
 - Stats include `memory_mode`, `reclaims_total`, `heap_live_slots`, and
   `cycle_collection=off` (cycle caveat is explicit in RC mode).
+
+Task 04 tracing GC prototype additions:
+
+- Tracing mode is opt-in via `TONIC_MEMORY_MODE=trace`.
+- Tracing collector is non-moving mark/sweep over boxed heap objects.
+- Root traversal includes runtime root stack plus bool/nil singletons.
+- Main entrypoint performs deterministic stop-the-world collection before exit
+  (`tn_runtime_gc_collect`) so cyclic garbage can be reclaimed.
+- Stats include `cycle_collection=mark_sweep` and `gc_collections_total` in
+  trace mode.

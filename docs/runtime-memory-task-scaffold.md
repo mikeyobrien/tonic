@@ -23,6 +23,8 @@ This is a tracked scaffold of the memory roadmap work in `docs/memory-management
 
 ## Task 04 — Tracing GC prototype (feature flagged)
 - Add mark metadata, root traversal, stop-the-world mark/sweep trigger.
+- Gate tracing mode behind `TONIC_MEMORY_MODE=trace` (default remains append-only).
+- Emit deterministic tracing stats (`memory_mode=trace`, `cycle_collection=mark_sweep`, `gc_collections_total`).
 - Validate cyclic reclamation with dedicated fixtures.
 - Keep deterministic diagnostics.
 - Exit criteria: cycle fixtures reclaim; semantic tests green.
