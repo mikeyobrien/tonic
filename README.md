@@ -1,162 +1,134 @@
 # Tonic
 
-Tonic is an **alpha-stage language core** with Elixir-inspired syntax and a Rust implementation.
-It supports both:
+> Elixir-inspired language core in Rust (alpha).
+>
+> Tonic supports two execution paths:
+> - `tonic run` for interpreter execution
+> - `tonic compile` for native executable output
 
-- an interpreter execution path (`tonic run`), and
-- a native compile path (`tonic compile`) that emits sidecars and a runnable executable.
+## Why Tonic
 
-## Why Elixir-like syntax is a strong fit for LLM-assisted coding
+Tonic is a language-core project focused on **syntax ergonomics + fast feedback loops** for compiler/runtime development.
 
-Tonic leans into Elixir-style syntax because it is usually easier for LLMs to generate and refactor correctly at the **structural** level:
+The design intentionally leans on Elixir-style constructs (pattern matching, clauses, immutable data flow) because they are readable, composable, and practical for LLM-assisted coding workflows.
 
-- **Pattern matching + clause-based control flow** make branches explicit and reduce hidden behavior.
-- **Immutable data flow** reduces mutation/aliasing complexity in long completions.
-- The **pipe operator (`|>`)** provides a predictable composition pattern that is easy to continue token-by-token.
+## Project status
 
-But syntax is not magic: multilingual benchmark work still shows a gap between *fluent syntax* and *semantic correctness*, especially for low-resource ecosystems and concurrency-heavy behavior.
+- **Version:** `0.1.0-alpha.1`
+- **Stability:** alpha (active development, interfaces may change)
+- **Primary focus:** language syntax/runtime parity workflows and native backend iteration
+- **Out of scope:** BEAM/OTP runtime behavior (processes, supervisors, distribution, hot reload lifecycle)
 
-References:
-- MultiPL-E benchmark: <https://huggingface.co/datasets/nuprl/MultiPL-E>
-- Multilingual code-gen benchmarking (MultiPL-E paper): <https://arxiv.org/abs/2305.12138>
-- Functional-program reasoning benchmark (FPEval): <https://arxiv.org/abs/2601.02060>
-- Elixir patterns/guards docs: <https://hexdocs.pm/elixir/patterns-and-guards.html>
-- Elixir control-flow docs (`case`/`cond`/`if`): <https://hexdocs.pm/elixir/1.16/case-cond-and-if.html>
+For tracked parity coverage and gaps, see [PARITY.md](PARITY.md).
 
-**TL;DR:** Elixir-style syntax improves generation ergonomics; robust semantics still come from tight tests, diagnostics, and runtime gates.
+## Features (today)
 
-## Table of contents
+- Frontend pipeline: lexer → parser → resolver → type inference
+- IR + MIR lowering pipeline
+- Interpreter runtime execution (`tonic run`)
+- Native compile path with C/LLVM sidecars (`tonic compile`)
+- Project-level `tonic.toml` support for multi-file projects
+- `tonic test` runner with text/JSON output
+- Formatting and static-check flows (`fmt`, `check`)
+- Dependency lock/sync workflows (`tonic deps`)
 
-| Section | Summary |
-|---|---|
-| [1. Project overview](#1-project-overview) | What Tonic is and what the repo contains today. |
-| [2. Status and scope](#2-status-and-scope) | Current maturity and explicit scope boundaries. |
-| [3. Prerequisites](#3-prerequisites) | Required tools to build and run the project. |
-| [4. Quickstart](#4-quickstart) | Fast path to build, run, test, and compile examples. |
-| [5. CLI commands](#5-cli-commands) | Command-level reference for day-to-day usage. |
-| [6. Architecture snapshot](#6-architecture-snapshot) | Frontend → IR/MIR → runtime/backend flow. |
-| [7. Repository layout](#7-repository-layout) | Where core code, tests, examples, and scripts live. |
-| [8. Quality gates and benchmarks](#8-quality-gates-and-benchmarks) | Differential/parity/benchmark workflows and scripts. |
-| [9. Runtime diagnostics and profiling](#9-runtime-diagnostics-and-profiling) | High-signal env flags for debugging and performance analysis. |
-| [10. Release workflow](#10-release-workflow) | Alpha readiness and release gate process. |
-| [11. Documentation map](#11-documentation-map) | Links to deeper docs and generated AI-oriented summaries. |
-| [12. Contributing notes](#12-contributing-notes) | Practical expectations for changes and validation. |
+## Quickstart
 
-<!-- tags: overview,purpose,language-core -->
-## 1. Project overview
+### Prerequisites
 
-Tonic is a Rust codebase implementing:
-
-- **Frontend**: lexer, parser, resolver, and type inference for `.tn` programs.
-- **IR/MIR lowering**: internal representations used by runtime and native backends.
-- **Runtime**: interpreter semantics, pattern matching, control flow, and host interop.
-- **Native path**: C/LLVM lowering plus executable linking.
-- **Tooling**: test runner, formatter, benchmark harness, parity gates, and release checks.
-
-See also:
-- [Architecture snapshot](#6-architecture-snapshot)
-- [Repository layout](#7-repository-layout)
-
-<!-- tags: status,alpha,scope -->
-## 2. Status and scope
-
-- Current crate version: `0.1.0-alpha.1`.
-- Project is actively evolving and optimized for rapid parity/prototyping work.
-- Language parity work is tracked in `PARITY.md`.
-- BEAM/OTP runtime behavior is **out of scope** for this project (see `PARITY.md` scope note).
-
-See also:
-- `PARITY.md`
-- `docs/native-runtime.md`
-
-<!-- tags: setup,toolchain,requirements -->
-## 3. Prerequisites
-
-- Rust toolchain (cargo + rustc)
-- A C compiler in `PATH` (`clang`, `gcc`, or `cc`) for native compile/link path
-- `git` (for dependency sync workflows)
-- `python3` (used by some operational scripts)
-
-Optional but useful:
-- GNU `time` for memory bakeoff scripts
-
-<!-- tags: quickstart,build,run,compile,test -->
-## 4. Quickstart
+- Rust toolchain (`cargo`, `rustc`)
+- C compiler in `PATH` (`clang`, `gcc`, or `cc`) for native compile/link
+- `git`
+- `python3` (used by some scripts)
 
 ### Build
 
 ```bash
-cargo build
+cargo build --bin tonic
 ```
 
-### Run a language example
+> Note: this repository contains multiple binaries. Use `--bin tonic` with `cargo run`.
+
+### Run your first program
 
 ```bash
-cargo run -- run examples/parity/02-operators/arithmetic_basic.tn
+cargo run --bin tonic -- run examples/parity/02-operators/arithmetic_basic.tn
 ```
 
-### Static check (with optional dumps)
+Expected output:
+
+```text
+{3, {2, {8, 5}}}
+```
+
+### Check + dump AST
 
 ```bash
-cargo run -- check examples/parity/06-control-flow/for_multi_generator.tn
-cargo run -- check examples/parity/06-control-flow/for_multi_generator.tn --dump-ast
+cargo run --bin tonic -- check examples/parity/06-control-flow/for_multi_generator.tn --dump-ast
 ```
 
-### Run Rust test suites
+### Compile to a native executable
+
+```bash
+cargo run --bin tonic -- compile examples/parity/02-operators/arithmetic_basic.tn --out ./.tonic/build/arithmetic_basic
+./.tonic/build/arithmetic_basic
+```
+
+### Run tests
 
 ```bash
 cargo test
 ```
 
-### Format `.tn` sources
+## Minimal language example
 
-```bash
-cargo run -- fmt examples --check
+```tn
+defmodule Demo do
+  def run() do
+    with {:ok, v1} <- {:ok, 10},
+         {:ok, v2} <- {:ok, 20} do
+      v1 + v2
+    end
+  end
+end
 ```
 
-### Compile to native executable and run it
+Run it:
 
 ```bash
-cargo run -- compile examples/parity/02-operators/arithmetic_basic.tn --out ./.tonic/build/arithmetic_basic
-./.tonic/build/arithmetic_basic
+cargo run --bin tonic -- run path/to/file.tn
 ```
 
-See also:
-- [CLI commands](#5-cli-commands)
-- [Quality gates and benchmarks](#8-quality-gates-and-benchmarks)
+## CLI reference
 
-<!-- tags: cli,reference,developer-workflow -->
-## 5. CLI commands
+| Command | Purpose | Example |
+|---|---|---|
+| `tonic run <path>` | Execute a file or project (`tonic.toml`) | `cargo run --bin tonic -- run examples/parity/07-modules/project_multifile_pipeline` |
+| `tonic check <path> [--dump-tokens\|--dump-ast\|--dump-ir\|--dump-mir]` | Parse/type-check and optionally dump internals | `cargo run --bin tonic -- check examples/parity/01-literals/atom_expression.tn --dump-ir` |
+| `tonic test <path> [--format <text\|json>]` | Run discovered `.tn` tests | `cargo run --bin tonic -- test examples/parity --format json` |
+| `tonic fmt <path> [--check]` | Format source files or verify formatting | `cargo run --bin tonic -- fmt examples --check` |
+| `tonic compile <path> [--out <artifact-path>]` | Produce native executable + sidecars | `cargo run --bin tonic -- compile examples/parity/02-operators/arithmetic_basic.tn` |
+| `tonic deps <sync\|fetch\|lock>` | Sync/fetch/lock dependencies for a `tonic.toml` project | `tonic deps lock` |
+| `tonic verify run <slice-id> [--mode <auto\|mixed\|manual>]` | Run acceptance verification workflow | `tonic verify run step-01 --mode auto` |
 
-Primary command surface (`tonic`):
+`tonic cache` exists as a placeholder command surface and is not a complete cache-management UX yet.
 
-- `tonic run <path>`
-- `tonic check <path> [--dump-tokens|--dump-ast|--dump-ir|--dump-mir]`
-- `tonic test <path> [--format <text|json>]`
-- `tonic fmt <path> [--check]`
-- `tonic compile <path> [--out <artifact-path>]`
-- `tonic verify run <slice-id> [--mode <auto|mixed|manual>]`
-- `tonic deps <sync|fetch|lock>`
+## Native compile artifacts
 
-Quick examples:
+By default, compile outputs are written under `.tonic/build/<stem>`:
 
-```bash
-cargo run -- deps lock
-cargo run -- deps sync
-cargo run -- test examples/parity --format json
-```
+- Executable: `<stem>`
+- LLVM IR sidecar: `<stem>.ll`
+- C source sidecar: `<stem>.c`
+- Tonic IR sidecar: `<stem>.tir.json`
+- Native artifact manifest: `<stem>.tnx.json`
 
-See also:
-- `src/main.rs`
-- `docs/differential-testing.md`
-
-<!-- tags: architecture,pipeline,frontend,backend -->
-## 6. Architecture snapshot
+## Architecture at a glance
 
 ```mermaid
 graph TD
     CLI[tonic CLI]
-    CLI --> LOAD[manifest/source load]
+    CLI --> LOAD[load source/manifest]
     LOAD --> LEX[lexer]
     LEX --> PARSE[parser]
     PARSE --> RESOLVE[resolver]
@@ -168,126 +140,68 @@ graph TD
     MIR --> OPT[optimization]
     OPT --> CBACK[C backend]
     OPT --> LLVM[LLVM backend]
-    CBACK --> LINK[system linker/compiler]
+    CBACK --> LINK[system compiler/linker]
     LINK --> EXE[native executable]
 ```
 
-Compile artifacts default to `.tonic/build/<stem>` and include:
+## Repository layout
 
-- executable (`<stem>`)
-- LLVM IR (`<stem>.ll`)
-- C source (`<stem>.c`)
-- Tonic IR (`<stem>.tir.json`)
-- native artifact manifest (`<stem>.tnx.json`)
-
-See also:
-- `docs/native-runtime.md`
-- `docs/runtime-abi.md`
-- `docs/memory-management-roadmap.md`
-
-<!-- tags: layout,codebase,navigation -->
-## 7. Repository layout
-
-- `src/` — core implementation
-  - frontend: `lexer.rs`, `parser.rs`, `resolver.rs`, `typing.rs`
-  - lowering: `ir.rs`, `mir/*`
-  - runtimes: `runtime.rs`, `native_runtime/*`, `native_abi/*`
-  - backends: `c_backend/*`, `llvm_backend/*`, `linker.rs`
-- `tests/` — integration and contract tests
-- `examples/` — language examples and parity fixtures
-- `benchmarks/` — benchmark manifests and baseline data
-- `scripts/` — gate/enforce/release scripts
+- `src/` — compiler/runtime/backends
+- `tests/` — integration + contract tests
+- `examples/` — parity fixtures and app examples
+- `benchmarks/` — benchmark manifests and baselines
+- `scripts/` — gate, benchmark, and release scripts
 - `docs/` — focused technical docs
-- `PARITY.md` — parity checklist and status
+- `PARITY.md` — syntax parity checklist and priorities
 
-<!-- tags: quality,gates,benchmark,parity -->
-## 8. Quality gates and benchmarks
+## Quality gates and benchmarks
 
-High-signal workflows:
+High-signal local workflows:
 
-- Differential correctness gate:
-  ```bash
-  ./scripts/differential-enforce.sh
-  ```
-- LLVM catalog parity gate:
-  ```bash
-  ./scripts/llvm-catalog-parity-enforce.sh
-  ```
-- Full native gate stack:
-  ```bash
-  ./scripts/native-gates.sh
-  ```
+```bash
+./scripts/differential-enforce.sh
+./scripts/llvm-catalog-parity-enforce.sh
+./scripts/native-gates.sh
+```
 
-Benchmark references:
-
-- `benchmarks/README.md`
-- `benchmarks/native-compiler-suite.toml`
-- `benchmarks/native-compiled-suite.toml`
-- `scripts/native-regression-policy.sh`
-
-See also:
-- `docs/native-regression-policy.md`
-- `docs/differential-testing.md`
-
-<!-- tags: debugging,profiling,memory -->
-## 9. Runtime diagnostics and profiling
-
-Useful environment toggles:
-
-- `TONIC_DEBUG_CACHE=1` — cache hit/miss tracing
-- `TONIC_DEBUG_MODULE_LOADS=1` — module load tracing
-- `TONIC_DEBUG_TYPES=1` — type summary trace
-- `TONIC_PROFILE_STDERR=1` — per-phase timing to stderr
-- `TONIC_PROFILE_OUT=<path>` — JSONL timing output
-- `TONIC_MEMORY_MODE=<append_only|rc|trace>` + `TONIC_MEMORY_STATS=1` — runtime memory diagnostics
-
-For memory strategy/bakeoff details:
-- `docs/memory-management-roadmap.md`
-- `docs/runtime-memory-bakeoff.md`
-
-<!-- tags: release,alpha,checklist -->
-## 10. Release workflow
-
-Alpha readiness is gated by:
+Release-readiness gate:
 
 ```bash
 ./scripts/release-alpha-readiness.sh --version X.Y.Z-alpha.N
 ```
 
-This checks:
+Benchmark docs and manifests:
 
-- clean git working tree
-- changelog/version heading
-- full native gates
-- required benchmark artifacts
+- [benchmarks/README.md](benchmarks/README.md)
+- [benchmarks/native-compiler-suite.toml](benchmarks/native-compiler-suite.toml)
+- [benchmarks/native-compiled-suite.toml](benchmarks/native-compiled-suite.toml)
 
-See also:
-- `docs/release-checklist.md`
+## Diagnostics and profiling
 
-<!-- tags: docs,reference,ai-context -->
-## 11. Documentation map
+Useful environment switches:
 
-Core docs:
+- `TONIC_DEBUG_CACHE=1` — cache hit/miss traces
+- `TONIC_DEBUG_MODULE_LOADS=1` — module-load traces
+- `TONIC_DEBUG_TYPES=1` — type-signature summaries
+- `TONIC_PROFILE_STDERR=1` — per-phase timings on stderr
+- `TONIC_PROFILE_OUT=<path>` — JSONL timing output
+- `TONIC_MEMORY_MODE=<append_only|rc|trace>` + `TONIC_MEMORY_STATS=1` — memory diagnostics
 
-- `PARITY.md`
-- `docs/native-runtime.md`
-- `docs/runtime-abi.md`
-- `docs/differential-testing.md`
-- `docs/native-regression-policy.md`
-- `docs/release-checklist.md`
+## Documentation map
 
-Generated codebase summaries (AI-oriented):
+- [PARITY.md](PARITY.md)
+- [docs/native-runtime.md](docs/native-runtime.md)
+- [docs/runtime-abi.md](docs/runtime-abi.md)
+- [docs/differential-testing.md](docs/differential-testing.md)
+- [docs/native-regression-policy.md](docs/native-regression-policy.md)
+- [docs/release-checklist.md](docs/release-checklist.md)
+- [CHANGELOG.md](CHANGELOG.md)
 
-- `.agents/summary/index.md` (primary index)
-- `.agents/summary/architecture.md`
-- `.agents/summary/components.md`
-- `.agents/summary/interfaces.md`
-- `.agents/summary/workflows.md`
+## Contributing
 
-<!-- tags: contributing,validation,expectations -->
-## 12. Contributing notes
+Contributions are welcome.
 
-Suggested local preflight before opening changes:
+Suggested preflight before opening a PR:
 
 ```bash
 cargo fmt --all -- --check
@@ -295,10 +209,26 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
-For release- or parity-sensitive changes, also run:
+For parity-sensitive/runtime-sensitive changes, also run:
 
 ```bash
 ./scripts/native-gates.sh
 ```
 
-Repository-local working rules are in `AGENTS.md`.
+Repository-specific working notes are in [AGENTS.md](AGENTS.md).
+
+## Roadmap (short-term)
+
+See [PARITY.md](PARITY.md) for the full tracked list. Near-term gaps include:
+
+- Numeric literal parity (hex/octal/binary, numeric separators, char literals)
+- Operator parity (`===`, `!==`, `div`, `rem`, `not in`, stepped ranges, bitwise family)
+- Bitstring/binary pattern parity
+- Additional compile-time/module form parity
+- `tonic docs` command surface
+
+## License
+
+No `LICENSE` file is currently committed in this repository.
+
+If you plan to publish Tonic as open source for external use/reuse, adding an explicit license should be treated as a release blocker.
