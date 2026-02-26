@@ -629,7 +629,7 @@ mod tests {
             command: Vec::new(),
             mode: "warm".to_string(),
             target: "compiled".to_string(),
-            source: Some("examples/ergonomics/budgeting.tn".to_string()),
+            source: Some("examples/parity/02-operators/arithmetic_basic.tn".to_string()),
             threshold_p50_ms: 10,
             threshold_p95_ms: 20,
             threshold_rss_kb: None,

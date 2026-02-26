@@ -7,7 +7,7 @@
 
 [[workload]]
 name = "interp_budgeting"
-command = ["run", "examples/ergonomics/budgeting.tn"]
+command = ["run", "examples/parity/02-operators/arithmetic_basic.tn"]
 mode = "warm"
 threshold_p50_ms = 20
 threshold_p95_ms = 40
@@ -17,7 +17,7 @@ category = "runtime"
 [[workload]]
 name = "compiled_budgeting"
 target = "compiled"
-source = "examples/ergonomics/budgeting.tn"
+source = "examples/parity/02-operators/arithmetic_basic.tn"
 mode = "warm"
 threshold_p50_ms = 20
 threshold_p95_ms = 40

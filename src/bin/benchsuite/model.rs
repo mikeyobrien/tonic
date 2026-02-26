@@ -503,7 +503,7 @@ mod tests {
         name = "run_native_budgeting"
         mode = "warm"
         target = "compiled"
-        source = "examples/ergonomics/budgeting.tn"
+        source = "examples/parity/02-operators/arithmetic_basic.tn"
         threshold_p50_ms = 10
         threshold_p95_ms = 20
         "#;
@@ -513,7 +513,7 @@ mod tests {
         assert_eq!(suite.workload[0].target, "compiled");
         assert_eq!(
             suite.workload[0].source.as_deref(),
-            Some("examples/ergonomics/budgeting.tn")
+            Some("examples/parity/02-operators/arithmetic_basic.tn")
         );
         assert!(suite.workload[0].command.is_empty());
     }

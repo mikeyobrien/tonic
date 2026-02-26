@@ -97,7 +97,7 @@ category = "json_transform"
 
 [[workload]]
 name = "check_file_pipeline_project"
-command = ["check", "examples/ergonomics/pipeline"]
+command = ["check", "examples/parity/07-modules/project_multifile_pipeline"]
 mode = "cold"
 threshold_p50_ms = 12
 threshold_p95_ms = 24

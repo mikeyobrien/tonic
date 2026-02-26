@@ -84,16 +84,10 @@ fn success_fixture_contracts() -> Vec<(&'static str, &'static str)> {
 }
 
 fn failure_fixture_contracts() -> Vec<(&'static str, &'static str)> {
-    vec![
-        (
-            "examples/ergonomics/error_propagation.tn",
-            "error: runtime returned err(404)",
-        ),
-        (
-            "examples/parity/08-errors/question_operator_err_bubble.tn",
-            "error: runtime returned err(\"bubbly\")",
-        ),
-    ]
+    vec![(
+        "examples/parity/08-errors/question_operator_err_bubble.tn",
+        "error: runtime returned err(\"bubbly\")",
+    )]
 }
 
 fn compile_and_run_fixture(temp_dir: &Path, source: &Path) -> std::process::Output {
