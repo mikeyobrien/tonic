@@ -7,6 +7,24 @@ use crate::runtime::RuntimeValue;
 /// Native runtime ABI version for TValue and call-boundary structs.
 pub const TONIC_RUNTIME_ABI_VERSION: u32 = 1;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NativeAbiMemoryStats {
+    pub allocations_total: u64,
+    pub reclaims_total: u64,
+    pub active_handles: u64,
+    pub active_handles_high_water: u64,
+}
+
+pub fn memory_stats_snapshot() -> Result<NativeAbiMemoryStats, AbiError> {
+    let stats = heap::stats()?;
+    Ok(NativeAbiMemoryStats {
+        allocations_total: stats.allocations_total,
+        reclaims_total: stats.reclaims_total,
+        active_handles: stats.active_handles,
+        active_handles_high_water: stats.active_handles_high_water,
+    })
+}
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TValueTag {

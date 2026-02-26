@@ -10,10 +10,21 @@ struct HeapEntry {
     refs: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) struct HeapStats {
+    pub allocations_total: u64,
+    pub reclaims_total: u64,
+    pub active_handles: u64,
+    pub active_handles_high_water: u64,
+}
+
 #[derive(Debug, Default)]
 struct HeapStore {
     next_handle: u64,
     entries: HashMap<u64, HeapEntry>,
+    allocations_total: u64,
+    reclaims_total: u64,
+    active_handles_high_water: u64,
 }
 
 impl HeapStore {
@@ -44,6 +55,10 @@ pub(super) fn store(tag: TValueTag, value: RuntimeValue) -> Result<u64, AbiError
             refs: 1,
         },
     );
+    heap.allocations_total = heap.allocations_total.saturating_add(1);
+    heap.active_handles_high_water = heap
+        .active_handles_high_water
+        .max(heap.entries.len() as u64);
     Ok(handle)
 }
 
@@ -118,9 +133,20 @@ pub(super) fn release(handle: u64) -> Result<(), AbiError> {
 
     if should_remove {
         heap.entries.remove(&handle);
+        heap.reclaims_total = heap.reclaims_total.saturating_add(1);
     }
 
     Ok(())
+}
+
+pub(super) fn stats() -> Result<HeapStats, AbiError> {
+    let heap = lock_heap()?;
+    Ok(HeapStats {
+        allocations_total: heap.allocations_total,
+        reclaims_total: heap.reclaims_total,
+        active_handles: heap.entries.len() as u64,
+        active_handles_high_water: heap.active_handles_high_water,
+    })
 }
 
 fn lock_heap() -> Result<std::sync::MutexGuard<'static, HeapStore>, AbiError> {

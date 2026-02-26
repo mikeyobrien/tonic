@@ -45,6 +45,18 @@ v1 uses deterministic handle-based reference counting:
 - releasing an unknown/already-freed handle returns deterministic `AbiErrorCode::InvalidHandle`
 - ownership/tag misuse returns deterministic `AbiErrorCode::OwnershipViolation` or `TagHandleMismatch`
 
+### Memory observability (Task 01)
+
+`native_abi::memory_stats_snapshot()` exposes deterministic heap counters:
+
+- `allocations_total`
+- `reclaims_total`
+- `active_handles`
+- `active_handles_high_water`
+
+These counters are monotonic where applicable and are intended for roadmap
+baseline capture before collector behavior changes.
+
 ## Boundary call ABI
 
 `TCallContext`:

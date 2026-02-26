@@ -551,7 +551,7 @@ fn host_sys_random_token(args: &[RuntimeValue]) -> Result<RuntimeValue, HostErro
     expect_exact_args("sys_random_token", args, 1)?;
     let bytes = expect_int_arg("sys_random_token", args, 0)?;
 
-    if bytes < RANDOM_TOKEN_MIN_BYTES || bytes > RANDOM_TOKEN_MAX_BYTES {
+    if !(RANDOM_TOKEN_MIN_BYTES..=RANDOM_TOKEN_MAX_BYTES).contains(&bytes) {
         return Err(HostError::new(format!(
             "sys_random_token bytes out of range: {bytes}"
         )));

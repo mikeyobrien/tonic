@@ -64,6 +64,7 @@ pub(super) fn emit_main_entrypoint(
     out.push_str("  tn_global_argv = argv;\n");
     out.push_str(&format!("  TnVal result = {entry_symbol}();\n"));
     out.push_str("  tn_runtime_println(result);\n");
+    out.push_str("  tn_runtime_memory_stats_print();\n");
     out.push_str("  return 0;\n");
     out.push_str("}\n");
 }

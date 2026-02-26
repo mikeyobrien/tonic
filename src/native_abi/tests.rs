@@ -1,7 +1,7 @@
 use super::{
-    clone_tvalue, invoke_runtime_boundary, release_tvalue, retain_tvalue, runtime_to_tvalue,
-    tvalue_to_runtime, validate_tvalue, AbiErrorCode, TCallContext, TCallStatus, TValue, TValueTag,
-    TONIC_RUNTIME_ABI_VERSION,
+    clone_tvalue, invoke_runtime_boundary, memory_stats_snapshot, release_tvalue, retain_tvalue,
+    runtime_to_tvalue, tvalue_to_runtime, validate_tvalue, AbiErrorCode, TCallContext, TCallStatus,
+    TValue, TValueTag, TONIC_RUNTIME_ABI_VERSION,
 };
 use crate::ir::lower_ast_to_ir;
 use crate::lexer::scan_tokens;
@@ -121,6 +121,43 @@ fn runtime_boundary_catches_panics_and_returns_error_status() {
     let result = invoke_runtime_boundary(&ctx, |_args| panic!("boom"));
 
     assert_eq!(result.status, TCallStatus::Panic);
+}
+
+#[test]
+fn native_abi_memory_stats_track_allocations_and_high_water() {
+    let before = memory_stats_snapshot().expect("heap stats should be readable");
+
+    let first = runtime_to_tvalue(RuntimeValue::String("alpha".to_string()))
+        .expect("string should encode as heap value");
+    let second = runtime_to_tvalue(RuntimeValue::List(vec![
+        RuntimeValue::Int(1),
+        RuntimeValue::Int(2),
+    ]))
+    .expect("list should encode as heap value");
+
+    let after_alloc = memory_stats_snapshot().expect("heap stats should be readable after alloc");
+
+    assert_eq!(after_alloc.allocations_total, before.allocations_total + 2);
+    assert!(
+        after_alloc.active_handles >= before.active_handles + 2,
+        "active handle count should grow after two new heap values"
+    );
+    assert!(
+        after_alloc.active_handles_high_water >= after_alloc.active_handles,
+        "high-water must be >= current active handles"
+    );
+
+    release_tvalue(first).expect("first release should succeed");
+    release_tvalue(second).expect("second release should succeed");
+
+    let after_release =
+        memory_stats_snapshot().expect("heap stats should be readable after release");
+
+    assert_eq!(after_release.reclaims_total, after_alloc.reclaims_total + 2);
+    assert!(
+        after_release.active_handles <= after_alloc.active_handles,
+        "active handle count should not increase after release"
+    );
 }
 
 fn closure_runtime_value_fixture() -> RuntimeValue {

@@ -1,0 +1,10 @@
+defmodule Demo do
+  def run() do
+    case fn x -> x * 2 end do
+      f ->
+        case &(&1 + 1) do
+          g -> {f.(5), {g.(5), {f.(6), {g.(6), {f.(7), g.(7)}}}}}
+        end
+    end
+  end
+end

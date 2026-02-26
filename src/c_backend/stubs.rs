@@ -102,6 +102,39 @@ static TnObj **tn_heap = NULL;
 static size_t tn_heap_len = 0;
 static size_t tn_heap_cap = 0;
 
+static uint64_t tn_memory_objects_total = 0;
+static uint64_t tn_memory_heap_slots_high_water = 0;
+static uint64_t tn_memory_heap_capacity_high_water = 0;
+static int tn_memory_stats_enabled = -1;
+
+static int tn_runtime_memory_stats_enabled(void) {
+  if (tn_memory_stats_enabled >= 0) {
+    return tn_memory_stats_enabled;
+  }
+
+  const char *value = getenv("TONIC_MEMORY_STATS");
+  tn_memory_stats_enabled =
+      (value != NULL && strcmp(value, "1") == 0) ? 1 : 0;
+  return tn_memory_stats_enabled;
+}
+
+static void tn_runtime_memory_stats_print(void) {
+  if (!tn_runtime_memory_stats_enabled()) {
+    return;
+  }
+
+  fprintf(
+      stderr,
+      "memory.stats c_runtime objects_total=%" PRIu64
+      " heap_slots=%zu heap_slots_hwm=%" PRIu64
+      " heap_capacity=%zu heap_capacity_hwm=%" PRIu64 "\n",
+      tn_memory_objects_total,
+      tn_heap_len,
+      tn_memory_heap_slots_high_water,
+      tn_heap_cap,
+      tn_memory_heap_capacity_high_water);
+}
+
 static TnVal tn_true_value = 0;
 static TnVal tn_false_value = 0;
 static TnVal tn_nil_value = 0;
@@ -170,6 +203,7 @@ static TnObj *tn_new_obj(TnObjKind kind) {
   }
 
   obj->kind = kind;
+  tn_memory_objects_total += 1;
   return obj;
 }
 
@@ -184,10 +218,16 @@ static TnVal tn_heap_store(TnObj *obj) {
 
     tn_heap = next_heap;
     tn_heap_cap = next_cap;
+    if (tn_memory_heap_capacity_high_water < tn_heap_cap) {
+      tn_memory_heap_capacity_high_water = (uint64_t)tn_heap_cap;
+    }
   }
 
   tn_heap[tn_heap_len] = obj;
   tn_heap_len += 1;
+  if (tn_memory_heap_slots_high_water < tn_heap_len) {
+    tn_memory_heap_slots_high_water = (uint64_t)tn_heap_len;
+  }
   return tn_make_box(tn_heap_len);
 }
 

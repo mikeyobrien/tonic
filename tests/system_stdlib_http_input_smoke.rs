@@ -98,9 +98,13 @@ fn run_system_http_request_returns_expected_map_shape() {
     let src_dir = fixture_root.join("src");
 
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
-    let addr = listener.local_addr().expect("listener should expose address");
+    let addr = listener
+        .local_addr()
+        .expect("listener should expose address");
     let server = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("server should accept one connection");
+        let (mut stream, _) = listener
+            .accept()
+            .expect("server should accept one connection");
 
         let mut request_buf = [0u8; 1024];
         let _ = stream.read(&mut request_buf);

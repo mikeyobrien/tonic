@@ -78,3 +78,12 @@ For runtime memory strategy research and implementation scaffolding, see:
 
 - `docs/memory-management-roadmap.md`
 - `docs/runtime-memory-task-scaffold.md`
+
+Task 01 observability additions:
+
+- Generated C runtime supports opt-in memory diagnostics with
+  `TONIC_MEMORY_STATS=1`.
+- Diagnostics emit one deterministic line on stderr:
+  `memory.stats c_runtime ...`.
+- Baseline harness: `scripts/memory-baseline.sh`
+- Stress fixtures: `examples/memory/*.tn`
