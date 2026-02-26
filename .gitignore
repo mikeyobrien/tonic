@@ -1,6 +1,10 @@
 # Rust build artifacts
 /target/
 
+# nix build symlinks
+/result
+/result-*
+
 # devenv/direnv
 .devenv*
 .devenv.flake.nix
