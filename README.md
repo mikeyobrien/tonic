@@ -15,6 +15,11 @@ Tonic is opinionated about developer experience:
 
 If you like Elixir-style code shape but want to explore language/runtime implementation in Rust, Tonic is built for that.
 
+Benchmark signal worth calling out: Tencent Hunyuan’s **AutoCodeBench** reports Elixir as the highest language in its Table 4 “Current Upper Bound” Pass@1 row (**97.5**).
+
+- Paper: https://arxiv.org/abs/2508.09101
+- Table rendering: https://ar5iv.org/html/2508.09101v1
+
 ## 60-second demo
 
 ### 1) Run a program via interpreter
