@@ -108,7 +108,10 @@ pub(super) fn emit_c_instructions(
                     *offset,
                     out,
                 )?;
+                out.push_str(&format!("  tn_runtime_retain(v{dest});\n"));
                 out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
+                out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
+                out.push_str(&format!("  tn_runtime_release(v{dest});\n"));
             }
             MirInstruction::CallValue {
                 dest, callee, args, ..
@@ -131,7 +134,10 @@ pub(super) fn emit_c_instructions(
                 out.push_str(&format!(
                     "  v{dest} = tn_runtime_call_closure_varargs({all_args});\n"
                 ));
+                out.push_str(&format!("  tn_runtime_retain(v{dest});\n"));
                 out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
+                out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
+                out.push_str(&format!("  tn_runtime_release(v{dest});\n"));
             }
             MirInstruction::MakeClosure {
                 dest, params, ops, ..
@@ -143,6 +149,7 @@ pub(super) fn emit_c_instructions(
                     params.len(),
                     capture_names.len()
                 ));
+                out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
             }
             MirInstruction::MatchPattern {
                 dest,
@@ -183,6 +190,7 @@ pub(super) fn emit_c_instructions(
                 out.push_str(&format!(
                     "  v{dest} = {runtime_helper}((TnVal){op_hash}LL);\n"
                 ));
+                out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
             }
         }
     }

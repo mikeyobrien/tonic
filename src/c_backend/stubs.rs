@@ -67,6 +67,7 @@ typedef struct TnObj {
   TnObjKind kind;
   uint64_t alloc_id;
   uint32_t gc_flags;
+  uint32_t refcount;
   union {
     int bool_value;
     struct {
@@ -103,23 +104,32 @@ typedef struct TnObj {
 static TnObj **tn_heap = NULL;
 static size_t tn_heap_len = 0;
 static size_t tn_heap_cap = 0;
+static size_t *tn_heap_free_ids = NULL;
+static size_t tn_heap_free_len = 0;
+static size_t tn_heap_free_cap = 0;
 
 static TnVal *tn_root_stack = NULL;
 static size_t tn_root_stack_len = 0;
 static size_t tn_root_stack_cap = 0;
 
 static uint64_t tn_memory_objects_total = 0;
+static uint64_t tn_memory_reclaims_total = 0;
 static uint64_t tn_memory_object_alloc_id_high_water = 0;
 static uint64_t tn_memory_heap_slots_high_water = 0;
 static uint64_t tn_memory_heap_capacity_high_water = 0;
+static uint64_t tn_memory_heap_live_slots = 0;
+static uint64_t tn_memory_heap_live_slots_high_water = 0;
 static uint64_t tn_memory_roots_registered_total = 0;
 static uint64_t tn_memory_root_frames_active = 0;
 static uint64_t tn_memory_root_frames_high_water = 0;
 static uint64_t tn_memory_root_slots_high_water = 0;
 static uint64_t tn_memory_next_alloc_id = 1;
 static int tn_memory_stats_enabled = -1;
+static int tn_memory_rc_enabled = -1;
 
 static int tn_is_boxed(TnVal value);
+static void tn_runtime_retain(TnVal value);
+static void tn_runtime_release(TnVal value);
 
 static int tn_runtime_memory_stats_enabled(void) {
   if (tn_memory_stats_enabled >= 0) {
@@ -132,24 +142,45 @@ static int tn_runtime_memory_stats_enabled(void) {
   return tn_memory_stats_enabled;
 }
 
+static int tn_runtime_memory_rc_enabled(void) {
+  if (tn_memory_rc_enabled >= 0) {
+    return tn_memory_rc_enabled;
+  }
+
+  const char *mode = getenv("TONIC_MEMORY_MODE");
+  tn_memory_rc_enabled =
+      (mode != NULL && strcmp(mode, "rc") == 0) ? 1 : 0;
+  return tn_memory_rc_enabled;
+}
+
 static void tn_runtime_memory_stats_print(void) {
   if (!tn_runtime_memory_stats_enabled()) {
     return;
   }
 
+  const char *memory_mode = tn_runtime_memory_rc_enabled() ? "rc" : "append_only";
+
   fprintf(
       stderr,
-      "memory.stats c_runtime objects_total=%" PRIu64
+      "memory.stats c_runtime memory_mode=%s"
+      " cycle_collection=off"
+      " objects_total=%" PRIu64
+      " reclaims_total=%" PRIu64
       " heap_slots=%zu heap_slots_hwm=%" PRIu64
+      " heap_live_slots=%" PRIu64 " heap_live_slots_hwm=%" PRIu64
       " heap_capacity=%zu heap_capacity_hwm=%" PRIu64
       " object_alloc_id_hwm=%" PRIu64
       " roots_registered_total=%" PRIu64
       " root_frames_active=%" PRIu64
       " root_frames_hwm=%" PRIu64
       " root_slots=%zu root_slots_hwm=%" PRIu64 "\n",
+      memory_mode,
       tn_memory_objects_total,
+      tn_memory_reclaims_total,
       tn_heap_len,
       tn_memory_heap_slots_high_water,
+      tn_memory_heap_live_slots,
+      tn_memory_heap_live_slots_high_water,
       tn_heap_cap,
       tn_memory_heap_capacity_high_water,
       tn_memory_object_alloc_id_high_water,
@@ -191,6 +222,8 @@ static void tn_runtime_root_register(TnVal value) {
   if (tn_memory_root_slots_high_water < tn_root_stack_len) {
     tn_memory_root_slots_high_water = (uint64_t)tn_root_stack_len;
   }
+
+  tn_runtime_retain(value);
 }
 
 static void tn_runtime_root_frame_pop(size_t frame_start) {
@@ -202,6 +235,12 @@ static void tn_runtime_root_frame_pop(size_t frame_start) {
   if (tn_memory_root_frames_active == 0) {
     fprintf(stderr, "error: native runtime root frame underflow\n");
     exit(1);
+  }
+
+  if (tn_runtime_memory_rc_enabled()) {
+    for (size_t i = tn_root_stack_len; i > frame_start; i -= 1) {
+      tn_runtime_release(tn_root_stack[i - 1]);
+    }
   }
 
   tn_root_stack_len = frame_start;
@@ -277,6 +316,7 @@ static TnObj *tn_new_obj(TnObjKind kind) {
 
   obj->kind = kind;
   obj->gc_flags = 0;
+  obj->refcount = 0;
   obj->alloc_id = tn_memory_next_alloc_id;
   if (tn_memory_next_alloc_id < UINT64_MAX) {
     tn_memory_next_alloc_id += 1;
@@ -289,28 +329,61 @@ static TnObj *tn_new_obj(TnObjKind kind) {
   return obj;
 }
 
-static TnVal tn_heap_store(TnObj *obj) {
-  if (tn_heap_len == tn_heap_cap) {
-    size_t next_cap = tn_heap_cap == 0 ? 64 : tn_heap_cap * 2;
-    TnObj **next_heap = (TnObj **)realloc(tn_heap, next_cap * sizeof(TnObj *));
-    if (next_heap == NULL) {
+static void tn_heap_push_free_id(size_t id) {
+  if (tn_heap_free_len == tn_heap_free_cap) {
+    size_t next_cap = tn_heap_free_cap == 0 ? 64 : tn_heap_free_cap * 2;
+    size_t *next_free_ids =
+        (size_t *)realloc(tn_heap_free_ids, next_cap * sizeof(size_t));
+    if (next_free_ids == NULL) {
       fprintf(stderr, "error: native runtime allocation failure\n");
       exit(1);
     }
 
-    tn_heap = next_heap;
-    tn_heap_cap = next_cap;
-    if (tn_memory_heap_capacity_high_water < tn_heap_cap) {
-      tn_memory_heap_capacity_high_water = (uint64_t)tn_heap_cap;
-    }
+    tn_heap_free_ids = next_free_ids;
+    tn_heap_free_cap = next_cap;
   }
 
-  tn_heap[tn_heap_len] = obj;
-  tn_heap_len += 1;
-  if (tn_memory_heap_slots_high_water < tn_heap_len) {
-    tn_memory_heap_slots_high_water = (uint64_t)tn_heap_len;
+  tn_heap_free_ids[tn_heap_free_len] = id;
+  tn_heap_free_len += 1;
+}
+
+static TnVal tn_heap_store(TnObj *obj) {
+  size_t id = 0;
+
+  if (tn_heap_free_len > 0) {
+    id = tn_heap_free_ids[tn_heap_free_len - 1];
+    tn_heap_free_len -= 1;
+    tn_heap[id - 1] = obj;
+  } else {
+    if (tn_heap_len == tn_heap_cap) {
+      size_t next_cap = tn_heap_cap == 0 ? 64 : tn_heap_cap * 2;
+      TnObj **next_heap = (TnObj **)realloc(tn_heap, next_cap * sizeof(TnObj *));
+      if (next_heap == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+
+      tn_heap = next_heap;
+      tn_heap_cap = next_cap;
+      if (tn_memory_heap_capacity_high_water < tn_heap_cap) {
+        tn_memory_heap_capacity_high_water = (uint64_t)tn_heap_cap;
+      }
+    }
+
+    tn_heap[tn_heap_len] = obj;
+    tn_heap_len += 1;
+    if (tn_memory_heap_slots_high_water < tn_heap_len) {
+      tn_memory_heap_slots_high_water = (uint64_t)tn_heap_len;
+    }
+    id = tn_heap_len;
   }
-  return tn_make_box(tn_heap_len);
+
+  tn_memory_heap_live_slots += 1;
+  if (tn_memory_heap_live_slots_high_water < tn_memory_heap_live_slots) {
+    tn_memory_heap_live_slots_high_water = tn_memory_heap_live_slots;
+  }
+
+  return tn_make_box(id);
 }
 
 static TnObj *tn_get_obj(TnVal value) {
@@ -326,6 +399,130 @@ static TnObj *tn_get_obj(TnVal value) {
   return tn_heap[id - 1];
 }
 
+static TnObj *tn_get_obj_for_rc(TnVal value, const char *action, size_t *id_out) {
+  if (!tn_is_boxed(value)) {
+    return NULL;
+  }
+
+  size_t id = tn_box_id(value);
+  if (id == 0 || id > tn_heap_len) {
+    fprintf(stderr,
+            "error: native runtime ownership misuse during %s: unknown object id %zu\n",
+            action,
+            id);
+    exit(1);
+  }
+
+  TnObj *obj = tn_heap[id - 1];
+  if (obj == NULL) {
+    fprintf(stderr,
+            "error: native runtime ownership misuse during %s: object id %zu already reclaimed\n",
+            action,
+            id);
+    exit(1);
+  }
+
+  if (id_out != NULL) {
+    *id_out = id;
+  }
+  return obj;
+}
+
+static void tn_runtime_retain(TnVal value) {
+  if (!tn_runtime_memory_rc_enabled() || !tn_is_boxed(value)) {
+    return;
+  }
+
+  TnObj *obj = tn_get_obj_for_rc(value, "retain", NULL);
+  if (obj->refcount < UINT32_MAX) {
+    obj->refcount += 1;
+  }
+}
+
+static void tn_runtime_release(TnVal value) {
+  if (!tn_runtime_memory_rc_enabled() || !tn_is_boxed(value)) {
+    return;
+  }
+
+  size_t id = 0;
+  TnObj *obj = tn_get_obj_for_rc(value, "release", &id);
+  if (obj->refcount == 0) {
+    fprintf(stderr,
+            "error: native runtime ownership misuse during release: object id %zu already released\n",
+            id);
+    exit(1);
+  }
+
+  obj->refcount -= 1;
+  if (obj->refcount > 0) {
+    return;
+  }
+
+  tn_heap[id - 1] = NULL;
+  tn_heap_push_free_id(id);
+  if (tn_memory_heap_live_slots > 0) {
+    tn_memory_heap_live_slots -= 1;
+  }
+  tn_memory_reclaims_total += 1;
+
+  TnVal self_value = tn_make_box(id);
+
+  switch (obj->kind) {
+    case TN_OBJ_ATOM:
+    case TN_OBJ_STRING:
+    case TN_OBJ_FLOAT:
+      free(obj->as.text.text);
+      break;
+    case TN_OBJ_TUPLE:
+      if (obj->as.tuple.left != self_value) {
+        tn_runtime_release(obj->as.tuple.left);
+      }
+      if (obj->as.tuple.right != self_value) {
+        tn_runtime_release(obj->as.tuple.right);
+      }
+      break;
+    case TN_OBJ_LIST:
+      for (size_t i = 0; i < obj->as.list.len; i += 1) {
+        if (obj->as.list.items[i] != self_value) {
+          tn_runtime_release(obj->as.list.items[i]);
+        }
+      }
+      free(obj->as.list.items);
+      break;
+    case TN_OBJ_MAP:
+    case TN_OBJ_KEYWORD:
+      for (size_t i = 0; i < obj->as.map_like.len; i += 1) {
+        if (obj->as.map_like.items[i].key != self_value) {
+          tn_runtime_release(obj->as.map_like.items[i].key);
+        }
+        if (obj->as.map_like.items[i].value != self_value) {
+          tn_runtime_release(obj->as.map_like.items[i].value);
+        }
+      }
+      free(obj->as.map_like.items);
+      break;
+    case TN_OBJ_RANGE:
+      if (obj->as.range.start != self_value) {
+        tn_runtime_release(obj->as.range.start);
+      }
+      if (obj->as.range.end != self_value) {
+        tn_runtime_release(obj->as.range.end);
+      }
+      break;
+    case TN_OBJ_RESULT:
+      if (obj->as.result.value != self_value) {
+        tn_runtime_release(obj->as.result.value);
+      }
+      break;
+    case TN_OBJ_BOOL:
+    case TN_OBJ_NIL:
+    case TN_OBJ_CLOSURE:
+      break;
+  }
+
+  free(obj);
+}
+
 static void tn_runtime_init_singletons(void) {
   if (tn_true_value != 0) {
     return;
@@ -334,13 +531,16 @@ static void tn_runtime_init_singletons(void) {
   TnObj *true_obj = tn_new_obj(TN_OBJ_BOOL);
   true_obj->as.bool_value = 1;
   tn_true_value = tn_heap_store(true_obj);
+  tn_runtime_retain(tn_true_value);
 
   TnObj *false_obj = tn_new_obj(TN_OBJ_BOOL);
   false_obj->as.bool_value = 0;
   tn_false_value = tn_heap_store(false_obj);
+  tn_runtime_retain(tn_false_value);
 
   TnObj *nil_obj = tn_new_obj(TN_OBJ_NIL);
   tn_nil_value = tn_heap_store(nil_obj);
+  tn_runtime_retain(tn_nil_value);
 }
 
 static TnVal tn_runtime_const_bool(TnVal raw) {
@@ -378,6 +578,8 @@ static TnVal tn_runtime_make_tuple(TnVal left, TnVal right) {
   TnObj *obj = tn_new_obj(TN_OBJ_TUPLE);
   obj->as.tuple.left = left;
   obj->as.tuple.right = right;
+  tn_runtime_retain(left);
+  tn_runtime_retain(right);
   return tn_heap_store(obj);
 }
 
@@ -399,6 +601,7 @@ static TnVal tn_runtime_make_list_varargs(TnVal count, ...) {
   va_start(args, count);
   for (size_t i = 0; i < len; i += 1) {
     obj->as.list.items[i] = va_arg(args, TnVal);
+    tn_runtime_retain(obj->as.list.items[i]);
   }
   va_end(args);
 
@@ -599,6 +802,8 @@ static TnVal tn_clone_map_like_with_capacity(const TnObj *source, TnObjKind kind
 
   for (size_t i = 0; i < source->as.map_like.len; i += 1) {
     obj->as.map_like.items[i] = source->as.map_like.items[i];
+    tn_runtime_retain(obj->as.map_like.items[i].key);
+    tn_runtime_retain(obj->as.map_like.items[i].value);
   }
 
   return tn_heap_store(obj);
@@ -622,6 +827,8 @@ static TnVal tn_runtime_make_map(TnVal key, TnVal value) {
 
   obj->as.map_like.items[0].key = key;
   obj->as.map_like.items[0].value = value;
+  tn_runtime_retain(key);
+  tn_runtime_retain(value);
   return tn_heap_store(obj);
 }
 
@@ -637,11 +844,15 @@ static TnVal tn_runtime_map_put(TnVal base, TnVal key, TnVal value) {
   TnObj *next = tn_get_obj(cloned);
 
   if (existing_index >= 0) {
+    tn_runtime_retain(value);
+    tn_runtime_release(next->as.map_like.items[existing_index].value);
     next->as.map_like.items[existing_index].value = value;
   } else {
     size_t write_index = next->as.map_like.len;
     next->as.map_like.items[write_index].key = key;
     next->as.map_like.items[write_index].value = value;
+    tn_runtime_retain(key);
+    tn_runtime_retain(value);
     next->as.map_like.len += 1;
   }
 
@@ -661,6 +872,8 @@ static TnVal tn_runtime_map_update(TnVal base, TnVal key, TnVal value) {
 
   TnVal cloned = tn_clone_map_like_with_capacity(map, TN_OBJ_MAP, 0);
   TnObj *next = tn_get_obj(cloned);
+  tn_runtime_retain(value);
+  tn_runtime_release(next->as.map_like.items[existing_index].value);
   next->as.map_like.items[existing_index].value = value;
   return cloned;
 }
@@ -678,7 +891,9 @@ static TnVal tn_runtime_map_access(TnVal base, TnVal key) {
     return tn_nil_value;
   }
 
-  return map->as.map_like.items[existing_index].value;
+  TnVal value = map->as.map_like.items[existing_index].value;
+  tn_runtime_retain(value);
+  return value;
 }
 
 static TnVal tn_runtime_make_keyword(TnVal key, TnVal value) {
@@ -692,6 +907,8 @@ static TnVal tn_runtime_make_keyword(TnVal key, TnVal value) {
 
   obj->as.map_like.items[0].key = key;
   obj->as.map_like.items[0].value = value;
+  tn_runtime_retain(key);
+  tn_runtime_retain(value);
   return tn_heap_store(obj);
 }
 
@@ -706,6 +923,8 @@ static TnVal tn_runtime_keyword_append(TnVal base, TnVal key, TnVal value) {
   size_t write_index = next->as.map_like.len;
   next->as.map_like.items[write_index].key = key;
   next->as.map_like.items[write_index].value = value;
+  tn_runtime_retain(key);
+  tn_runtime_retain(value);
   next->as.map_like.len += 1;
   return cloned;
 }
@@ -1092,6 +1311,7 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     }
     for (int i = 0; i < tn_global_argc; i++) {
       list_obj->as.list.items[i] = tn_runtime_const_string((TnVal)(intptr_t)tn_global_argv[i]);
+      tn_runtime_retain(list_obj->as.list.items[i]);
     }
     free(args);
     return tn_heap_store(list_obj);
@@ -1215,6 +1435,7 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str(
         "  TnVal result = tn_runtime_call_compiled_closure(closure_obj->as.closure.descriptor_hash, args, argc);\n",
     );
+    out.push_str("  tn_runtime_retain(result);\n");
     out.push_str("  free(args);\n");
     out.push_str("  tn_runtime_root_frame_pop(root_frame);\n");
     out.push_str("  return result;\n");
@@ -1224,6 +1445,7 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("  TnObj *obj = tn_new_obj(TN_OBJ_RESULT);\n");
     out.push_str("  obj->as.result.is_ok = 1;\n");
     out.push_str("  obj->as.result.value = value;\n");
+    out.push_str("  tn_runtime_retain(value);\n");
     out.push_str("  return tn_heap_store(obj);\n");
     out.push_str("}\n\n");
 
@@ -1231,6 +1453,7 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("  TnObj *obj = tn_new_obj(TN_OBJ_RESULT);\n");
     out.push_str("  obj->as.result.is_ok = 0;\n");
     out.push_str("  obj->as.result.value = value;\n");
+    out.push_str("  tn_runtime_retain(value);\n");
     out.push_str("  return tn_heap_store(obj);\n");
     out.push_str("}\n\n");
 
@@ -1240,6 +1463,7 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("    return tn_runtime_failf(\"question expects result value, found %s\", tn_runtime_value_kind(value));\n");
     out.push_str("  }\n");
     out.push_str("  if (obj->as.result.is_ok != 0) {\n");
+    out.push_str("    tn_runtime_retain(obj->as.result.value);\n");
     out.push_str("    return obj->as.result.value;\n");
     out.push_str("  }\n\n");
     out.push_str("  fprintf(stderr, \"error: runtime returned \" );\n");
@@ -1345,9 +1569,11 @@ static TnVal tn_runtime_list_concat(TnVal left, TnVal right) {
 
   for (size_t i = 0; i < left_len; i += 1) {
     obj->as.list.items[i] = left_obj->as.list.items[i];
+    tn_runtime_retain(obj->as.list.items[i]);
   }
   for (size_t i = 0; i < right_len; i += 1) {
     obj->as.list.items[left_len + i] = right_obj->as.list.items[i];
+    tn_runtime_retain(obj->as.list.items[left_len + i]);
   }
 
   return tn_heap_store(obj);
@@ -1391,6 +1617,7 @@ static TnVal tn_runtime_list_subtract(TnVal left, TnVal right) {
 
     if (!removed) {
       obj->as.list.items[obj->as.list.len] = candidate;
+      tn_runtime_retain(candidate);
       obj->as.list.len += 1;
     }
   }
@@ -2574,6 +2801,7 @@ fn emit_compiled_closure_body(
         closure.params.len()
     ));
     out.push_str("  }\n\n");
+    out.push_str("  size_t tn_closure_root_frame = tn_runtime_root_frame_push();\n\n");
 
     let mut params = BTreeMap::<String, usize>::new();
     for (position, name) in closure.params.iter().enumerate() {
@@ -2745,11 +2973,16 @@ fn emit_compiled_closure_body(
                 out.push_str(&format!(
                     "  TnVal {temp} = tn_runtime_call_closure_varargs({call_args});\n"
                 ));
+                out.push_str(&format!("  tn_runtime_retain({temp});\n"));
                 out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
+                out.push_str(&format!("  tn_runtime_root_register({temp});\n"));
+                out.push_str(&format!("  tn_runtime_release({temp});\n"));
                 stack.push(temp);
             }
             IrOp::Return { .. } => {
                 let value = pop_stack_value(&mut stack, "return value")?;
+                out.push_str(&format!("  tn_runtime_retain({value});\n"));
+                out.push_str("  tn_runtime_root_frame_pop(tn_closure_root_frame);\n");
                 out.push_str(&format!("  return {value};\n"));
                 emitted_return = true;
                 break;
@@ -2766,6 +2999,8 @@ fn emit_compiled_closure_body(
 
     if !emitted_return {
         if let Some(value) = stack.pop() {
+            out.push_str(&format!("  tn_runtime_retain({value});\n"));
+            out.push_str("  tn_runtime_root_frame_pop(tn_closure_root_frame);\n");
             out.push_str(&format!("  return {value};\n"));
         } else {
             out.push_str(
@@ -2903,7 +3138,10 @@ fn emit_closure_call(
         }
     }
 
+    out.push_str(&format!("  tn_runtime_retain({temp});\n"));
     out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
+    out.push_str(&format!("  tn_runtime_root_register({temp});\n"));
+    out.push_str(&format!("  tn_runtime_release({temp});\n"));
     stack.push(temp);
     Ok(())
 }

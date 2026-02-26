@@ -46,6 +46,7 @@ pub(super) fn emit_function(
             .join(", ");
         out.push_str(&format!("  TnVal {decls};\n"));
     }
+    out.push_str("  size_t tn_function_root_frame = tn_runtime_root_frame_push();\n");
 
     for block in &function.blocks {
         out.push_str(&format!("  bb{}: ;\n", block.id));

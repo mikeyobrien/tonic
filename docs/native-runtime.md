@@ -87,3 +87,9 @@ Task 01 observability additions:
   `memory.stats c_runtime ...`.
 - Baseline harness: `scripts/memory-baseline.sh`
 - Stress fixtures: `examples/memory/*.tn`
+
+Task 03 RC prototype additions:
+
+- RC mode is opt-in via `TONIC_MEMORY_MODE=rc` (default remains append-only).
+- Stats include `memory_mode`, `reclaims_total`, `heap_live_slots`, and
+  `cycle_collection=off` (cycle caveat is explicit in RC mode).

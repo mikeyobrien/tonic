@@ -17,7 +17,8 @@ This is a tracked scaffold of the memory roadmap work in `docs/memory-management
 ## Task 03 — RC prototype (feature flagged)
 - Add object refcount with retain/release hooks.
 - Apply ownership transitions across containers/calls/closure captures.
-- Document cycle caveat and add acyclic leak tests.
+- Gate RC behind `TONIC_MEMORY_MODE=rc` while default remains append-only.
+- Document cycle caveat (`cycle_collection=off`) and add acyclic leak tests.
 - Exit criteria: acyclic workloads reclaim, parity tests remain green.
 
 ## Task 04 — Tracing GC prototype (feature flagged)
