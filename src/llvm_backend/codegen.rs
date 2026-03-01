@@ -627,6 +627,13 @@ fn emit_instructions(
                         value_register(*input)
                     ));
                 }
+                crate::mir::MirUnaryKind::BitwiseNot => {
+                    lines.push(format!(
+                        "  {} = xor i64 {}, -1",
+                        value_register(*dest),
+                        value_register(*input)
+                    ));
+                }
             },
             MirInstruction::Question { dest, input, .. } => {
                 lines.push(format!(
@@ -752,17 +759,41 @@ fn emit_instructions(
                 | MirBinaryKind::In
                 | MirBinaryKind::PlusPlus
                 | MirBinaryKind::MinusMinus
-                | MirBinaryKind::Range => {
+                | MirBinaryKind::Range
+                | MirBinaryKind::NotIn
+                | MirBinaryKind::SteppedRange => {
                     let helper = match kind {
                         MirBinaryKind::Concat => "tn_runtime_concat",
                         MirBinaryKind::In => "tn_runtime_in",
                         MirBinaryKind::PlusPlus => "tn_runtime_list_concat",
                         MirBinaryKind::MinusMinus => "tn_runtime_list_subtract",
                         MirBinaryKind::Range => "tn_runtime_range",
+                        MirBinaryKind::NotIn => "tn_runtime_not_in",
+                        MirBinaryKind::SteppedRange => "tn_runtime_stepped_range",
                         _ => unreachable!(),
                     };
                     lines.push(format!(
                         "  {} = call i64 @{helper}(i64 {}, i64 {})",
+                        value_register(*dest),
+                        value_register(*left),
+                        value_register(*right)
+                    ));
+                }
+                MirBinaryKind::BitwiseAnd
+                | MirBinaryKind::BitwiseOr
+                | MirBinaryKind::BitwiseXor
+                | MirBinaryKind::BitwiseShiftLeft
+                | MirBinaryKind::BitwiseShiftRight => {
+                    let op = match kind {
+                        MirBinaryKind::BitwiseAnd => "and",
+                        MirBinaryKind::BitwiseOr => "or",
+                        MirBinaryKind::BitwiseXor => "xor",
+                        MirBinaryKind::BitwiseShiftLeft => "shl",
+                        MirBinaryKind::BitwiseShiftRight => "ashr",
+                        _ => unreachable!(),
+                    };
+                    lines.push(format!(
+                        "  {} = {op} i64 {}, {}",
                         value_register(*dest),
                         value_register(*left),
                         value_register(*right)
@@ -1019,6 +1050,52 @@ fn emit_builtin_call_from_registers(
             }
             lines.push(format!(
                 "  {dest} = call i64 @tn_runtime_protocol_dispatch({})",
+                rendered_args[0]
+            ));
+        }
+        "div" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin div arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            // Integer division truncating toward zero (sdiv)
+            lines.push(format!(
+                "  {dest} = sdiv i64 {}, {}",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "rem" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin rem arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            // Integer remainder (srem)
+            lines.push(format!(
+                "  {dest} = srem i64 {}, {}",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "byte_size" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin byte_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_byte_size(i64 {})",
+                rendered_args[0]
+            ));
+        }
+        "bit_size" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin bit_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_bit_size(i64 {})",
                 rendered_args[0]
             ));
         }
@@ -1310,9 +1387,17 @@ fn collect_capture_names_from_ops(
             | IrOp::Bang { .. }
             | IrOp::Concat { .. }
             | IrOp::In { .. }
+            | IrOp::NotIn { .. }
             | IrOp::PlusPlus { .. }
             | IrOp::MinusMinus { .. }
             | IrOp::Range { .. }
+            | IrOp::BitwiseAnd { .. }
+            | IrOp::BitwiseOr { .. }
+            | IrOp::BitwiseXor { .. }
+            | IrOp::BitwiseNot { .. }
+            | IrOp::BitwiseShiftLeft { .. }
+            | IrOp::BitwiseShiftRight { .. }
+            | IrOp::SteppedRange { .. }
             | IrOp::Match { .. }
             | IrOp::Return { .. } => {}
         }
@@ -1473,8 +1558,8 @@ fn emit_guard_condition(
                 })?;
 
                 let predicate = match kind {
-                    CmpKind::Eq => "eq",
-                    CmpKind::NotEq => "ne",
+                    CmpKind::Eq | CmpKind::StrictEq => "eq",
+                    CmpKind::NotEq | CmpKind::StrictNotEq => "ne",
                     CmpKind::Lt => "slt",
                     CmpKind::Lte => "sle",
                     CmpKind::Gt => "sgt",
