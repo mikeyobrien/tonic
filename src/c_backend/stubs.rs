@@ -9,7 +9,5 @@ use super::{
         closure_capture_names, hash_closure_descriptor_i64, hash_ir_op_i64, hash_pattern_i64,
         hash_text_i64,
     },
+    runtime_patterns::emit_runtime_pattern_helpers,
 };
-
-// NOTE: stubs.rs — full C backend stub emitter (see batch_1.json for complete content)
-// This file provides the complete stub implementation for the C backend compiler.
