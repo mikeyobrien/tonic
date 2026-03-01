@@ -338,7 +338,7 @@ impl ModuleGraph {
             return CallResolution::Found;
         }
 
-        if let Some((module_name, function_name)) = callee.split_once('.') {
+        if let Some((module_name, function_name)) = callee.rsplit_once('.') {
             if let Some(protocol) = self.protocols.get(module_name) {
                 return if protocol.functions.contains_key(function_name) {
                     CallResolution::Found
@@ -482,6 +482,7 @@ fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
         "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+            | "div" | "rem" | "byte_size" | "bit_size"
     )
 }
 
