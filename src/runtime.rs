@@ -28,6 +28,7 @@ pub enum RuntimeValue {
     Keyword(Vec<(RuntimeValue, RuntimeValue)>),
     List(Vec<RuntimeValue>),
     Range(i64, i64),
+    SteppedRange(i64, i64, i64),
     Closure(Box<RuntimeClosure>),
 }
 
@@ -70,6 +71,7 @@ impl RuntimeValue {
                 format!("[{}]", items.join(", "))
             }
             Self::Range(start, end) => format!("{}..{}", start, end),
+            Self::SteppedRange(start, end, step) => format!("{}..{}/{}", start, end, step),
             Self::Closure(closure) => format!("#Function<{}>", closure.params.len()),
         }
     }
@@ -88,6 +90,7 @@ impl RuntimeValue {
             Self::Keyword(_) => "keyword",
             Self::List(_) => "list",
             Self::Range(_, _) => "range",
+            Self::SteppedRange(_, _, _) => "stepped_range",
             Self::Closure(_) => "function",
         }
     }
@@ -413,6 +416,67 @@ fn evaluate_ops(
                 let right = pop_value(stack, *offset, "range")?;
                 let left = pop_value(stack, *offset, "range")?;
                 let result = native_runtime::ops::range(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::NotIn { offset } => {
+                let right = pop_value(stack, *offset, "not in")?;
+                let left = pop_value(stack, *offset, "not in")?;
+                let result = native_runtime::ops::in_operator(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                // Negate the in result
+                let negated = match result {
+                    RuntimeValue::Bool(b) => RuntimeValue::Bool(!b),
+                    other => other,
+                };
+                stack.push(negated);
+            }
+            IrOp::BitwiseAnd { offset } => {
+                let right = pop_value(stack, *offset, "&&&")?;
+                let left = pop_value(stack, *offset, "&&&")?;
+                let result = native_runtime::ops::bitwise_and(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::BitwiseOr { offset } => {
+                let right = pop_value(stack, *offset, "|||")?;
+                let left = pop_value(stack, *offset, "|||")?;
+                let result = native_runtime::ops::bitwise_or(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::BitwiseXor { offset } => {
+                let right = pop_value(stack, *offset, "^^^")?;
+                let left = pop_value(stack, *offset, "^^^")?;
+                let result = native_runtime::ops::bitwise_xor(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::BitwiseNot { offset } => {
+                let value = pop_value(stack, *offset, "~~~")?;
+                let result = native_runtime::ops::bitwise_not(value, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::BitwiseShiftLeft { offset } => {
+                let right = pop_value(stack, *offset, "<<<")?;
+                let left = pop_value(stack, *offset, "<<<")?;
+                let result = native_runtime::ops::bitwise_shift_left(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::BitwiseShiftRight { offset } => {
+                let right = pop_value(stack, *offset, ">>>")?;
+                let left = pop_value(stack, *offset, ">>>")?;
+                let result = native_runtime::ops::bitwise_shift_right(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::SteppedRange { offset } => {
+                // Stack: ... range step
+                let step = pop_value(stack, *offset, "stepped range step")?;
+                let range = pop_value(stack, *offset, "stepped range range")?;
+                let result = native_runtime::ops::stepped_range(range, step, *offset)
                     .map_err(map_native_runtime_error)?;
                 stack.push(result);
             }
@@ -837,6 +901,26 @@ fn evaluate_ops(
                     let enumerable = pop_value(&mut gen_stack, offset, "for generator")?;
                     let values = match enumerable {
                         RuntimeValue::List(values) => values,
+                        RuntimeValue::Range(start, end) => {
+                            (start..=end).map(RuntimeValue::Int).collect()
+                        }
+                        RuntimeValue::SteppedRange(start, end, step) => {
+                            let mut v = Vec::new();
+                            if step > 0 {
+                                let mut i = start;
+                                while i <= end {
+                                    v.push(RuntimeValue::Int(i));
+                                    i += step;
+                                }
+                            } else if step < 0 {
+                                let mut i = start;
+                                while i >= end {
+                                    v.push(RuntimeValue::Int(i));
+                                    i += step;
+                                }
+                            }
+                            v
+                        }
                         other => {
                             return Err(RuntimeError::at_offset(
                                 format!("for expects list generator, found {}", other.kind_label()),
@@ -1000,9 +1084,17 @@ fn ir_op_offset(op: &IrOp) -> usize {
         | IrOp::Or { offset, .. }
         | IrOp::Concat { offset }
         | IrOp::In { offset }
+        | IrOp::NotIn { offset }
         | IrOp::PlusPlus { offset }
         | IrOp::MinusMinus { offset }
         | IrOp::Range { offset }
+        | IrOp::BitwiseAnd { offset }
+        | IrOp::BitwiseOr { offset }
+        | IrOp::BitwiseXor { offset }
+        | IrOp::BitwiseNot { offset }
+        | IrOp::BitwiseShiftLeft { offset }
+        | IrOp::BitwiseShiftRight { offset }
+        | IrOp::SteppedRange { offset }
         | IrOp::Match { offset, .. }
         | IrOp::Return { offset } => *offset,
     }
