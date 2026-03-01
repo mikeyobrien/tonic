@@ -20,6 +20,7 @@ pub(super) fn emit_c_terminator_with_phi(
             out.push_str(&format!("  return v{value};\n"));
         }
         crate::mir::MirTerminator::Jump { target, args } => {
+            // Assign to the phi registers of the target block before jumping.
             let empty = Vec::new();
             let target_phi_regs = phi_ids.get(target).unwrap_or(&empty);
             for (i, arg_val) in args.iter().enumerate() {
@@ -127,6 +128,8 @@ fn emit_c_match_terminator(
     Ok(())
 }
 
+/// Returns a C expression (as a string) that is non-zero when `pattern`
+/// matches `scrutinee_expr` (a C expression string, e.g. `"v5"` or `"_arg0"`).
 pub(super) fn emit_c_pattern_condition(
     _function_name: &str,
     scrutinee_expr: &str,
@@ -138,7 +141,7 @@ pub(super) fn emit_c_pattern_condition(
         IrPattern::Wildcard => Ok("1".to_string()),
         IrPattern::Integer { value } => Ok(format!("({scrutinee_expr} == {value}LL)")),
         IrPattern::Bool { value } => Ok(format!(
-            "tn_runtime_value_equal({scrutinee_expr}, tn_runtime_const_bool((TnVal){}))" ,
+            "tn_runtime_value_equal({scrutinee_expr}, tn_runtime_const_bool((TnVal){}))",
             if *value { 1 } else { 0 }
         )),
         IrPattern::Nil => Ok(format!(
@@ -225,6 +228,7 @@ pub(super) fn emit_c_guard_condition(
                 stack.push(reg);
             }
             IrOp::Bang { .. } => {
+                // Convert any value to boolean: non-zero → 1, zero → 0
                 let value = stack.pop().ok_or_else(|| {
                     CBackendError::new(format!(
                         "c backend guard stack underflow in function {function_name}"
@@ -235,6 +239,7 @@ pub(super) fn emit_c_guard_condition(
                 stack.push(reg);
             }
             IrOp::Not { .. } => {
+                // Logical NOT: zero → 1, non-zero → 0
                 let value = stack.pop().ok_or_else(|| {
                     CBackendError::new(format!(
                         "c backend guard stack underflow in function {function_name}"
