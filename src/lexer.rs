@@ -103,7 +103,16 @@ pub enum TokenKind {
     BackslashBackslash,
     Ampersand,
     AndAnd,
+    AmpAmpAmp,
     OrOr,
+    PipePipePipe,
+    CaretCaretCaret,
+    TildeTildeTilde,
+    LtLtLt,
+    GtGtGt,
+    StrictEq,
+    StrictBangEq,
+    SlashSlash,
     Eof,
 }
 
@@ -212,7 +221,16 @@ impl Token {
             TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH".to_string(),
             TokenKind::Ampersand => "AMPERSAND".to_string(),
             TokenKind::AndAnd => "AND_AND".to_string(),
+            TokenKind::AmpAmpAmp => "AMP_AMP_AMP".to_string(),
             TokenKind::OrOr => "OR_OR".to_string(),
+            TokenKind::PipePipePipe => "PIPE_PIPE_PIPE".to_string(),
+            TokenKind::CaretCaretCaret => "CARET_CARET_CARET".to_string(),
+            TokenKind::TildeTildeTilde => "TILDE_TILDE_TILDE".to_string(),
+            TokenKind::LtLtLt => "LT_LT_LT".to_string(),
+            TokenKind::GtGtGt => "GT_GT_GT".to_string(),
+            TokenKind::StrictEq => "STRICT_EQ".to_string(),
+            TokenKind::StrictBangEq => "STRICT_BANG_EQ".to_string(),
+            TokenKind::SlashSlash => "SLASH_SLASH".to_string(),
             TokenKind::Eof => "EOF".to_string(),
         }
     }
@@ -385,8 +403,13 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '^' => {
                         let start = idx;
-                        idx += 1;
-                        tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
+                        if chars.get(idx + 1) == Some(&'^') && chars.get(idx + 2) == Some(&'^') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::CaretCaretCaret, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
+                        }
                     }
                     '+' => {
                         let start = idx;
@@ -419,8 +442,13 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '/' => {
                         let start = idx;
-                        idx += 1;
-                        tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
+                        if chars.get(idx + 1) == Some(&'/') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::SlashSlash, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
+                        }
                     }
                     '\\' => {
                         let start = idx;
@@ -442,6 +470,9 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         if chars.get(idx + 1) == Some(&'>') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::FatArrow, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') && chars.get(idx + 2) == Some(&'=') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::StrictEq, Span::new(start, idx)));
                         } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::EqEq, Span::new(start, idx)));
@@ -452,7 +483,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '!' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'=') {
+                        if chars.get(idx + 1) == Some(&'=') && chars.get(idx + 2) == Some(&'=') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::StrictBangEq, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::BangEq, Span::new(start, idx)));
                         } else {
@@ -462,7 +496,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '<' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'=') {
+                        if chars.get(idx + 1) == Some(&'<') && chars.get(idx + 2) == Some(&'<') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::LtLtLt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::LtEq, Span::new(start, idx)));
                         } else if chars.get(idx + 1) == Some(&'-') {
@@ -479,7 +516,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '>' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'=') {
+                        if chars.get(idx + 1) == Some(&'>') && chars.get(idx + 2) == Some(&'>') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::GtGtGt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::GtEq, Span::new(start, idx)));
                         } else {
@@ -490,13 +530,45 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     '?' => {
                         let start = idx;
                         idx += 1;
-                        tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
+                        // Char literal: ?a, ?\n, etc.
+                        if idx < chars.len() && chars[idx] != ' ' && chars[idx] != '\n' && chars[idx] != '\t' && chars[idx] != ')' && chars[idx] != ',' && chars[idx] != ']' && chars[idx] != '}' {
+                            // Check if this looks like a char literal rather than the ? operator.
+                            // The ? operator is always followed by whitespace, closing delimiters, or EOF in expression position.
+                            // Char literals are ?<char> or ?\<escape>.
+                            let char_value: u32;
+                            if chars[idx] == '\\' && idx + 1 < chars.len() {
+                                // Escape sequence
+                                idx += 1;
+                                char_value = match chars[idx] {
+                                    'n' => 10,
+                                    't' => 9,
+                                    'r' => 13,
+                                    's' => 32,
+                                    '\\' => 92,
+                                    '"' => 34,
+                                    '\'' => 39,
+                                    '0' => 0,
+                                    other => other as u32,
+                                };
+                                idx += 1;
+                            } else {
+                                char_value = chars[idx] as u32;
+                                idx += 1;
+                            }
+                            let lexeme = char_value.to_string();
+                            tokens.push(Token::with_lexeme(TokenKind::Integer, lexeme, Span::new(start, idx)));
+                        } else {
+                            tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
+                        }
                     }
                     '|' => {
                         let start = idx;
                         if chars.get(idx + 1) == Some(&'>') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::PipeGt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'|') && chars.get(idx + 2) == Some(&'|') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::PipePipePipe, Span::new(start, idx)));
                         } else if chars.get(idx + 1) == Some(&'|') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::OrOr, Span::new(start, idx)));
@@ -507,7 +579,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '&' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'&') {
+                        if chars.get(idx + 1) == Some(&'&') && chars.get(idx + 2) == Some(&'&') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::AmpAmpAmp, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'&') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::AndAnd, Span::new(start, idx)));
                         } else {
@@ -540,6 +615,12 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '~' => {
                         let start = idx;
+                        // ~~~ is bitwise not (unary operator)
+                        if chars.get(idx + 1) == Some(&'~') && chars.get(idx + 2) == Some(&'~') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::TildeTildeTilde, Span::new(start, idx)));
+                            continue;
+                        }
                         let Some(sigil_kind) = chars.get(idx + 1).copied() else {
                             return Err(LexerError::invalid_token(
                                 '~',
@@ -547,7 +628,7 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             ));
                         };
 
-                        if !matches!(sigil_kind, 's' | 'r') {
+                        if !matches!(sigil_kind, 's' | 'r' | 'w') {
                             return Err(LexerError::invalid_token(
                                 '~',
                                 Span::new(start, start + 1),
@@ -584,11 +665,43 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
 
                         let lexeme: String = chars[content_start..idx].iter().collect();
                         idx += 1;
-                        tokens.push(Token::with_lexeme(
-                            TokenKind::String,
-                            lexeme,
-                            Span::new(start, idx),
-                        ));
+
+                        if sigil_kind == 'w' {
+                            // Check for optional modifier after closing delimiter (e.g. `a` for atoms)
+                            let use_atoms = chars.get(idx) == Some(&'a');
+                            if use_atoms {
+                                idx += 1;
+                            }
+
+                            // Split content on whitespace and emit a list literal token sequence
+                            let words: Vec<&str> = lexeme.split_whitespace().collect();
+                            tokens.push(Token::simple(TokenKind::LBracket, Span::new(start, idx)));
+                            for (i, word) in words.iter().enumerate() {
+                                if i > 0 {
+                                    tokens.push(Token::simple(TokenKind::Comma, Span::new(start, idx)));
+                                }
+                                if use_atoms {
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Atom,
+                                        word.to_string(),
+                                        Span::new(start, idx),
+                                    ));
+                                } else {
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::String,
+                                        word.to_string(),
+                                        Span::new(start, idx),
+                                    ));
+                                }
+                            }
+                            tokens.push(Token::simple(TokenKind::RBracket, Span::new(start, idx)));
+                        } else {
+                            tokens.push(Token::with_lexeme(
+                                TokenKind::String,
+                                lexeme,
+                                Span::new(start, idx),
+                            ));
+                        }
                     }
                     '"' => {
                         let start = idx;
@@ -694,7 +807,83 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         let start = idx;
                         idx += 1;
 
-                        while idx < chars.len() && chars[idx].is_ascii_digit() {
+                        // Check for radix prefix: 0x, 0o, 0b
+                        if value == '0' && idx < chars.len() {
+                            match chars[idx] {
+                                'x' | 'X' => {
+                                    idx += 1; // skip 'x'
+                                    let digit_start = idx;
+                                    while idx < chars.len()
+                                        && (chars[idx].is_ascii_hexdigit() || chars[idx] == '_')
+                                    {
+                                        idx += 1;
+                                    }
+                                    let digits: String = chars[digit_start..idx]
+                                        .iter()
+                                        .filter(|c| **c != '_')
+                                        .collect();
+                                    let int_value = i64::from_str_radix(&digits, 16)
+                                        .unwrap_or(0);
+                                    let lexeme = int_value.to_string();
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Integer,
+                                        lexeme,
+                                        Span::new(start, idx),
+                                    ));
+                                    continue;
+                                }
+                                'o' | 'O' => {
+                                    idx += 1; // skip 'o'
+                                    let digit_start = idx;
+                                    while idx < chars.len()
+                                        && (('0'..='7').contains(&chars[idx]) || chars[idx] == '_')
+                                    {
+                                        idx += 1;
+                                    }
+                                    let digits: String = chars[digit_start..idx]
+                                        .iter()
+                                        .filter(|c| **c != '_')
+                                        .collect();
+                                    let int_value = i64::from_str_radix(&digits, 8)
+                                        .unwrap_or(0);
+                                    let lexeme = int_value.to_string();
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Integer,
+                                        lexeme,
+                                        Span::new(start, idx),
+                                    ));
+                                    continue;
+                                }
+                                'b' | 'B' => {
+                                    idx += 1; // skip 'b'
+                                    let digit_start = idx;
+                                    while idx < chars.len()
+                                        && (chars[idx] == '0' || chars[idx] == '1' || chars[idx] == '_')
+                                    {
+                                        idx += 1;
+                                    }
+                                    let digits: String = chars[digit_start..idx]
+                                        .iter()
+                                        .filter(|c| **c != '_')
+                                        .collect();
+                                    let int_value = i64::from_str_radix(&digits, 2)
+                                        .unwrap_or(0);
+                                    let lexeme = int_value.to_string();
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Integer,
+                                        lexeme,
+                                        Span::new(start, idx),
+                                    ));
+                                    continue;
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        // Decimal integer: consume digits and underscores
+                        while idx < chars.len()
+                            && (chars[idx].is_ascii_digit() || chars[idx] == '_')
+                        {
                             idx += 1;
                         }
 
@@ -706,12 +895,18 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             kind = TokenKind::Float;
                             idx += 1;
 
-                            while idx < chars.len() && chars[idx].is_ascii_digit() {
+                            while idx < chars.len()
+                                && (chars[idx].is_ascii_digit() || chars[idx] == '_')
+                            {
                                 idx += 1;
                             }
                         }
 
-                        let lexeme: String = chars[start..idx].iter().collect();
+                        // Strip underscores from the lexeme
+                        let lexeme: String = chars[start..idx]
+                            .iter()
+                            .filter(|c| **c != '_')
+                            .collect();
                         tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
                     }
                     value if is_ident_start(value) => {
