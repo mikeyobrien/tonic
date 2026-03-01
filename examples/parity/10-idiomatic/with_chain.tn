@@ -1,0 +1,21 @@
+# with chain
+defmodule Validate do
+  def check_positive(n) when n > 0, do: {:ok, n}
+  def check_positive(_), do: {:error, :not_positive}
+
+  def check_even(n) when rem(n, 2) == 0, do: {:ok, n}
+  def check_even(_), do: {:error, :not_even}
+
+  def process(n) do
+    with {:ok, a} <- check_positive(n),
+         {:ok, b} <- check_even(a) do
+      {:ok, b * 2}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+end
+
+IO.puts(inspect(Validate.process(4)))
+IO.puts(inspect(Validate.process(-1)))
+IO.puts(inspect(Validate.process(3)))

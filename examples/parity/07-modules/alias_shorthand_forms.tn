@@ -1,0 +1,6 @@
+# alias shorthand forms parity
+alias Foo.Bar
+alias Foo.{Baz, Qux}
+defmodule Demo do
+  def run, do: :ok
+end

@@ -1,0 +1,15 @@
+# pipe chain
+result =
+  [1, 2, 3, 4, 5]
+  |> Enum.filter(fn x -> rem(x, 2) != 0 end)
+  |> Enum.map(fn x -> x * x end)
+  |> Enum.reduce(0, fn x, acc -> x + acc end)
+
+IO.puts(result)
+
+greeting =
+  "hello world"
+  |> String.upcase()
+  |> String.replace("WORLD", "TONIC")
+
+IO.puts(greeting)

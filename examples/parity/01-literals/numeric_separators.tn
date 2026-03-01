@@ -1,0 +1,7 @@
+# numeric separator parity
+a = 1_000_000
+b = 1_000.500_25
+c = 0xFF_FF
+IO.puts(a)
+IO.puts(b)
+IO.puts(c)

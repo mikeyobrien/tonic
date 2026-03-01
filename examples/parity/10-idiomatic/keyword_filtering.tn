@@ -1,0 +1,11 @@
+# keyword list filtering
+opts = [debug: true, verbose: false, timeout: 5000]
+
+active = Enum.filter(opts, fn {_k, v} -> v end)
+IO.puts(inspect(active))
+
+keys = Enum.map(opts, fn {k, _v} -> k end)
+IO.puts(inspect(keys))
+
+timeout = Keyword.get(opts, :timeout)
+IO.puts(timeout)

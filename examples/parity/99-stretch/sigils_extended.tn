@@ -1,0 +1,3 @@
+# extended sigils parity
+s = ~s(hello world)
+IO.puts(s)

@@ -1,0 +1,4 @@
+# not in operator parity
+list = [1, 2, 3]
+IO.puts(4 not in list)
+IO.puts(2 not in list)

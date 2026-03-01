@@ -1,0 +1,5 @@
+# char literal parity
+x = ?a
+y = ?Z
+IO.puts(x)
+IO.puts(y)

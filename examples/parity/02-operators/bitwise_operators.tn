@@ -1,0 +1,9 @@
+# bitwise operator parity
+a = 5
+b = 3
+IO.puts(a &&& b)
+IO.puts(a ||| b)
+IO.puts(a ^^^ b)
+IO.puts(~~~a)
+IO.puts(a <<< 2)
+IO.puts(a >>> 1)

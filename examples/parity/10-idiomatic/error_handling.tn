@@ -1,0 +1,7 @@
+# error handling
+result = try do
+  raise "oops"
+rescue
+  e -> "caught: " <> e.message
+end
+IO.puts(result)

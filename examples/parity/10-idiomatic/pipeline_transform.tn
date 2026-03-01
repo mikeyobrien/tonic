@@ -1,0 +1,17 @@
+# pipeline transform
+defmodule Transform do
+  def normalize(s), do: String.trim(s) |> String.downcase()
+  def tokenize(s), do: String.split(s, " ")
+  def count_words(s), do: s |> normalize() |> tokenize() |> Enum.count()
+end
+
+IO.puts(Transform.count_words("  Hello World Tonic  "))
+
+result =
+  "  Elixir Parity Test  "
+  |> Transform.normalize()
+  |> Transform.tokenize()
+  |> Enum.map(&String.capitalize/1)
+  |> Enum.join(" ")
+
+IO.puts(result)

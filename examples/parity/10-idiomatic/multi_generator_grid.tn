@@ -1,0 +1,7 @@
+# multi-generator comprehension grid
+for x <- 1..3, y <- 1..3 do
+  IO.puts("#{x},#{y}")
+end
+
+pairs = for x <- [1,2], y <- [:a, :b], do: {x, y}
+IO.puts(inspect(pairs))

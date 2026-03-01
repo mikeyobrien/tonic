@@ -1,0 +1,5 @@
+# module attribute value parity
+defmodule Attrs do
+  @value 42
+  def get, do: @value
+end

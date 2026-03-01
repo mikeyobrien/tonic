@@ -1,0 +1,5 @@
+# basic bitstring/binary pattern parity (lowered as list pattern)
+<<a, b, c>> = <<1, 2, 3>>
+IO.puts(a)
+IO.puts(b)
+IO.puts(c)

@@ -1,0 +1,4 @@
+# __MODULE__ special form
+defmodule Demo do
+  def name, do: __MODULE__
+end

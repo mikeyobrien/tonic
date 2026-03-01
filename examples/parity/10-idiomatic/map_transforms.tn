@@ -1,0 +1,11 @@
+# map transforms
+users = [
+  %{name: "Alice", age: 30},
+  %{name: "Bob", age: 25}
+]
+
+names = Enum.map(users, fn u -> u.name end)
+IO.puts(inspect(names))
+
+adults = Enum.filter(users, fn u -> u.age >= 18 end)
+IO.puts(inspect(adults))

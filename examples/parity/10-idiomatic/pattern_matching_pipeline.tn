@@ -1,0 +1,8 @@
+# pattern matching pipeline
+defmodule Pipeline do
+  def process({:ok, value}), do: {:result, value * 2}
+  def process({:error, msg}), do: {:failed, msg}
+end
+
+IO.puts(inspect(Pipeline.process({:ok, 21})))
+IO.puts(inspect(Pipeline.process({:error, "bad"})))

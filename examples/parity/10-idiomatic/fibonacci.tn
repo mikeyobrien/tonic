@@ -1,0 +1,10 @@
+# fibonacci
+defmodule Fib do
+  def compute(0), do: 0
+  def compute(1), do: 1
+  def compute(n), do: compute(n - 1) + compute(n - 2)
+end
+
+for i <- 0..10 do
+  IO.puts(Fib.compute(i))
+end
