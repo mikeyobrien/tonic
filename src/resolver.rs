@@ -6,864 +6,1018 @@ use std::collections::{HashMap, HashSet};
 pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
     ensure_no_duplicate_modules(ast)?;
 
-    let module_graph = build_module_graph(ast);
-    detect_cycles(&module_graph)?;
+    let module_graph = ModuleGraph::from_ast(ast)?;
 
     for module in &ast.modules {
-        let mut resolver = Resolver::new(ast);
-        resolver.resolve_module(module)?;
+        for function in &module.functions {
+            let context = ResolveContext {
+                module_name: &module.name,
+                function_name: &function.name,
+                module_graph: &module_graph,
+            };
+
+            for param in &function.params {
+                resolve_pattern(param.pattern(), &context)?;
+                if let Some(default) = param.default() {
+                    resolve_expr(default, &context)?;
+                }
+            }
+
+            if let Some(guard) = function.guard() {
+                resolve_guard_expr(guard, &context)?;
+            }
+
+            resolve_expr(&function.body, &context)?;
+        }
     }
+
     Ok(())
 }
 
 fn ensure_no_duplicate_modules(ast: &Ast) -> Result<(), ResolverError> {
-    let mut seen: HashMap<String, ()> = HashMap::new();
+    let mut seen = HashSet::new();
+
     for module in &ast.modules {
-        let name = module.name.clone();
-        if seen.contains_key(&name) {
-            return Err(ResolverError::DuplicateModule(name));
+        if !seen.insert(module.name.as_str()) {
+            return Err(ResolverError::duplicate_module(&module.name));
         }
-        seen.insert(name, ());
     }
+
     Ok(())
 }
 
-fn build_module_graph(ast: &Ast) -> HashMap<String, Vec<String>> {
-    let mut graph: HashMap<String, Vec<String>> = HashMap::new();
-    for module in &ast.modules {
-        let deps: Vec<String> = module
-            .imports
-            .iter()
-            .map(|i| i.module.clone())
-            .collect();
-        graph.insert(module.name.clone(), deps);
-    }
-    graph
+#[derive(Debug, Default)]
+struct ModuleGraph {
+    modules: HashMap<String, HashMap<String, FunctionVisibility>>,
+    structs: HashMap<String, HashSet<String>>,
+    protocols: HashMap<String, ProtocolDefinition>,
+    imports: HashMap<String, Vec<ImportScope>>,
 }
 
-fn detect_cycles(graph: &HashMap<String, Vec<String>>) -> Result<(), ResolverError> {
-    let mut visited: HashSet<String> = HashSet::new();
-    let mut stack: HashSet<String> = HashSet::new();
-
-    for node in graph.keys() {
-        if !visited.contains(node) {
-            dfs(node, graph, &mut visited, &mut stack)?;
-        }
-    }
-    Ok(())
+#[derive(Debug, Default)]
+struct ProtocolDefinition {
+    functions: HashMap<String, usize>,
+    impl_targets: HashSet<String>,
 }
 
-fn dfs(
-    node: &str,
-    graph: &HashMap<String, Vec<String>>,
-    visited: &mut HashSet<String>,
-    stack: &mut HashSet<String>,
-) -> Result<(), ResolverError> {
-    visited.insert(node.to_string());
-    stack.insert(node.to_string());
-
-    if let Some(neighbors) = graph.get(node) {
-        for neighbor in neighbors {
-            if !visited.contains(neighbor) {
-                dfs(neighbor, graph, visited, stack)?;
-            } else if stack.contains(neighbor) {
-                return Err(ResolverError::CyclicDependency(neighbor.to_string()));
-            }
-        }
-    }
-
-    stack.remove(node);
-    Ok(())
+#[derive(Debug, Clone, Copy, Default)]
+struct FunctionVisibility {
+    public: bool,
+    private: bool,
 }
 
-pub struct Resolver<'a> {
-    ast: &'a Ast,
-    // module-level definitions visible to all functions in this module
-    module_scope: HashMap<String, BindingKind>,
-    // per-function scope stack
-    scopes: Vec<HashMap<String, BindingKind>>,
-    current_module: Option<String>,
+#[derive(Debug, Clone)]
+struct ImportScope {
+    module: String,
+    only: Option<HashSet<(String, usize)>>,
+    except: HashSet<(String, usize)>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum BindingKind {
-    Variable,
-    Function(usize), // arity
-    Module,
-    Protocol,
-    Impl,
-}
-
-impl<'a> Resolver<'a> {
-    pub fn new(ast: &'a Ast) -> Self {
-        Resolver {
-            ast,
-            module_scope: HashMap::new(),
-            scopes: Vec::new(),
-            current_module: None,
-        }
-    }
-
-    fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
-    }
-
-    fn pop_scope(&mut self) {
-        self.scopes.pop();
-    }
-
-    fn define(&mut self, name: String, kind: BindingKind) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, kind);
-        } else {
-            self.module_scope.insert(name, kind);
-        }
-    }
-
-    fn lookup(&self, name: &str) -> Option<&BindingKind> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(k) = scope.get(name) {
-                return Some(k);
-            }
-        }
-        self.module_scope.get(name)
-    }
-
-    pub fn resolve_module(&mut self, module: &ModuleForm) -> Result<(), ResolverError> {
-        self.current_module = Some(module.name.clone());
-        self.module_scope.clear();
-        self.scopes.clear();
-
-        // Pre-populate module scope with all top-level names
-        for item in &module.body {
-            match item {
-                Expr::Def(d) => {
-                    self.module_scope
-                        .insert(d.name.clone(), BindingKind::Function(d.args.len()));
-                }
-                Expr::DefMacro(dm) => {
-                    self.module_scope
-                        .insert(dm.name.clone(), BindingKind::Function(dm.args.len()));
-                }
-                Expr::Defstruct(ds) => {
-                    self.module_scope
-                        .insert(ds.name.clone(), BindingKind::Module);
-                }
-                Expr::Defprotocol(dp) => {
-                    self.module_scope
-                        .insert(dp.name.clone(), BindingKind::Protocol);
-                }
-                Expr::Defimpl(di) => {
-                    let key = format!("{}::{}", di.protocol, di.target);
-                    self.module_scope.insert(key, BindingKind::Impl);
-                }
-                _ => {}
-            }
-        }
-
-        // Resolve imports
-        for import in &module.imports {
-            let mod_name = &import.module;
-            // Check the module exists in the AST
-            if !self
-                .ast
-                .modules
+impl ImportScope {
+    fn from_form(
+        module: &str,
+        only: &Option<Vec<crate::parser::ImportFunctionSpec>>,
+        except: &Option<Vec<crate::parser::ImportFunctionSpec>>,
+    ) -> Self {
+        let only = only.as_ref().map(|entries| {
+            entries
                 .iter()
-                .any(|m| &m.name == mod_name)
-            {
-                return Err(ResolverError::UnknownModule(mod_name.clone()));
-            }
-            // bring imported names into module scope
-            for alias in &import.aliases {
-                self.module_scope
-                    .insert(alias.local.clone(), BindingKind::Module);
-            }
-            for func_name in &import.functions {
-                // We can't know arity without the referenced module's AST here;
-                // use arity 0 as a placeholder — full type-checking handles this
-                self.module_scope
-                    .insert(func_name.clone(), BindingKind::Function(0));
-            }
-        }
+                .map(|entry| (entry.name.clone(), entry.arity))
+                .collect::<HashSet<_>>()
+        });
 
-        // Resolve each item
-        for item in &module.body {
-            self.resolve_expr(item)?;
-        }
+        let except = except
+            .as_ref()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|entry| (entry.name.clone(), entry.arity))
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
 
-        Ok(())
+        Self {
+            module: module.to_string(),
+            only,
+            except,
+        }
     }
 
-    fn resolve_expr(&mut self, expr: &Expr) -> Result<(), ResolverError> {
-        match expr {
-            Expr::Integer(_)
-            | Expr::Float(_)
-            | Expr::Bool(_)
-            | Expr::Nil
-            | Expr::StringLit(_)
-            | Expr::Atom(_)
-            | Expr::CharLiteral(_) => Ok(()),
+    fn allows(&self, name: &str, arity: usize) -> bool {
+        if self.except.contains(&(name.to_string(), arity)) {
+            return false;
+        }
 
-            Expr::Var(name) => {
-                if self.lookup(name).is_none() && !self.is_builtin(name) {
-                    Err(ResolverError::UnboundVariable(name.clone()))
+        if let Some(only) = &self.only {
+            return only.contains(&(name.to_string(), arity));
+        }
+
+        true
+    }
+}
+
+enum CallResolution {
+    Found,
+    Missing,
+    Private,
+}
+
+impl ModuleGraph {
+    fn from_ast(ast: &Ast) -> Result<Self, ResolverError> {
+        let mut modules: HashMap<String, HashMap<String, FunctionVisibility>> = HashMap::new();
+        let mut structs: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut protocols: HashMap<String, ProtocolDefinition> = HashMap::new();
+        let mut imports: HashMap<String, Vec<ImportScope>> = HashMap::new();
+
+        for module in &ast.modules {
+            let symbols = modules.entry(module.name.clone()).or_default();
+            for function in &module.functions {
+                let visibility = symbols.entry(function.name.clone()).or_default();
+                if function.is_private() {
+                    visibility.private = true;
                 } else {
-                    Ok(())
+                    visibility.public = true;
                 }
             }
 
-            Expr::Tuple(elems) | Expr::List(elems) => {
-                for e in elems {
-                    self.resolve_expr(e)?;
-                }
-                Ok(())
-            }
-
-            Expr::Map(pairs) => {
-                for (k, v) in pairs {
-                    self.resolve_expr(k)?;
-                    self.resolve_expr(v)?;
-                }
-                Ok(())
-            }
-
-            Expr::BinaryOp { left, right, .. } => {
-                self.resolve_expr(left)?;
-                self.resolve_expr(right)?;
-                Ok(())
-            }
-
-            Expr::UnaryOp { operand, .. } => self.resolve_expr(operand),
-
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                self.resolve_expr(condition)?;
-                self.resolve_expr(then_branch)?;
-                if let Some(eb) = else_branch {
-                    self.resolve_expr(eb)?;
-                }
-                Ok(())
-            }
-
-            Expr::Cond { clauses } => {
-                for (cond, body) in clauses {
-                    self.resolve_expr(cond)?;
-                    self.resolve_expr(body)?;
-                }
-                Ok(())
-            }
-
-            Expr::Case { subject, clauses } => {
-                self.resolve_expr(subject)?;
-                for clause in clauses {
-                    self.push_scope();
-                    self.resolve_pattern(&clause.pattern)?;
-                    if let Some(guard) = &clause.guard {
-                        self.resolve_expr(guard)?;
-                    }
-                    self.resolve_expr(&clause.body)?;
-                    self.pop_scope();
-                }
-                Ok(())
-            }
-
-            Expr::Receive { clauses, after } => {
-                for clause in clauses {
-                    self.push_scope();
-                    self.resolve_pattern(&clause.pattern)?;
-                    if let Some(guard) = &clause.guard {
-                        self.resolve_expr(guard)?;
-                    }
-                    self.resolve_expr(&clause.body)?;
-                    self.pop_scope();
-                }
-                if let Some((timeout, body)) = after {
-                    self.resolve_expr(timeout)?;
-                    self.resolve_expr(body)?;
-                }
-                Ok(())
-            }
-
-            Expr::Fn {
-                params,
-                body,
-                guards,
-            } => {
-                self.push_scope();
-                for p in params {
-                    self.resolve_pattern(p)?;
-                }
-                if let Some(gs) = guards {
-                    for g in gs {
-                        self.resolve_expr(g)?;
-                    }
-                }
-                self.resolve_expr(body)?;
-                self.pop_scope();
-                Ok(())
-            }
-
-            Expr::Call { callee, args } => {
-                self.resolve_expr(callee)?;
-                for a in args {
-                    self.resolve_expr(a)?;
-                }
-                Ok(())
-            }
-
-            Expr::Pipe { left, right } => {
-                self.resolve_expr(left)?;
-                self.resolve_expr(right)?;
-                Ok(())
-            }
-
-            Expr::Let { pattern, value, body } => {
-                self.resolve_expr(value)?;
-                self.push_scope();
-                self.resolve_pattern(pattern)?;
-                self.resolve_expr(body)?;
-                self.pop_scope();
-                Ok(())
-            }
-
-            Expr::Block(exprs) => {
-                for e in exprs {
-                    self.resolve_expr(e)?;
-                }
-                Ok(())
-            }
-
-            Expr::Def(d) => {
-                self.push_scope();
-                for arg in &d.args {
-                    self.resolve_pattern(arg)?;
-                }
-                if let Some(guards) = &d.guards {
-                    for g in guards {
-                        self.resolve_expr(g)?;
-                    }
-                }
-                self.resolve_expr(&d.body)?;
-                self.pop_scope();
-                Ok(())
-            }
-
-            Expr::DefMacro(dm) => {
-                self.push_scope();
-                for arg in &dm.args {
-                    self.define(arg.clone(), BindingKind::Variable);
-                }
-                self.resolve_expr(&dm.body)?;
-                self.pop_scope();
-                Ok(())
-            }
-
-            Expr::Defstruct(ds) => {
-                for field in &ds.fields {
-                    if let Some(default) = &field.default {
-                        self.resolve_expr(default)?;
-                    }
-                }
-                Ok(())
-            }
-
-            Expr::Defprotocol(_) => Ok(()),
-
-            Expr::Defimpl(di) => {
-                // Validate the protocol exists
-                let proto_name = &di.protocol;
-                if self.lookup(proto_name) != Some(&BindingKind::Protocol) {
-                    // Check in other modules
-                    let found = self.ast.modules.iter().any(|m| {
-                        m.body.iter().any(|e| {
-                            matches!(e, Expr::Defprotocol(dp) if &dp.name == proto_name)
-                        })
-                    });
-                    if !found {
-                        return Err(ResolverError::UnknownProtocol(proto_name.clone()));
-                    }
-                }
-
-                // Validate methods match protocol signature
-                let protocol_methods = self.get_protocol_methods(proto_name);
-                for method in &di.methods {
-                    // Check method exists in protocol
-                    let proto_method = protocol_methods
-                        .iter()
-                        .find(|(name, _)| name == &method.name);
-                    if let Some((_, expected_arity)) = proto_method {
-                        let actual_arity = method.args.len();
-                        if actual_arity != *expected_arity {
-                            return Err(ResolverError::ArityMismatch {
-                                protocol: di.protocol.clone(),
-                                target: di.target.clone(),
-                                method: method.name.clone(),
-                                expected: *expected_arity,
-                                got: actual_arity,
-                            });
-                        }
-                    }
-
-                    // Resolve method body
-                    self.push_scope();
-                    for arg in &method.args {
-                        self.resolve_pattern(arg)?;
-                    }
-                    self.resolve_expr(&method.body)?;
-                    self.pop_scope();
-                }
-                Ok(())
-            }
-
-            Expr::Raise(e) => self.resolve_expr(e),
-
-            Expr::Try {
-                body,
-                rescue_clauses,
-                after,
-            } => {
-                self.resolve_expr(body)?;
-                for clause in rescue_clauses {
-                    self.push_scope();
-                    if let Some(var) = &clause.binding {
-                        self.define(var.clone(), BindingKind::Variable);
-                    }
-                    self.resolve_expr(&clause.body)?;
-                    self.pop_scope();
-                }
-                if let Some(a) = after {
-                    self.resolve_expr(a)?;
-                }
-                Ok(())
-            }
-
-            Expr::With {
-                clauses,
-                body,
-                else_clauses,
-            } => {
-                self.push_scope();
-                for clause in clauses {
-                    self.resolve_expr(&clause.value)?;
-                    self.resolve_pattern(&clause.pattern)?;
-                }
-                self.resolve_expr(body)?;
-                self.pop_scope();
-                for ec in else_clauses {
-                    self.push_scope();
-                    self.resolve_pattern(&ec.pattern)?;
-                    self.resolve_expr(&ec.body)?;
-                    self.pop_scope();
-                }
-                Ok(())
-            }
-
-            Expr::Comprehension {
-                kind: _,
-                body,
-                generators,
-                filters,
-            } => {
-                self.push_scope();
-                for gen in generators {
-                    self.resolve_expr(&gen.source)?;
-                    self.resolve_pattern(&gen.pattern)?;
-                }
-                for f in filters {
-                    self.resolve_expr(f)?;
-                }
-                self.resolve_expr(body)?;
-                self.pop_scope();
-                Ok(())
-            }
-
-            Expr::StructLit { name, fields } => {
-                // Verify struct exists
-                if self.lookup(name).is_none() {
-                    let found = self.ast.modules.iter().any(|m| {
-                        m.body.iter().any(|e| {
-                            matches!(e, Expr::Defstruct(ds) if &ds.name == name)
-                        })
-                    });
-                    if !found {
-                        return Err(ResolverError::UnknownStruct(name.clone()));
-                    }
-                }
-                for (_, v) in fields {
-                    self.resolve_expr(v)?;
-                }
-                Ok(())
-            }
-
-            Expr::StructUpdate { base, fields } => {
-                self.resolve_expr(base)?;
-                for (_, v) in fields {
-                    self.resolve_expr(v)?;
-                }
-                Ok(())
-            }
-
-            Expr::FieldAccess { object, .. } => self.resolve_expr(object),
-
-            Expr::Index { object, index } => {
-                self.resolve_expr(object)?;
-                self.resolve_expr(index)?;
-                Ok(())
-            }
-
-            Expr::Assign { target, value } => {
-                self.resolve_expr(value)?;
-                self.resolve_pattern(target)?;
-                Ok(())
-            }
-
-            Expr::Send { receiver, message } => {
-                self.resolve_expr(receiver)?;
-                self.resolve_expr(message)?;
-                Ok(())
-            }
-
-            Expr::Spawn(e) => self.resolve_expr(e),
-
-            Expr::SelfRef => Ok(()),
-
-            Expr::ModuleAccess { module, .. } => {
-                if self.lookup(module).is_none() {
-                    let known = self.ast.modules.iter().any(|m| &m.name == module);
-                    if !known {
-                        return Err(ResolverError::UnknownModule(module.clone()));
-                    }
-                }
-                Ok(())
-            }
-
-            Expr::StringInterpolation(parts) => {
-                for part in parts {
-                    self.resolve_expr(part)?;
-                }
-                Ok(())
-            }
-
-            Expr::Range { start, end, step } => {
-                self.resolve_expr(start)?;
-                self.resolve_expr(end)?;
-                if let Some(s) = step {
-                    self.resolve_expr(s)?;
-                }
-                Ok(())
-            }
-
-            Expr::Slice {
-                object,
-                start,
-                end,
-            } => {
-                self.resolve_expr(object)?;
-                if let Some(s) = start {
-                    self.resolve_expr(s)?;
-                }
-                if let Some(e) = end {
-                    self.resolve_expr(e)?;
-                }
-                Ok(())
-            }
-
-            Expr::Return(e) => {
-                if let Some(inner) = e {
-                    self.resolve_expr(inner)?;
-                }
-                Ok(())
-            }
-
-            Expr::Throw(e) => self.resolve_expr(e),
-
-            Expr::Await(e) => self.resolve_expr(e),
-
-            Expr::Async(e) => self.resolve_expr(e),
-
-            Expr::TypeAnnotation { expr, .. } => self.resolve_expr(expr),
-
-            Expr::MacroCall { args, .. } => {
-                for a in args {
-                    self.resolve_expr(a)?;
-                }
-                Ok(())
-            }
-
-            Expr::UseDirective(_) => Ok(()),
-            Expr::AliasDirective(_) => Ok(()),
-            Expr::ImportDirective(_) => Ok(()),
-            Expr::RequireDirective(_) => Ok(()),
-
-            Expr::MultiClauseDef(mc) => {
-                for clause in &mc.clauses {
-                    self.push_scope();
-                    for arg in &clause.args {
-                        self.resolve_pattern(arg)?;
-                    }
-                    if let Some(guards) = &clause.guards {
-                        for g in guards {
-                            self.resolve_expr(g)?;
-                        }
-                    }
-                    self.resolve_expr(&clause.body)?;
-                    self.pop_scope();
-                }
-                Ok(())
-            }
-
-            Expr::CaptureFn { module, name, arity } => {
-                let _ = (module, name, arity); // validated at type-check time
-                Ok(())
-            }
-
-            Expr::BitString(segs) => {
-                for seg in segs {
-                    self.resolve_expr(&seg.value)?;
-                    if let Some(sz) = &seg.size {
-                        self.resolve_expr(sz)?;
-                    }
-                }
-                Ok(())
-            }
-        }
-    }
-
-    fn resolve_pattern(&mut self, pattern: &Pattern) -> Result<(), ResolverError> {
-        match pattern {
-            Pattern::Wildcard => Ok(()),
-            Pattern::Literal(_) => Ok(()),
-            Pattern::Var(name) => {
-                self.define(name.clone(), BindingKind::Variable);
-                Ok(())
-            }
-            Pattern::Tuple(pats) | Pattern::List(pats) => {
-                for p in pats {
-                    self.resolve_pattern(p)?;
-                }
-                Ok(())
-            }
-            Pattern::Cons(head, tail) => {
-                self.resolve_pattern(head)?;
-                self.resolve_pattern(tail)?;
-                Ok(())
-            }
-            Pattern::Map(pairs) => {
-                for (_, v) in pairs {
-                    self.resolve_pattern(v)?;
-                }
-                Ok(())
-            }
-            Pattern::Struct { fields, .. } => {
-                for (_, v) in fields {
-                    self.resolve_pattern(v)?;
-                }
-                Ok(())
-            }
-            Pattern::Or(pats) => {
-                for p in pats {
-                    self.resolve_pattern(p)?;
-                }
-                Ok(())
-            }
-            Pattern::Pin(name) => {
-                if self.lookup(name).is_none() {
-                    Err(ResolverError::UnboundVariable(name.clone()))
-                } else {
-                    Ok(())
-                }
-            }
-            Pattern::BitString(segs) => {
-                for seg in segs {
-                    match &seg.pattern {
-                        crate::parser::BitStringPatternKind::Var(v) => {
-                            self.define(v.clone(), BindingKind::Variable);
-                        }
-                        crate::parser::BitStringPatternKind::Literal(_) => {}
-                        crate::parser::BitStringPatternKind::Wildcard => {}
-                    }
-                    if let Some(sz) = &seg.size {
-                        self.resolve_expr(sz)?;
-                    }
-                }
-                Ok(())
-            }
-        }
-    }
-
-    fn is_builtin(&self, name: &str) -> bool {
-        matches!(
-            name,
-            "true"
-                | "false"
-                | "nil"
-                | "self"
-                | "IO"
-                | "String"
-                | "List"
-                | "Enum"
-                | "Map"
-                | "Tuple"
-                | "Integer"
-                | "Float"
-                | "Atom"
-                | "Process"
-                | "System"
-                | "File"
-                | "Path"
-                | "Keyword"
-                | "Regex"
-                | "DateTime"
-                | "Date"
-                | "Time"
-                | "Base"
-                | "Jason"
-                | "Logger"
-                | "Agent"
-                | "Task"
-                | "GenServer"
-                | "Supervisor"
-                | "Application"
-                | "Mix"
-                | "ExUnit"
-                | "inspect"
-                | "raise"
-                | "throw"
-                | "exit"
-                | "send"
-                | "spawn"
-                | "receive"
-                | "__MODULE__"
-                | "__DIR__"
-                | "__ENV__"
-                | "__CALLER__"
-                | "is_integer"
-                | "is_float"
-                | "is_binary"
-                | "is_atom"
-                | "is_list"
-                | "is_tuple"
-                | "is_map"
-                | "is_nil"
-                | "is_boolean"
-                | "is_function"
-                | "is_pid"
-                | "is_reference"
-                | "is_port"
-                | "is_number"
-                | "hd"
-                | "tl"
-                | "length"
-                | "abs"
-                | "rem"
-                | "div"
-                | "max"
-                | "min"
-                | "elem"
-                | "put_elem"
-                | "tuple_size"
-                | "map_size"
-                | "byte_size"
-                | "bit_size"
-                | "node"
-                | "self"
-                | "__using__"
-                | "use"
-        )
-    }
-
-    fn get_protocol_methods(&self, protocol_name: &str) -> Vec<(String, usize)> {
-        for module in &self.ast.modules {
-            for item in &module.body {
-                if let Expr::Defprotocol(dp) = item {
-                    if dp.name == protocol_name {
-                        return dp
-                            .methods
+            if let Some(fields) = module.forms.iter().find_map(|form| {
+                if let ModuleForm::Defstruct { fields } = form {
+                    Some(
+                        fields
                             .iter()
-                            .map(|m| (m.name.clone(), m.args.len()))
-                            .collect();
+                            .map(|field| field.name.clone())
+                            .collect::<HashSet<_>>(),
+                    )
+                } else {
+                    None
+                }
+            }) {
+                structs.insert(module.name.clone(), fields);
+            }
+
+            for form in &module.forms {
+                if let ModuleForm::Import {
+                    module: imported_module,
+                    only,
+                    except,
+                } = form
+                {
+                    imports
+                        .entry(module.name.clone())
+                        .or_default()
+                        .push(ImportScope::from_form(imported_module, only, except));
+                }
+            }
+        }
+
+        for module in &ast.modules {
+            for form in &module.forms {
+                let ModuleForm::Defprotocol { name, functions } = form else {
+                    continue;
+                };
+
+                if protocols.contains_key(name) {
+                    return Err(ResolverError::duplicate_protocol(name));
+                }
+
+                let mut signatures = HashMap::new();
+                for function in functions {
+                    let arity = function.params.len();
+                    if signatures.insert(function.name.clone(), arity).is_some() {
+                        return Err(ResolverError::duplicate_protocol_function(
+                            name,
+                            &function.name,
+                            arity,
+                        ));
+                    }
+
+                    modules
+                        .entry(name.clone())
+                        .or_default()
+                        .entry(function.name.clone())
+                        .or_default()
+                        .public = true;
+                }
+
+                protocols.insert(
+                    name.clone(),
+                    ProtocolDefinition {
+                        functions: signatures,
+                        impl_targets: HashSet::new(),
+                    },
+                );
+            }
+        }
+
+        // Scoped module-form semantics (parity task 04):
+        // - `require Module` declares a compile-time dependency and must target a defined module.
+        // - `use Module` must also target a defined module; its compile-time call-rewrite effect
+        //   is implemented in parser canonicalization as a fallback import.
+        // - Full Elixir macro expansion via `__using__/1` is intentionally deferred.
+        for module in &ast.modules {
+            for form in &module.forms {
+                match form {
+                    ModuleForm::Require {
+                        module: required_module,
+                    } => {
+                        if !modules.contains_key(required_module) {
+                            return Err(ResolverError::undefined_required_module(
+                                required_module,
+                                &module.name,
+                            ));
+                        }
+                    }
+                    ModuleForm::Use {
+                        module: used_module,
+                    } => {
+                        if !modules.contains_key(used_module) {
+                            return Err(ResolverError::undefined_use_module(
+                                used_module,
+                                &module.name,
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        for module in &ast.modules {
+            for form in &module.forms {
+                let ModuleForm::Defimpl {
+                    protocol,
+                    target,
+                    functions,
+                } = form
+                else {
+                    continue;
+                };
+
+                let Some(protocol_definition) = protocols.get_mut(protocol) else {
+                    return Err(ResolverError::unknown_protocol(protocol, target));
+                };
+
+                if !protocol_definition.impl_targets.insert(target.clone()) {
+                    return Err(ResolverError::duplicate_protocol_impl(protocol, target));
+                }
+
+                let mut implemented = HashMap::new();
+                for function in functions {
+                    let arity = function.params.len();
+                    if implemented.insert(function.name.clone(), arity).is_some() {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            "is declared more than once",
+                        ));
+                    }
+
+                    if function.params.iter().any(|param| param.has_default()) {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            "must not use default parameters",
+                        ));
+                    }
+
+                    let Some(expected_arity) = protocol_definition.functions.get(&function.name)
+                    else {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            "is not declared by the protocol",
+                        ));
+                    };
+
+                    if *expected_arity != arity {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            &function.name,
+                            arity,
+                            &format!("has arity mismatch (expected {expected_arity})"),
+                        ));
+                    }
+                }
+
+                for (name, arity) in &protocol_definition.functions {
+                    if implemented.get(name).copied() != Some(*arity) {
+                        return Err(ResolverError::invalid_protocol_impl(
+                            protocol,
+                            target,
+                            name,
+                            *arity,
+                            "is missing",
+                        ));
                     }
                 }
             }
         }
-        vec![]
+
+        Ok(Self {
+            modules,
+            structs,
+            protocols,
+            imports,
+        })
+    }
+
+    fn resolve_call_target(
+        &self,
+        current_module: &str,
+        callee: &str,
+        arity: Option<usize>,
+    ) -> CallResolution {
+        if is_builtin_call_target(callee) {
+            return CallResolution::Found;
+        }
+
+        if let Some((module_name, function_name)) = callee.rsplit_once('.') {
+            if let Some(protocol) = self.protocols.get(module_name) {
+                return if protocol.functions.contains_key(function_name) {
+                    CallResolution::Found
+                } else {
+                    CallResolution::Missing
+                };
+            }
+
+            let Some(module_symbols) = self.modules.get(module_name) else {
+                return CallResolution::Missing;
+            };
+
+            let Some(symbol) = module_symbols.get(function_name) else {
+                return CallResolution::Missing;
+            };
+
+            if symbol.public {
+                return CallResolution::Found;
+            }
+
+            return if module_name == current_module && symbol.private {
+                CallResolution::Found
+            } else {
+                CallResolution::Private
+            };
+        }
+
+        if self
+            .modules
+            .get(current_module)
+            .and_then(|symbols| symbols.get(callee))
+            .is_some()
+        {
+            return CallResolution::Found;
+        }
+
+        if let Some(arity) = arity {
+            let mut candidates = self
+                .imports
+                .get(current_module)
+                .into_iter()
+                .flatten()
+                .filter_map(|scope| {
+                    let visibility = self
+                        .modules
+                        .get(&scope.module)
+                        .and_then(|symbols| symbols.get(callee))?;
+                    if !visibility.public || !scope.allows(callee, arity) {
+                        return None;
+                    }
+                    Some(scope.module.as_str())
+                })
+                .collect::<Vec<_>>();
+            candidates.sort_unstable();
+            candidates.dedup();
+
+            if candidates.len() == 1 {
+                return CallResolution::Found;
+            }
+        }
+
+        CallResolution::Missing
+    }
+
+    fn import_filter_diagnostic(
+        &self,
+        current_module: &str,
+        function_name: &str,
+        arity: usize,
+        offset: usize,
+    ) -> Option<ResolverError> {
+        let scopes = self.imports.get(current_module)?;
+
+        let mut modules_with_symbol = Vec::new();
+        let mut allowed_modules = Vec::new();
+
+        for scope in scopes {
+            let Some(symbols) = self.modules.get(&scope.module) else {
+                continue;
+            };
+
+            let Some(visibility) = symbols.get(function_name) else {
+                continue;
+            };
+
+            if !visibility.public {
+                continue;
+            }
+
+            modules_with_symbol.push(scope.module.clone());
+
+            if scope.allows(function_name, arity) {
+                allowed_modules.push(scope.module.clone());
+            }
+        }
+
+        modules_with_symbol.sort_unstable();
+        modules_with_symbol.dedup();
+        allowed_modules.sort_unstable();
+        allowed_modules.dedup();
+
+        if allowed_modules.len() > 1 {
+            return Some(
+                ResolverError::ambiguous_import_call(
+                    function_name,
+                    arity,
+                    current_module,
+                    &allowed_modules,
+                )
+                .with_offset(offset),
+            );
+        }
+
+        if allowed_modules.is_empty() && !modules_with_symbol.is_empty() {
+            return Some(
+                ResolverError::import_filter_excludes_call(
+                    function_name,
+                    arity,
+                    current_module,
+                    &modules_with_symbol,
+                )
+                .with_offset(offset),
+            );
+        }
+
+        None
+    }
+
+    fn has_struct_module(&self, module_name: &str) -> bool {
+        self.structs.contains_key(module_name)
+    }
+
+    fn struct_has_field(&self, module_name: &str, field: &str) -> bool {
+        self.structs
+            .get(module_name)
+            .is_some_and(|fields| fields.contains(field))
+    }
+}
+
+fn is_builtin_call_target(callee: &str) -> bool {
+    matches!(
+        callee,
+        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+            | "div" | "rem" | "byte_size" | "bit_size"
+    )
+}
+
+struct ResolveContext<'a> {
+    module_name: &'a str,
+    function_name: &'a str,
+    module_graph: &'a ModuleGraph,
+}
+
+fn resolve_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
+    resolve_expr_with_guard_context(expr, context, false)
+}
+
+fn resolve_guard_expr(expr: &Expr, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
+    resolve_expr_with_guard_context(expr, context, true)
+}
+
+fn resolve_expr_with_guard_context(
+    expr: &Expr,
+    context: &ResolveContext<'_>,
+    in_guard_context: bool,
+) -> Result<(), ResolverError> {
+    match expr {
+        Expr::Int { .. }
+        | Expr::Float { .. }
+        | Expr::Bool { .. }
+        | Expr::Nil { .. }
+        | Expr::String { .. } => Ok(()),
+        Expr::InterpolatedString { segments, .. } => {
+            for segment in segments {
+                if let crate::parser::InterpolationSegment::Expr { expr } = segment {
+                    resolve_expr_with_guard_context(expr, context, in_guard_context)?;
+                }
+            }
+            Ok(())
+        }
+        Expr::Tuple { items, .. } | Expr::List { items, .. } => {
+            for item in items {
+                resolve_expr_with_guard_context(item, context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::Map { entries, .. } => {
+            for entry in entries {
+                resolve_expr_with_guard_context(entry.key(), context, in_guard_context)?;
+                resolve_expr_with_guard_context(entry.value(), context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::Struct {
+            module,
+            entries,
+            offset,
+            ..
+        } => {
+            if !context.module_graph.has_struct_module(module) {
+                return Err(ResolverError::undefined_struct_module(
+                    module,
+                    context.module_name,
+                    context.function_name,
+                )
+                .with_offset(*offset));
+            }
+
+            for entry in entries {
+                if !context.module_graph.struct_has_field(module, &entry.key) {
+                    return Err(ResolverError::unknown_struct_field(
+                        &entry.key,
+                        module,
+                        context.module_name,
+                        context.function_name,
+                    )
+                    .with_offset(*offset));
+                }
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::Keyword { entries, .. } => {
+            for entry in entries {
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::MapUpdate { base, updates, .. } => {
+            resolve_expr_with_guard_context(base, context, in_guard_context)?;
+            for entry in updates {
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::StructUpdate {
+            module,
+            base,
+            updates,
+            offset,
+            ..
+        } => {
+            if !context.module_graph.has_struct_module(module) {
+                return Err(ResolverError::undefined_struct_module(
+                    module,
+                    context.module_name,
+                    context.function_name,
+                )
+                .with_offset(*offset));
+            }
+
+            resolve_expr_with_guard_context(base, context, in_guard_context)?;
+            for entry in updates {
+                if !context.module_graph.struct_has_field(module, &entry.key) {
+                    return Err(ResolverError::unknown_struct_field(
+                        &entry.key,
+                        module,
+                        context.module_name,
+                        context.function_name,
+                    )
+                    .with_offset(*offset));
+                }
+                resolve_expr_with_guard_context(&entry.value, context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::FieldAccess { base, .. } => {
+            resolve_expr_with_guard_context(base, context, in_guard_context)
+        }
+        Expr::IndexAccess { base, index, .. } => {
+            resolve_expr_with_guard_context(base, context, in_guard_context)?;
+            resolve_expr_with_guard_context(index, context, in_guard_context)
+        }
+        Expr::Call {
+            callee,
+            args,
+            offset,
+            ..
+        } => {
+            if guard_builtins::is_guard_builtin(callee) {
+                if !in_guard_context {
+                    return Err(ResolverError::guard_builtin_outside_guard(
+                        callee,
+                        guard_builtins::guard_builtin_arity(callee).unwrap_or(args.len()),
+                        context.module_name,
+                        context.function_name,
+                    )
+                    .with_offset(*offset));
+                }
+            } else {
+                match context.module_graph.resolve_call_target(
+                    context.module_name,
+                    callee,
+                    Some(args.len()),
+                ) {
+                    CallResolution::Found => {}
+                    CallResolution::Missing => {
+                        if !callee.contains('.') {
+                            if let Some(error) = context.module_graph.import_filter_diagnostic(
+                                context.module_name,
+                                callee,
+                                args.len(),
+                                *offset,
+                            ) {
+                                return Err(error);
+                            }
+                        }
+
+                        return Err(ResolverError::undefined_symbol(
+                            callee,
+                            context.module_name,
+                            context.function_name,
+                        )
+                        .with_offset(*offset));
+                    }
+                    CallResolution::Private => {
+                        return Err(ResolverError::private_function(
+                            callee,
+                            context.module_name,
+                            context.function_name,
+                        )
+                        .with_offset(*offset));
+                    }
+                }
+            }
+
+            for arg in args {
+                resolve_expr_with_guard_context(arg, context, in_guard_context)?;
+            }
+
+            Ok(())
+        }
+        Expr::Fn { body, .. } => resolve_expr_with_guard_context(body, context, in_guard_context),
+        Expr::Invoke { callee, args, .. } => {
+            resolve_expr_with_guard_context(callee, context, in_guard_context)?;
+            for arg in args {
+                resolve_expr_with_guard_context(arg, context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::Question { value, .. } | Expr::Unary { value, .. } => {
+            resolve_expr_with_guard_context(value, context, in_guard_context)
+        }
+        Expr::Binary { left, right, .. } | Expr::Pipe { left, right, .. } => {
+            resolve_expr_with_guard_context(left, context, in_guard_context)?;
+            resolve_expr_with_guard_context(right, context, in_guard_context)
+        }
+        Expr::Case {
+            subject, branches, ..
+        } => {
+            resolve_expr_with_guard_context(subject, context, in_guard_context)?;
+
+            for branch in branches {
+                resolve_pattern(branch.head(), context)?;
+                if let Some(guard) = branch.guard() {
+                    resolve_guard_expr(guard, context)?;
+                }
+                resolve_expr_with_guard_context(branch.body(), context, in_guard_context)?;
+            }
+
+            Ok(())
+        }
+        Expr::For {
+            generators,
+            into,
+            reduce,
+            body,
+            ..
+        } => {
+            for generator in generators {
+                resolve_pattern(generator.pattern(), context)?;
+                resolve_expr_with_guard_context(generator.source(), context, in_guard_context)?;
+                if let Some(guard) = generator.guard() {
+                    resolve_guard_expr(guard, context)?;
+                }
+            }
+            if let Some(into_expr) = into {
+                resolve_expr_with_guard_context(into_expr, context, in_guard_context)?;
+            }
+            if let Some(reduce_expr) = reduce {
+                resolve_expr_with_guard_context(reduce_expr, context, in_guard_context)?;
+            }
+            resolve_expr_with_guard_context(body, context, in_guard_context)
+        }
+        Expr::Group { inner, .. } => {
+            resolve_expr_with_guard_context(inner, context, in_guard_context)
+        }
+        Expr::Try {
+            body,
+            rescue,
+            catch,
+            after,
+            ..
+        } => {
+            resolve_expr_with_guard_context(body, context, in_guard_context)?;
+            for branch in rescue {
+                if let Some(guard) = branch.guard() {
+                    resolve_guard_expr(guard, context)?;
+                }
+                resolve_expr_with_guard_context(branch.body(), context, in_guard_context)?;
+            }
+            for branch in catch {
+                if let Some(guard) = branch.guard() {
+                    resolve_guard_expr(guard, context)?;
+                }
+                resolve_expr_with_guard_context(branch.body(), context, in_guard_context)?;
+            }
+            if let Some(after) = after {
+                resolve_expr_with_guard_context(after, context, in_guard_context)?;
+            }
+            Ok(())
+        }
+        Expr::Raise { error, .. } => {
+            resolve_expr_with_guard_context(error, context, in_guard_context)
+        }
+        Expr::Variable { .. } | Expr::Atom { .. } => Ok(()),
+    }
+}
+
+fn resolve_pattern(pattern: &Pattern, context: &ResolveContext<'_>) -> Result<(), ResolverError> {
+    match pattern {
+        Pattern::Atom { .. }
+        | Pattern::Bind { .. }
+        | Pattern::Pin { .. }
+        | Pattern::Wildcard
+        | Pattern::Integer { .. }
+        | Pattern::Bool { .. }
+        | Pattern::Nil
+        | Pattern::String { .. } => Ok(()),
+        Pattern::Tuple { items } => {
+            for item in items {
+                resolve_pattern(item, context)?;
+            }
+            Ok(())
+        }
+        Pattern::List { items, tail } => {
+            for item in items {
+                resolve_pattern(item, context)?;
+            }
+            if let Some(tail) = tail {
+                resolve_pattern(tail, context)?;
+            }
+            Ok(())
+        }
+        Pattern::Map { entries } => {
+            for entry in entries {
+                resolve_pattern(entry.key(), context)?;
+                resolve_pattern(entry.value(), context)?;
+            }
+            Ok(())
+        }
+        Pattern::Struct {
+            module, entries, ..
+        } => {
+            if !context.module_graph.has_struct_module(module) {
+                return Err(ResolverError::undefined_struct_module(
+                    module,
+                    context.module_name,
+                    context.function_name,
+                ));
+            }
+
+            for entry in entries {
+                if !context.module_graph.struct_has_field(module, entry.key()) {
+                    return Err(ResolverError::unknown_struct_field(
+                        entry.key(),
+                        module,
+                        context.module_name,
+                        context.function_name,
+                    ));
+                }
+                resolve_pattern(entry.value(), context)?;
+            }
+            Ok(())
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::parser::parse;
+    use super::resolve_ast;
+    use crate::lexer::scan_tokens;
+    use crate::parser::parse_ast;
+    use crate::resolver_diag::ResolverDiagnosticCode;
 
-    fn resolve(src: &str) -> Result<(), ResolverError> {
-        let ast = parse(src).expect("parse failed");
-        resolve_ast(&ast)
+    #[test]
+    fn resolve_ast_accepts_module_local_function_calls() {
+        let source = "defmodule Demo do\n  def run() do\n    helper()\n  end\n\n  def helper() do\n    1\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
+        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept local module references");
     }
 
     #[test]
-    fn test_unbound_variable() {
-        let err = resolve("defmodule M do\n  def f(), do: x\nend").unwrap_err();
-        assert!(matches!(err, ResolverError::UnboundVariable(v) if v == "x"));
+    fn resolve_ast_accepts_module_qualified_function_calls() {
+        let source = "defmodule Math do\n  def helper() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.helper()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
+        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept module-qualified references");
     }
 
     #[test]
-    fn test_duplicate_module() {
-        let err = resolve("defmodule M do end\ndefmodule M do end").unwrap_err();
-        assert!(matches!(err, ResolverError::DuplicateModule(m) if m == "M"));
+    fn resolve_ast_accepts_use_with_defined_module_target() {
+        let source = "defmodule Feature do\n  def helper() do\n    41\n  end\nend\n\ndefmodule Demo do\n  use Feature\n\n  def run() do\n    helper()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize use fixture");
+        let ast = parse_ast(&tokens).expect("parser should build use fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept use with a defined module target");
     }
 
     #[test]
-    fn test_cyclic_dependency() {
-        let err = resolve(
-            "defmodule A do\n  import B\nend\ndefmodule B do\n  import A\nend",
-        )
-        .unwrap_err();
-        assert!(matches!(err, ResolverError::CyclicDependency(_)));
+    fn resolve_ast_accepts_import_only_and_except_filters() {
+        let source = "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\n\n  def unsafe(value) do\n    value - 1\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [add: 2]\n\n  def run() do\n    add(20, 22)\n  end\nend\n\ndefmodule SafeDemo do\n  import Math, except: [unsafe: 1]\n\n  def run() do\n    add(2, 3)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize import filter fixture");
+        let ast = parse_ast(&tokens).expect("parser should build import filter fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept valid import only/except filters");
     }
 
     #[test]
-    fn test_unknown_module_import() {
-        let err = resolve("defmodule A do\n  import NonExistent\nend").unwrap_err();
-        assert!(matches!(err, ResolverError::UnknownModule(m) if m == "NonExistent"));
+    fn resolve_ast_rejects_ambiguous_unqualified_imports() {
+        let source = "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\nend\n\ndefmodule Algebra do\n  def add(a, b) do\n    a + b\n  end\nend\n\ndefmodule Demo do\n  import Math\n  import Algebra\n\n  def run() do\n    add(1, 2)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize ambiguous import fixture");
+        let ast = parse_ast(&tokens).expect("parser should build ambiguous import fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject ambiguous unqualified import");
+        assert_eq!(err.code(), ResolverDiagnosticCode::AmbiguousImportCall);
     }
 
     #[test]
-    fn test_unknown_protocol() {
-        let err = resolve(
-            "defmodule A do\n  defimpl NoProto, for: Integer do\n    def size(x), do: x\n  end\nend",
-        )
-        .unwrap_err();
-        assert!(matches!(err, ResolverError::UnknownProtocol(p) if p == "NoProto"));
+    fn resolve_ast_reports_import_filter_excludes_call() {
+        let source = "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\n\n  def sub(value, other) do\n    value - other\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [add: 2]\n\n  def run() do\n    sub(10, 3)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize import filter fixture");
+        let ast = parse_ast(&tokens).expect("parser should build import filter fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject call excluded by import filter");
+        assert_eq!(err.code(), ResolverDiagnosticCode::ImportFilterExcludesCall);
     }
 
     #[test]
-    fn test_protocol_arity_mismatch() {
-        let src = "
-defmodule A do
-  defprotocol Size do
-    def size(x)
-  end
+    fn resolve_ast_rejects_duplicate_modules() {
+        let source = "defmodule Demo do\n  def run() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    2\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize duplicate module fixture");
+        let ast = parse_ast(&tokens).expect("parser should build duplicate module fixture ast");
 
-  defimpl Size, for: Tuple do
-    def size(x, y), do: x + y
-  end
-end
-";
-        let err = resolve(src).unwrap_err();
-        let idProtocolImpl = ResolverError::ArityMismatch {
-            protocol: "Size".to_string(),
-            target: "Tuple".to_string(),
-            method: "size".to_string(),
-            expected: 1,
-            got: 2,
-        };
-        assert_eq!(err, idProtocolImpl);
-        assert_eq!(
-            error.to_string(),
-            "[E1010] invalid defimpl for protocol 'Size' target 'Tuple': size/2 has arity mismatch (expected 1)"
+        let err = resolve_ast(&ast).expect_err("resolver should reject duplicate modules");
+        assert_eq!(err.code(), ResolverDiagnosticCode::DuplicateModule);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_undefined_module_references() {
+        let source = "defmodule Demo do\n  def run() do\n    Unknown.helper()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize undefined module fixture");
+        let ast = parse_ast(&tokens).expect("parser should build undefined module fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject undefined module references");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedSymbol);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_private_function_calls_from_other_modules() {
+        let source = "defmodule Math do\n  defp helper() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.helper()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize private function fixture");
+        let ast = parse_ast(&tokens).expect("parser should build private function fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject cross-module private calls");
+        assert_eq!(err.code(), ResolverDiagnosticCode::PrivateFunction);
+    }
+
+    #[test]
+    fn resolve_ast_accepts_private_function_calls_within_same_module() {
+        let source = "defmodule Math do\n  def run() do\n    helper()\n  end\n\n  defp helper() do\n    1\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize same-module private fixture");
+        let ast = parse_ast(&tokens).expect("parser should build same-module private fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept same-module private function calls");
+    }
+
+    #[test]
+    fn resolve_ast_accepts_guard_builtins_in_guard_context() {
+        let source = "defmodule Demo do\n  def run(x) when is_integer(x) do\n    x\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize guard builtin fixture");
+        let ast = parse_ast(&tokens).expect("parser should build guard builtin fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept guard builtins in guard context");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_guard_builtins_in_non_guard_context() {
+        let source = "defmodule Demo do\n  def run(x) do\n    is_integer(x)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize non-guard context fixture");
+        let ast = parse_ast(&tokens).expect("parser should build non-guard context fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject guard builtins outside guard");
+        assert_eq!(err.code(), ResolverDiagnosticCode::GuardBuiltinOutsideGuard);
+    }
+
+    #[test]
+    fn resolve_ast_accepts_struct_module_references() {
+        let source = "defmodule Point do\n  defstruct [:x, :y]\n\n  def new(x, y) do\n    %Point{x: x, y: y}\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize struct fixture");
+        let ast = parse_ast(&tokens).expect("parser should build struct fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept valid struct references");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_undefined_struct_modules() {
+        let source = "defmodule Demo do\n  def run() do\n    %Unknown{field: 1}\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize undefined struct fixture");
+        let ast = parse_ast(&tokens).expect("parser should build undefined struct fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject undefined struct modules");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedStructModule);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_unknown_struct_fields() {
+        let source = "defmodule Point do\n  defstruct [:x, :y]\n\n  def new(x, y, z) do\n    %Point{x: x, y: y, z: z}\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize unknown struct field fixture");
+        let ast = parse_ast(&tokens).expect("parser should build unknown struct field fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject unknown struct fields");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UnknownStructField);
+    }
+
+    #[test]
+    fn resolve_ast_accepts_defprotocol_and_defimpl() {
+        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize protocol fixture");
+        let ast = parse_ast(&tokens).expect("parser should build protocol fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept valid protocol and impl");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_unknown_protocol_in_defimpl() {
+        let source = "defmodule MyList do\n  defimpl Unknown do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize unknown protocol fixture");
+        let ast = parse_ast(&tokens).expect("parser should build unknown protocol fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject unknown protocol in defimpl");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UnknownProtocol);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_duplicate_defimpl_for_same_target() {
+        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      1\n    end\n  end\n\n  defimpl Size do\n    def size(term) do\n      2\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize duplicate impl fixture");
+        let ast = parse_ast(&tokens).expect("parser should build duplicate impl fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject duplicate protocol impl for same target");
+        assert_eq!(err.code(), ResolverDiagnosticCode::DuplicateProtocolImpl);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_protocol_impl_with_missing_function() {
+        let source = "defprotocol Size do\n  def size(term)\n  def count(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      1\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize missing fn fixture");
+        let ast = parse_ast(&tokens).expect("parser should build missing fn fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject impl with missing function");
+        assert_eq!(err.code(), ResolverDiagnosticCode::InvalidProtocolImpl);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_protocol_impl_with_arity_mismatch() {
+        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule Tuple do\n  defimpl Size do\n    def size(term, extra) do\n      2\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize arity mismatch fixture");
+        let ast = parse_ast(&tokens).expect("parser should build arity mismatch fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject impl with arity mismatch");
+        assert_eq!(err.code(), ResolverDiagnosticCode::InvalidProtocolImpl);
+        assert!(
+            err.message().contains("has arity mismatch (expected 1)"),
+            "error message '{}' should mention arity mismatch (expected 1)",
+            err.message()
         );
     }
 }
