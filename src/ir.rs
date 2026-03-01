@@ -155,6 +155,30 @@ pub(crate) enum IrOp {
     Range {
         offset: usize,
     },
+    NotIn {
+        offset: usize,
+    },
+    BitwiseAnd {
+        offset: usize,
+    },
+    BitwiseOr {
+        offset: usize,
+    },
+    BitwiseXor {
+        offset: usize,
+    },
+    BitwiseNot {
+        offset: usize,
+    },
+    BitwiseShiftLeft {
+        offset: usize,
+    },
+    BitwiseShiftRight {
+        offset: usize,
+    },
+    SteppedRange {
+        offset: usize,
+    },
     Match {
         pattern: IrPattern,
         offset: usize,
@@ -173,6 +197,8 @@ pub(crate) enum CmpKind {
     Lte,
     Gt,
     Gte,
+    StrictEq,
+    StrictNotEq,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -279,6 +305,13 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
     let (protocol_decls, protocol_impls) = collect_protocol_forms(ast);
 
     for module in &ast.modules {
+        // Build module attribute map for @attr substitution in function bodies
+        let module_attrs: HashMap<String, Expr> = module
+            .attributes
+            .iter()
+            .map(|attr| (attr.name.clone(), attr.value.clone()))
+            .collect();
+
         for function in &module.functions {
             let lowered = lower_named_function(
                 &qualify_function_name(&module.name, &function.name),
@@ -287,6 +320,7 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
                 function.guard(),
                 &function.body,
                 &struct_definitions,
+                &module_attrs,
             )?;
             functions.push(lowered);
 
@@ -294,6 +328,7 @@ pub fn lower_ast_to_ir(ast: &Ast) -> Result<IrProgram, LoweringError> {
                 module.name.as_str(),
                 function,
                 &struct_definitions,
+                &module_attrs,
             )?;
             functions.extend(wrappers);
         }
@@ -381,6 +416,68 @@ fn collect_protocol_forms(ast: &Ast) -> (Vec<ProtocolDecl>, Vec<ProtocolImplDecl
     (protocols, implementations)
 }
 
+/// Substitute module attribute references (@attr_name as Variable expressions)
+/// with the attribute's value expression. This enables @attr in function bodies.
+fn substitute_module_attrs(expr: Expr, attrs: &HashMap<String, Expr>) -> Expr {
+    match expr {
+        Expr::Variable { ref name, .. } if name.starts_with('@') => {
+            let attr_name = &name[1..];
+            if let Some(value) = attrs.get(attr_name) {
+                return value.clone();
+            }
+            expr
+        }
+        Expr::Tuple { id, offset, items } => Expr::Tuple {
+            id,
+            offset,
+            items: items.into_iter().map(|e| substitute_module_attrs(e, attrs)).collect(),
+        },
+        Expr::List { id, offset, items } => Expr::List {
+            id,
+            offset,
+            items: items.into_iter().map(|e| substitute_module_attrs(e, attrs)).collect(),
+        },
+        Expr::Binary { id, offset, op, left, right } => Expr::Binary {
+            id, offset, op,
+            left: Box::new(substitute_module_attrs(*left, attrs)),
+            right: Box::new(substitute_module_attrs(*right, attrs)),
+        },
+        Expr::Unary { id, offset, op, value } => Expr::Unary {
+            id, offset, op,
+            value: Box::new(substitute_module_attrs(*value, attrs)),
+        },
+        Expr::Call { id, offset, callee, args } => Expr::Call {
+            id, offset, callee,
+            args: args.into_iter().map(|e| substitute_module_attrs(e, attrs)).collect(),
+        },
+        Expr::FieldAccess { id, offset, base, label } => Expr::FieldAccess {
+            id, offset, label,
+            base: Box::new(substitute_module_attrs(*base, attrs)),
+        },
+        Expr::IndexAccess { id, offset, base, index } => Expr::IndexAccess {
+            id, offset,
+            base: Box::new(substitute_module_attrs(*base, attrs)),
+            index: Box::new(substitute_module_attrs(*index, attrs)),
+        },
+        Expr::Pipe { id, offset, left, right } => Expr::Pipe {
+            id, offset,
+            left: Box::new(substitute_module_attrs(*left, attrs)),
+            right: Box::new(substitute_module_attrs(*right, attrs)),
+        },
+        Expr::Group { id, offset, inner } => Expr::Group {
+            id, offset,
+            inner: Box::new(substitute_module_attrs(*inner, attrs)),
+        },
+        Expr::Question { id, offset, value } => Expr::Question {
+            id, offset,
+            value: Box::new(substitute_module_attrs(*value, attrs)),
+        },
+        // For other expressions (Case, For, Try, If/Unless via Call, etc.), just return as-is.
+        // The simple attribute value case (e.g. `@my_value` as the direct body) is handled above.
+        other => other,
+    }
+}
+
 fn lower_named_function(
     qualified_name: &str,
     current_module: &str,
@@ -388,16 +485,19 @@ fn lower_named_function(
     guard: Option<&Expr>,
     body: &Expr,
     struct_definitions: &StructDefinitions,
+    module_attrs: &HashMap<String, Expr>,
 ) -> Result<IrFunction, LoweringError> {
+    let subst_body = substitute_module_attrs(body.clone(), module_attrs);
     let mut ops = Vec::new();
-    lower_expr(body, current_module, struct_definitions, &mut ops)?;
+    lower_expr(&subst_body, current_module, struct_definitions, &mut ops)?;
     ops.push(IrOp::Return {
         offset: body.offset(),
     });
 
     let guard_ops = if let Some(guard) = guard {
+        let subst_guard = substitute_module_attrs(guard.clone(), module_attrs);
         let mut guard_ops = Vec::new();
-        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
+        lower_expr(&subst_guard, current_module, struct_definitions, &mut guard_ops)?;
         Some(guard_ops)
     } else {
         None
@@ -428,6 +528,7 @@ fn lower_protocol_impl_function(
         &function.name,
     );
 
+    let empty_attrs = HashMap::new();
     lower_named_function(
         &qualified_name,
         &protocol_impl.module_name,
@@ -435,6 +536,7 @@ fn lower_protocol_impl_function(
         function.guard.as_ref(),
         &function.body,
         struct_definitions,
+        &empty_attrs,
     )
 }
 
@@ -657,6 +759,7 @@ fn lower_default_argument_wrappers(
     module_name: &str,
     function: &crate::parser::Function,
     struct_definitions: &StructDefinitions,
+    module_attrs: &HashMap<String, Expr>,
 ) -> Result<Vec<IrFunction>, LoweringError> {
     let trailing_default_count = function
         .params
@@ -693,7 +796,8 @@ fn lower_default_argument_wrappers(
             let default = parameter
                 .default()
                 .ok_or_else(|| LoweringError::unsupported("default argument shape", call_offset))?;
-            lower_expr(default, module_name, struct_definitions, &mut ops)?;
+            let subst_default = substitute_module_attrs(default.clone(), module_attrs);
+            lower_expr(&subst_default, module_name, struct_definitions, &mut ops)?;
         }
 
         ops.push(IrOp::Call {
@@ -1069,6 +1173,16 @@ fn lower_expr(
             offset,
             ..
         } => {
+            // Special case: __ENV__.module resolves to the current module atom
+            if let Expr::Variable { name, .. } = base.as_ref() {
+                if name == "__ENV__" && label == "module" {
+                    ops.push(IrOp::ConstAtom {
+                        value: current_module.to_string(),
+                        offset: *offset,
+                    });
+                    return Ok(());
+                }
+            }
             lower_expr(base, current_module, struct_definitions, ops)?;
             ops.push(IrOp::ConstAtom {
                 value: label.clone(),
@@ -1126,6 +1240,10 @@ fn lower_expr(
                 crate::parser::UnaryOp::Bang => {
                     lower_expr(value, current_module, struct_definitions, ops)?;
                     ops.push(IrOp::Bang { offset: *offset });
+                }
+                crate::parser::UnaryOp::BitwiseNot => {
+                    lower_expr(value, current_module, struct_definitions, ops)?;
+                    ops.push(IrOp::BitwiseNot { offset: *offset });
                 }
             }
             Ok(())
@@ -1221,9 +1339,24 @@ fn lower_expr(
                 },
                 BinaryOp::Concat => IrOp::Concat { offset: *offset },
                 BinaryOp::In => IrOp::In { offset: *offset },
+                BinaryOp::NotIn => IrOp::NotIn { offset: *offset },
                 BinaryOp::PlusPlus => IrOp::PlusPlus { offset: *offset },
                 BinaryOp::MinusMinus => IrOp::MinusMinus { offset: *offset },
                 BinaryOp::Range => IrOp::Range { offset: *offset },
+                BinaryOp::StrictEq => IrOp::CmpInt {
+                    kind: CmpKind::StrictEq,
+                    offset: *offset,
+                },
+                BinaryOp::StrictBangEq => IrOp::CmpInt {
+                    kind: CmpKind::StrictNotEq,
+                    offset: *offset,
+                },
+                BinaryOp::BitwiseAnd => IrOp::BitwiseAnd { offset: *offset },
+                BinaryOp::BitwiseOr => IrOp::BitwiseOr { offset: *offset },
+                BinaryOp::BitwiseXor => IrOp::BitwiseXor { offset: *offset },
+                BinaryOp::BitwiseShiftLeft => IrOp::BitwiseShiftLeft { offset: *offset },
+                BinaryOp::BitwiseShiftRight => IrOp::BitwiseShiftRight { offset: *offset },
+                BinaryOp::SteppedRange => IrOp::SteppedRange { offset: *offset },
                 BinaryOp::Match
                 | BinaryOp::And
                 | BinaryOp::Or
@@ -1444,6 +1577,23 @@ fn lower_expr(
         }
         Expr::Group { inner, .. } => lower_expr(inner, current_module, struct_definitions, ops),
         Expr::Variable { name, offset, .. } => {
+            // __MODULE__ resolves to the current module's atom at compile time
+            if name == "__MODULE__" {
+                ops.push(IrOp::ConstAtom {
+                    value: current_module.to_string(),
+                    offset: *offset,
+                });
+                return Ok(());
+            }
+            // __ENV__ resolves to a map with :module key; full map is complex,
+            // but bare __ENV__ emits a placeholder atom
+            if name == "__ENV__" {
+                ops.push(IrOp::ConstAtom {
+                    value: current_module.to_string(),
+                    offset: *offset,
+                });
+                return Ok(());
+            }
             ops.push(IrOp::LoadVariable {
                 name: name.clone(),
                 offset: *offset,
@@ -1674,6 +1824,7 @@ fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
         "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+            | "div" | "rem" | "byte_size" | "bit_size"
     ) || guard_builtins::is_guard_builtin(callee)
 }
 
