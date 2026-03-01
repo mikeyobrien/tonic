@@ -57,6 +57,12 @@ pub(crate) fn cmp_int(
     right: RuntimeValue,
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
+    // StrictEq and StrictNotEq compare without coercion
+    if kind == CmpKind::StrictEq || kind == CmpKind::StrictNotEq {
+        let equal = left == right;
+        return Ok(RuntimeValue::Bool(if kind == CmpKind::StrictEq { equal } else { !equal }));
+    }
+
     let left = expect_int_operand(left, offset)?;
     let right = expect_int_operand(right, offset)?;
 
@@ -67,6 +73,7 @@ pub(crate) fn cmp_int(
         CmpKind::Lte => left <= right,
         CmpKind::Gt => left > right,
         CmpKind::Gte => left >= right,
+        CmpKind::StrictEq | CmpKind::StrictNotEq => unreachable!(),
     };
 
     Ok(RuntimeValue::Bool(result))
@@ -108,6 +115,19 @@ pub(crate) fn in_operator(
         RuntimeValue::Range(start, end) => {
             if let RuntimeValue::Int(value) = left {
                 value >= start && value <= end
+            } else {
+                false
+            }
+        }
+        RuntimeValue::SteppedRange(start, end, step) => {
+            if let RuntimeValue::Int(value) = left {
+                if step == 0 {
+                    false
+                } else if step > 0 {
+                    value >= start && value <= end && (value - start) % step == 0
+                } else {
+                    value <= start && value >= end && (start - value) % (-step) == 0
+                }
             } else {
                 false
             }
@@ -172,4 +192,108 @@ fn expect_int_operand(value: RuntimeValue, offset: usize) -> Result<i64, NativeR
             offset,
         )),
     }
+}
+
+pub(crate) fn bitwise_and(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+    Ok(RuntimeValue::Int(left & right))
+}
+
+pub(crate) fn bitwise_or(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+    Ok(RuntimeValue::Int(left | right))
+}
+
+pub(crate) fn bitwise_xor(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+    Ok(RuntimeValue::Int(left ^ right))
+}
+
+pub(crate) fn bitwise_not(
+    value: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let value = expect_int_operand(value, offset)?;
+    Ok(RuntimeValue::Int(!value))
+}
+
+pub(crate) fn bitwise_shift_left(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+    Ok(RuntimeValue::Int(left << right))
+}
+
+pub(crate) fn bitwise_shift_right(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+    Ok(RuntimeValue::Int(left >> right))
+}
+
+pub(crate) fn stepped_range(
+    range: RuntimeValue,
+    step: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let step = expect_int_operand(step, offset)?;
+    match range {
+        RuntimeValue::Range(start, end) => Ok(RuntimeValue::SteppedRange(start, end, step)),
+        _ => Err(NativeRuntimeError::badarg(offset)),
+    }
+}
+
+pub(crate) fn kernel_div(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+    if right == 0 {
+        return Err(NativeRuntimeError::at_offset(
+            NativeRuntimeErrorCode::DivisionByZero,
+            "division by zero",
+            offset,
+        ));
+    }
+    Ok(RuntimeValue::Int(left / right))
+}
+
+pub(crate) fn kernel_rem(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+    if right == 0 {
+        return Err(NativeRuntimeError::at_offset(
+            NativeRuntimeErrorCode::DivisionByZero,
+            "remainder by zero",
+            offset,
+        ));
+    }
+    Ok(RuntimeValue::Int(left % right))
 }
