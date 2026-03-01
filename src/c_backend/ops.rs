@@ -21,7 +21,7 @@ pub(super) fn emit_c_instructions(
             }
             MirInstruction::ConstBool { dest, value, .. } => {
                 out.push_str(&format!(
-                    "  v{dest} = tn_runtime_const_bool((TnVal){});\n",
+                    "  v{dest} = tn_runtime_const_bool((TnVal){};\n",
                     if *value { 1 } else { 0 }
                 ));
             }
@@ -71,6 +71,9 @@ pub(super) fn emit_c_instructions(
                 crate::mir::MirUnaryKind::Bang => {
                     out.push_str(&format!("  v{dest} = tn_runtime_bang(v{input});\n"));
                 }
+                crate::mir::MirUnaryKind::BitwiseNot => {
+                    out.push_str(&format!("  v{dest} = (TnVal)(~(int64_t)v{input});\n"));
+                }
             },
             MirInstruction::Question { dest, input, .. } => {
                 out.push_str(&format!("  v{dest} = tn_runtime_question(v{input});\n"));
@@ -108,11 +111,6 @@ pub(super) fn emit_c_instructions(
                     *offset,
                     out,
                 )?;
-                // Named Tonic functions return with rc=1 from their terminator
-                // retain, so no extra retain is needed here; we balance with a
-                // register (+1) then release (−1) → net rc=1 in outer frame.
-                // Builtin calls return rc=0 (no terminator), so we do need an
-                // explicit retain first to hold the value across the frame pop.
                 if matches!(callee, IrCallTarget::Builtin { .. }) {
                     out.push_str(&format!("  tn_runtime_retain(v{dest});\n"));
                 }
@@ -132,7 +130,6 @@ pub(super) fn emit_c_instructions(
                     out.push_str(&format!("  tn_runtime_root_register(v{arg});\n"));
                 }
 
-                // Variadic closure call via stub
                 let all_args = std::iter::once(format!("v{callee}"))
                     .chain(std::iter::once(format!("(TnVal){}", args.len())))
                     .chain(args.iter().map(|a| format!("v{a}")))
@@ -141,9 +138,6 @@ pub(super) fn emit_c_instructions(
                 out.push_str(&format!(
                     "  v{dest} = tn_runtime_call_closure_varargs({all_args});\n"
                 ));
-                // Same ownership contract as named calls: callee returns rc=1,
-                // pop the call-site frame (releases closure+args), register
-                // result (+1) and release the callee retain (-1) → net rc=1.
                 out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
                 out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
                 out.push_str(&format!("  tn_runtime_release(v{dest});\n"));
@@ -245,6 +239,27 @@ fn emit_c_binary(dest: u32, kind: &MirBinaryKind, left: u32, right: u32, out: &m
         MirBinaryKind::Range => out.push_str(&format!(
             "  v{dest} = tn_runtime_range(v{left}, v{right});\n"
         )),
+        MirBinaryKind::NotIn => out.push_str(&format!(
+            "  v{dest} = tn_runtime_not_in(v{left}, v{right});\n"
+        )),
+        MirBinaryKind::BitwiseAnd => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} & (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseOr => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} | (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseXor => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} ^ (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseShiftLeft => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} << (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseShiftRight => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} >> (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::SteppedRange => out.push_str(&format!(
+            "  v{dest} = tn_runtime_stepped_range(v{left}, v{right});\n"
+        )),
     }
 }
 
@@ -264,150 +279,38 @@ fn emit_c_call(
         .join(", ");
 
     match callee {
+        IrCallTarget::Direct { name, arity } => {
+            let sym = callable_symbols
+                .get(&(name.clone(), *arity))
+                .ok_or_else(|| {
+                    CBackendError::new(format!(
+                        "c backend missing symbol for {name}/{arity} in {function_name}"
+                    ))
+                })?;
+            out.push_str(&format!("  v{dest} = {sym}({rendered_args});\n"));
+        }
         IrCallTarget::Builtin { name } => {
-            emit_c_builtin_call(dest, name, args, function_name, offset, out)?;
+            out.push_str(&format!("  v{dest} = tn_runtime_{name}({rendered_args});\n"));
         }
-        IrCallTarget::Function { name } => {
-            let key = (name.clone(), args.len());
-            if let Some(symbol) = callable_symbols.get(&key) {
-                out.push_str(&format!("  v{dest} = {symbol}({rendered_args});\n"));
-                return Ok(());
-            }
-
-            if callable_symbols
-                .keys()
-                .any(|(candidate, _)| candidate == name)
-            {
-                out.push_str(&format!("  v{dest} = tn_runtime_error_arity_mismatch();\n"));
-                return Ok(());
-            }
-
-            return Err(CBackendError::new(format!(
-                "c backend unknown function call target {name} in function {function_name} at offset {offset}"
-            )));
+        IrCallTarget::Dynamic { name } => {
+            out.push_str(&format!("  v{dest} = tn_runtime_dispatch_{name}({rendered_args});\n"));
         }
     }
     Ok(())
 }
 
-fn emit_c_builtin_call(
-    dest: u32,
-    builtin: &str,
-    args: &[u32],
-    function_name: &str,
-    offset: usize,
-    out: &mut String,
-) -> Result<(), CBackendError> {
-    let rendered_args = args
-        .iter()
-        .map(|id| format!("v{id}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    match builtin {
-        "ok" => {
-            if args.len() != 1 {
-                return Err(CBackendError::new(format!(
-                    "c backend builtin ok arity mismatch in function {function_name} at offset {offset}"
-                )));
-            }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_make_ok({rendered_args});\n"
-            ));
-        }
-        "err" => {
-            if args.len() != 1 {
-                return Err(CBackendError::new(format!(
-                    "c backend builtin err arity mismatch in function {function_name} at offset {offset}"
-                )));
-            }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_make_err({rendered_args});\n"
-            ));
-        }
-        "tuple" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_make_tuple({rendered_args});\n"
-            ));
-        }
-        "list" => {
-            // Variadic: first arg is count, then elements
-            let count = args.len();
-            let count_then_args = std::iter::once(format!("(TnVal){count}"))
-                .chain(args.iter().map(|id| format!("v{id}")))
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_make_list_varargs({count_then_args});\n"
-            ));
-        }
-        "map_empty" => {
-            out.push_str(&format!("  v{dest} = tn_runtime_map_empty();\n"));
-        }
-        "map" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_make_map({rendered_args});\n"
-            ));
-        }
-        "map_put" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_map_put({rendered_args});\n"
-            ));
-        }
-        "map_update" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_map_update({rendered_args});\n"
-            ));
-        }
-        "map_access" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_map_access({rendered_args});\n"
-            ));
-        }
-        "keyword" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_make_keyword({rendered_args});\n"
-            ));
-        }
-        "keyword_append" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_keyword_append({rendered_args});\n"
-            ));
-        }
-        "host_call" => {
-            let count = args.len();
-            let count_then_args = std::iter::once(format!("(TnVal){count}"))
-                .chain(args.iter().map(|id| format!("v{id}")))
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_host_call_varargs({count_then_args});\n"
-            ));
-        }
-        "protocol_dispatch" => {
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_protocol_dispatch({rendered_args});\n"
-            ));
-        }
-        other => {
-            return Err(CBackendError::new(format!(
-                "c backend unsupported builtin call target {other} in function {function_name} at offset {offset}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn c_string_literal(value: &str) -> String {
-    let mut out = String::from("\"");
-    for ch in value.chars() {
+fn c_string_literal(s: &str) -> String {
+    let mut out = String::new();
+    out.push('"');
+    for ch in s.chars() {
         match ch {
-            '\\' => out.push_str("\\\\"),
             '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            _ => out.push(ch),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\x{:02x}", c as u32)),
+            c => out.push(c),
         }
     }
     out.push('"');
