@@ -1,5 +1,5 @@
-# hex/octal/binary integer literal parity
-a = 0xFF
-b = 0o77
-c = 0b1010
-IO.puts(a + b + c)
+defmodule Demo do
+  def run() do
+    {0xFF, {0o77, 0b1010}}
+  end
+end

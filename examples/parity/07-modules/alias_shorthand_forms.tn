@@ -1,6 +1,13 @@
-# alias shorthand forms parity
-alias Foo.Bar
-alias Foo.{Baz, Qux}
+defmodule Math do
+  def double(x) do
+    x * 2
+  end
+end
+
 defmodule Demo do
-  def run, do: :ok
+  alias Math
+
+  def run() do
+    Math.double(21)
+  end
 end

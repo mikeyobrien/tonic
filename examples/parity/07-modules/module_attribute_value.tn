@@ -1,5 +1,7 @@
-# module attribute value parity
-defmodule Attrs do
-  @value 42
-  def get, do: @value
+defmodule Demo do
+  @my_value 42
+
+  def run() do
+    @my_value
+  end
 end

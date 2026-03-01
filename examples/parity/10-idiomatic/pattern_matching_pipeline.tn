@@ -1,8 +1,10 @@
-# pattern matching pipeline
-defmodule Pipeline do
-  def process({:ok, value}), do: {:result, value * 2}
-  def process({:error, msg}), do: {:failed, msg}
+defmodule Demo do
+  def run() do
+    case {:ok, 42} do
+      {:ok, val} when val > 0 -> "positive"
+      {:ok, _} -> "zero or negative"
+      {:error, _reason} -> "error"
+      _ -> "other"
+    end
+  end
 end
-
-IO.puts(inspect(Pipeline.process({:ok, 21})))
-IO.puts(inspect(Pipeline.process({:error, "bad"})))

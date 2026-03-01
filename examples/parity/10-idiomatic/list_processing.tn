@@ -1,11 +1,18 @@
-# list processing
-numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+defmodule Demo do
+  def run() do
+    {filter_evens([5, 3, 8, 1, 9, 2, 7, 4, 6]),
+     sum_all([5, 3, 8, 1, 9, 2, 7, 4, 6])}
+  end
 
-evens = Enum.filter(numbers, fn x -> rem(x, 2) == 0 end)
-IO.puts(inspect(evens))
+  defp filter_evens(list) do
+    for x when rem(x, 2) == 0 <- list do
+      x
+    end
+  end
 
-squares = Enum.map(numbers, fn x -> x * x end)
-IO.puts(inspect(squares))
-
-total = Enum.reduce(numbers, 0, fn x, acc -> x + acc end)
-IO.puts(total)
+  defp sum_all(list) do
+    for x <- list, reduce: 0 do
+      acc -> acc + x
+    end
+  end
+end

@@ -1,9 +1,9 @@
-# cond expression
-x = 15
-result = cond do
-  rem(x, 15) == 0 -> "FizzBuzz"
-  rem(x, 3) == 0 -> "Fizz"
-  rem(x, 5) == 0 -> "Buzz"
-  true -> Integer.to_string(x)
+defmodule Demo do
+  def run() do
+    cond do
+      1 > 2 -> "impossible"
+      1_000 > 999 -> "numbers work"
+      true -> "fallback"
+    end
+  end
 end
-IO.puts(result)

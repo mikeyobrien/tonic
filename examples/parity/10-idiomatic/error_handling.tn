@@ -1,7 +1,9 @@
-# error handling
-result = try do
-  raise "oops"
-rescue
-  e -> "caught: " <> e.message
+defmodule Demo do
+  def run() do
+    try do
+      raise "something went wrong"
+    rescue
+      _ -> "caught the error"
+    end
+  end
 end
-IO.puts(result)

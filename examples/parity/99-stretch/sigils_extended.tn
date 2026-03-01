@@ -1,3 +1,5 @@
-# extended sigils parity
-s = ~s(hello world)
-IO.puts(s)
+defmodule Demo do
+  def run() do
+    ~w(foo bar baz)
+  end
+end

@@ -1,17 +1,26 @@
-# pipeline transform
-defmodule Transform do
-  def normalize(s), do: String.trim(s) |> String.downcase()
-  def tokenize(s), do: String.split(s, " ")
-  def count_words(s), do: s |> normalize() |> tokenize() |> Enum.count()
+defmodule Demo do
+  def run() do
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    |> filter_even()
+    |> double_all()
+    |> sum_all()
+  end
+
+  defp filter_even(list) do
+    for x when rem(x, 2) == 0 <- list do
+      x
+    end
+  end
+
+  defp double_all(list) do
+    for x <- list do
+      x * 2
+    end
+  end
+
+  defp sum_all(list) do
+    for x <- list, reduce: 0 do
+      acc -> acc + x
+    end
+  end
 end
-
-IO.puts(Transform.count_words("  Hello World Tonic  "))
-
-result =
-  "  Elixir Parity Test  "
-  |> Transform.normalize()
-  |> Transform.tokenize()
-  |> Enum.map(&String.capitalize/1)
-  |> Enum.join(" ")
-
-IO.puts(result)

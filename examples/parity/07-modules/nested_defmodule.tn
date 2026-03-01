@@ -1,7 +1,11 @@
-# nested defmodule parity
-defmodule Outer do
+defmodule Demo do
   defmodule Inner do
-    def hello, do: :hello
+    def greet() do
+      :hi
+    end
   end
-  def run, do: Inner.hello()
+
+  def run() do
+    Demo.Inner.greet()
+  end
 end

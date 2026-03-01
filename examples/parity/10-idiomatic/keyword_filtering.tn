@@ -1,11 +1,19 @@
-# keyword list filtering
-opts = [debug: true, verbose: false, timeout: 5000]
+defmodule Demo do
+  def run() do
+    case extract_ok_values([1, 2, 3]) do
+      results -> {results, sum_list(results)}
+    end
+  end
 
-active = Enum.filter(opts, fn {_k, v} -> v end)
-IO.puts(inspect(active))
+  defp extract_ok_values(list) do
+    for x when x > 1 <- list do
+      x
+    end
+  end
 
-keys = Enum.map(opts, fn {k, _v} -> k end)
-IO.puts(inspect(keys))
-
-timeout = Keyword.get(opts, :timeout)
-IO.puts(timeout)
+  defp sum_list(list) do
+    for x <- list, reduce: 0 do
+      acc -> acc + x
+    end
+  end
+end

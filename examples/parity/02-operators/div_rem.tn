@@ -1,5 +1,5 @@
-# div/rem operator parity
-a = 17
-b = 5
-IO.puts(div(a, b))
-IO.puts(rem(a, b))
+defmodule Demo do
+  def run() do
+    {div(10, 3), rem(10, 3)}
+  end
+end

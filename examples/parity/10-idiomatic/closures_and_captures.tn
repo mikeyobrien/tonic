@@ -1,10 +1,13 @@
-# closures and captures
-add = fn x, y -> x + y end
-result = add.(3, 4)
-IO.puts(result)
+defmodule Demo do
+  def run() do
+    case &(&1 * 2) do
+      double -> {double.(5), apply_to_list(double, [1, 2, 3])}
+    end
+  end
 
-double = &(&1 * 2)
-IO.puts(double.(5))
-
-mapper = &Enum.map/2
-IO.puts(inspect(mapper.([1,2,3], &(&1 + 1))))
+  defp apply_to_list(fun, list) do
+    for x <- list do
+      fun.(x)
+    end
+  end
+end

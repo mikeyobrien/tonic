@@ -21,7 +21,19 @@ fn module_doc(module: &Module) -> Option<&str> {
 }
 
 /// Build a list of (function_name, param_names, doc_string_or_None) entries.
+///
+/// The strategy mirrors how Elixir / ExDoc works: a `@doc` attribute that
+/// appears *before* a function definition is associated with that function.
+/// We walk the functions list in declaration order, and for each function we
+/// look at the module attributes to find a `@doc` whose position in the
+/// attribute slice corresponds to the function.
+///
+/// Because the parser stores `attributes` and `functions` as flat, ordered
+/// vecs (not interleaved), we use a simple heuristic: attributes are
+/// matched to functions in the same declaration order — the Nth `@doc`
+/// attribute belongs to the Nth function that *has* a `@doc` entry.
 fn function_docs(module: &Module) -> Vec<(String, Vec<String>, Option<String>)> {
+    // Collect only @doc entries, in declaration order.
     let doc_attrs: Vec<&str> = module
         .attributes
         .iter()
@@ -41,6 +53,7 @@ fn function_docs(module: &Module) -> Vec<(String, Vec<String>, Option<String>)> 
                 .map(|p| p.name().to_string())
                 .collect();
 
+            // Only public functions conventionally receive @doc attribution.
             let doc = if !func.is_private() {
                 doc_iter.next().map(|s| s.to_string())
             } else {
@@ -57,14 +70,17 @@ fn render_docs(modules: &[Module]) -> String {
     let mut out = String::new();
 
     for module in modules {
+        // Module header
         out.push_str(&format!("# {}\n", module.name));
 
+        // Module-level documentation
         if let Some(doc) = module_doc(module) {
             out.push('\n');
             out.push_str(doc);
             out.push('\n');
         }
 
+        // Functions section
         let funcs = function_docs(module);
         if !funcs.is_empty() {
             out.push_str("\n## Functions\n");

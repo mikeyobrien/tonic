@@ -1,15 +1,23 @@
-# fizzbuzz
-defmodule FizzBuzz do
-  def run(n) do
-    for i <- 1..n do
-      cond do
-        rem(i, 15) == 0 -> IO.puts("FizzBuzz")
-        rem(i, 3) == 0 -> IO.puts("Fizz")
-        rem(i, 5) == 0 -> IO.puts("Buzz")
-        true -> IO.puts(Integer.to_string(i))
-      end
+defmodule Demo do
+  def run() do
+    for i <- [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] do
+      fizzbuzz(i)
     end
   end
-end
 
-FizzBuzz.run(20)
+  defp fizzbuzz(n) when rem(n, 15) == 0 do
+    "FizzBuzz"
+  end
+
+  defp fizzbuzz(n) when rem(n, 3) == 0 do
+    "Fizz"
+  end
+
+  defp fizzbuzz(n) when rem(n, 5) == 0 do
+    "Buzz"
+  end
+
+  defp fizzbuzz(n) do
+    n
+  end
+end

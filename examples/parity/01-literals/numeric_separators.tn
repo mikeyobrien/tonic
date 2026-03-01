@@ -1,7 +1,5 @@
-# numeric separator parity
-a = 1_000_000
-b = 1_000.500_25
-c = 0xFF_FF
-IO.puts(a)
-IO.puts(b)
-IO.puts(c)
+defmodule Demo do
+  def run() do
+    {1_000_000, {1_000 + 500, 10_000.50}}
+  end
+end

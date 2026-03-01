@@ -1,10 +1,17 @@
-# fibonacci
-defmodule Fib do
-  def compute(0), do: 0
-  def compute(1), do: 1
-  def compute(n), do: compute(n - 1) + compute(n - 2)
-end
+defmodule Demo do
+  def run() do
+    {fib(0), fib(10)}
+  end
 
-for i <- 0..10 do
-  IO.puts(Fib.compute(i))
+  defp fib(0) do
+    0
+  end
+
+  defp fib(1) do
+    1
+  end
+
+  defp fib(n) when n > 1 do
+    fib(n - 1) + fib(n - 2)
+  end
 end
