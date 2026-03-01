@@ -1047,6 +1047,7 @@ fn lower_expr(
             offset,
             ..
         } => {
+  
             if updates.is_empty() {
                 return Err(LoweringError::unsupported("struct update arity", *offset));
             }
@@ -1845,7 +1846,7 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ir).expect("ir should serialize"),
             concat!(
-                "{\"functions\":[",
+                "{\"functions\":[{",
                 "{\"name\":\"Demo.run\",\"params\":[],\"ops\":[",
                 "{\"op\":\"const_int\",\"value\":1,\"offset\":37},",
                 "{\"op\":\"return\",\"offset\":37}",
@@ -2028,8 +2029,8 @@ mod tests {
                             "pattern":{"kind":"bind","name":"x"},
                             "source_ops":[
                                 {"op":"const_int","value":1,"offset":51},
-                                {"op":"const_int","value":2,"offset":54},
-                                {"op":"call","callee":{"kind":"builtin","name":"list"},"argc":2,"offset":46}
+                                    {"op":"const_int","value":2,"offset":54},
+                                    {"op":"call","callee":{"kind":"builtin","name":"list"},"argc":2,"offset":46}
                             ]
                         }
                     ],
