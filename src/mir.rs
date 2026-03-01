@@ -185,6 +185,7 @@ pub(crate) enum MirUnaryKind {
     Not,
     Bang,
     Raise,
+    BitwiseNot,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -202,9 +203,16 @@ pub(crate) enum MirBinaryKind {
     CmpIntGte,
     Concat,
     In,
+    NotIn,
     PlusPlus,
     MinusMinus,
     Range,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseShiftLeft,
+    BitwiseShiftRight,
+    SteppedRange,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
