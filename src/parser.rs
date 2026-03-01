@@ -1,1 +1,1 @@
-$$FILE:src/parser.rs$$
+$$FILE:parser.rs$$
