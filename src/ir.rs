@@ -1998,3 +1998,137 @@ mod tests {
     }
 
     #[test]
+    fn lower_ast_supports_question_and_case_ops() {
+        let source = "defmodule Demo do\n  def run() do\n    case ok(1)? do\n      :ok -> 2\n      _ -> 3\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support question and case");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_int","value":1,"offset":45},
+                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1,"offset":42},
+                {"op":"question","offset":47},
+                {
+                    "op":"case",
+                    "branches":[
+                        {
+                            "pattern":{"kind":"atom","value":"ok"},
+                            "ops":[{"op":"const_int","value":2,"offset":65}]
+                        },
+                        {
+                            "pattern":{"kind":"wildcard"},
+                            "ops":[{"op":"const_int","value":3,"offset":78}]
+                        }
+                    ],
+                    "offset":37
+                },
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_supports_for_comprehension_ops() {
+        let source = "defmodule Demo do\n  def run() do\n    for x <- list(1, 2) do\n      x + 1\n    end\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize for comprehension fixture");
+        let ast = parse_ast(&tokens).expect("parser should build for comprehension fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support for comprehensions");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {
+                    "op":"for",
+                    "into_ops": null,
+                    "reduce_ops": null,
+                    "generators":[
+                        {
+                            "pattern":{"kind":"bind","name":"x"},
+                            "source_ops":[
+                                {"op":"const_int","value":1,"offset":51},
+                                    {"op":"const_int","value":2,"offset":54},
+                                    {"op":"call","callee":{"kind":"builtin","name":"list"},"argc":2,"offset":46}
+                            ]
+                        }
+                    ],
+                    "body_ops":[
+                        {"op":"load_variable","name":"x","offset":66},
+                        {"op":"const_int","value":1,"offset":70},
+                        {"op":"add_int","offset":66}
+                    ],
+                    "offset":37
+                },
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_emits_distinct_not_and_bang_ops() {
+        let source = "defmodule Demo do\n  def run() do\n    tuple(not false, !nil)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize unary op fixture");
+        let ast = parse_ast(&tokens).expect("parser should build unary op fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support unary op fixture");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_bool","value":false,"offset":47},
+                {"op":"not","offset":43},
+                {"op":"const_nil","offset":55},
+                {"op":"bang","offset":54},
+                {"op":"call","callee":{"kind":"builtin","name":"tuple"},"argc":2,"offset":37},
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_generates_protocol_dispatcher_and_impl_functions() {
+        let source = "defmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  defimpl Size, for: Tuple do\n    def size(_value) do\n      2\n    end\n  end\n\n  def run() do\n    Size.size(tuple(1, 2))\n  end\nend\n";
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize protocol lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build protocol lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support protocol forms");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        let names = json["functions"]
+            .as_array()
+            .expect("lowered functions should be an array")
+            .iter()
+            .map(|function| {
+                function["name"]
+                    .as_str()
+                    .expect("lowered function should include a name")
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+
+        assert!(names.iter().any(|name| name == "Demo.run"));
+        assert!(names.iter().any(|name| name == "Size.size"));
+        assert!(names
+            .iter()
+            .any(|name| name == "__tonic_protocol_impl.Size.Tuple.size"));
+
+        let size_function = json["functions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|function| function["name"] == "Size.size")
+            .expect("lowered ir should include protocol dispatcher function");
+
+        let serialized_ops = serde_json::to_string(&size_function["ops"])
+            .expect("protocol dispatcher ops should serialize");
+        assert!(serialized_ops.contains("protocol_dispatch"));
+    }
+}
