@@ -440,6 +440,8 @@ fn collect_protocol_forms(ast: &Ast) -> (Vec<ProtocolDecl>, Vec<ProtocolImplDecl
     (protocols, implementations)
 }
 
+/// Substitute module attribute references (@attr_name as Variable expressions)
+/// with the attribute's value expression. This enables @attr in function bodies.
 fn substitute_module_attrs(expr: Expr, attrs: &HashMap<String, Expr>) -> Expr {
     match expr {
         Expr::Variable { ref name, .. } if name.starts_with('@') => {
@@ -494,6 +496,8 @@ fn substitute_module_attrs(expr: Expr, attrs: &HashMap<String, Expr>) -> Expr {
             id, offset,
             value: Box::new(substitute_module_attrs(*value, attrs)),
         },
+        // For other expressions (Case, For, Try, If/Unless via Call, etc.), just return as-is.
+        // The simple attribute value case (e.g. `@my_value` as the direct body) is handled above.
         other => other,
     }
 }
@@ -1038,40 +1042,91 @@ fn lower_expr(
             offset,
             ..
         } => {
+            if updates.is_empty() {
+                return Err(LoweringError::unsupported("map update arity", *offset));
+            }
+
             lower_expr(base, current_module, struct_definitions, ops)?;
 
-            for update in updates {
-                lower_expr(update.key(), current_module, struct_definitions, ops)?;
-                lower_expr(update.value(), current_module, struct_definitions, ops)?;
+            for entry in updates {
+                ops.push(IrOp::ConstAtom {
+                    value: entry.key.clone(),
+                    offset: *offset,
+                });
+                lower_expr(&entry.value, current_module, struct_definitions, ops)?;
+
                 ops.push(IrOp::Call {
                     callee: IrCallTarget::Builtin {
-                        name: "map_put".to_string(),
+                        name: "map_update".to_string(),
                     },
                     argc: 3,
                     offset: *offset,
                 });
             }
-
             Ok(())
         }
         Expr::StructUpdate {
-            module,
             base,
             updates,
             offset,
             ..
         } => {
+  
+            if updates.is_empty() {
+                return Err(LoweringError::unsupported("struct update arity", *offset));
+            }
+
             lower_expr(base, current_module, struct_definitions, ops)?;
 
-            for update in updates {
+            for entry in updates {
                 ops.push(IrOp::ConstAtom {
-                    value: update.key.clone(),
+                    value: entry.key.clone(),
                     offset: *offset,
                 });
-                lower_expr(&update.value, current_module, struct_definitions, ops)?;
+                lower_expr(&entry.value, current_module, struct_definitions, ops)?;
+
                 ops.push(IrOp::Call {
                     callee: IrCallTarget::Builtin {
-                        name: "map_put".to_string(),
+                        name: "map_update".to_string(),
+                    },
+                    argc: 3,
+                    offset: *offset,
+                });
+            }
+            Ok(())
+        }
+        Expr::Keyword {
+            entries, offset, ..
+        } => {
+            if entries.is_empty() {
+                return Err(LoweringError::unsupported("keyword literal arity", *offset));
+            }
+
+            let first = &entries[0];
+            ops.push(IrOp::ConstAtom {
+                value: first.key.clone(),
+                offset: *offset,
+            });
+            lower_expr(&first.value, current_module, struct_definitions, ops)?;
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "keyword".to_string(),
+                },
+                argc: 2,
+                offset: *offset,
+            });
+
+            for entry in entries.iter().skip(1) {
+                ops.push(IrOp::ConstAtom {
+                    value: entry.key.clone(),
+                    offset: *offset,
+                });
+                lower_expr(&entry.value, current_module, struct_definitions, ops)?;
+
+                ops.push(IrOp::Call {
+                    callee: IrCallTarget::Builtin {
+                        name: "keyword_append".to_string(),
                     },
                     argc: 3,
                     offset: *offset,
@@ -1080,106 +1135,7 @@ fn lower_expr(
 
             Ok(())
         }
-        Expr::Keyword {
-            entries, offset, ..
-        } => {
-            for entry in entries {
-                lower_expr(&entry.value, current_module, struct_definitions, ops)?;
-            }
-            ops.push(IrOp::Call {
-                callee: IrCallTarget::Builtin {
-                    name: "keyword".to_string(),
-                },
-                argc: entries.len(),
-                offset: *offset,
-            });
-            Ok(())
-        }
-        Expr::Atom { value, offset, .. } => {
-            ops.push(IrOp::ConstAtom {
-                value: value.clone(),
-                offset: *offset,
-            });
-            Ok(())
-        }
-        Expr::Variable { name, offset, .. } => {
-            if let Some(attr_name) = name.strip_prefix('@') {
-                // @attr references that weren't substituted (unknown attr) - skip or error
-                ops.push(IrOp::ConstNil { offset: *offset });
-                let _ = attr_name;
-                return Ok(());
-            }
-            ops.push(IrOp::LoadVariable {
-                name: name.clone(),
-                offset: *offset,
-            });
-            Ok(())
-        }
-        Expr::Binary {
-            op, left, right, offset, ..
-        } => lower_binary(op, left, right, *offset, current_module, struct_definitions, ops),
-        Expr::Unary { op, value, offset, .. } => {
-            use crate::parser::UnaryOp;
-            match op {
-                UnaryOp::Not => {
-                    lower_expr(value, current_module, struct_definitions, ops)?;
-                    ops.push(IrOp::Not { offset: *offset });
-                    Ok(())
-                }
-                UnaryOp::Bang => {
-                    lower_expr(value, current_module, struct_definitions, ops)?;
-                    ops.push(IrOp::Bang { offset: *offset });
-                    Ok(())
-                }
-                UnaryOp::Minus => {
-                    ops.push(IrOp::ConstInt { value: 0, offset: *offset });
-                    lower_expr(value, current_module, struct_definitions, ops)?;
-                    ops.push(IrOp::SubInt { offset: *offset });
-                    Ok(())
-                }
-                UnaryOp::BitwiseNot => {
-                    lower_expr(value, current_module, struct_definitions, ops)?;
-                    ops.push(IrOp::BitwiseNot { offset: *offset });
-                    Ok(())
-                }
-            }
-        }
-        Expr::Question { value, offset, .. } => {
-            lower_expr(value, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::Question { offset: *offset });
-            Ok(())
-        }
-        Expr::Group { inner, .. } => lower_expr(inner, current_module, struct_definitions, ops),
-        Expr::Pipe { left, right, offset, .. } => {
-            lower_pipe(left, right, *offset, current_module, struct_definitions, ops)
-        }
         Expr::Call {
-            callee,
-            args,
-            offset,
-            ..
-        } => lower_call(callee, args, *offset, current_module, struct_definitions, ops),
-        Expr::Fn {
-            params,
-            body,
-            offset,
-            ..
-        } => {
-            let closure_params = params
-                .iter()
-                .map(|p| p.name().to_string())
-                .collect::<Vec<_>>();
-            let mut closure_ops = Vec::new();
-            lower_expr(body, current_module, struct_definitions, &mut closure_ops)?;
-            closure_ops.push(IrOp::Return { offset: *offset });
-            ops.push(IrOp::MakeClosure {
-                params: closure_params,
-                ops: closure_ops,
-                offset: *offset,
-            });
-            Ok(())
-        }
-        Expr::Invoke {
             callee,
             args,
             offset,
@@ -1188,13 +1144,271 @@ fn lower_expr(
             for arg in args {
                 lower_expr(arg, current_module, struct_definitions, ops)?;
             }
+
+            ops.push(IrOp::Call {
+                callee: qualify_call_target(current_module, callee),
+                argc: args.len(),
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::Fn {
+            params,
+            body,
+            offset,
+            ..
+        } => {
+            let mut closure_ops = Vec::new();
+            lower_expr(body, current_module, struct_definitions, &mut closure_ops)?;
+            closure_ops.push(IrOp::Return {
+                offset: body.offset(),
+            });
+
+            ops.push(IrOp::MakeClosure {
+                params: params.clone(),
+                ops: closure_ops,
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::Invoke {
+            callee,
+            args,
+            offset,
+            ..
+        } => {
             lower_expr(callee, current_module, struct_definitions, ops)?;
+
+            for arg in args {
+                lower_expr(arg, current_module, struct_definitions, ops)?;
+            }
+
             ops.push(IrOp::CallValue {
                 argc: args.len(),
                 offset: *offset,
             });
+
             Ok(())
         }
+        Expr::FieldAccess {
+            base,
+            label,
+            offset,
+            ..
+        } => {
+            // Special case: __ENV__.module resolves to the current module atom
+            if let Expr::Variable { name, .. } = base.as_ref() {
+                if name == "__ENV__" && label == "module" {
+                    ops.push(IrOp::ConstAtom {
+                        value: current_module.to_string(),
+                        offset: *offset,
+                    });
+                    return Ok(());
+                }
+            }
+            lower_expr(base, current_module, struct_definitions, ops)?;
+            ops.push(IrOp::ConstAtom {
+                value: label.clone(),
+                offset: *offset,
+            });
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "map_access".to_string(),
+                },
+                argc: 2,
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::IndexAccess {
+            base,
+            index,
+            offset,
+            ..
+        } => {
+            lower_expr(base, current_module, struct_definitions, ops)?;
+            lower_expr(index, current_module, struct_definitions, ops)?;
+
+            ops.push(IrOp::Call {
+                callee: IrCallTarget::Builtin {
+                    name: "map_access".to_string(),
+                },
+                argc: 2,
+                offset: *offset,
+            });
+
+            Ok(())
+        }
+        Expr::Unary {
+            op, value, offset, ..
+        } => {
+            match op {
+                crate::parser::UnaryOp::Minus => {
+                    ops.push(IrOp::ConstInt {
+                        value: 0,
+                        offset: *offset,
+                    });
+                    lower_expr(value, current_module, struct_definitions, ops)?;
+                    ops.push(IrOp::SubInt { offset: *offset });
+                }
+                crate::parser::UnaryOp::Plus => {
+                    lower_expr(value, current_module, struct_definitions, ops)?;
+                }
+                crate::parser::UnaryOp::Not => {
+                    lower_expr(value, current_module, struct_definitions, ops)?;
+                    ops.push(IrOp::Not { offset: *offset });
+                }
+                crate::parser::UnaryOp::Bang => {
+                    lower_expr(value, current_module, struct_definitions, ops)?;
+                    ops.push(IrOp::Bang { offset: *offset });
+                }
+                crate::parser::UnaryOp::BitwiseNot => {
+                    lower_expr(value, current_module, struct_definitions, ops)?;
+                    ops.push(IrOp::BitwiseNot { offset: *offset });
+                }
+            }
+            Ok(())
+        }
+        Expr::Binary {
+            op,
+            left,
+            right,
+            offset,
+            ..
+        } => {
+            if *op == BinaryOp::Match {
+                lower_expr(right, current_module, struct_definitions, ops)?;
+                let pattern = lower_expr_pattern(left)?;
+                ops.push(IrOp::Match {
+                    pattern,
+                    offset: *offset,
+                });
+                return Ok(());
+            }
+
+            lower_expr(left, current_module, struct_definitions, ops)?;
+
+            match op {
+                BinaryOp::AndAnd => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
+                    ops.push(IrOp::AndAnd {
+                        right_ops,
+                        offset: *offset,
+                    });
+                    return Ok(());
+                }
+                BinaryOp::OrOr => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
+                    ops.push(IrOp::OrOr {
+                        right_ops,
+                        offset: *offset,
+                    });
+                    return Ok(());
+                }
+                BinaryOp::And => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
+                    ops.push(IrOp::And {
+                        right_ops,
+                        offset: *offset,
+                    });
+                    return Ok(());
+                }
+                BinaryOp::Or => {
+                    let mut right_ops = Vec::new();
+                    lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
+                    ops.push(IrOp::Or {
+                        right_ops,
+                        offset: *offset,
+                    });
+                    return Ok(());
+                }
+                _ => {}
+            }
+
+            lower_expr(right, current_module, struct_definitions, ops)?;
+            let ir_op = match op {
+                BinaryOp::Plus => IrOp::AddInt { offset: *offset },
+                BinaryOp::Minus => IrOp::SubInt { offset: *offset },
+                BinaryOp::Mul => IrOp::MulInt { offset: *offset },
+                BinaryOp::Div => IrOp::DivInt { offset: *offset },
+                BinaryOp::Eq => IrOp::CmpInt {
+                    kind: CmpKind::Eq,
+                    offset: *offset,
+                },
+                BinaryOp::NotEq => IrOp::CmpInt {
+                    kind: CmpKind::NotEq,
+                    offset: *offset,
+                },
+                BinaryOp::Lt => IrOp::CmpInt {
+                    kind: CmpKind::Lt,
+                    offset: *offset,
+                },
+                BinaryOp::Lte => IrOp::CmpInt {
+                    kind: CmpKind::Lte,
+                    offset: *offset,
+                },
+                BinaryOp::Gt => IrOp::CmpInt {
+                    kind: CmpKind::Gt,
+                    offset: *offset,
+                },
+                BinaryOp::Gte => IrOp::CmpInt {
+                    kind: CmpKind::Gte,
+                    offset: *offset,
+                },
+                BinaryOp::Concat => IrOp::Concat { offset: *offset },
+                BinaryOp::In => IrOp::In { offset: *offset },
+                BinaryOp::NotIn => IrOp::NotIn { offset: *offset },
+                BinaryOp::PlusPlus => IrOp::PlusPlus { offset: *offset },
+                BinaryOp::MinusMinus => IrOp::MinusMinus { offset: *offset },
+                BinaryOp::Range => IrOp::Range { offset: *offset },
+                BinaryOp::StrictEq => IrOp::CmpInt {
+                    kind: CmpKind::StrictEq,
+                    offset: *offset,
+                },
+                BinaryOp::StrictBangEq => IrOp::CmpInt {
+                    kind: CmpKind::StrictNotEq,
+                    offset: *offset,
+                },
+                BinaryOp::BitwiseAnd => IrOp::BitwiseAnd { offset: *offset },
+                BinaryOp::BitwiseOr => IrOp::BitwiseOr { offset: *offset },
+                BinaryOp::BitwiseXor => IrOp::BitwiseXor { offset: *offset },
+                BinaryOp::BitwiseShiftLeft => IrOp::BitwiseShiftLeft { offset: *offset },
+                BinaryOp::BitwiseShiftRight => IrOp::BitwiseShiftRight { offset: *offset },
+                BinaryOp::SteppedRange => IrOp::SteppedRange { offset: *offset },
+                BinaryOp::Match
+                | BinaryOp::And
+                | BinaryOp::Or
+                | BinaryOp::AndAnd
+                | BinaryOp::OrOr => unreachable!(),
+            };
+            ops.push(ir_op);
+            Ok(())
+        }
+        Expr::Question { value, offset, .. } => {
+            lower_expr(value, current_module, struct_definitions, ops)?;
+            ops.push(IrOp::Question { offset: *offset });
+            Ok(())
+        }
+        Expr::Pipe {
+            left,
+            right,
+            offset,
+            ..
+        } => lower_pipe_expr(
+            left,
+            right,
+            *offset,
+            current_module,
+            struct_definitions,
+            ops,
+        ),
         Expr::Case {
             subject,
             branches,
@@ -1202,9 +1416,36 @@ fn lower_expr(
             ..
         } => {
             lower_expr(subject, current_module, struct_definitions, ops)?;
-            let ir_branches = lower_branches(branches, current_module, struct_definitions)?;
+
+            let lowered_branches = branches
+                .iter()
+                .map(|branch| {
+                    let mut branch_ops = Vec::new();
+                    lower_expr(
+                        branch.body(),
+                        current_module,
+                        struct_definitions,
+                        &mut branch_ops,
+                    )?;
+
+                    let guard_ops = if let Some(guard) = branch.guard() {
+                        let mut guard_ops = Vec::new();
+                        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
+                        Some(guard_ops)
+                    } else {
+                        None
+                    };
+
+                    Ok(IrCaseBranch {
+                        pattern: lower_pattern(branch.head())?,
+                        guard_ops,
+                        ops: branch_ops,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+
             ops.push(IrOp::Case {
-                branches: ir_branches,
+                branches: lowered_branches,
                 offset: *offset,
             });
             Ok(())
@@ -1219,16 +1460,65 @@ fn lower_expr(
         } => {
             let mut body_ops = Vec::new();
             lower_expr(body, current_module, struct_definitions, &mut body_ops)?;
-            body_ops.push(IrOp::Return { offset: *offset });
 
-            let rescue_branches = lower_branches(rescue, current_module, struct_definitions)?;
-            let catch_branches = lower_branches(catch, current_module, struct_definitions)?;
+            let rescue_branches = rescue
+                .iter()
+                .map(|branch| {
+                    let mut branch_ops = Vec::new();
+                    lower_expr(
+                        branch.body(),
+                        current_module,
+                        struct_definitions,
+                        &mut branch_ops,
+                    )?;
 
-            let after_ops = if let Some(after) = after {
-                let mut aops = Vec::new();
-                lower_expr(after, current_module, struct_definitions, &mut aops)?;
-                aops.push(IrOp::Return { offset: *offset });
-                Some(aops)
+                    let guard_ops = if let Some(guard) = branch.guard() {
+                        let mut guard_ops = Vec::new();
+                        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
+                        Some(guard_ops)
+                    } else {
+                        None
+                    };
+
+                    Ok(IrCaseBranch {
+                        pattern: lower_pattern(branch.head())?,
+                        guard_ops,
+                        ops: branch_ops,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+
+            let catch_branches = catch
+                .iter()
+                .map(|branch| {
+                    let mut branch_ops = Vec::new();
+                    lower_expr(
+                        branch.body(),
+                        current_module,
+                        struct_definitions,
+                        &mut branch_ops,
+                    )?;
+
+                    let guard_ops = if let Some(guard) = branch.guard() {
+                        let mut guard_ops = Vec::new();
+                        lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
+                        Some(guard_ops)
+                    } else {
+                        None
+                    };
+
+                    Ok(IrCaseBranch {
+                        pattern: lower_pattern(branch.head())?,
+                        guard_ops,
+                        ops: branch_ops,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+
+            let after_ops = if let Some(after_expr) = after {
+                let mut ops = Vec::new();
+                lower_expr(after_expr, current_module, struct_definitions, &mut ops)?;
+                Some(ops)
             } else {
                 None
             };
@@ -1255,47 +1545,51 @@ fn lower_expr(
             offset,
             ..
         } => {
-            let ir_generators = generators
-                .iter()
-                .map(|gen| {
-                    let pattern = lower_pattern(gen.pattern())?;
-                    let mut source_ops = Vec::new();
-                    lower_expr(gen.source(), current_module, struct_definitions, &mut source_ops)?;
+            let mut ir_generators = Vec::new();
+            for generator in generators {
+                let mut source_ops = Vec::new();
+                lower_expr(
+                    generator.source(),
+                    current_module,
+                    struct_definitions,
+                    &mut source_ops,
+                )?;
 
-                    let guard_ops = if let Some(guard) = gen.guard() {
-                        let mut g_ops = Vec::new();
-                        lower_expr(guard, current_module, struct_definitions, &mut g_ops)?;
-                        Some(g_ops)
-                    } else {
-                        None
-                    };
+                let guard_ops = if let Some(guard) = generator.guard() {
+                    let mut guard_ops = Vec::new();
+                    lower_expr(guard, current_module, struct_definitions, &mut guard_ops)?;
+                    Some(guard_ops)
+                } else {
+                    None
+                };
 
-                    Ok(IrForGenerator {
-                        pattern,
-                        source_ops,
-                        guard_ops,
-                    })
-                })
-                .collect::<Result<Vec<_>, LoweringError>>()?;
-
-            let into_ops = if let Some(into_expr) = into {
-                let mut i_ops = Vec::new();
-                lower_expr(into_expr, current_module, struct_definitions, &mut i_ops)?;
-                Some(i_ops)
-            } else {
-                None
-            };
-
-            let reduce_ops = if let Some(reduce_expr) = reduce {
-                let mut r_ops = Vec::new();
-                lower_expr(reduce_expr, current_module, struct_definitions, &mut r_ops)?;
-                Some(r_ops)
-            } else {
-                None
-            };
+                ir_generators.push(IrForGenerator {
+                    pattern: lower_pattern(generator.pattern())?,
+                    source_ops,
+                    guard_ops,
+                });
+            }
 
             let mut body_ops = Vec::new();
             lower_expr(body, current_module, struct_definitions, &mut body_ops)?;
+
+            let into_ops = match into {
+                Some(into_expr) => {
+                    let mut ops = Vec::new();
+                    lower_expr(into_expr, current_module, struct_definitions, &mut ops)?;
+                    Some(ops)
+                }
+                None => None,
+            };
+
+            let reduce_ops = match reduce {
+                Some(reduce_expr) => {
+                    let mut ops = Vec::new();
+                    lower_expr(reduce_expr, current_module, struct_definitions, &mut ops)?;
+                    Some(ops)
+                }
+                None => None,
+            };
 
             ops.push(IrOp::For {
                 generators: ir_generators,
@@ -1306,13 +1600,34 @@ fn lower_expr(
             });
             Ok(())
         }
-        Expr::Bitstring { elements, offset, .. } => {
-            let count = elements.len();
-            for element in elements {
-                lower_expr(element, current_module, struct_definitions, ops)?;
+        Expr::Group { inner, .. } => lower_expr(inner, current_module, struct_definitions, ops),
+        Expr::Variable { name, offset, .. } => {
+            // __MODULE__ resolves to the current module's atom at compile time
+            if name == "__MODULE__" {
+                ops.push(IrOp::ConstAtom {
+                    value: current_module.to_string(),
+                    offset: *offset,
+                });
+                return Ok(());
             }
-            ops.push(IrOp::Bitstring {
-                count,
+            // __ENV__ resolves to a map with :module key; full map is complex,
+            // but bare __ENV__ emits a placeholder atom
+            if name == "__ENV__" {
+                ops.push(IrOp::ConstAtom {
+                    value: current_module.to_string(),
+                    offset: *offset,
+                });
+                return Ok(());
+            }
+            ops.push(IrOp::LoadVariable {
+                name: name.clone(),
+                offset: *offset,
+            });
+            Ok(())
+        }
+        Expr::Atom { value, offset, .. } => {
+            ops.push(IrOp::ConstAtom {
+                value: value.clone(),
                 offset: *offset,
             });
             Ok(())
@@ -1320,365 +1635,157 @@ fn lower_expr(
     }
 }
 
-fn lower_pipe(
+fn lower_pipe_expr(
     left: &Expr,
     right: &Expr,
-    offset: usize,
+    pipe_offset: usize,
     current_module: &str,
     struct_definitions: &StructDefinitions,
     ops: &mut Vec<IrOp>,
 ) -> Result<(), LoweringError> {
-    match right {
-        Expr::Call {
-            callee, args, ..
-        } => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            for arg in args {
-                lower_expr(arg, current_module, struct_definitions, ops)?;
-            }
-            lower_call_by_name(callee, args.len() + 1, offset, current_module, ops)
-        }
-        Expr::Variable { name, .. } => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::LoadVariable {
-                name: name.clone(),
-                offset,
-            });
-            ops.push(IrOp::CallValue { argc: 1, offset });
-            Ok(())
-        }
-        _ => Err(LoweringError::unsupported("pipe right-hand side", offset)),
-    }
-}
+    lower_expr(left, current_module, struct_definitions, ops)?;
 
-fn lower_call(
-    callee: &str,
-    args: &[Expr],
-    offset: usize,
-    current_module: &str,
-    struct_definitions: &StructDefinitions,
-    ops: &mut Vec<IrOp>,
-) -> Result<(), LoweringError> {
+    let Expr::Call {
+        callee,
+        args,
+        offset,
+        ..
+    } = right
+    else {
+        return Err(LoweringError::unsupported("pipe target", pipe_offset));
+    };
+
     for arg in args {
         lower_expr(arg, current_module, struct_definitions, ops)?;
     }
-    lower_call_by_name(callee, args.len(), offset, current_module, ops)
-}
-
-fn lower_call_by_name(
-    callee: &str,
-    argc: usize,
-    offset: usize,
-    current_module: &str,
-    ops: &mut Vec<IrOp>,
-) -> Result<(), LoweringError> {
-    let target = if is_builtin(callee) {
-        IrCallTarget::Builtin {
-            name: callee.to_string(),
-        }
-    } else {
-        let qualified = if callee.contains('.') {
-            callee.to_string()
-        } else {
-            qualify_function_name(current_module, callee)
-        };
-        IrCallTarget::Function { name: qualified }
-    };
 
     ops.push(IrOp::Call {
-        callee: target,
-        argc,
-        offset,
+        callee: qualify_call_target(current_module, callee),
+        argc: args.len() + 1,
+        offset: *offset,
     });
+
     Ok(())
 }
 
-fn qualify_function_name(module: &str, function: &str) -> String {
-    if function.contains('.') {
-        return function.to_string();
-    }
-    format!("{module}.{function}")
-}
+fn lower_expr_pattern(expr: &Expr) -> Result<IrPattern, LoweringError> {
+    match expr {
+        Expr::Atom { value, .. } => Ok(IrPattern::Atom {
+            value: value.clone(),
+        }),
+        Expr::Variable { name, .. } if name == "_" => Ok(IrPattern::Wildcard),
+        Expr::Variable { name, .. } => Ok(IrPattern::Bind { name: name.clone() }),
+        Expr::Int { value, .. } => Ok(IrPattern::Integer { value: *value }),
+        Expr::Bool { value, .. } => Ok(IrPattern::Bool { value: *value }),
+        Expr::Nil { .. } => Ok(IrPattern::Nil),
+        Expr::String { value, .. } => Ok(IrPattern::String {
+            value: value.clone(),
+        }),
+        Expr::Tuple { items, offset, .. } => {
+            let items = items
+                .iter()
+                .map(lower_expr_pattern)
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            if items.len() != 2 {
+                return Err(LoweringError::unsupported(
+                    "match tuple pattern arity",
+                    *offset,
+                ));
+            }
+            Ok(IrPattern::Tuple { items })
+        }
+        Expr::List { items, .. } => {
+            let items = items
+                .iter()
+                .map(lower_expr_pattern)
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            Ok(IrPattern::List { items, tail: None })
+        }
+        Expr::Map { entries, .. } => {
+            let entries = entries
+                .iter()
+                .map(|entry| {
+                    Ok(IrMapPatternEntry {
+                        key: lower_expr_pattern(entry.key())?,
+                        value: lower_expr_pattern(entry.value())?,
+                    })
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            Ok(IrPattern::Map { entries })
+        }
+        Expr::Struct {
+            module, entries, ..
+        } => {
+            let mut lowered_entries = vec![IrMapPatternEntry {
+                key: IrPattern::Atom {
+                    value: "__struct__".to_string(),
+                },
+                value: IrPattern::Atom {
+                    value: module.clone(),
+                },
+            }];
 
-fn is_builtin(callee: &str) -> bool {
-    matches!(
-        callee,
-        "ok" | "err"
-            | "tuple"
-            | "list"
-            | "map"
-            | "map_empty"
-            | "map_put"
-            | "map_get"
-            | "map_delete"
-            | "map_has_key"
-            | "map_keys"
-            | "map_values"
-            | "map_merge"
-            | "map_to_list"
-            | "keyword"
-            | "protocol_dispatch"
-            | "host_call"
-            | "div"
-            | "rem"
-            | "byte_size"
-            | "bit_size"
-    )
-}
+            for entry in entries {
+                lowered_entries.push(IrMapPatternEntry {
+                    key: IrPattern::Atom {
+                        value: entry.key.clone(),
+                    },
+                    value: lower_expr_pattern(&entry.value)?,
+                });
+            }
 
-fn lower_binary(
-    op: &BinaryOp,
-    left: &Expr,
-    right: &Expr,
-    offset: usize,
-    current_module: &str,
-    struct_definitions: &StructDefinitions,
-    ops: &mut Vec<IrOp>,
-) -> Result<(), LoweringError> {
-    match op {
-        BinaryOp::AndAnd => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            let mut right_ops = Vec::new();
-            lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
-            ops.push(IrOp::AndAnd { right_ops, offset });
-            Ok(())
-        }
-        BinaryOp::OrOr => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            let mut right_ops = Vec::new();
-            lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
-            ops.push(IrOp::OrOr { right_ops, offset });
-            Ok(())
-        }
-        BinaryOp::And => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            let mut right_ops = Vec::new();
-            lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
-            ops.push(IrOp::And { right_ops, offset });
-            Ok(())
-        }
-        BinaryOp::Or => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            let mut right_ops = Vec::new();
-            lower_expr(right, current_module, struct_definitions, &mut right_ops)?;
-            ops.push(IrOp::Or { right_ops, offset });
-            Ok(())
-        }
-        BinaryOp::Add => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::AddInt { offset });
-            Ok(())
-        }
-        BinaryOp::Sub => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::SubInt { offset });
-            Ok(())
-        }
-        BinaryOp::Mul => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::MulInt { offset });
-            Ok(())
-        }
-        BinaryOp::Div => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::DivInt { offset });
-            Ok(())
-        }
-        BinaryOp::Eq => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::Eq, offset });
-            Ok(())
-        }
-        BinaryOp::NotEq => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::NotEq, offset });
-            Ok(())
-        }
-        BinaryOp::Lt => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::Lt, offset });
-            Ok(())
-        }
-        BinaryOp::Lte => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::Lte, offset });
-            Ok(())
-        }
-        BinaryOp::Gt => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::Gt, offset });
-            Ok(())
-        }
-        BinaryOp::Gte => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::Gte, offset });
-            Ok(())
-        }
-        BinaryOp::StrictEq => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::StrictEq, offset });
-            Ok(())
-        }
-        BinaryOp::StrictNotEq => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::CmpInt { kind: CmpKind::StrictNotEq, offset });
-            Ok(())
-        }
-        BinaryOp::Concat => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::Concat { offset });
-            Ok(())
-        }
-        BinaryOp::In => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::In { offset });
-            Ok(())
-        }
-        BinaryOp::PlusPlus => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::PlusPlus { offset });
-            Ok(())
-        }
-        BinaryOp::MinusMinus => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::MinusMinus { offset });
-            Ok(())
-        }
-        BinaryOp::Range => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::Range { offset });
-            Ok(())
-        }
-        BinaryOp::NotIn => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::NotIn { offset });
-            Ok(())
-        }
-        BinaryOp::BitwiseAnd => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::BitwiseAnd { offset });
-            Ok(())
-        }
-        BinaryOp::BitwiseOr => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::BitwiseOr { offset });
-            Ok(())
-        }
-        BinaryOp::BitwiseXor => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::BitwiseXor { offset });
-            Ok(())
-        }
-        BinaryOp::BitwiseShiftLeft => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::BitwiseShiftLeft { offset });
-            Ok(())
-        }
-        BinaryOp::BitwiseShiftRight => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::BitwiseShiftRight { offset });
-            Ok(())
-        }
-        BinaryOp::SteppedRange => {
-            lower_expr(left, current_module, struct_definitions, ops)?;
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            ops.push(IrOp::SteppedRange { offset });
-            Ok(())
-        }
-        BinaryOp::Match => {
-            lower_expr(right, current_module, struct_definitions, ops)?;
-            let pattern = lower_match_pattern(left)?;
-            ops.push(IrOp::Match { pattern, offset });
-            Ok(())
-        }
-    }
-}
-
-fn lower_branches(
-    branches: &[crate::parser::Branch],
-    current_module: &str,
-    struct_definitions: &StructDefinitions,
-) -> Result<Vec<IrCaseBranch>, LoweringError> {
-    branches
-        .iter()
-        .map(|branch| {
-            let pattern = lower_pattern(branch.head())?;
-            let guard_ops = if let Some(guard) = branch.guard() {
-                let mut g_ops = Vec::new();
-                lower_expr(guard, current_module, struct_definitions, &mut g_ops)?;
-                Some(g_ops)
-            } else {
-                None
-            };
-            let mut ops = Vec::new();
-            lower_expr(branch.body(), current_module, struct_definitions, &mut ops)?;
-            Ok(IrCaseBranch {
-                pattern,
-                guard_ops,
-                ops,
+            Ok(IrPattern::Map {
+                entries: lowered_entries,
             })
-        })
-        .collect()
+        }
+        Expr::Binary {
+            op: BinaryOp::Match,
+            ..
+        } => Err(LoweringError::unsupported(
+            "nested match pattern",
+            expr.offset(),
+        )),
+        _ => Err(LoweringError::unsupported("match pattern", expr.offset())),
+    }
 }
 
 fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
     match pattern {
-        Pattern::Atom { value, .. } => Ok(IrPattern::Atom { value: value.clone() }),
-        Pattern::Bind { name, .. } => Ok(IrPattern::Bind { name: name.clone() }),
-        Pattern::Pin { name, .. } => Ok(IrPattern::Pin { name: name.clone() }),
+        Pattern::Atom { value } => Ok(IrPattern::Atom {
+            value: value.clone(),
+        }),
+        Pattern::Bind { name } => Ok(IrPattern::Bind { name: name.clone() }),
+        Pattern::Pin { name } => Ok(IrPattern::Pin { name: name.clone() }),
         Pattern::Wildcard => Ok(IrPattern::Wildcard),
-        Pattern::Integer { value, .. } => Ok(IrPattern::Integer { value: *value }),
-        Pattern::Bool { value, .. } => Ok(IrPattern::Bool { value: *value }),
+        Pattern::Integer { value } => Ok(IrPattern::Integer { value: *value }),
+        Pattern::Bool { value } => Ok(IrPattern::Bool { value: *value }),
         Pattern::Nil => Ok(IrPattern::Nil),
-        Pattern::String { value, .. } => Ok(IrPattern::String { value: value.clone() }),
+        Pattern::String { value } => Ok(IrPattern::String {
+            value: value.clone(),
+        }),
         Pattern::Tuple { items } => {
-            let lowered_items = items
+            let items = items
                 .iter()
                 .map(lower_pattern)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(IrPattern::Tuple {
-                items: lowered_items,
-            })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+
+            Ok(IrPattern::Tuple { items })
         }
         Pattern::List { items, tail } => {
-            let lowered_items = items
+            let items = items
                 .iter()
                 .map(lower_pattern)
-                .collect::<Result<Vec<_>, _>>()?;
-            let lowered_tail = tail
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            let tail = tail
                 .as_ref()
-                .map(|t| lower_pattern(t).map(Box::new))
-                .transpose()?;
-            Ok(IrPattern::List {
-                items: lowered_items,
-                tail: lowered_tail,
-            })
+                .map(|tail| lower_pattern(tail))
+                .transpose()?
+                .map(Box::new);
+
+            Ok(IrPattern::List { items, tail })
         }
         Pattern::Map { entries } => {
-            let lowered_entries = entries
+            let entries = entries
                 .iter()
                 .map(|entry| {
                     Ok(IrMapPatternEntry {
@@ -1687,12 +1794,13 @@ fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
                     })
                 })
                 .collect::<Result<Vec<_>, LoweringError>>()?;
-            Ok(IrPattern::Map {
-                entries: lowered_entries,
-            })
+
+            Ok(IrPattern::Map { entries })
         }
-        Pattern::Struct { module, entries, .. } => {
-            let mut map_entries = vec![IrMapPatternEntry {
+        Pattern::Struct {
+            module, entries, ..
+        } => {
+            let mut lowered_entries = vec![IrMapPatternEntry {
                 key: IrPattern::Atom {
                     value: "__struct__".to_string(),
                 },
@@ -1700,185 +1808,193 @@ fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
                     value: module.clone(),
                 },
             }];
+
             for entry in entries {
-                map_entries.push(IrMapPatternEntry {
+                lowered_entries.push(IrMapPatternEntry {
                     key: IrPattern::Atom {
-                        value: entry.key().to_string(),
+                        value: entry.key.clone(),
                     },
                     value: lower_pattern(entry.value())?,
                 });
             }
-            Ok(IrPattern::Map {
-                entries: map_entries,
-            })
-        }
-    }
-}
 
-fn lower_match_pattern(expr: &Expr) -> Result<IrPattern, LoweringError> {
-    match expr {
-        Expr::Variable { name, .. } => {
-            if name == "_" {
-                Ok(IrPattern::Wildcard)
-            } else {
-                Ok(IrPattern::Bind { name: name.clone() })
-            }
-        }
-        Expr::Int { value, .. } => Ok(IrPattern::Integer { value: *value }),
-        Expr::Bool { value, .. } => Ok(IrPattern::Bool { value: *value }),
-        Expr::Nil { .. } => Ok(IrPattern::Nil),
-        Expr::String { value, .. } => Ok(IrPattern::String { value: value.clone() }),
-        Expr::Atom { value, .. } => Ok(IrPattern::Atom { value: value.clone() }),
-        Expr::Tuple { items, offset, .. } => {
-            if items.len() != 2 {
-                return Err(LoweringError::unsupported("tuple pattern arity", *offset));
-            }
-            let lowered_items = items
-                .iter()
-                .map(lower_match_pattern)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(IrPattern::Tuple {
-                items: lowered_items,
-            })
-        }
-        Expr::List { items, offset, .. } => {
-            let lowered_items = items
-                .iter()
-                .map(lower_match_pattern)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(IrPattern::List {
-                items: lowered_items,
-                tail: None,
-            })
-        }
-        Expr::Map { entries, offset, .. } => {
-            let lowered_entries = entries
-                .iter()
-                .map(|entry| {
-                    Ok(IrMapPatternEntry {
-                        key: lower_match_pattern(entry.key())?,
-                        value: lower_match_pattern(entry.value())?,
-                    })
-                })
-                .collect::<Result<Vec<_>, LoweringError>>()?;
             Ok(IrPattern::Map {
                 entries: lowered_entries,
             })
         }
-        Expr::Binary { op: BinaryOp::PlusPlus, left, right, .. } => {
-            let head_items = match left.as_ref() {
-                Expr::List { items, .. } => items
-                    .iter()
-                    .map(lower_match_pattern)
-                    .collect::<Result<Vec<_>, _>>()?,
-                _ => vec![lower_match_pattern(left)?],
-            };
-            let tail = lower_match_pattern(right)?;
-            Ok(IrPattern::List {
-                items: head_items,
-                tail: Some(Box::new(tail)),
-            })
-        }
-        Expr::Bitstring { elements, offset, .. } => {
-            let segments = elements
-                .iter()
-                .map(|element| lower_bitstring_pattern_element(element, *offset))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(IrPattern::Bitstring { segments })
-        }
-        Expr::Unary { op: crate::parser::UnaryOp::Minus, value, offset, .. } => {
-            match value.as_ref() {
-                Expr::Int { value: v, .. } => Ok(IrPattern::Integer { value: -v }),
-                _ => Err(LoweringError::unsupported("negative match pattern", *offset)),
-            }
-        }
-        other => Err(LoweringError::unsupported("match pattern", other.offset())),
     }
 }
 
-fn lower_bitstring_pattern_element(
-    element: &Expr,
-    offset: usize,
-) -> Result<IrBitstringSegment, LoweringError> {
-    match element {
-        Expr::Variable { name, .. } => {
-            if name == "_" {
-                Ok(IrBitstringSegment::Wildcard)
-            } else {
-                Ok(IrBitstringSegment::Bind { name: name.clone() })
-            }
+fn qualify_function_name(module_name: &str, function_name: &str) -> String {
+    format!("{module_name}.{function_name}")
+}
+
+fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
+    if is_builtin_call_target(callee) {
+        IrCallTarget::Builtin {
+            name: callee.to_string(),
         }
-        Expr::Int { value, .. } => {
-            let byte_val = u8::try_from(*value)
-                .map_err(|_| LoweringError::unsupported("bitstring literal out of u8 range", offset))?;
-            Ok(IrBitstringSegment::Literal { value: byte_val })
+    } else if callee.contains('.') {
+        IrCallTarget::Function {
+            name: callee.to_string(),
         }
-        _ => Err(LoweringError::unsupported("bitstring pattern element", offset)),
+    } else {
+        IrCallTarget::Function {
+            name: qualify_function_name(current_module, callee),
+        }
     }
+}
+
+fn is_builtin_call_target(callee: &str) -> bool {
+    matches!(
+        callee,
+        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+            | "div" | "rem" | "byte_size" | "bit_size"
+    ) || guard_builtins::is_guard_builtin(callee)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::lower_ast_to_ir;
     use crate::lexer::scan_tokens;
     use crate::parser::parse_ast;
 
-    fn lower(source: &str) -> IrProgram {
-        let tokens = scan_tokens(source).expect("scanner");
-        let ast = parse_ast(&tokens).expect("parser");
-        lower_ast_to_ir(&ast).expect("lowering")
-    }
-
     #[test]
-    fn lower_int_literal() {
-        let program = lower("defmodule M do\n  def f() do\n    42\n  end\nend\n");
-        assert_eq!(program.functions.len(), 1);
-        let func = &program.functions[0];
-        assert_eq!(func.name, "M.f");
-    }
+    fn lower_ast_emits_const_int_and_return_for_literal_function() {
+        let source = "defmodule Demo do\n  def run() do\n    1\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
 
-    #[test]
-    fn lower_simple_addition() {
-        let program = lower("defmodule M do\n  def add(a, b) do\n    a + b\n  end\nend\n");
-        let func = &program.functions[0];
-        assert!(func.ops.iter().any(|op| matches!(op, IrOp::AddInt { .. })));
-    }
+        let ir = lower_ast_to_ir(&ast).expect("lowering should succeed for literal body");
 
-    #[test]
-    fn lower_case_expression() {
-        let program = lower(
-            "defmodule M do\n  def f(x) do\n    case x do\n      1 -> :one\n      _ -> :other\n    end\n  end\nend\n",
+        assert_eq!(
+            serde_json::to_string(&ir).expect("ir should serialize"),
+            concat!(
+                "{\"functions\":[",
+                "{\"name\":\"Demo.run\",\"params\":[],\"ops\":[",
+                "{\"op\":\"const_int\",\"value\":1,\"offset\":37},",
+                "{\"op\":\"return\",\"offset\":37}",
+                "]}",
+                "]}"
+            )
         );
-        let func = &program.functions[0];
-        assert!(func.ops.iter().any(|op| matches!(op, IrOp::Case { .. })));
     }
 
     #[test]
-    fn lower_protocol_dispatch_function_inserts_case() {
-        let source = "defmodule Stringable do\n  defprotocol do\n    def to_string(x)\n  end\nend\n\ndefmodule MyModule do\n  defimpl Stringable, for: Map do\n    def to_string(x) do\n      \"map\"\n    end\n  end\nend\n";
-        let program = lower(source);
-        let dispatch = program
+    fn lower_ast_qualifies_local_call_targets() {
+        let source = "defmodule Demo do\n  def run() do\n    helper(1)\n  end\n\n  def helper(value) do\n    value()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should succeed for call body");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_int","value":1,"offset":44},
+                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1,"offset":37},
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_canonicalizes_call_target_kinds() {
+        let source = "defmodule Demo do\n  def run() do\n    ok(helper(1))\n  end\n\n  def helper(value) do\n    value()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should succeed for call body");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_int","value":1,"offset":47},
+                {"op":"call","callee":{"kind":"function","name":"Demo.helper"},"argc":1,"offset":40},
+                {"op":"call","callee":{"kind":"builtin","name":"ok"},"argc":1,"offset":37},
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_marks_protocol_dispatch_as_builtin_call_target() {
+        let source =
+            "defmodule Demo do\n  def run() do\n    protocol_dispatch(tuple(1, 2))\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir =
+            lower_ast_to_ir(&ast).expect("lowering should classify protocol dispatch as builtin");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        assert_eq!(
+            json["functions"][0]["ops"],
+            serde_json::json!([
+                {"op":"const_int","value":1,"offset":61},
+                {"op":"const_int","value":2,"offset":64},
+                {"op":"call","callee":{"kind":"builtin","name":"tuple"},"argc":2,"offset":55},
+                {"op":"call","callee":{"kind":"builtin","name":"protocol_dispatch"},"argc":1,"offset":37},
+                {"op":"return","offset":37}
+            ])
+        );
+    }
+
+    #[test]
+    fn lower_ast_marks_host_call_as_builtin_call_target() {
+        let source =
+            "defmodule Demo do\n  def run() do\n    host_call(:identity, 42)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should classify host_call as builtin");
+        let json = serde_json::to_value(&ir).expect("ir should serialize");
+
+        // Find the host_call operation
+        let ops = &json["functions"][0]["ops"];
+        let host_call_op = ops
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|op| op["op"] == "call" && op["callee"]["name"] == "host_call")
+            .expect("lowered ir should include host_call as builtin");
+
+        assert_eq!(host_call_op["callee"]["kind"], "builtin");
+        assert_eq!(host_call_op["callee"]["name"], "host_call");
+    }
+
+    #[test]
+    fn lower_ast_threads_pipe_input_into_rhs_call_arguments() {
+        let source = "defmodule Enum do\n  def stage_one(_value) do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    tuple(1, 2) |> Enum.stage_one()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize lowering fixture");
+        let ast = parse_ast(&tokens).expect("parser should build lowering fixture ast");
+
+        let ir = lower_ast_to_ir(&ast).expect("lowering should support pipe expressions");
+        let run_function = ir
             .functions
             .iter()
-            .find(|f| f.name == "Stringable.to_string")
-            .expect("dispatch function should exist");
-        assert!(dispatch.ops.iter().any(|op| matches!(op, IrOp::Case { .. })));
+            .find(|function| function.name == "Demo.run")
+            .expect("lowered ir should include Demo.run");
+
+        assert!(matches!(
+            &run_function.ops[2],
+            super::IrOp::Call {
+                callee: super::IrCallTarget::Builtin { name },
+                argc: 2,
+                ..
+            } if name == "tuple"
+        ));
+
+        assert!(matches!(
+            &run_function.ops[3],
+            super::IrOp::Call {
+                callee: super::IrCallTarget::Function { name },
+                argc: 1,
+                ..
+            } if name == "Enum.stage_one"
+        ));
     }
 
     #[test]
-    fn ir_ops_should_serialize() {
-        let program = lower(
-            "defmodule M do\n  def f(x) do\n    x\n  end\nend\n",
-        );
-        let serialized = serde_json::to_string(&program).expect("ir should serialize");
-        assert!(!serialized.is_empty());
-    }
-
-    #[test]
-    fn ir_dispatch_ops_should_serialize() {
-        let source = "defmodule Stringable do\n  defprotocol do\n    def to_string(x)\n  end\nend\n\ndefmodule MyModule do\n  defimpl Stringable, for: Map do\n    def to_string(x) do\n      \"map\"\n    end\n  end\nend\n";
-        let program = lower(source);
-        let serialized_ops = serde_json::to_string(&program).expect("dispatch ir should serialize");
-        assert!(serialized_ops.contains("protocol_dispatch"));
-    }
-}
