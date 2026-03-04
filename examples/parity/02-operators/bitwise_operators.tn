@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {5 &&& 3, {5 ||| 3, {5 ^^^ 6, {~~~5, {1 <<< 4, 16 >>> 2}}}}}
+  end
+end

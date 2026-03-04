@@ -420,6 +420,7 @@ fn runtime_tag(value: &RuntimeValue) -> TValueTag {
         RuntimeValue::Keyword(_) => TValueTag::Keyword,
         RuntimeValue::List(_) => TValueTag::List,
         RuntimeValue::Range(_, _) => TValueTag::Range,
+        RuntimeValue::SteppedRange(_, _, _) => TValueTag::Range, // fallback to range tag
         RuntimeValue::Closure(_) => TValueTag::Closure,
     }
 }

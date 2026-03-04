@@ -137,6 +137,36 @@ pub(crate) fn evaluate_builtin_call(
             interop::evaluate_protocol_dispatch(value, offset)
         }
         "host_call" => interop::evaluate_host_call(args, offset),
+        "div" => {
+            let (left, right) = expect_pair_builtin_args(name, args, offset)?;
+            ops::kernel_div(left, right, offset)
+        }
+        "rem" => {
+            let (left, right) = expect_pair_builtin_args(name, args, offset)?;
+            ops::kernel_rem(left, right, offset)
+        }
+        "byte_size" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::List(ref items) => Ok(RuntimeValue::Int(items.len() as i64)),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::UnsupportedBuiltin,
+                    format!("byte_size expects a bitstring (list), found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "bit_size" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::List(ref items) => Ok(RuntimeValue::Int((items.len() * 8) as i64)),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::UnsupportedBuiltin,
+                    format!("bit_size expects a bitstring (list), found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
         _ => Err(NativeRuntimeError::at_offset(
             NativeRuntimeErrorCode::UnsupportedBuiltin,
             format!("unsupported builtin call in runtime evaluator: {name}"),
@@ -159,6 +189,7 @@ pub(crate) fn runtime_value_kind(value: &RuntimeValue) -> &'static str {
         RuntimeValue::Keyword(_) => "keyword",
         RuntimeValue::List(_) => "list",
         RuntimeValue::Range(_, _) => "range",
+        RuntimeValue::SteppedRange(_, _, _) => "stepped_range",
         RuntimeValue::Closure(_) => "function",
     }
 }

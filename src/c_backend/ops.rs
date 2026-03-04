@@ -71,6 +71,9 @@ pub(super) fn emit_c_instructions(
                 crate::mir::MirUnaryKind::Bang => {
                     out.push_str(&format!("  v{dest} = tn_runtime_bang(v{input});\n"));
                 }
+                crate::mir::MirUnaryKind::BitwiseNot => {
+                    out.push_str(&format!("  v{dest} = (TnVal)(~(int64_t)v{input});\n"));
+                }
             },
             MirInstruction::Question { dest, input, .. } => {
                 out.push_str(&format!("  v{dest} = tn_runtime_question(v{input});\n"));
@@ -110,7 +113,7 @@ pub(super) fn emit_c_instructions(
                 )?;
                 // Named Tonic functions return with rc=1 from their terminator
                 // retain, so no extra retain is needed here; we balance with a
-                // register (+1) then release (−1) → net rc=1 in outer frame.
+                // register (+1) then release (-1) -> net rc=1 in outer frame.
                 // Builtin calls return rc=0 (no terminator), so we do need an
                 // explicit retain first to hold the value across the frame pop.
                 if matches!(callee, IrCallTarget::Builtin { .. }) {
@@ -143,7 +146,7 @@ pub(super) fn emit_c_instructions(
                 ));
                 // Same ownership contract as named calls: callee returns rc=1,
                 // pop the call-site frame (releases closure+args), register
-                // result (+1) and release the callee retain (-1) → net rc=1.
+                // result (+1) and release the callee retain (-1) -> net rc=1.
                 out.push_str(&format!("  tn_runtime_root_frame_pop({root_frame});\n"));
                 out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
                 out.push_str(&format!("  tn_runtime_release(v{dest});\n"));
@@ -244,6 +247,27 @@ fn emit_c_binary(dest: u32, kind: &MirBinaryKind, left: u32, right: u32, out: &m
         )),
         MirBinaryKind::Range => out.push_str(&format!(
             "  v{dest} = tn_runtime_range(v{left}, v{right});\n"
+        )),
+        MirBinaryKind::NotIn => out.push_str(&format!(
+            "  v{dest} = tn_runtime_not_in(v{left}, v{right});\n"
+        )),
+        MirBinaryKind::BitwiseAnd => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} & (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseOr => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} | (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseXor => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} ^ (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseShiftLeft => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} << (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::BitwiseShiftRight => out.push_str(&format!(
+            "  v{dest} = (TnVal)((int64_t)v{left} >> (int64_t)v{right});\n"
+        )),
+        MirBinaryKind::SteppedRange => out.push_str(&format!(
+            "  v{dest} = tn_runtime_stepped_range(v{left}, v{right});\n"
         )),
     }
 }
@@ -387,6 +411,50 @@ fn emit_c_builtin_call(
         "protocol_dispatch" => {
             out.push_str(&format!(
                 "  v{dest} = tn_runtime_protocol_dispatch({rendered_args});\n"
+            ));
+        }
+        "div" => {
+            let args: Vec<&str> = rendered_args.split(", ").collect();
+            if args.len() != 2 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin div arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = (TnVal)({} / {});\n",
+                args[0], args[1]
+            ));
+        }
+        "rem" => {
+            let args: Vec<&str> = rendered_args.split(", ").collect();
+            if args.len() != 2 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin rem arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = (TnVal)({} % {});\n",
+                args[0], args[1]
+            ));
+        }
+        "byte_size" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin byte_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_byte_size({rendered_args});\n"
+            ));
+        }
+        "bit_size" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin bit_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_bit_size({rendered_args});\n"
             ));
         }
         other => {

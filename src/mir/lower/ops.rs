@@ -120,6 +120,9 @@ impl FunctionLowerer {
             IrOp::Bang { offset } => {
                 self.push_unary(block_id, stack, MirUnaryKind::Bang, offset, MirType::Bool)
             }
+            IrOp::BitwiseNot { offset } => {
+                self.push_unary(block_id, stack, MirUnaryKind::BitwiseNot, offset, MirType::Int)
+            }
             IrOp::Raise { offset } => self.push_unary(
                 block_id,
                 stack,
@@ -141,8 +144,8 @@ impl FunctionLowerer {
             }
             IrOp::CmpInt { kind, offset } => {
                 let binary_kind = match kind {
-                    CmpKind::Eq => MirBinaryKind::CmpIntEq,
-                    CmpKind::NotEq => MirBinaryKind::CmpIntNotEq,
+                    CmpKind::Eq | CmpKind::StrictEq => MirBinaryKind::CmpIntEq,
+                    CmpKind::NotEq | CmpKind::StrictNotEq => MirBinaryKind::CmpIntNotEq,
                     CmpKind::Lt => MirBinaryKind::CmpIntLt,
                     CmpKind::Lte => MirBinaryKind::CmpIntLte,
                     CmpKind::Gt => MirBinaryKind::CmpIntGt,
@@ -159,6 +162,27 @@ impl FunctionLowerer {
             ),
             IrOp::In { offset } => {
                 self.push_binary(block_id, stack, MirBinaryKind::In, offset, MirType::Bool)
+            }
+            IrOp::NotIn { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::NotIn, offset, MirType::Bool)
+            }
+            IrOp::BitwiseAnd { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::BitwiseAnd, offset, MirType::Int)
+            }
+            IrOp::BitwiseOr { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::BitwiseOr, offset, MirType::Int)
+            }
+            IrOp::BitwiseXor { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::BitwiseXor, offset, MirType::Int)
+            }
+            IrOp::BitwiseShiftLeft { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::BitwiseShiftLeft, offset, MirType::Int)
+            }
+            IrOp::BitwiseShiftRight { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::BitwiseShiftRight, offset, MirType::Int)
+            }
+            IrOp::SteppedRange { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::SteppedRange, offset, MirType::Dynamic)
             }
             IrOp::PlusPlus { offset } => self.push_binary(
                 block_id,

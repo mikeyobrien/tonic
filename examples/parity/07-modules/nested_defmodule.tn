@@ -1,0 +1,11 @@
+defmodule Demo do
+  defmodule Inner do
+    def greet() do
+      :hi
+    end
+  end
+
+  def run() do
+    Demo.Inner.greet()
+  end
+end

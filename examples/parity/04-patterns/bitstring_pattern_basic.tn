@@ -1,0 +1,8 @@
+defmodule Demo do
+  def run() do
+    case <<1, 2, 3>> do
+      <<a, b, c>> -> {a, {b, c}}
+      _ -> :no_match
+    end
+  end
+end

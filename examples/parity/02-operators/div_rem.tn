@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {div(10, 3), rem(10, 3)}
+  end
+end

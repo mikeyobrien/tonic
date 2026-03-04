@@ -1,0 +1,7 @@
+defmodule Demo do
+  @my_value 42
+
+  def run() do
+    @my_value
+  end
+end

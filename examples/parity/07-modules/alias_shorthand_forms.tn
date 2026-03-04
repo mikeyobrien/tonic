@@ -1,0 +1,13 @@
+defmodule Math do
+  def double(x) do
+    x * 2
+  end
+end
+
+defmodule Demo do
+  alias Math
+
+  def run() do
+    Math.double(21)
+  end
+end

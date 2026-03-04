@@ -30,11 +30,11 @@ _Last updated: 2026-02-25_
 - [x] strings (`"..."`) (`examples/parity/01-literals/bool_nil_string.tn`)
 - [x] string interpolation (`"#{expr}"`) (`tests/check_dump_ast_string_interpolation.rs`)
 - [x] heredocs (`"""..."""`) (`examples/parity/01-literals/heredoc_multiline.tn`)
-- [~] sigils: `~s`/`~r` only (`examples/parity/99-stretch/sigils.tn`, `src/lexer.rs`)
+- [x] sigils: `~s`/`~r`/`~w` (`examples/parity/99-stretch/sigils.tn`, `examples/parity/99-stretch/sigils_extended.tn`, `src/lexer.rs`)
 - [~] bitstring literal parse support (`<<...>>`) but runtime lowered as list (`examples/parity/99-stretch/bitstring_binary.tn`)
-- [ ] hex/octal/binary integer literals (`src/lexer.rs`)
-- [ ] numeric separators (`1_000`) (`src/lexer.rs`)
-- [ ] char literals (`?a`) (`src/lexer.rs`)
+- [x] hex/octal/binary integer literals (`examples/parity/01-literals/hex_octal_binary.tn`, `src/lexer.rs`)
+- [x] numeric separators (`1_000`) (`examples/parity/01-literals/numeric_separators.tn`, `src/lexer.rs`)
+- [x] char literals (`?a`) (`examples/parity/01-literals/char_literals.tn`, `src/lexer.rs`)
 
 - [x] arithmetic `+ - * /` (`examples/parity/02-operators/arithmetic_basic.tn`)
 - [x] comparison `== != < <= > >=` (`examples/parity/02-operators/comparison_set.tn`)
@@ -43,11 +43,11 @@ _Last updated: 2026-02-25_
 - [x] concatenation/list ops `<> ++ --` (`examples/parity/02-operators/concat_and_list_ops.tn`)
 - [x] range and membership `..` / `in` (`examples/parity/02-operators/membership_and_range.tn`)
 - [x] precedence baseline coverage (`tests/check_dump_ast_expressions.rs`)
-- [ ] strict equality `===` / `!==` (`src/lexer.rs`)
-- [ ] `div` / `rem` operator parity (`src/lexer.rs`)
-- [ ] `not in` operator form (`src/parser.rs`)
-- [ ] bitwise operator family (`src/lexer.rs`)
-- [ ] stepped ranges (`..//`) (`src/lexer.rs`, `src/parser.rs`)
+- [x] strict equality `===` / `!==` (`examples/parity/02-operators/strict_equality.tn`, `src/lexer.rs`)
+- [x] `div` / `rem` operator parity (`examples/parity/02-operators/div_rem.tn`, `src/runtime.rs`)
+- [x] `not in` operator form (`examples/parity/02-operators/not_in.tn`, `src/parser.rs`)
+- [x] bitwise operator family (`examples/parity/02-operators/bitwise_operators.tn`, `src/lexer.rs`)
+- [x] stepped ranges (`..//`) (`examples/parity/02-operators/stepped_range.tn`, `src/lexer.rs`, `src/parser.rs`)
 
 ## 3) Collections, map/keyword forms, access
 
@@ -75,7 +75,7 @@ _Last updated: 2026-02-25_
 - [x] `when` guards in case/function branches (`examples/parity/04-patterns/pin_pattern_and_guard.tn`, `examples/parity/05-functions/function_guards_when.tn`)
 - [x] match operator `=` (`examples/parity/04-patterns/match_operator_bindings.tn`)
 - [x] non-exhaustive case diagnostics baseline (`tests/check_non_exhaustive_case.rs`)
-- [ ] bitstring/binary patterns (`<<x::8, rest::binary>>`) (`examples/parity/99-stretch/bitstring_binary.tn`)
+- [x] basic bitstring/binary patterns (`<<a, b, c>>` lowered as list patterns, no `::` specifiers) (`examples/parity/04-patterns/bitstring_pattern_basic.tn`, `src/parser.rs`)
 
 ## 5) Functions and closures
 
@@ -89,7 +89,7 @@ _Last updated: 2026-02-25_
 - [x] closure capture and invocation (`fun.(x)`) (`tests/run_anon_fn_capture_smoke.rs`)
 - [x] guard builtin parity (`is_integer/1`, `is_float/1`, `is_number/1`, `is_atom/1`, `is_binary/1`, `is_list/1`, `is_tuple/1`, `is_map/1`, `is_nil/1`) with guard-only diagnostics (`src/guard_builtins.rs`, `src/resolver.rs`, `src/native_runtime/mod.rs`, `src/c_backend/terminator.rs`, `tests/run_guard_builtin_parity_smoke.rs`, `examples/parity/05-functions/guard_builtins_parity.tn`)
 - [x] multi-clause anonymous functions (`fn ...; ... end`) (`src/parser.rs`, `tests/run_anon_fn_capture_smoke.rs`, `examples/parity/05-functions/function_capture_multi_clause_anon.tn`)
-- [x] named function capture (`&Module.fun/arity`, plus local `&fun/arity`) (`src/parser.rs`, `tests/check_capture_diagnostics.rs`, `tests/run_anon_fn_capture_smoke.rs`, `examples/parity/05-functions/function_capture_named_arity.tn`)
+- [x] named function capture (`&Module.fun/arity`, plus local `&fun/arity`) (`src/parser.rs`, `tests/check_capture_diagnostics.rs`, `tests/run_anon_fn_capture_smoke.rs`, `examples/parity/05-functions/function_capture_named_arity.tn`, `examples/parity/05-functions/function_capture_multi_clause_anon.tn`)
 
 ## 6) Control flow
 
@@ -113,13 +113,13 @@ _Last updated: 2026-02-25_
 - [x] `import Module` + `import ... only:/except:` (`src/parser.rs`, `src/resolver.rs`, `tests/check_dump_ast_module_forms.rs`, `tests/run_import_only_except_semantics_smoke.rs`, `examples/parity/07-modules/import_only_except_semantics.tn`)
 - [x] `require Module` scoped semantic validation (`src/resolver.rs`, `tests/run_use_require_semantics_smoke.rs`)
 - [x] `use Module` scoped semantics (fallback import rewrite + target validation; macro expansion deferred) (`src/parser.rs`, `src/resolver.rs`, `tests/run_use_require_semantics_smoke.rs`, `examples/parity/07-modules/use_require_scoped_semantics.tn`)
-- [~] module attributes (`@doc`, `@moduledoc`, custom attrs) parse/AST only (`tests/check_dump_ast_module_forms.rs`)
+- [x] module attributes (`@doc`, `@moduledoc`, custom attrs) parse/AST + value semantics (`tests/check_dump_ast_module_forms.rs`, `examples/parity/07-modules/module_attribute_value.tn`)
 - [x] cross-file module resolution baseline (`tests/run_project_multimodule_smoke.rs`)
 - [x] `import ... only:/except:` (`src/parser.rs`, `src/resolver.rs`, `tests/run_import_only_except_semantics_smoke.rs`)
 - [x] `defprotocol` / `defimpl` syntax parity (`src/parser.rs`, `src/resolver.rs`, `src/ir.rs`, `tests/check_dump_ast_protocol_forms.rs`, `tests/run_protocol_defimpl_smoke.rs`)
-- [ ] `__MODULE__` / `__ENV__` / `__CALLER__` (`src/` search)
-- [ ] nested `defmodule` parity (`src/parser.rs`)
-- [ ] `alias Foo` and `alias Foo.{Bar,Baz}` forms (`src/parser.rs`)
+- [x] `__MODULE__` / `__ENV__` / `__CALLER__` (`examples/parity/07-modules/module_special_form.tn`, `examples/parity/07-modules/env_special_form.tn`, `src/ir.rs`)
+- [x] nested `defmodule` parity (`examples/parity/07-modules/nested_defmodule.tn`, `src/parser.rs`)
+- [x] `alias Foo` and `alias Foo.{Bar,Baz}` forms (`examples/parity/07-modules/alias_shorthand_forms.tn`, `src/parser.rs`)
 
 ## 8) Syntax-facing tooling parity
 
@@ -134,18 +134,18 @@ _Last updated: 2026-02-25_
 - [x] stable diagnostic code families (`E1xxx`, `E2xxx`, `E3xxx`) (`src/resolver_diag.rs`, `src/typing_diag.rs`)
 - [~] actionable hints exist but are not universal (`src/cli_diag.rs`)
 - [x] line/column + snippet diagnostics parity for parser/resolver/typing failures in `check`/`test` (`src/cli_diag.rs`, `src/main.rs`, `src/resolver_diag.rs`, `src/typing_diag.rs`, `tests/test_runner_rich_diagnostics.rs`)
-- [ ] docs generation command (`tonic docs`) / ExDoc-like output (`src/main.rs`)
+- [x] docs generation command (`tonic docs`) / ExDoc-like output (`src/main.rs`)
 
 ---
 
 ## 9) Parity-complete exit checklist
 
-- [ ] Idiomatic Elixir syntax examples (non-OTP) run without structural rewrites.
+- [x] Idiomatic Elixir syntax examples (non-OTP) run without structural rewrites (`examples/parity/10-idiomatic/` — 13 programs: FizzBuzz, Fibonacci, list processing, map transforms, pattern matching, keyword filtering, with chains, pipe chains, closures, error handling, multi-generator comprehensions, cond, pipeline transforms).
 - [x] Map key/value syntax fully matches Elixir (`=>` forms in literals + patterns).
 - [x] Remaining high-priority function/control-flow syntax gaps are closed (`&Module.fun/arity`, `for reduce`, generator guards, and non-list `into:`).
-- [ ] Module compile-time forms have semantic parity beyond parse-only stubs (`use`, `require`, attributes).
+- [~] Module compile-time forms have semantic parity beyond parse-only stubs (`use`, `require`, attributes). `@module_attribute` values and `__MODULE__`/`__ENV__` are implemented; `use`/`require` remain parse-only stubs.
 - [x] Diagnostics provide line/column + contextual snippets for parser/resolver/typing errors in `check` and `test` paths.
-- [ ] Docs generation parity exists (at least baseline extraction of `@doc` / `@moduledoc`).
+- [x] Docs generation parity exists (`tonic docs` command extracts `@doc` / `@moduledoc` — `src/docs.rs`, `tests/cli_contract_docs.rs`).
 
 ## 10) Top 10 production-grade parity priorities
 

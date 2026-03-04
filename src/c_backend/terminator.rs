@@ -218,6 +218,8 @@ pub(super) fn emit_c_guard_condition(
                     CmpKind::Lte => "<=",
                     CmpKind::Gt => ">",
                     CmpKind::Gte => ">=",
+                    CmpKind::StrictEq => "==",
+                    CmpKind::StrictNotEq => "!=",
                 };
                 let reg = format!("{label}_cmp_{index}");
                 out.push_str(&format!(

@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {5 not in [1, 2, 3], 2 not in [1, 2, 3]}
+  end
+end

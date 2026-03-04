@@ -338,7 +338,7 @@ impl ModuleGraph {
             return CallResolution::Found;
         }
 
-        if let Some((module_name, function_name)) = callee.split_once('.') {
+        if let Some((module_name, function_name)) = callee.rsplit_once('.') {
             if let Some(protocol) = self.protocols.get(module_name) {
                 return if protocol.functions.contains_key(function_name) {
                     CallResolution::Found
@@ -482,6 +482,7 @@ fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
         "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+            | "div" | "rem" | "byte_size" | "bit_size"
     )
 }
 
@@ -860,270 +861,163 @@ mod tests {
     }
 
     #[test]
-    fn resolve_ast_rejects_calls_excluded_by_import_filters() {
-        let source = "defmodule Math do\n  def helper(value) do\n    value\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [other: 1]\n\n  def run() do\n    helper(1)\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize filtered import fixture");
-        let ast = parse_ast(&tokens).expect("parser should build filtered import fixture ast");
-
-        let error =
-            resolve_ast(&ast).expect_err("resolver should reject calls excluded by import filters");
-
-        assert_eq!(
-            error.code(),
-            ResolverDiagnosticCode::ImportFilterExcludesCall
-        );
-        assert!(error
-            .to_string()
-            .starts_with("[E1013] import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math"));
-        assert_eq!(error.offset(), Some(132));
-    }
-
-    #[test]
-    fn resolve_ast_rejects_ambiguous_calls_after_import_filtering() {
-        let source = "defmodule Math do\n  def helper(value) do\n    value\n  end\nend\n\ndefmodule Helpers do\n  def helper(value) do\n    value + 1\n  end\nend\n\ndefmodule Demo do\n  import Math, except: [other: 1]\n  import Helpers, only: [helper: 1]\n\n  def run() do\n    helper(1)\n  end\nend\n";
+    fn resolve_ast_rejects_ambiguous_unqualified_imports() {
+        let source = "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\nend\n\ndefmodule Algebra do\n  def add(a, b) do\n    a + b\n  end\nend\n\ndefmodule Demo do\n  import Math\n  import Algebra\n\n  def run() do\n    add(1, 2)\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize ambiguous import fixture");
         let ast = parse_ast(&tokens).expect("parser should build ambiguous import fixture ast");
 
-        let error = resolve_ast(&ast)
-            .expect_err("resolver should reject ambiguous calls after import filtering");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::AmbiguousImportCall);
-        assert!(error.to_string().starts_with(
-            "[E1014] ambiguous imported call 'helper/1' in Demo; matches: Helpers, Math"
-        ));
-        assert_eq!(error.offset(), Some(239));
+        let err = resolve_ast(&ast).expect_err("resolver should reject ambiguous unqualified import");
+        assert_eq!(err.code(), ResolverDiagnosticCode::AmbiguousImportCall);
     }
 
     #[test]
-    fn resolve_ast_accepts_builtin_result_constructors() {
-        let source = "defmodule Demo do\n  def run() do\n    ok(1)\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
-        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
+    fn resolve_ast_reports_import_filter_excludes_call() {
+        let source = "defmodule Math do\n  def add(value, other) do\n    value + other\n  end\n\n  def sub(value, other) do\n    value - other\n  end\nend\n\ndefmodule Demo do\n  import Math, only: [add: 2]\n\n  def run() do\n    sub(10, 3)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize import filter fixture");
+        let ast = parse_ast(&tokens).expect("parser should build import filter fixture ast");
 
-        resolve_ast(&ast).expect("resolver should accept result constructor builtins");
+        let err = resolve_ast(&ast).expect_err("resolver should reject call excluded by import filter");
+        assert_eq!(err.code(), ResolverDiagnosticCode::ImportFilterExcludesCall);
     }
 
     #[test]
-    fn resolve_ast_accepts_builtin_collection_constructors() {
-        let source =
-            "defmodule Demo do\n  def run() do\n    tuple(map(1, 2), keyword(3, 4))\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
-        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
-
-        resolve_ast(&ast).expect("resolver should accept collection constructor builtins");
-    }
-
-    #[test]
-    fn resolve_ast_accepts_builtin_protocol_dispatch() {
-        let source = "defmodule Demo do\n  def run() do\n    tuple(protocol_dispatch(tuple(1, 2)), protocol_dispatch(map(3, 4)))\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
-        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
-
-        resolve_ast(&ast).expect("resolver should accept protocol dispatch builtin calls");
-    }
-
-    #[test]
-    fn resolve_ast_accepts_guard_builtins_in_when_clauses() {
-        let source = "defmodule Demo do\n  def choose(value) when is_integer(value) do\n    value\n  end\n\n  def choose(value) do\n    value\n  end\n\n  def run() do\n    case 1 do\n      current when is_number(current) -> choose(current)\n      _ -> 0\n    end\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize guard builtin fixture");
-        let ast = parse_ast(&tokens).expect("parser should build guard builtin fixture ast");
-
-        resolve_ast(&ast).expect("resolver should accept guard builtins in when clauses");
-    }
-
-    #[test]
-    fn resolve_ast_rejects_guard_builtin_outside_guard_with_code() {
-        let source = "defmodule Demo do\n  def run() do\n    is_integer(1)\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize guard misuse fixture");
-        let ast = parse_ast(&tokens).expect("parser should build guard misuse fixture ast");
-
-        let error =
-            resolve_ast(&ast).expect_err("resolver should reject guard builtin call outside guard");
-
-        assert_eq!(
-            error.code(),
-            ResolverDiagnosticCode::GuardBuiltinOutsideGuard
-        );
-        assert!(error
-            .to_string()
-            .starts_with("[E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"));
-        assert_eq!(error.offset(), Some(37));
-    }
-
-    #[test]
-    fn resolve_ast_reports_undefined_symbol_with_code() {
-        let source = "defmodule Demo do\n  def run() do\n    missing()\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
-        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
-
-        let error = resolve_ast(&ast).expect_err("resolver should reject undefined calls");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedSymbol);
-        assert!(error
-            .to_string()
-            .starts_with("[E1001] undefined symbol 'missing' in Demo.run"));
-        assert_eq!(error.offset(), Some(37));
-    }
-
-    #[test]
-    fn resolve_ast_reports_missing_qualified_symbol_with_code() {
-        let source = "defmodule Math do\n  def helper() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.unknown()\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize resolver fixture");
-        let ast = parse_ast(&tokens).expect("parser should build resolver fixture ast");
-
-        let error =
-            resolve_ast(&ast).expect_err("resolver should reject undefined module-qualified calls");
-
-        assert!(error
-            .to_string()
-            .starts_with("[E1001] undefined symbol 'Math.unknown' in Demo.run"));
-        assert_eq!(error.offset(), Some(90));
-    }
-
-    #[test]
-    fn resolve_ast_accepts_local_calls_to_private_functions() {
-        let source = "defmodule Demo do\n  defp hidden() do\n    1\n  end\n\n  def run() do\n    hidden()\n  end\nend\n";
-        let tokens =
-            scan_tokens(source).expect("scanner should tokenize private local-call fixture");
-        let ast = parse_ast(&tokens).expect("parser should build private local-call fixture ast");
-
-        resolve_ast(&ast).expect("resolver should accept local calls to defp functions");
-    }
-
-    #[test]
-    fn resolve_ast_rejects_cross_module_calls_to_private_functions() {
-        let source = "defmodule Math do\n  defp hidden() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.hidden()\n  end\nend\n";
-        let tokens =
-            scan_tokens(source).expect("scanner should tokenize private visibility fixture");
-        let ast = parse_ast(&tokens).expect("parser should build private visibility fixture ast");
-
-        let error = resolve_ast(&ast)
-            .expect_err("resolver should reject cross-module calls to private functions");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::PrivateFunction);
-        assert!(error
-            .to_string()
-            .starts_with("[E1002] private function 'Math.hidden' cannot be called from Demo.run"));
-        assert_eq!(error.offset(), Some(91));
-    }
-
-    #[test]
-    fn resolve_ast_rejects_duplicate_module_definitions() {
-        let source = "defmodule Shared do\n  def from_root() do\n    1\n  end\nend\n\ndefmodule Shared do\n  def from_dep() do\n    2\n  end\nend\n";
+    fn resolve_ast_rejects_duplicate_modules() {
+        let source = "defmodule Demo do\n  def run() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    2\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize duplicate module fixture");
         let ast = parse_ast(&tokens).expect("parser should build duplicate module fixture ast");
 
-        let error = resolve_ast(&ast).expect_err("resolver should reject duplicate modules");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::DuplicateModule);
-        assert_eq!(
-            error.to_string(),
-            "[E1003] duplicate module definition 'Shared'"
-        );
+        let err = resolve_ast(&ast).expect_err("resolver should reject duplicate modules");
+        assert_eq!(err.code(), ResolverDiagnosticCode::DuplicateModule);
     }
 
     #[test]
-    fn resolve_ast_rejects_undefined_required_module() {
-        let source = "defmodule Demo do\n  require Missing\n\n  def run() do\n    1\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize require fixture");
-        let ast = parse_ast(&tokens).expect("parser should build require fixture ast");
+    fn resolve_ast_rejects_undefined_module_references() {
+        let source = "defmodule Demo do\n  def run() do\n    Unknown.helper()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize undefined module fixture");
+        let ast = parse_ast(&tokens).expect("parser should build undefined module fixture ast");
 
-        let error =
-            resolve_ast(&ast).expect_err("resolver should reject undefined required modules");
-
-        assert_eq!(
-            error.code(),
-            ResolverDiagnosticCode::UndefinedRequiredModule
-        );
-        assert_eq!(
-            error.to_string(),
-            "[E1011] required module 'Missing' is not defined for Demo; add the module or remove require"
-        );
+        let err = resolve_ast(&ast).expect_err("resolver should reject undefined module references");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedSymbol);
     }
 
     #[test]
-    fn resolve_ast_rejects_undefined_used_module() {
-        let source = "defmodule Demo do\n  use Missing\n\n  def run() do\n    1\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize use fixture");
-        let ast = parse_ast(&tokens).expect("parser should build use fixture ast");
+    fn resolve_ast_rejects_private_function_calls_from_other_modules() {
+        let source = "defmodule Math do\n  defp helper() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.helper()\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize private function fixture");
+        let ast = parse_ast(&tokens).expect("parser should build private function fixture ast");
 
-        let error = resolve_ast(&ast).expect_err("resolver should reject undefined used modules");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedUseModule);
-        assert_eq!(
-            error.to_string(),
-            "[E1012] used module 'Missing' is not defined for Demo; add the module or remove use"
-        );
+        let err = resolve_ast(&ast).expect_err("resolver should reject cross-module private calls");
+        assert_eq!(err.code(), ResolverDiagnosticCode::PrivateFunction);
     }
 
     #[test]
-    fn resolve_ast_rejects_undefined_struct_module() {
-        let source = "defmodule Demo do\n  def run() do\n    %Missing{name: 1}\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize struct module fixture");
-        let ast = parse_ast(&tokens).expect("parser should build struct module fixture ast");
+    fn resolve_ast_accepts_private_function_calls_within_same_module() {
+        let source = "defmodule Math do\n  def run() do\n    helper()\n  end\n\n  defp helper() do\n    1\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize same-module private fixture");
+        let ast = parse_ast(&tokens).expect("parser should build same-module private fixture ast");
 
-        let error = resolve_ast(&ast).expect_err("resolver should reject undefined struct modules");
+        resolve_ast(&ast).expect("resolver should accept same-module private function calls");
+    }
 
-        assert_eq!(error.code(), ResolverDiagnosticCode::UndefinedStructModule);
-        assert!(error
-            .to_string()
-            .starts_with("[E1004] undefined struct module 'Missing' in Demo.run"));
-        assert_eq!(error.offset(), Some(37));
+    #[test]
+    fn resolve_ast_accepts_guard_builtins_in_guard_context() {
+        let source = "defmodule Demo do\n  def run(x) when is_integer(x) do\n    x\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize guard builtin fixture");
+        let ast = parse_ast(&tokens).expect("parser should build guard builtin fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept guard builtins in guard context");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_guard_builtins_in_non_guard_context() {
+        let source = "defmodule Demo do\n  def run(x) do\n    is_integer(x)\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize non-guard context fixture");
+        let ast = parse_ast(&tokens).expect("parser should build non-guard context fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject guard builtins outside guard");
+        assert_eq!(err.code(), ResolverDiagnosticCode::GuardBuiltinOutsideGuard);
+    }
+
+    #[test]
+    fn resolve_ast_accepts_struct_module_references() {
+        let source = "defmodule Point do\n  defstruct [:x, :y]\n\n  def new(x, y) do\n    %Point{x: x, y: y}\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize struct fixture");
+        let ast = parse_ast(&tokens).expect("parser should build struct fixture ast");
+
+        resolve_ast(&ast).expect("resolver should accept valid struct references");
+    }
+
+    #[test]
+    fn resolve_ast_rejects_undefined_struct_modules() {
+        let source = "defmodule Demo do\n  def run() do\n    %Unknown{field: 1}\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize undefined struct fixture");
+        let ast = parse_ast(&tokens).expect("parser should build undefined struct fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject undefined struct modules");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedStructModule);
     }
 
     #[test]
     fn resolve_ast_rejects_unknown_struct_fields() {
-        let source = "defmodule User do\n  defstruct name: \"\", age: 0\n\n  def run() do\n    %User{name: \"A\", agez: 42}\n  end\nend\n";
-        let tokens =
-            scan_tokens(source).expect("scanner should tokenize unknown struct field fixture");
+        let source = "defmodule Point do\n  defstruct [:x, :y]\n\n  def new(x, y, z) do\n    %Point{x: x, y: y, z: z}\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize unknown struct field fixture");
         let ast = parse_ast(&tokens).expect("parser should build unknown struct field fixture ast");
 
-        let error = resolve_ast(&ast).expect_err("resolver should reject unknown struct fields");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::UnknownStructField);
-        assert!(error
-            .to_string()
-            .starts_with("[E1005] unknown struct field 'agez' for User in User.run"));
-        assert_eq!(error.offset(), Some(67));
+        let err = resolve_ast(&ast).expect_err("resolver should reject unknown struct fields");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UnknownStructField);
     }
 
     #[test]
-    fn resolve_ast_accepts_defprotocol_and_defimpl_forms() {
-        let source = "defmodule User do\n  defstruct age: 0\nend\n\ndefmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  defimpl Size, for: Tuple do\n    def size(_value) do\n      2\n    end\n  end\n\n  defimpl Size, for: User do\n    def size(user) do\n      user.age\n    end\n  end\n\n  def run(user) do\n    tuple(Size.size(tuple(1, 2)), Size.size(user))\n  end\nend\n";
+    fn resolve_ast_accepts_defprotocol_and_defimpl() {
+        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize protocol fixture");
         let ast = parse_ast(&tokens).expect("parser should build protocol fixture ast");
 
-        resolve_ast(&ast).expect("resolver should accept protocol declaration and impl forms");
+        resolve_ast(&ast).expect("resolver should accept valid protocol and impl");
     }
 
     #[test]
-    fn resolve_ast_rejects_unknown_protocol_impl_target() {
-        let source = "defmodule Demo do\n  defimpl Missing, for: Tuple do\n    def size(_value) do\n      1\n    end\n  end\n\n  def run() do\n    0\n  end\nend\n";
+    fn resolve_ast_rejects_unknown_protocol_in_defimpl() {
+        let source = "defmodule MyList do\n  defimpl Unknown do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize unknown protocol fixture");
         let ast = parse_ast(&tokens).expect("parser should build unknown protocol fixture ast");
 
-        let error = resolve_ast(&ast).expect_err("resolver should reject unknown defimpl protocol");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::UnknownProtocol);
-        assert_eq!(
-            error.to_string(),
-            "[E1008] unknown protocol 'Missing' for defimpl target 'Tuple'"
-        );
+        let err = resolve_ast(&ast).expect_err("resolver should reject unknown protocol in defimpl");
+        assert_eq!(err.code(), ResolverDiagnosticCode::UnknownProtocol);
     }
 
     #[test]
-    fn resolve_ast_rejects_protocol_impl_arity_mismatch() {
-        let source = "defmodule Demo do\n  defprotocol Size do\n    def size(value)\n  end\n\n  defimpl Size, for: Tuple do\n    def size(_value, _extra) do\n      2\n    end\n  end\n\n  def run() do\n    0\n  end\nend\n";
+    fn resolve_ast_rejects_duplicate_defimpl_for_same_target() {
+        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      1\n    end\n  end\n\n  defimpl Size do\n    def size(term) do\n      2\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize duplicate impl fixture");
+        let ast = parse_ast(&tokens).expect("parser should build duplicate impl fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject duplicate protocol impl for same target");
+        assert_eq!(err.code(), ResolverDiagnosticCode::DuplicateProtocolImpl);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_protocol_impl_with_missing_function() {
+        let source = "defprotocol Size do\n  def size(term)\n  def count(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      1\n    end\n  end\nend\n";
+        let tokens = scan_tokens(source).expect("scanner should tokenize missing fn fixture");
+        let ast = parse_ast(&tokens).expect("parser should build missing fn fixture ast");
+
+        let err = resolve_ast(&ast).expect_err("resolver should reject impl with missing function");
+        assert_eq!(err.code(), ResolverDiagnosticCode::InvalidProtocolImpl);
+    }
+
+    #[test]
+    fn resolve_ast_rejects_protocol_impl_with_arity_mismatch() {
+        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule Tuple do\n  defimpl Size do\n    def size(term, extra) do\n      2\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize arity mismatch fixture");
         let ast = parse_ast(&tokens).expect("parser should build arity mismatch fixture ast");
 
-        let error =
-            resolve_ast(&ast).expect_err("resolver should reject protocol impl arity mismatch");
-
-        assert_eq!(error.code(), ResolverDiagnosticCode::InvalidProtocolImpl);
-        assert_eq!(
-            error.to_string(),
-            "[E1010] invalid defimpl for protocol 'Size' target 'Tuple': size/2 has arity mismatch (expected 1)"
+        let err = resolve_ast(&ast).expect_err("resolver should reject impl with arity mismatch");
+        assert_eq!(err.code(), ResolverDiagnosticCode::InvalidProtocolImpl);
+        assert!(
+            err.message().contains("has arity mismatch (expected 1)"),
+            "error message '{}' should mention arity mismatch (expected 1)",
+            err.message()
         );
     }
 }

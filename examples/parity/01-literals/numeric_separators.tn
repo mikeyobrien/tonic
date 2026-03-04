@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {1_000_000, {1_000 + 500, 10_000.50}}
+  end
+end

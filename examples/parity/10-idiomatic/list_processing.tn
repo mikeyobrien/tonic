@@ -1,0 +1,18 @@
+defmodule Demo do
+  def run() do
+    {filter_evens([5, 3, 8, 1, 9, 2, 7, 4, 6]),
+     sum_all([5, 3, 8, 1, 9, 2, 7, 4, 6])}
+  end
+
+  defp filter_evens(list) do
+    for x when rem(x, 2) == 0 <- list do
+      x
+    end
+  end
+
+  defp sum_all(list) do
+    for x <- list, reduce: 0 do
+      acc -> acc + x
+    end
+  end
+end

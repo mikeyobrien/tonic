@@ -1,0 +1,13 @@
+defmodule Demo do
+  def run() do
+    case &(&1 * 2) do
+      double -> {double.(5), apply_to_list(double, [1, 2, 3])}
+    end
+  end
+
+  defp apply_to_list(fun, list) do
+    for x <- list do
+      fun.(x)
+    end
+  end
+end

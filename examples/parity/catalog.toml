@@ -50,6 +50,30 @@ stdout = '''"hello 3"
 status = "active"
 
 [[example]]
+path = "examples/parity/01-literals/numeric_separators.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1000000, {1500, 10000.50}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/01-literals/hex_octal_binary.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{255, {63, 10}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/01-literals/char_literals.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{97, {122, 65}}
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/02-operators/arithmetic_basic.tn"
 check_exit = 0
 run_exit = 0
@@ -94,6 +118,46 @@ path = "examples/parity/02-operators/membership_and_range.tn"
 check_exit = 0
 run_exit = 0
 stdout = '''{true, {false, true}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/strict_equality.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{true, {false, {true, true}}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/div_rem.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{3, 1}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/not_in.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{true, false}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/bitwise_operators.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, {7, {3, {-6, {16, 4}}}}}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/02-operators/stepped_range.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[1, 4, 7, 10]
 '''
 status = "active"
 
@@ -206,6 +270,14 @@ path = "examples/parity/04-patterns/pin_pattern_and_guard.tn"
 check_exit = 0
 run_exit = 0
 stdout = '''20
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/04-patterns/bitstring_pattern_basic.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{1, {2, 3}}
 '''
 status = "active"
 
@@ -362,6 +434,46 @@ stdout = '''300
 status = "active"
 
 [[example]]
+path = "examples/parity/07-modules/module_special_form.tn"
+check_exit = 0
+run_exit = 0
+stdout = ''':Demo
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/env_special_form.tn"
+check_exit = 0
+run_exit = 0
+stdout = ''':Demo
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/nested_defmodule.tn"
+check_exit = 0
+run_exit = 0
+stdout = ''':hi
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/alias_shorthand_forms.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/07-modules/module_attribute_value.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''42
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/08-errors/host_call_and_protocol_dispatch.tn"
 check_exit = 0
 run_exit = 0
@@ -453,6 +565,22 @@ path = "examples/parity/99-stretch/bitstring_binary.tn"
 check_exit = 0
 run_exit = 0
 stdout = '''[1, 2, 3]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/99-stretch/sigils_extended.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''["foo", "bar", "baz"]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/99-stretch/bitstring_byte_size.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{3, 24}
 '''
 status = "active"
 
@@ -571,5 +699,111 @@ path = "examples/parity/08-errors/try_rescue_catch_after_success.tn"
 check_exit = 0
 run_exit = 0
 stdout = '''"caught fallback"
+'''
+status = "active"
+
+# --- 10-idiomatic suite (Phase 7) ---
+
+[[example]]
+path = "examples/parity/10-idiomatic/closures_and_captures.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{10, [2, 4, 6]}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/cond_expression.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"numbers work"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/error_handling.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"caught the error"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/fibonacci.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{0, 55}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/fizzbuzz.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''[1, 2, "Fizz", 4, "Buzz", "Fizz", 7, 8, "Fizz", "Buzz", 11, "Fizz", 13, 14, "FizzBuzz"]
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/keyword_filtering.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{[2, 3], 5}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/list_processing.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{[8, 2, 4, 6], 45}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/map_transforms.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{"Alice", 31}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/multi_generator_grid.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{[{1, :a}, {1, :b}, {2, :a}, {2, :b}, {3, :a}, {3, :b}], [{0, 1}, {0, 2}, {1, 0}, {1, 2}, {2, 0}, {2, 1}]}
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/pattern_matching_pipeline.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"positive"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/pipe_chain.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''"result: 5"
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/pipeline_transform.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''60
+'''
+status = "active"
+
+[[example]]
+path = "examples/parity/10-idiomatic/with_chain.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{30, :not_found}
 '''
 status = "active"

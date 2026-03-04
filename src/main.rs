@@ -3,6 +3,7 @@ mod c_backend;
 mod cache;
 mod cli_diag;
 mod deps;
+mod docs;
 mod formatter;
 mod guard_builtins;
 mod interop;
@@ -98,6 +99,7 @@ fn run(args: Vec<String>) -> i32 {
         Some("cache") => run_placeholder("cache"),
         Some("verify") => handle_verify(iter.collect()),
         Some("deps") => handle_deps(iter.collect()),
+        Some("docs") => docs::handle_docs(iter.collect()),
         Some(other) => CliDiagnostic::usage_with_hint(
             format!("unknown command '{other}'"),
             "run `tonic --help` to see available commands",
@@ -597,7 +599,7 @@ fn handle_compile(args: Vec<String>) -> i32 {
         None => sidecar_base.clone(),
     };
 
-    // Reject --out paths that already exist as directories — the linker
+    // Reject --out paths that already exist as directories - the linker
     // would fail with an opaque "Is a directory" error; surface it early.
     if exe_path.is_dir() {
         return CliDiagnostic::usage(format!(

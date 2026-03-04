@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    {byte_size(<<1, 2, 3>>), bit_size(<<1, 2, 3>>)}
+  end
+end

@@ -1,0 +1,5 @@
+defmodule Demo do
+  def run() do
+    __ENV__.module
+  end
+end

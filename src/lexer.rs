@@ -103,7 +103,18 @@ pub enum TokenKind {
     BackslashBackslash,
     Ampersand,
     AndAnd,
+    AmpAmpAmp,
     OrOr,
+    PipePipePipe,
+    CaretCaretCaret,
+    TildeTildeTilde,
+    LtLt,
+    GtGt,
+    LtLtLt,
+    GtGtGt,
+    StrictEq,
+    StrictBangEq,
+    SlashSlash,
     Eof,
 }
 
@@ -212,7 +223,18 @@ impl Token {
             TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH".to_string(),
             TokenKind::Ampersand => "AMPERSAND".to_string(),
             TokenKind::AndAnd => "AND_AND".to_string(),
+            TokenKind::AmpAmpAmp => "AMP_AMP_AMP".to_string(),
             TokenKind::OrOr => "OR_OR".to_string(),
+            TokenKind::PipePipePipe => "PIPE_PIPE_PIPE".to_string(),
+            TokenKind::CaretCaretCaret => "CARET_CARET_CARET".to_string(),
+            TokenKind::TildeTildeTilde => "TILDE_TILDE_TILDE".to_string(),
+            TokenKind::LtLt => "LT_LT".to_string(),
+            TokenKind::GtGt => "GT_GT".to_string(),
+            TokenKind::LtLtLt => "LT_LT_LT".to_string(),
+            TokenKind::GtGtGt => "GT_GT_GT".to_string(),
+            TokenKind::StrictEq => "STRICT_EQ".to_string(),
+            TokenKind::StrictBangEq => "STRICT_BANG_EQ".to_string(),
+            TokenKind::SlashSlash => "SLASH_SLASH".to_string(),
             TokenKind::Eof => "EOF".to_string(),
         }
     }
@@ -385,8 +407,13 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '^' => {
                         let start = idx;
-                        idx += 1;
-                        tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
+                        if chars.get(idx + 1) == Some(&'^') && chars.get(idx + 2) == Some(&'^') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::CaretCaretCaret, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
+                        }
                     }
                     '+' => {
                         let start = idx;
@@ -419,8 +446,13 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '/' => {
                         let start = idx;
-                        idx += 1;
-                        tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
+                        if chars.get(idx + 1) == Some(&'/') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::SlashSlash, Span::new(start, idx)));
+                        } else {
+                            idx += 1;
+                            tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
+                        }
                     }
                     '\\' => {
                         let start = idx;
@@ -442,6 +474,9 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         if chars.get(idx + 1) == Some(&'>') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::FatArrow, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') && chars.get(idx + 2) == Some(&'=') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::StrictEq, Span::new(start, idx)));
                         } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::EqEq, Span::new(start, idx)));
@@ -452,7 +487,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '!' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'=') {
+                        if chars.get(idx + 1) == Some(&'=') && chars.get(idx + 2) == Some(&'=') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::StrictBangEq, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::BangEq, Span::new(start, idx)));
                         } else {
@@ -462,7 +500,13 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '<' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'=') {
+                        if chars.get(idx + 1) == Some(&'<') && chars.get(idx + 2) == Some(&'<') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::LtLtLt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'<') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::LtLt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::LtEq, Span::new(start, idx)));
                         } else if chars.get(idx + 1) == Some(&'-') {
@@ -479,7 +523,13 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '>' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'=') {
+                        if chars.get(idx + 1) == Some(&'>') && chars.get(idx + 2) == Some(&'>') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::GtGtGt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'>') {
+                            idx += 2;
+                            tokens.push(Token::simple(TokenKind::GtGt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::GtEq, Span::new(start, idx)));
                         } else {
@@ -490,13 +540,45 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     '?' => {
                         let start = idx;
                         idx += 1;
-                        tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
+                        // Char literal: ?a, ?\n, etc.
+                        if idx < chars.len() && chars[idx] != ' ' && chars[idx] != '\n' && chars[idx] != '\t' && chars[idx] != ')' && chars[idx] != ',' && chars[idx] != ']' && chars[idx] != '}' {
+                            // Check if this looks like a char literal rather than the ? operator.
+                            // The ? operator is always followed by whitespace, closing delimiters, or EOF in expression position.
+                            // Char literals are ?<char> or ?\<escape>.
+                            let char_value: u32;
+                            if chars[idx] == '\\' && idx + 1 < chars.len() {
+                                // Escape sequence
+                                idx += 1;
+                                char_value = match chars[idx] {
+                                    'n' => 10,
+                                    't' => 9,
+                                    'r' => 13,
+                                    's' => 32,
+                                    '\\' => 92,
+                                    '"' => 34,
+                                    '\'' => 39,
+                                    '0' => 0,
+                                    other => other as u32,
+                                };
+                                idx += 1;
+                            } else {
+                                char_value = chars[idx] as u32;
+                                idx += 1;
+                            }
+                            let lexeme = char_value.to_string();
+                            tokens.push(Token::with_lexeme(TokenKind::Integer, lexeme, Span::new(start, idx)));
+                        } else {
+                            tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
+                        }
                     }
                     '|' => {
                         let start = idx;
                         if chars.get(idx + 1) == Some(&'>') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::PipeGt, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'|') && chars.get(idx + 2) == Some(&'|') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::PipePipePipe, Span::new(start, idx)));
                         } else if chars.get(idx + 1) == Some(&'|') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::OrOr, Span::new(start, idx)));
@@ -507,7 +589,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '&' => {
                         let start = idx;
-                        if chars.get(idx + 1) == Some(&'&') {
+                        if chars.get(idx + 1) == Some(&'&') && chars.get(idx + 2) == Some(&'&') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::AmpAmpAmp, Span::new(start, idx)));
+                        } else if chars.get(idx + 1) == Some(&'&') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::AndAnd, Span::new(start, idx)));
                         } else {
@@ -540,6 +625,12 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     }
                     '~' => {
                         let start = idx;
+                        // ~~~ is bitwise not (unary operator)
+                        if chars.get(idx + 1) == Some(&'~') && chars.get(idx + 2) == Some(&'~') {
+                            idx += 3;
+                            tokens.push(Token::simple(TokenKind::TildeTildeTilde, Span::new(start, idx)));
+                            continue;
+                        }
                         let Some(sigil_kind) = chars.get(idx + 1).copied() else {
                             return Err(LexerError::invalid_token(
                                 '~',
@@ -547,7 +638,7 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             ));
                         };
 
-                        if !matches!(sigil_kind, 's' | 'r') {
+                        if !matches!(sigil_kind, 's' | 'r' | 'w') {
                             return Err(LexerError::invalid_token(
                                 '~',
                                 Span::new(start, start + 1),
@@ -584,11 +675,43 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
 
                         let lexeme: String = chars[content_start..idx].iter().collect();
                         idx += 1;
-                        tokens.push(Token::with_lexeme(
-                            TokenKind::String,
-                            lexeme,
-                            Span::new(start, idx),
-                        ));
+
+                        if sigil_kind == 'w' {
+                            // Check for optional modifier after closing delimiter (e.g. `a` for atoms)
+                            let use_atoms = chars.get(idx) == Some(&'a');
+                            if use_atoms {
+                                idx += 1;
+                            }
+
+                            // Split content on whitespace and emit a list literal token sequence
+                            let words: Vec<&str> = lexeme.split_whitespace().collect();
+                            tokens.push(Token::simple(TokenKind::LBracket, Span::new(start, idx)));
+                            for (i, word) in words.iter().enumerate() {
+                                if i > 0 {
+                                    tokens.push(Token::simple(TokenKind::Comma, Span::new(start, idx)));
+                                }
+                                if use_atoms {
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Atom,
+                                        word.to_string(),
+                                        Span::new(start, idx),
+                                    ));
+                                } else {
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::String,
+                                        word.to_string(),
+                                        Span::new(start, idx),
+                                    ));
+                                }
+                            }
+                            tokens.push(Token::simple(TokenKind::RBracket, Span::new(start, idx)));
+                        } else {
+                            tokens.push(Token::with_lexeme(
+                                TokenKind::String,
+                                lexeme,
+                                Span::new(start, idx),
+                            ));
+                        }
                     }
                     '"' => {
                         let start = idx;
@@ -694,7 +817,83 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         let start = idx;
                         idx += 1;
 
-                        while idx < chars.len() && chars[idx].is_ascii_digit() {
+                        // Check for radix prefix: 0x, 0o, 0b
+                        if value == '0' && idx < chars.len() {
+                            match chars[idx] {
+                                'x' | 'X' => {
+                                    idx += 1; // skip 'x'
+                                    let digit_start = idx;
+                                    while idx < chars.len()
+                                        && (chars[idx].is_ascii_hexdigit() || chars[idx] == '_')
+                                    {
+                                        idx += 1;
+                                    }
+                                    let digits: String = chars[digit_start..idx]
+                                        .iter()
+                                        .filter(|c| **c != '_')
+                                        .collect();
+                                    let int_value = i64::from_str_radix(&digits, 16)
+                                        .unwrap_or(0);
+                                    let lexeme = int_value.to_string();
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Integer,
+                                        lexeme,
+                                        Span::new(start, idx),
+                                    ));
+                                    continue;
+                                }
+                                'o' | 'O' => {
+                                    idx += 1; // skip 'o'
+                                    let digit_start = idx;
+                                    while idx < chars.len()
+                                        && (('0'..='7').contains(&chars[idx]) || chars[idx] == '_')
+                                    {
+                                        idx += 1;
+                                    }
+                                    let digits: String = chars[digit_start..idx]
+                                        .iter()
+                                        .filter(|c| **c != '_')
+                                        .collect();
+                                    let int_value = i64::from_str_radix(&digits, 8)
+                                        .unwrap_or(0);
+                                    let lexeme = int_value.to_string();
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Integer,
+                                        lexeme,
+                                        Span::new(start, idx),
+                                    ));
+                                    continue;
+                                }
+                                'b' | 'B' => {
+                                    idx += 1; // skip 'b'
+                                    let digit_start = idx;
+                                    while idx < chars.len()
+                                        && (chars[idx] == '0' || chars[idx] == '1' || chars[idx] == '_')
+                                    {
+                                        idx += 1;
+                                    }
+                                    let digits: String = chars[digit_start..idx]
+                                        .iter()
+                                        .filter(|c| **c != '_')
+                                        .collect();
+                                    let int_value = i64::from_str_radix(&digits, 2)
+                                        .unwrap_or(0);
+                                    let lexeme = int_value.to_string();
+                                    tokens.push(Token::with_lexeme(
+                                        TokenKind::Integer,
+                                        lexeme,
+                                        Span::new(start, idx),
+                                    ));
+                                    continue;
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        // Decimal integer: consume digits and underscores
+                        while idx < chars.len()
+                            && (chars[idx].is_ascii_digit() || chars[idx] == '_')
+                        {
                             idx += 1;
                         }
 
@@ -706,12 +905,18 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             kind = TokenKind::Float;
                             idx += 1;
 
-                            while idx < chars.len() && chars[idx].is_ascii_digit() {
+                            while idx < chars.len()
+                                && (chars[idx].is_ascii_digit() || chars[idx] == '_')
+                            {
                                 idx += 1;
                             }
                         }
 
-                        let lexeme: String = chars[start..idx].iter().collect();
+                        // Strip underscores from the lexeme
+                        let lexeme: String = chars[start..idx]
+                            .iter()
+                            .filter(|c| **c != '_')
+                            .collect();
                         tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
                     }
                     value if is_ident_start(value) => {
@@ -1277,4 +1482,226 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn scan_tokens_emits_lt_lt_for_double_angle_open() {
+        let labels = dump_labels("<<");
+        assert_eq!(labels, ["LT_LT", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_emits_gt_gt_for_double_angle_close() {
+        let labels = dump_labels(">>");
+        assert_eq!(labels, ["GT_GT", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_emits_lt_lt_lt_for_triple_angle_open() {
+        let labels = dump_labels("<<<");
+        assert_eq!(labels, ["LT_LT_LT", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_distinguishes_lt_lt_from_lt_lt_lt() {
+        let labels = dump_labels("<< <<<");
+        assert_eq!(labels, ["LT_LT", "LT_LT_LT", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_emits_gt_gt_gt_for_triple_angle_close() {
+        let labels = dump_labels(">>>");
+        assert_eq!(labels, ["GT_GT_GT", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_distinguishes_gt_gt_from_gt_gt_gt() {
+        let labels = dump_labels(">> >>>");
+        assert_eq!(labels, ["GT_GT", "GT_GT_GT", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_tokenizes_bitstring_literal_sequence() {
+        // <<72, 101, 108>> should tokenize as LT_LT INT COMMA INT COMMA INT GT_GT
+        let labels = dump_labels("<<72, 101, 108>>");
+        assert_eq!(
+            labels,
+            [
+                "LT_LT",
+                "INT(72)",
+                "COMMA",
+                "INT(101)",
+                "COMMA",
+                "INT(108)",
+                "GT_GT",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_tokenizes_bitstring_with_size_annotation() {
+        let labels = dump_labels("<<a::8, b::16>>");
+        assert_eq!(
+            labels,
+            [
+                "LT_LT",
+                "IDENT(a)",
+                "COLON",
+                "INT(8)",
+                "COMMA",
+                "IDENT(b)",
+                "COLON",
+                "INT(16)",
+                "GT_GT",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_w_sigil_with_parens_produces_list() {
+        let labels = dump_labels("~w(foo bar baz)");
+        assert_eq!(
+            labels,
+            [
+                "LBRACKET",
+                "STRING(foo)",
+                "COMMA",
+                "STRING(bar)",
+                "COMMA",
+                "STRING(baz)",
+                "RBRACKET",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_w_sigil_with_atom_modifier_produces_atom_list() {
+        let labels = dump_labels("~w(ok error)a");
+        assert_eq!(
+            labels,
+            [
+                "LBRACKET",
+                "ATOM(ok)",
+                "COMMA",
+                "ATOM(error)",
+                "RBRACKET",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_w_sigil_with_single_word_produces_single_element_list() {
+        let labels = dump_labels("~w(hello)");
+        assert_eq!(labels, ["LBRACKET", "STRING(hello)", "RBRACKET", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_char_literal_ascii_letter() {
+        let labels = dump_labels("?a");
+        assert_eq!(labels, ["INT(97)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_char_literal_newline_escape() {
+        // ?\n is codepoint 10
+        let labels = dump_labels("?\\n");
+        assert_eq!(labels, ["INT(10)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_integer_with_underscores_multiple_groups() {
+        let labels = dump_labels("1_000_000");
+        assert_eq!(labels, ["INT(1000000)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_hex_literal_lowercase() {
+        let labels = dump_labels("0xff");
+        assert_eq!(labels, ["INT(255)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_octal_literal_lowercase() {
+        let labels = dump_labels("0o77");
+        assert_eq!(labels, ["INT(63)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_binary_literal_lowercase() {
+        let labels = dump_labels("0b1010");
+        assert_eq!(labels, ["INT(10)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_strict_equality_operators() {
+        let labels = dump_labels("a === b !== c");
+        assert_eq!(
+            labels,
+            [
+                "IDENT(a)",
+                "STRICT_EQ",
+                "IDENT(b)",
+                "STRICT_BANG_EQ",
+                "IDENT(c)",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_bitwise_operators() {
+        let labels = dump_labels("a &&& b ||| c ^^^ d ~~~ e");
+        assert_eq!(
+            labels,
+            [
+                "IDENT(a)",
+                "AMP_AMP_AMP",
+                "IDENT(b)",
+                "PIPE_PIPE_PIPE",
+                "IDENT(c)",
+                "CARET_CARET_CARET",
+                "IDENT(d)",
+                "TILDE_TILDE_TILDE",
+                "IDENT(e)",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_bitwise_shifts() {
+        let labels = dump_labels("a <<< b >>> c");
+        assert_eq!(
+            labels,
+            [
+                "IDENT(a)",
+                "LT_LT_LT",
+                "IDENT(b)",
+                "GT_GT_GT",
+                "IDENT(c)",
+                "EOF",
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_tokens_stepped_range_slash_slash() {
+        let labels = dump_labels("1..10//2");
+        assert_eq!(
+            labels,
+            [
+                "INT(1)",
+                "DOT_DOT",
+                "INT(10)",
+                "SLASH_SLASH",
+                "INT(2)",
+                "EOF",
+            ]
+        );
+    }
+
+    // End of lexer unit tests.
 }

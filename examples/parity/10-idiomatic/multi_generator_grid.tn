@@ -1,0 +1,17 @@
+defmodule Demo do
+  def run() do
+    {make_grid(), make_filtered_pairs()}
+  end
+
+  defp make_grid() do
+    for x <- [1, 2, 3], y <- [:a, :b] do
+      {x, y}
+    end
+  end
+
+  defp make_filtered_pairs() do
+    for i <- [0, 1, 2], j when j != i <- [0, 1, 2] do
+      {i, j}
+    end
+  end
+end

@@ -1,0 +1,17 @@
+defmodule Demo do
+  def run() do
+    {fib(0), fib(10)}
+  end
+
+  defp fib(0) do
+    0
+  end
+
+  defp fib(1) do
+    1
+  end
+
+  defp fib(n) when n > 1 do
+    fib(n - 1) + fib(n - 2)
+  end
+end

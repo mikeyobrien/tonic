@@ -1,0 +1,21 @@
+defmodule Demo do
+  def run() do
+    safe_div(10, 2) |> format_result()
+  end
+
+  defp safe_div(_, 0) do
+    {:error, :division_by_zero}
+  end
+
+  defp safe_div(a, b) do
+    {:ok, div(a, b)}
+  end
+
+  defp format_result({:ok, val}) do
+    "result: #{val}"
+  end
+
+  defp format_result({:error, reason}) do
+    "error: #{reason}"
+  end
+end

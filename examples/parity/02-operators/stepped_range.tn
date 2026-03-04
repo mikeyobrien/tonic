@@ -1,0 +1,7 @@
+defmodule Demo do
+  def run() do
+    for x <- 1..10//3 do
+      x
+    end
+  end
+end

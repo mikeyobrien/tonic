@@ -1008,6 +1008,7 @@ pub enum UnaryOp {
     Bang,
     Plus,
     Minus,
+    BitwiseNot,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -1032,7 +1033,16 @@ pub enum BinaryOp {
     PlusPlus,
     MinusMinus,
     In,
+    NotIn,
     Range,
+    StrictEq,
+    StrictBangEq,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseShiftLeft,
+    BitwiseShiftRight,
+    SteppedRange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1735,7 +1745,8 @@ impl<'a> Parser<'a> {
         let mut modules = Vec::new();
 
         while !self.is_at_end() {
-            modules.push(self.parse_module()?);
+            let mut parsed = self.parse_module_group(None)?;
+            modules.append(&mut parsed);
         }
 
         let callable_modules = collect_module_callable_signatures(&modules);
@@ -1746,16 +1757,24 @@ impl<'a> Parser<'a> {
         Ok(Ast { modules })
     }
 
-    fn parse_module(&mut self) -> Result<Module, ParserError> {
+    /// Parse a defmodule, returning a list of modules (parent + any nested ones).
+    /// `parent_name` is Some("Outer") when parsing a nested module inside Outer.
+    fn parse_module_group(&mut self, parent_name: Option<&str>) -> Result<Vec<Module>, ParserError> {
         let id = self.node_ids.next_module();
 
         self.expect(TokenKind::Defmodule, "defmodule")?;
-        let name = self.expect_ident("module name")?;
+        let local_name = self.expect_ident("module name")?;
+        let name = if let Some(parent) = parent_name {
+            format!("{parent}.{local_name}")
+        } else {
+            local_name
+        };
         self.expect(TokenKind::Do, "do")?;
 
         let mut forms = Vec::new();
         let mut attributes = Vec::new();
         let mut functions = Vec::new();
+        let mut extra_modules: Vec<Module> = Vec::new();
 
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
@@ -1777,12 +1796,22 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            // Allow nested defmodule declarations
+            if self.check(TokenKind::Defmodule) {
+                let mut nested = self.parse_module_group(Some(&name))?;
+                extra_modules.append(&mut nested);
+                continue;
+            }
+
             return Err(self.expected("module declaration"));
         }
 
         self.expect(TokenKind::End, "end")?;
 
-        Ok(Module::with_id(id, name, forms, attributes, functions))
+        let parent_module = Module::with_id(id, name, forms, attributes, functions);
+        let mut result = vec![parent_module];
+        result.append(&mut extra_modules);
+        Ok(result)
     }
 
     fn parse_function(&mut self) -> Result<Function, ParserError> {
@@ -2263,8 +2292,27 @@ impl<'a> Parser<'a> {
             }
 
             self.advance();
+
+            // `not in` consumes two tokens (not + in)
+            if op == BinaryOp::NotIn {
+                self.advance(); // consume the `in` token
+            }
+
             let right = self.parse_binary_expression(next_precedence)?;
-            left = Expr::binary(self.node_ids.next_expr(), op, left, right);
+
+            // Handle stepped range: after parsing `a..b`, check for `//step`
+            let left_with_op = if op == BinaryOp::Range && self.check(TokenKind::SlashSlash) {
+                self.advance(); // consume `//`
+                let step = self.parse_binary_expression(next_precedence)?;
+                // Encode as SteppedRange with left=Expr::binary(Range, left, right), step=step
+                // We wrap it as Binary(SteppedRange, Binary(Range, left, right), step)
+                let range_node = Expr::binary(self.node_ids.next_expr(), BinaryOp::Range, left, right);
+                Expr::binary(self.node_ids.next_expr(), BinaryOp::SteppedRange, range_node, step)
+            } else {
+                Expr::binary(self.node_ids.next_expr(), op, left, right)
+            };
+
+            left = left_with_op;
         }
 
         Ok(left)
@@ -2273,10 +2321,18 @@ impl<'a> Parser<'a> {
     fn parse_unary_expression(&mut self) -> Result<Expr, ParserError> {
         if let Some(token) = self.current() {
             let unary = match token.kind() {
-                TokenKind::Not => Some((UnaryOp::Not, 110)),
+                TokenKind::Not => {
+                    // Only treat `not` as unary if NOT followed by `in` (which would be `not in`)
+                    if self.peek(1).map(|t| t.kind()) == Some(TokenKind::In) {
+                        None
+                    } else {
+                        Some((UnaryOp::Not, 110))
+                    }
+                }
                 TokenKind::Bang => Some((UnaryOp::Bang, 110)),
                 TokenKind::Plus => Some((UnaryOp::Plus, 110)),
                 TokenKind::Minus => Some((UnaryOp::Minus, 110)),
+                TokenKind::TildeTildeTilde => Some((UnaryOp::BitwiseNot, 110)),
                 _ => None,
             };
 
@@ -2579,6 +2635,18 @@ impl<'a> Parser<'a> {
             return self.parse_percent_expression();
         }
 
+        // Handle @attr_name in expression position (module attribute reference)
+        if self.check(TokenKind::At) {
+            let at_token = self.advance().expect("@ token should be available");
+            let offset = at_token.span().start();
+            let attr_name = self.expect_ident("attribute name")?;
+            return Ok(Expr::variable(
+                self.node_ids.next_expr(),
+                offset,
+                format!("@{attr_name}"),
+            ));
+        }
+
         if self.check(TokenKind::Ident) {
             let callee_token = self
                 .advance()
@@ -2597,9 +2665,27 @@ impl<'a> Parser<'a> {
                     .peek(1)
                     .is_some_and(|token| token.kind() == TokenKind::Ident)
             {
-                let should_parse_qualified = self
-                    .peek(2)
-                    .is_some_and(|token| token.kind() == TokenKind::LParen)
+                // Determine if this is a qualified call like Mod.func() or Outer.Inner.func().
+                // We need to look ahead past any chain of .Ident segments to find a (.
+                let is_qualified_call = 'qualified: {
+                    let mut offset_ahead = 2usize; // after the first Dot and Ident segment
+                    loop {
+                        match self.peek(offset_ahead).map(|t| t.kind()) {
+                            Some(TokenKind::LParen) => break 'qualified true,
+                            Some(TokenKind::Dot)
+                                if self
+                                    .peek(offset_ahead + 1)
+                                    .is_some_and(|t| t.kind() == TokenKind::Ident) =>
+                            {
+                                // Another .Ident segment, keep looking
+                                offset_ahead += 2;
+                            }
+                            _ => break 'qualified false,
+                        }
+                    }
+                };
+
+                let should_parse_qualified = is_qualified_call
                     || (has_module_qualifier
                         && self.peek(2).is_some_and(|token| {
                             token_can_start_no_paren_arg(token.kind())
@@ -2609,11 +2695,29 @@ impl<'a> Parser<'a> {
                         }));
 
                 if should_parse_qualified {
-                    self.advance();
-                    let function_name_token =
-                        self.expect_token(TokenKind::Ident, "qualified function name")?;
-                    callee_end = function_name_token.span().end();
-                    callee = format!("{callee}.{}", function_name_token.lexeme());
+                    // Consume all .Ident segments (could be Outer.Inner.greet)
+                    while self.check(TokenKind::Dot)
+                        && self
+                            .peek(1)
+                            .is_some_and(|t| t.kind() == TokenKind::Ident)
+                        && self
+                            .peek(2)
+                            .is_some_and(|t| {
+                                t.kind() == TokenKind::LParen
+                                    || t.kind() == TokenKind::Dot
+                                    || token_can_start_no_paren_arg(t.kind())
+                            })
+                    {
+                        self.advance(); // consume dot
+                        let segment_token =
+                            self.expect_token(TokenKind::Ident, "qualified name segment")?;
+                        callee_end = segment_token.span().end();
+                        callee = format!("{callee}.{}", segment_token.lexeme());
+                        // If the next token is not dot, stop
+                        if !self.check(TokenKind::Dot) {
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -3723,6 +3827,35 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParserError> {
+        // Bitstring pattern: <<p1, p2, ...>> — lowered as a fixed-length list pattern
+        // because the runtime represents <<...>> as a list.
+        if self.check(TokenKind::Lt)
+            && self
+                .peek(1)
+                .is_some_and(|token| token.kind() == TokenKind::Lt)
+        {
+            self.advance(); // consume first '<'
+            self.advance(); // consume second '<'
+            let mut items = Vec::new();
+            // Check for empty <<>>
+            if !(self.check(TokenKind::Gt)
+                && self
+                    .peek(1)
+                    .is_some_and(|token| token.kind() == TokenKind::Gt))
+            {
+                loop {
+                    items.push(self.parse_pattern()?);
+                    if self.match_kind(TokenKind::Comma) {
+                        continue;
+                    }
+                    break;
+                }
+            }
+            self.expect(TokenKind::Gt, ">")?;
+            self.expect(TokenKind::Gt, ">")?;
+            return Ok(Pattern::List { items, tail: None });
+        }
+
         if self.match_kind(TokenKind::Caret) {
             let name = self.expect_ident("pinned variable")?;
             return Ok(Pattern::Pin { name });
@@ -3926,12 +4059,27 @@ impl<'a> Parser<'a> {
             TokenKind::MinusMinus => Some((80, 80, BinaryOp::MinusMinus)),
             TokenKind::DotDot => Some((80, 80, BinaryOp::Range)),
             TokenKind::In => Some((70, 71, BinaryOp::In)),
+            TokenKind::Not => {
+                // `not in` is a binary operator
+                if self.peek(1).map(|t| t.kind()) == Some(TokenKind::In) {
+                    Some((70, 71, BinaryOp::NotIn))
+                } else {
+                    None
+                }
+            }
+            TokenKind::StrictEq => Some((60, 61, BinaryOp::StrictEq)),
+            TokenKind::StrictBangEq => Some((60, 61, BinaryOp::StrictBangEq)),
             TokenKind::EqEq => Some((60, 61, BinaryOp::Eq)),
             TokenKind::BangEq => Some((60, 61, BinaryOp::NotEq)),
             TokenKind::Lt => Some((60, 61, BinaryOp::Lt)),
             TokenKind::LtEq => Some((60, 61, BinaryOp::Lte)),
             TokenKind::Gt => Some((60, 61, BinaryOp::Gt)),
             TokenKind::GtEq => Some((60, 61, BinaryOp::Gte)),
+            TokenKind::AmpAmpAmp => Some((75, 76, BinaryOp::BitwiseAnd)),
+            TokenKind::PipePipePipe => Some((73, 74, BinaryOp::BitwiseOr)),
+            TokenKind::CaretCaretCaret => Some((74, 75, BinaryOp::BitwiseXor)),
+            TokenKind::LtLtLt => Some((77, 78, BinaryOp::BitwiseShiftLeft)),
+            TokenKind::GtGtGt => Some((77, 78, BinaryOp::BitwiseShiftRight)),
             TokenKind::AndAnd => Some((50, 51, BinaryOp::AndAnd)),
             TokenKind::And => Some((50, 51, BinaryOp::And)),
             TokenKind::OrOr => Some((40, 41, BinaryOp::OrOr)),

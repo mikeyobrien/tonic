@@ -1110,6 +1110,21 @@ static TnVal tn_runtime_in(TnVal left, TnVal right) {
   return tn_stub_abort("tn_runtime_in");
 }
 
+static TnVal tn_runtime_not_in(TnVal left, TnVal right) {
+  TnVal in_result = tn_runtime_in(left, right);
+  /* negate the boolean result */
+  if (in_result == tn_runtime_const_bool(1)) {
+    return tn_runtime_const_bool(0);
+  }
+  return tn_runtime_const_bool(1);
+}
+
+static TnVal tn_runtime_stepped_range(TnVal start_val, TnVal step_val) {
+  /* stub: stepped ranges are not yet fully supported in native compilation */
+  (void)step_val;
+  return start_val;
+}
+
 static void tn_render_value(FILE *out, TnVal value);
 
 static void tn_render_keyword_key(FILE *out, TnVal key) {
@@ -1823,6 +1838,22 @@ static TnVal tn_runtime_list_subtract(TnVal left, TnVal right) {
   return tn_heap_store(obj);
 }
 
+static TnVal tn_runtime_byte_size(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || (obj->kind != TN_OBJ_LIST && obj->kind != TN_OBJ_KEYWORD)) {
+    return tn_runtime_failf("byte_size expects a bitstring (list), found %s", tn_runtime_value_kind(value));
+  }
+  return (TnVal)obj->as.list.len;
+}
+
+static TnVal tn_runtime_bit_size(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || (obj->kind != TN_OBJ_LIST && obj->kind != TN_OBJ_KEYWORD)) {
+    return tn_runtime_failf("bit_size expects a bitstring (list), found %s", tn_runtime_value_kind(value));
+  }
+  return (TnVal)(obj->as.list.len * 8);
+}
+
 "###,
     );
     emit_runtime_pattern_helpers(mir, out)?;
@@ -2382,6 +2413,7 @@ fn evaluate_static_for_ops(
                     CmpKind::Lte => left <= right,
                     CmpKind::Gt => left > right,
                     CmpKind::Gte => left >= right,
+                    CmpKind::StrictEq | CmpKind::StrictNotEq => return Err(StaticForEvalIssue::Unsupported("strict equality not supported in static for".to_string())),
                 };
                 stack.push(StaticForValue::Bool(result));
             }
@@ -3096,6 +3128,8 @@ fn emit_compiled_closure_body(
                     CmpKind::Lte => "<=",
                     CmpKind::Gt => ">",
                     CmpKind::Gte => ">=",
+                    CmpKind::StrictEq => "==",
+                    CmpKind::StrictNotEq => "!=",
                 };
                 out.push_str(&format!(
                     "  TnVal {temp} = tn_runtime_const_bool(({left} {operator} {right}) ? 1 : 0);\n"

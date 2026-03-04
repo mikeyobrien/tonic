@@ -384,6 +384,10 @@ fn infer_expression_type(
                     solver.unify(Type::Int, value_type, Some(value.offset()))?;
                     Ok(Type::Int)
                 }
+                crate::parser::UnaryOp::BitwiseNot => {
+                    solver.unify(Type::Int, value_type, Some(value.offset()))?;
+                    Ok(Type::Int)
+                }
             }
         }
         Expr::Binary {
@@ -420,12 +424,24 @@ fn infer_expression_type(
                     Ok(Type::String)
                 }
                 BinaryOp::In => Ok(Type::Bool),
+                BinaryOp::NotIn => Ok(Type::Bool),
+                BinaryOp::StrictEq | BinaryOp::StrictBangEq => Ok(Type::Bool),
+                BinaryOp::BitwiseAnd
+                | BinaryOp::BitwiseOr
+                | BinaryOp::BitwiseXor
+                | BinaryOp::BitwiseShiftLeft
+                | BinaryOp::BitwiseShiftRight => {
+                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
+                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
+                    Ok(Type::Int)
+                }
                 BinaryOp::PlusPlus | BinaryOp::MinusMinus => Ok(Type::Dynamic),
                 BinaryOp::Range => {
                     solver.unify(Type::Int, left_type, Some(left.offset()))?;
                     solver.unify(Type::Int, right_type, Some(right.offset()))?;
                     Ok(Type::Dynamic)
                 }
+                BinaryOp::SteppedRange => Ok(Type::Dynamic),
             }
         }
         Expr::Pipe { left, right, .. } => {
@@ -694,6 +710,24 @@ fn infer_builtin_call_type(
                 ));
             }
             Ok(Some(Type::Dynamic))
+        }
+        "div" | "rem" => {
+            if arg_types.len() != 2 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for {callee}: expected 2 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Int))
+        }
+        "byte_size" | "bit_size" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for {callee}: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Int))
         }
         _ => Ok(None),
     }
