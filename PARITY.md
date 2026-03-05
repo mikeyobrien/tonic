@@ -1,5 +1,10 @@
 # Tonic ↔ Elixir Syntax Parity Checklist (excluding BEAM/OTP)
 
+> **Backend note:** Parity tracking below covers the interpreter runtime and
+> C backend (primary). The LLVM backend is experimental; its parity gaps are
+> tracked separately via `scripts/llvm-catalog-parity-enforce.sh` and
+> documented in [docs/llvm-backend-status.md](docs/llvm-backend-status.md).
+
 Scope: language syntax, parser/AST shape, and syntax-facing CLI/tooling parity.
 
 Out of scope: BEAM/OTP runtime model (processes, mailboxes, supervisors, GenServer, distribution, hot code upgrade, OTP app lifecycle).

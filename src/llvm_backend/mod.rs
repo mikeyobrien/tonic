@@ -4,9 +4,19 @@ mod tests;
 
 use crate::ir::IrOp;
 use crate::mir::{MirInstruction, MirProgram};
+use crate::target::TargetTriple;
 use std::fmt;
 
 pub(crate) const LLVM_COMPATIBILITY_VERSION: &str = "18.1.8";
+
+/// Print the experimental status warning for the LLVM backend to stderr.
+/// Call this once per `tonic compile` invocation before invoking
+/// [`lower_mir_subset_to_llvm_ir`].
+pub(crate) fn warn_experimental() {
+    eprintln!(
+        "warning: LLVM backend is experimental. Use C backend for production builds."
+    );
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LlvmBackendError {
@@ -47,8 +57,11 @@ impl fmt::Display for LlvmBackendError {
 
 impl std::error::Error for LlvmBackendError {}
 
-pub(crate) fn lower_mir_subset_to_llvm_ir(mir: &MirProgram) -> Result<String, LlvmBackendError> {
-    codegen::lower_mir_subset_to_llvm_ir_impl(mir)
+pub(crate) fn lower_mir_subset_to_llvm_ir(
+    mir: &MirProgram,
+    target: &TargetTriple,
+) -> Result<String, LlvmBackendError> {
+    codegen::lower_mir_subset_to_llvm_ir_impl(mir, target)
 }
 
 pub(crate) fn mangle_function_name(name: &str, arity: usize) -> String {
@@ -108,6 +121,8 @@ fn ir_op_name(op: &IrOp) -> &'static str {
         IrOp::SubInt { .. } => "sub_int",
         IrOp::MulInt { .. } => "mul_int",
         IrOp::DivInt { .. } => "div_int",
+        IrOp::IntDiv { .. } => "int_div",
+        IrOp::RemInt { .. } => "rem_int",
         IrOp::CmpInt { .. } => "cmp_int",
         IrOp::Not { .. } => "not",
         IrOp::Bang { .. } => "bang",
@@ -128,6 +143,7 @@ fn ir_op_name(op: &IrOp) -> &'static str {
         IrOp::BitwiseShiftLeft { .. } => "bitwise_shift_left",
         IrOp::BitwiseShiftRight { .. } => "bitwise_shift_right",
         IrOp::SteppedRange { .. } => "stepped_range",
+        IrOp::Bitstring { .. } => "bitstring",
         IrOp::Match { .. } => "match",
         IrOp::Return { .. } => "return",
     }

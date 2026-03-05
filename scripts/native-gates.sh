@@ -23,7 +23,7 @@ cargo test
 printf '%s\n' '[native-gates] scripts/differential-enforce.sh'
 ./scripts/differential-enforce.sh
 
-printf '%s\n' '[native-gates] scripts/llvm-catalog-parity-enforce.sh'
+printf '%s\n' '[native-gates] scripts/llvm-catalog-parity-enforce.sh (experimental - informational only)'
 ./scripts/llvm-catalog-parity-enforce.sh
 
 printf '%s\n' '[native-gates] scripts/bench-native-contract-enforce.sh (interpreter)'
