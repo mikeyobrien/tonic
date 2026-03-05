@@ -1,3 +1,5 @@
+mod engine;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -54,66 +56,24 @@ pub(crate) fn format_path(path: &str, mode: FormatMode) -> Result<FormatReport, 
     Ok(report)
 }
 
+/// Format a Tonic source string.
+///
+/// Uses a token-driven two-pass approach: lexer tokens are segmented into
+/// logical lines (Pass 1), then indentation is applied (Pass 2).
+///
+/// Known limitation: comments (`# ...`) are stripped by the lexer and
+/// not preserved in the formatted output. This is a known alpha-stage
+/// limitation; comment preservation requires a comment-aware token stream.
+///
+/// If lexing fails (malformed source), the original normalized source is
+/// returned unchanged to avoid corrupting code with syntax errors.
 pub(crate) fn format_source(source: &str) -> String {
-    let normalized = normalize_newlines(source);
-    let mut indent_level = 0usize;
-    let mut branch_body_open = false;
-    let mut formatted_lines = Vec::new();
-    let mut previous_was_blank = false;
-
-    for raw_line in normalized.lines() {
-        let trimmed = raw_line.trim();
-
-        if trimmed.is_empty() {
-            if !previous_was_blank {
-                formatted_lines.push(String::new());
-                previous_was_blank = true;
-            }
-            continue;
-        }
-
-        previous_was_blank = false;
-
-        if branch_body_open && (is_branch_line(trimmed) || is_block_boundary_line(trimmed)) {
-            indent_level = indent_level.saturating_sub(1);
-            branch_body_open = false;
-        }
-
-        if is_block_closing_line(trimmed) {
-            indent_level = indent_level.saturating_sub(1);
-        }
-
-        let mut rendered = String::new();
-        rendered.push_str(&"  ".repeat(indent_level));
-        rendered.push_str(trimmed);
-        formatted_lines.push(rendered);
-
-        if is_block_reopen_line(trimmed) {
-            indent_level += 1;
-        }
-
-        if opens_do_block(trimmed) {
-            indent_level += 1;
-        }
-
-        if is_branch_line(trimmed) {
-            indent_level += 1;
-            branch_body_open = true;
-        }
-    }
-
-    while formatted_lines.last().is_some_and(|line| line.is_empty()) {
-        formatted_lines.pop();
-    }
-
-    if formatted_lines.is_empty() {
-        return String::new();
-    }
-
-    let mut output = formatted_lines.join("\n");
-    output.push('\n');
-    output
+    engine::format_source_inner(source)
 }
+
+// ---------------------------------------------------------------------------
+// File collection
+// ---------------------------------------------------------------------------
 
 fn collect_tonic_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     if path.is_file() {
@@ -158,50 +118,9 @@ fn collect_tonic_files_recursive(directory: &Path, files: &mut Vec<PathBuf>) -> 
     Ok(())
 }
 
-fn normalize_newlines(source: &str) -> String {
-    source.replace("\r\n", "\n").replace('\r', "\n")
-}
-
-fn is_block_boundary_line(line: &str) -> bool {
-    is_block_closing_line(line) || is_block_reopen_line(line)
-}
-
-fn is_block_closing_line(line: &str) -> bool {
-    starts_with_keyword(line, "end")
-        || starts_with_keyword(line, "else")
-        || starts_with_keyword(line, "rescue")
-        || starts_with_keyword(line, "catch")
-        || starts_with_keyword(line, "after")
-}
-
-fn is_block_reopen_line(line: &str) -> bool {
-    starts_with_keyword(line, "else")
-        || starts_with_keyword(line, "rescue")
-        || starts_with_keyword(line, "catch")
-        || starts_with_keyword(line, "after")
-}
-
-fn opens_do_block(line: &str) -> bool {
-    line == "do" || line.ends_with(" do")
-}
-
-fn is_branch_line(line: &str) -> bool {
-    line.contains("->")
-}
-
-fn starts_with_keyword(line: &str, keyword: &str) -> bool {
-    if line == keyword {
-        return true;
-    }
-
-    let Some(rest) = line.strip_prefix(keyword) else {
-        return false;
-    };
-
-    rest.chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_whitespace() || matches!(ch, ',' | ')' | ']' | '}' | ';'))
-}
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -235,6 +154,52 @@ mod tests {
         assert_eq!(
             format_source(source),
             "defmodule Demo do\n\n  def run() do\n    1\n  end\nend\n"
+        );
+    }
+
+    #[test]
+    fn format_source_is_idempotent_nested_if() {
+        let already = "defmodule Demo do\n  def run() do\n    if true do\n      1\n    else\n      2\n    end\n  end\nend\n";
+        let second = format_source(already);
+        assert_eq!(
+            already, second,
+            "formatting already-formatted code must be idempotent"
+        );
+    }
+
+    #[test]
+    fn format_source_is_idempotent_case_branches() {
+        let already = "defmodule Demo do\n  def run() do\n    case 2 do\n      1 ->\n        10\n      2 ->\n        20\n    end\n  end\nend\n";
+        let second = format_source(already);
+        assert_eq!(
+            already, second,
+            "formatting already-formatted code must be idempotent"
+        );
+    }
+
+    #[test]
+    fn format_source_struct_syntax_round_trip() {
+        let source = "defmodule User do\ndefstruct name: \"\", age: 0\ndef run(user) do\ncase %User{user | age: 43} do\n%User{name: name} ->\n%User{name: name}\n_ ->\n%User{}\nend\nend\nend\n";
+        let first = format_source(source);
+        let second = format_source(&first);
+        assert_eq!(first, second, "struct syntax format must be idempotent");
+    }
+
+    #[test]
+    fn format_source_try_rescue_idempotent() {
+        let source = "defmodule Demo do\ndef run() do\ntry do\nraise \"err\"\nrescue\n_ -> \"caught\"\nend\nend\nend\n";
+        let result = format_source(source);
+        let second = format_source(&result);
+        assert_eq!(result, second, "try/rescue format must be idempotent");
+    }
+
+    #[test]
+    fn format_source_function_clauses_idempotent() {
+        let already = "defmodule Demo do\n  defp fib(0) do\n    0\n  end\n\n  defp fib(1) do\n    1\n  end\n\n  defp fib(n) when n > 1 do\n    fib(n - 1) + fib(n - 2)\n  end\nend\n";
+        let second = format_source(already);
+        assert_eq!(
+            already, second,
+            "function clauses with blank lines must be idempotent"
         );
     }
 }

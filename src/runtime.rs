@@ -1149,7 +1149,7 @@ fn evaluate_for_collect(
     body_ops: &[IrOp],
     into_ops: Option<&[IrOp]>,
     env: &mut HashMap<String, RuntimeValue>,
-    offset: usize,
+    _offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
     let mut results = Vec::new();
 
@@ -1188,7 +1188,7 @@ fn evaluate_for_reduce(
     body_ops: &[IrOp],
     reduce_ops: &[IrOp],
     env: &mut HashMap<String, RuntimeValue>,
-    offset: usize,
+    _offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
     // First evaluate the initial accumulator
     let mut acc_stack = Vec::new();
