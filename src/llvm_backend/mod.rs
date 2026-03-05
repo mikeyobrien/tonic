@@ -6,16 +6,20 @@ use crate::ir::IrOp;
 use crate::mir::{MirInstruction, MirProgram};
 use crate::target::TargetTriple;
 use std::fmt;
+use std::io::IsTerminal;
 
 pub(crate) const LLVM_COMPATIBILITY_VERSION: &str = "18.1.8";
 
 /// Print the experimental status warning for the LLVM backend to stderr.
+/// Only emits when stderr is a TTY so it doesn't pollute captured output.
 /// Call this once per `tonic compile` invocation before invoking
 /// [`lower_mir_subset_to_llvm_ir`].
 pub(crate) fn warn_experimental() {
-    eprintln!(
-        "warning: LLVM backend is experimental. Use C backend for production builds."
-    );
+    if std::io::stderr().is_terminal() {
+        eprintln!(
+            "warning: LLVM backend is experimental. Use C backend for production builds."
+        );
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

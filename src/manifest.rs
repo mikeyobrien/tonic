@@ -296,9 +296,11 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
             }
             _ => false,
         }),
-        Expr::Tuple { items, .. } | Expr::List { items, .. } => items
-            .iter()
-            .any(|item| expr_references_module(item, module_name)),
+        Expr::Tuple { items, .. } | Expr::List { items, .. } | Expr::Bitstring { items, .. } => {
+            items
+                .iter()
+                .any(|item| expr_references_module(item, module_name))
+        }
         Expr::Map { entries, .. } => entries.iter().any(|entry| {
             expr_references_module(entry.key(), module_name)
                 || expr_references_module(entry.value(), module_name)

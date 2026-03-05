@@ -294,7 +294,7 @@ fn infer_expression_type(
             }
             Ok(Type::String)
         }
-        Expr::Tuple { items, .. } | Expr::List { items, .. } => {
+        Expr::Tuple { items, .. } | Expr::List { items, .. } | Expr::Bitstring { items, .. } => {
             for item in items {
                 infer_expression_type(item, current_module, signatures, solver)?;
             }
@@ -593,11 +593,16 @@ fn infer_call_type(
     }
 
     let target_name = qualify_call_target(current_module, callee);
-    let signature = signatures.get(&target_name).ok_or_else(|| {
-        TypingError::new(format!(
+    let Some(signature) = signatures.get(&target_name) else {
+        // Cross-module call not defined in this AST (e.g. from a prior REPL input).
+        // The resolver already validated it exists; treat return type as Dynamic.
+        if callee.contains('.') {
+            return Ok(Type::Dynamic);
+        }
+        return Err(TypingError::new(format!(
             "unknown call target during inference: {target_name}"
-        ))
-    })?;
+        )));
+    };
 
     let max_arity = signature.params.len();
     let min_arity = max_arity.saturating_sub(signature.default_count);

@@ -57,6 +57,7 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
         "declare i64 @tn_runtime_match_operator(i64, i64)".to_string(),
         "declare i64 @tn_runtime_make_tuple(i64, i64)".to_string(),
         "declare i64 (i64, ...) @tn_runtime_make_list".to_string(),
+        "declare i64 (i64, ...) @tn_runtime_make_bitstring".to_string(),
         "declare i64 @tn_runtime_map_empty()".to_string(),
         "declare i64 @tn_runtime_make_map(i64, i64)".to_string(),
         "declare i64 @tn_runtime_map_put(i64, i64, i64)".to_string(),
@@ -958,6 +959,14 @@ fn emit_builtin_call_from_registers(
             call_args.extend(rendered_args);
             lines.push(format!(
                 "  {dest} = call i64 (i64, ...) @tn_runtime_make_list({})",
+                call_args.join(", ")
+            ));
+        }
+        "bitstring" => {
+            let mut call_args = vec![format!("i64 {}", rendered_args.len())];
+            call_args.extend(rendered_args);
+            lines.push(format!(
+                "  {dest} = call i64 (i64, ...) @tn_runtime_make_bitstring({})",
                 call_args.join(", ")
             ));
         }

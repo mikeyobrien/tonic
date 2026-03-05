@@ -766,6 +766,31 @@ static TnVal tn_runtime_make_list_varargs(TnVal count, ...) {
   return tn_heap_store(obj);
 }
 
+static TnVal tn_runtime_make_bitstring_varargs(TnVal count, ...) {
+  if (count < 0) {
+    return tn_stub_abort("tn_runtime_make_bitstring");
+  }
+
+  size_t len = (size_t)count;
+  TnObj *obj = tn_new_obj(TN_OBJ_LIST);
+  obj->as.list.len = len;
+  obj->as.list.items = len == 0 ? NULL : (TnVal *)calloc(len, sizeof(TnVal));
+  if (len > 0 && obj->as.list.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  va_list args;
+  va_start(args, count);
+  for (size_t i = 0; i < len; i += 1) {
+    obj->as.list.items[i] = va_arg(args, TnVal);
+    tn_runtime_retain(obj->as.list.items[i]);
+  }
+  va_end(args);
+
+  return tn_heap_store(obj);
+}
+
 static TnVal tn_runtime_range(TnVal left, TnVal right) {
   if (tn_is_boxed(left) || tn_is_boxed(right)) {
     return tn_stub_abort("tn_runtime_range");

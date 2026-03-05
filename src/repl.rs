@@ -1,7 +1,7 @@
 use crate::ir::{lower_ast_to_ir, IrFunction, IrProgram};
 use crate::lexer::scan_tokens;
 use crate::parser::parse_ast;
-use crate::resolver::resolve_ast;
+use crate::resolver::{resolve_ast_with_externals, ExternalModules};
 use crate::runtime::{evaluate_named_function, RuntimeValue};
 use crate::typing::infer_types;
 use rustyline::error::ReadlineError;
@@ -139,7 +139,7 @@ fn handle_type_command(expr: &str, accumulated: &[IrFunction]) {
             return;
         }
     };
-    if let Err(err) = resolve_ast(&ast) {
+    if let Err(err) = resolve_ast_with_externals(&ast, &ExternalModules::new()) {
         eprintln!("error: {err}");
         return;
     }
@@ -188,9 +188,28 @@ fn value_type_label(value: &RuntimeValue) -> &'static str {
     }
 }
 
-fn process_input(source: &str, accumulated: &mut Vec<IrFunction>) {
+fn extract_module_signatures(ast: &crate::parser::Ast) -> ExternalModules {
+    let mut modules = ExternalModules::new();
+    for module in &ast.modules {
+        if module.name == REPL_MODULE {
+            continue;
+        }
+        let mut fns = std::collections::HashMap::new();
+        for func in &module.functions {
+            fns.insert(func.name.clone(), !func.is_private());
+        }
+        modules.insert(module.name.clone(), fns);
+    }
+    modules
+}
+
+fn process_input(
+    source: &str,
+    accumulated: &mut Vec<IrFunction>,
+    external_modules: &mut ExternalModules,
+) {
     let wrapped = wrap_expr_in_module(source);
-    let result = compile_and_run(&wrapped, accumulated);
+    let result = compile_and_run(&wrapped, accumulated, external_modules);
     match result {
         Ok(value) => match value {
             RuntimeValue::Nil => {} // suppress nil output for definitions
@@ -203,12 +222,19 @@ fn process_input(source: &str, accumulated: &mut Vec<IrFunction>) {
 fn compile_and_run(
     source: &str,
     accumulated: &mut Vec<IrFunction>,
+    external_modules: &mut ExternalModules,
 ) -> Result<RuntimeValue, String> {
     let tokens = scan_tokens(source).map_err(|e| e.to_string())?;
     let ast = parse_ast(&tokens).map_err(|e| e.to_string())?;
-    resolve_ast(&ast).map_err(|e| e.to_string())?;
+    resolve_ast_with_externals(&ast, external_modules).map_err(|e| e.to_string())?;
     infer_types(&ast).map_err(|e| e.to_string())?;
     let ir = lower_ast_to_ir(&ast).map_err(|e| e.to_string())?;
+
+    // Extract and accumulate module signatures from this AST before mutating accumulated.
+    let new_signatures = extract_module_signatures(&ast);
+    for (mod_name, fns) in new_signatures {
+        external_modules.insert(mod_name, fns);
+    }
 
     // Merge: new functions override same-named accumulated ones.
     let new_names: std::collections::HashSet<&str> =
@@ -306,6 +332,7 @@ fn run_repl_with_clear() {
     }
 
     let mut accumulated_functions: Vec<IrFunction> = Vec::new();
+    let mut external_modules = ExternalModules::new();
 
     loop {
         match read_input(&mut rl) {
@@ -314,13 +341,14 @@ fn run_repl_with_clear() {
             ReadResult::Quit => break,
             ReadResult::Command(ref cmd) if matches!(cmd.as_str(), ":clear" | ":c") => {
                 accumulated_functions.clear();
+                external_modules.clear();
                 println!("environment cleared");
             }
             ReadResult::Command(cmd) => {
                 handle_command(&cmd, &accumulated_functions);
             }
             ReadResult::Input(source) => {
-                process_input(&source, &mut accumulated_functions);
+                process_input(&source, &mut accumulated_functions, &mut external_modules);
             }
         }
     }
@@ -382,8 +410,9 @@ mod tests {
     #[test]
     fn compile_and_run_evaluates_simple_expression() {
         let mut acc = Vec::new();
+        let mut externals = ExternalModules::new();
         let source = wrap_expr_in_module("42");
-        let result = compile_and_run(&source, &mut acc);
+        let result = compile_and_run(&source, &mut acc, &mut externals);
         assert!(result.is_ok(), "expected ok, got: {result:?}");
         assert_eq!(result.unwrap(), RuntimeValue::Int(42));
     }
@@ -391,25 +420,27 @@ mod tests {
     #[test]
     fn compile_and_run_reports_syntax_error_without_panic() {
         let mut acc = Vec::new();
+        let mut externals = ExternalModules::new();
         let source = wrap_expr_in_module("@@@bad syntax@@@");
-        let result = compile_and_run(&source, &mut acc);
+        let result = compile_and_run(&source, &mut acc, &mut externals);
         assert!(result.is_err(), "expected error for bad syntax");
     }
 
     #[test]
-    #[ignore = "cross-module calls require persistent resolver state across REPL inputs"]
     fn accumulated_functions_persist_across_calls() {
         let mut acc = Vec::new();
+        let mut externals = ExternalModules::new();
 
         // Define a helper module.
         let def = "defmodule Helpers do\n  def double(x) do x * 2 end\nend\n\
                    defmodule Repl do\n  def __repl_entry__() do nil end\nend\n";
-        let _ = compile_and_run(def, &mut acc);
+        let _ = compile_and_run(def, &mut acc, &mut externals);
         assert!(!acc.is_empty(), "accumulator should have functions after definition");
+        assert!(externals.contains_key("Helpers"), "externals should include Helpers module");
 
         // Call the helper in a subsequent input.
         let call = wrap_expr_in_module("Helpers.double(5)");
-        let result = compile_and_run(call.as_str(), &mut acc);
+        let result = compile_and_run(call.as_str(), &mut acc, &mut externals);
         assert_eq!(result.unwrap(), RuntimeValue::Int(10));
     }
 }

@@ -1034,7 +1034,9 @@ fn collect_expr_ids(expr: &Expr, ids: &mut Vec<String>) {
                 }
             }
         }
-        Expr::Tuple { id, items, .. } | Expr::List { id, items, .. } => {
+        Expr::Tuple { id, items, .. }
+        | Expr::List { id, items, .. }
+        | Expr::Bitstring { id, items, .. } => {
             ids.push(id.0.clone());
 
             for item in items {

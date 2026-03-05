@@ -509,6 +509,13 @@ pub enum Expr {
         offset: usize,
         value: String,
     },
+    Bitstring {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        items: Vec<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -645,6 +652,9 @@ pub enum Pattern {
         #[serde(skip_serializing_if = "Option::is_none")]
         tail: Option<Box<Pattern>>,
     },
+    Bitstring {
+        items: Vec<Pattern>,
+    },
     Map {
         entries: Vec<MapPatternEntry>,
     },
@@ -755,6 +765,10 @@ impl Expr {
 
     pub(crate) fn list(id: NodeId, offset: usize, items: Vec<Expr>) -> Self {
         Self::List { id, offset, items }
+    }
+
+    pub(crate) fn bitstring(id: NodeId, offset: usize, items: Vec<Expr>) -> Self {
+        Self::Bitstring { id, offset, items }
     }
 
     pub(crate) fn map(id: NodeId, offset: usize, entries: Vec<MapExprEntry>) -> Self {
@@ -1011,7 +1025,8 @@ impl Expr {
             | Self::Case { offset, .. }
             | Self::Try { offset, .. }
             | Self::Raise { offset, .. }
-            | Self::For { offset, .. } => *offset,
+            | Self::For { offset, .. }
+            | Self::Bitstring { offset, .. } => *offset,
         }
     }
 }

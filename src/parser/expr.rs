@@ -176,11 +176,7 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_atomic_expression(&mut self) -> Result<Expr, ParserError> {
-        if self.check(TokenKind::Lt)
-            && self
-                .peek(1)
-                .is_some_and(|token| token.kind() == TokenKind::Lt)
-        {
+        if self.check(TokenKind::LtLt) {
             return self.parse_bitstring_literal_expression();
         }
 

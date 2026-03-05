@@ -198,7 +198,7 @@ pub(super) fn canonicalize_module_call_targets(
 
 fn canonicalize_expr(expr: &mut Expr, ctx: &CanonCtx<'_>) {
     match expr {
-        Expr::Tuple { items, .. } | Expr::List { items, .. } => {
+        Expr::Tuple { items, .. } | Expr::List { items, .. } | Expr::Bitstring { items, .. } => {
             for item in items {
                 canonicalize_expr(item, ctx);
             }

@@ -311,14 +311,15 @@ impl FunctionLowerer {
                 let value = self.alloc_value(MirType::Dynamic);
                 self.block_mut(block_id)
                     .instructions
-                    .push(MirInstruction::Legacy {
-                        dest: Some(value.id),
-                        source: IrOp::Bitstring { count, offset },
+                    .push(MirInstruction::Call {
+                        dest: value.id,
+                        callee: IrCallTarget::Builtin {
+                            name: "bitstring".to_string(),
+                        },
+                        args: args.into_iter().map(|v| v.id).collect(),
                         offset,
-                        value_type: Some(value.value_type),
+                        value_type: value.value_type,
                     });
-                // drop the args since the legacy handler owns them
-                let _ = args;
                 stack.push(value);
                 Ok(())
             }

@@ -3,10 +3,22 @@ use crate::parser::{Ast, Expr, ModuleForm, Pattern};
 use crate::resolver_diag::ResolverError;
 use std::collections::{HashMap, HashSet};
 
+/// External module signatures known from prior REPL inputs or other contexts.
+/// Maps module name → (function name → is_public).
+pub type ExternalModules = HashMap<String, HashMap<String, bool>>;
+
 pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
+    resolve_ast_with_externals(ast, &ExternalModules::new())
+}
+
+pub fn resolve_ast_with_externals(
+    ast: &Ast,
+    externals: &ExternalModules,
+) -> Result<(), ResolverError> {
     ensure_no_duplicate_modules(ast)?;
 
-    let module_graph = ModuleGraph::from_ast(ast)?;
+    let mut module_graph = ModuleGraph::from_ast(ast)?;
+    module_graph.merge_externals(externals);
 
     for module in &ast.modules {
         for function in &module.functions {
@@ -468,6 +480,26 @@ impl ModuleGraph {
         None
     }
 
+    fn merge_externals(&mut self, externals: &ExternalModules) {
+        for (mod_name, functions) in externals {
+            if !self.modules.contains_key(mod_name) {
+                let vis_map: HashMap<String, FunctionVisibility> = functions
+                    .iter()
+                    .map(|(fn_name, &is_public)| {
+                        (
+                            fn_name.clone(),
+                            FunctionVisibility {
+                                public: is_public,
+                                private: !is_public,
+                            },
+                        )
+                    })
+                    .collect();
+                self.modules.insert(mod_name.clone(), vis_map);
+            }
+        }
+    }
+
     fn has_struct_module(&self, module_name: &str) -> bool {
         self.structs.contains_key(module_name)
     }
@@ -520,7 +552,7 @@ fn resolve_expr_with_guard_context(
             }
             Ok(())
         }
-        Expr::Tuple { items, .. } | Expr::List { items, .. } => {
+        Expr::Tuple { items, .. } | Expr::List { items, .. } | Expr::Bitstring { items, .. } => {
             for item in items {
                 resolve_expr_with_guard_context(item, context, in_guard_context)?;
             }
@@ -788,6 +820,12 @@ fn resolve_pattern(pattern: &Pattern, context: &ResolveContext<'_>) -> Result<()
             for entry in entries {
                 resolve_pattern(entry.key(), context)?;
                 resolve_pattern(entry.value(), context)?;
+            }
+            Ok(())
+        }
+        Pattern::Bitstring { items } => {
+            for item in items {
+                resolve_pattern(item, context)?;
             }
             Ok(())
         }

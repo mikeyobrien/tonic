@@ -3,22 +3,12 @@ use crate::lexer::TokenKind;
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_pattern(&mut self) -> Result<Pattern, ParserError> {
-        // Bitstring pattern: <<p1, p2, ...>> — lowered as a fixed-length list pattern
-        // because the runtime represents <<...>> as a list.
-        if self.check(TokenKind::Lt)
-            && self
-                .peek(1)
-                .is_some_and(|token| token.kind() == TokenKind::Lt)
-        {
-            self.advance(); // consume first '<'
-            self.advance(); // consume second '<'
+        // Bitstring pattern: <<p1, p2, ...>>
+        if self.check(TokenKind::LtLt) {
+            self.advance(); // consume '<<'
             let mut items = Vec::new();
             // Check for empty <<>>
-            if !(self.check(TokenKind::Gt)
-                && self
-                    .peek(1)
-                    .is_some_and(|token| token.kind() == TokenKind::Gt))
-            {
+            if !self.check(TokenKind::GtGt) {
                 loop {
                     items.push(self.parse_pattern()?);
                     if self.match_kind(TokenKind::Comma) {
@@ -27,9 +17,8 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
-            self.expect(TokenKind::Gt, ">")?;
-            self.expect(TokenKind::Gt, ">")?;
-            return Ok(Pattern::List { items, tail: None });
+            self.expect(TokenKind::GtGt, ">>")?;
+            return Ok(Pattern::Bitstring { items });
         }
 
         if self.match_kind(TokenKind::Caret) {

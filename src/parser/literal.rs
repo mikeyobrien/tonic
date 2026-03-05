@@ -42,15 +42,10 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_bitstring_literal_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::Lt, "<")?.span().start();
-        self.expect(TokenKind::Lt, "<")?;
+        let offset = self.expect_token(TokenKind::LtLt, "<<")?.span().start();
 
         let mut items = Vec::new();
-        if !(self.check(TokenKind::Gt)
-            && self
-                .peek(1)
-                .is_some_and(|token| token.kind() == TokenKind::Gt))
-        {
+        if !self.check(TokenKind::GtGt) {
             loop {
                 items.push(self.parse_atomic_expression()?);
 
@@ -62,10 +57,9 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect(TokenKind::Gt, ">")?;
-        self.expect(TokenKind::Gt, ">")?;
+        self.expect(TokenKind::GtGt, ">>")?;
 
-        Ok(Expr::list(self.node_ids.next_expr(), offset, items))
+        Ok(Expr::bitstring(self.node_ids.next_expr(), offset, items))
     }
 
     pub(super) fn parse_tuple_literal_expression(&mut self) -> Result<Expr, ParserError> {

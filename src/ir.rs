@@ -1609,6 +1609,16 @@ fn lower_expr(
             Ok(())
         }
         Expr::Group { inner, .. } => lower_expr(inner, current_module, struct_definitions, ops),
+        Expr::Bitstring { items, offset, .. } => {
+            for item in items {
+                lower_expr(item, current_module, struct_definitions, ops)?;
+            }
+            ops.push(IrOp::Bitstring {
+                count: items.len(),
+                offset: *offset,
+            });
+            Ok(())
+        }
         Expr::Variable { name, offset, .. } => {
             // __MODULE__ resolves to the current module's atom at compile time
             if name == "__MODULE__" {
@@ -1829,6 +1839,25 @@ fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
             Ok(IrPattern::Map {
                 entries: lowered_entries,
             })
+        }
+        Pattern::Bitstring { items } => {
+            let segments = items
+                .iter()
+                .map(|item| match item {
+                    Pattern::Integer { value } => Ok(IrBitstringSegment::Literal {
+                        value: *value as u8,
+                    }),
+                    Pattern::Bind { name } => Ok(IrBitstringSegment::Bind {
+                        name: name.clone(),
+                    }),
+                    Pattern::Wildcard => Ok(IrBitstringSegment::Wildcard),
+                    _other => Err(LoweringError::unsupported(
+                        "bitstring pattern segment",
+                        0,
+                    )),
+                })
+                .collect::<Result<Vec<_>, LoweringError>>()?;
+            Ok(IrPattern::Bitstring { segments })
         }
     }
 }

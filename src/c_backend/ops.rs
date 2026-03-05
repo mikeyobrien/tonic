@@ -367,6 +367,17 @@ fn emit_c_builtin_call(
                 "  v{dest} = tn_runtime_make_list_varargs({count_then_args});\n"
             ));
         }
+        "bitstring" => {
+            // Variadic: first arg is count, then byte elements
+            let count = args.len();
+            let count_then_args = std::iter::once(format!("(TnVal){count}"))
+                .chain(args.iter().map(|id| format!("v{id}")))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_make_bitstring_varargs({count_then_args});\n"
+            ));
+        }
         "map_empty" => {
             out.push_str(&format!("  v{dest} = tn_runtime_map_empty();\n"));
         }
