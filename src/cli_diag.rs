@@ -14,7 +14,8 @@ const RESET: &str = "\x1b[0m";
 /// Always disabled in test builds to keep assertion strings color-free.
 #[cfg(not(test))]
 fn colors_enabled() -> bool {
-    std::env::var_os("NO_COLOR").is_none()
+    use std::io::IsTerminal;
+    std::env::var_os("NO_COLOR").is_none() && std::io::stderr().is_terminal()
 }
 
 #[cfg(test)]

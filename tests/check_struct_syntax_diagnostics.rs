@@ -26,7 +26,7 @@ fn check_reports_undefined_struct_module() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("[E1004] undefined struct module 'Missing' in Demo.run"),
+        stderr.contains("error: [E1004] undefined struct module 'Missing' in Demo.run"),
         "unexpected resolver diagnostic: {stderr}"
     );
 }
@@ -56,7 +56,7 @@ fn check_reports_unknown_struct_field_in_literal() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("[E1005] unknown struct field 'agez' for User in User.run"),
+        stderr.contains("error: [E1005] unknown struct field 'agez' for User in User.run"),
         "unexpected resolver diagnostic: {stderr}"
     );
 }
@@ -86,7 +86,7 @@ fn check_reports_unknown_struct_field_in_update() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("[E1005] unknown struct field 'agez' for User in User.run"),
+        stderr.contains("error: [E1005] unknown struct field 'agez' for User in User.run"),
         "unexpected resolver diagnostic: {stderr}"
     );
 }

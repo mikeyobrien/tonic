@@ -26,7 +26,7 @@ fn check_reports_unknown_protocol_for_defimpl() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("[E1008] unknown protocol 'Missing' for defimpl target 'Tuple'"),
+        stderr.contains("error: [E1008] unknown protocol 'Missing' for defimpl target 'Tuple'"),
         "unexpected resolver diagnostic: {stderr}"
     );
 }
@@ -56,7 +56,7 @@ fn check_reports_duplicate_protocol_impl_target() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("[E1009] duplicate defimpl for protocol 'Size' and target 'Tuple'"),
+        stderr.contains("error: [E1009] duplicate defimpl for protocol 'Size' and target 'Tuple'"),
         "unexpected resolver diagnostic: {stderr}"
     );
 }
@@ -87,7 +87,7 @@ fn check_reports_missing_protocol_function_in_impl() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
         stderr.contains(
-            "[E1010] invalid defimpl for protocol 'Size' target 'Tuple': label/1 is missing"
+            "error: [E1010] invalid defimpl for protocol 'Size' target 'Tuple': label/1 is missing"
         ),
         "unexpected resolver diagnostic: {stderr}"
     );

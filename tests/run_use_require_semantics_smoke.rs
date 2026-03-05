@@ -59,7 +59,7 @@ fn check_reports_missing_required_module_target() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
         stderr.contains(
-            "[E1011] required module 'Missing' is not defined for Demo; add the module or remove require"
+            "error: [E1011] required module 'Missing' is not defined for Demo; add the module or remove require"
         ),
         "unexpected require diagnostic: {stderr}"
     );
@@ -93,7 +93,7 @@ fn check_reports_missing_use_module_target() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
         stderr.contains(
-            "[E1012] used module 'Missing' is not defined for Demo; add the module or remove use"
+            "error: [E1012] used module 'Missing' is not defined for Demo; add the module or remove use"
         ),
         "unexpected use diagnostic: {stderr}"
     );

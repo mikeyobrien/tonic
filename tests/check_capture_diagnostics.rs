@@ -56,7 +56,7 @@ fn check_reports_unknown_named_capture_target() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("[E1001] undefined symbol 'Missing.add' in Demo.run"),
+        stderr.contains("error: [E1001] undefined symbol 'Missing.add' in Demo.run"),
         "unexpected resolver diagnostic: {stderr}"
     );
 }

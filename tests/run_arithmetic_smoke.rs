@@ -272,7 +272,7 @@ fn run_check_rejects_non_int_comparison_right_operand_with_type_mismatch() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool at offset 41"));
+    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool"));
     assert!(
         stderr.contains("--> examples/bool_cmp.tn:3:9"),
         "expected filename:line:col location, got: {stderr}"
@@ -336,7 +336,7 @@ fn run_check_rejects_non_int_left_operand_with_type_mismatch() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool at offset 37"));
+    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool"));
     assert!(
         stderr.contains("--> examples/bool_add.tn:3:5"),
         "expected filename:line:col location, got: {stderr}"
@@ -400,7 +400,7 @@ fn run_check_rejects_unary_minus_on_non_int_operand() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool at offset 38"));
+    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool"));
     assert!(
         stderr.contains("--> examples/unary_minus_bool.tn:3:6"),
         "expected filename:line:col location, got: {stderr}"

@@ -160,7 +160,7 @@ fn check_diagnostics_include_line_column_and_source_snippet() {
     assert_eq!(output.status.code(), Some(1));
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("[E1001] undefined symbol 'missing' in Demo.run"));
+    assert!(stderr.contains("error: [E1001] undefined symbol 'missing' in Demo.run"));
     assert!(
         stderr.contains("--> examples/resolver_error.tn:3:5"),
         "expected filename:line:col location, got: {stderr}"

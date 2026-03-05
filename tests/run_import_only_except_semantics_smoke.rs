@@ -121,7 +121,7 @@ fn check_reports_import_filter_exclusion_and_ambiguity() {
     let exclusion_stderr = String::from_utf8(exclusion.stderr).expect("stderr should be utf8");
     assert!(
         exclusion_stderr.contains(
-            "[E1013] import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math"
+            "error: [E1013] import filters exclude call 'helper/1' in Demo; imported modules with this symbol: Math"
         ),
         "unexpected exclusion diagnostic: {exclusion_stderr}"
     );
@@ -140,7 +140,7 @@ fn check_reports_import_filter_exclusion_and_ambiguity() {
     let ambiguous_stderr = String::from_utf8(ambiguous.stderr).expect("stderr should be utf8");
     assert!(
         ambiguous_stderr
-            .contains("[E1014] ambiguous imported call 'helper/1' in Demo; matches: Helpers, Math"),
+            .contains("error: [E1014] ambiguous imported call 'helper/1' in Demo; matches: Helpers, Math"),
         "unexpected ambiguity diagnostic: {ambiguous_stderr}"
     );
 }
