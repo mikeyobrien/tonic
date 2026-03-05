@@ -250,6 +250,12 @@ pub struct LexerError {
 enum LexerErrorKind {
     InvalidToken(char),
     UnterminatedString,
+    /// No digits follow a radix prefix (e.g. `0x`, `0o`, `0b` with nothing after)
+    EmptyNumericLiteral { prefix: &'static str },
+    /// A digit is invalid for the given base (e.g. `0b12` — `2` is not binary)
+    InvalidDigitForBase { digit: char, base: &'static str },
+    /// Underscore separator at start or end of digit sequence (e.g. `0x_FF` or `0xFF_`)
+    MisplacedNumericSeparator,
 }
 
 impl LexerError {
@@ -267,6 +273,31 @@ impl LexerError {
         }
     }
 
+    fn empty_numeric_literal(prefix: &'static str, span: Span) -> Self {
+        Self {
+            kind: LexerErrorKind::EmptyNumericLiteral { prefix },
+            span,
+        }
+    }
+
+    fn invalid_digit_for_base(digit: char, base: &'static str, span: Span) -> Self {
+        Self {
+            kind: LexerErrorKind::InvalidDigitForBase { digit, base },
+            span,
+        }
+    }
+
+    fn misplaced_numeric_separator(span: Span) -> Self {
+        Self {
+            kind: LexerErrorKind::MisplacedNumericSeparator,
+            span,
+        }
+    }
+
+    pub fn offset(&self) -> usize {
+        self.span.start()
+    }
+
     #[cfg(test)]
     pub fn span(&self) -> Span {
         self.span
@@ -275,7 +306,7 @@ impl LexerError {
 
 impl fmt::Display for LexerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind {
+        match &self.kind {
             LexerErrorKind::InvalidToken(value) => {
                 write!(f, "invalid token '{value}' at offset {}", self.span.start)
             }
@@ -283,6 +314,27 @@ impl fmt::Display for LexerError {
                 write!(
                     f,
                     "unterminated string literal at offset {}",
+                    self.span.start
+                )
+            }
+            LexerErrorKind::EmptyNumericLiteral { prefix } => {
+                write!(
+                    f,
+                    "numeric literal '{prefix}' has no digits at offset {}",
+                    self.span.start
+                )
+            }
+            LexerErrorKind::InvalidDigitForBase { digit, base } => {
+                write!(
+                    f,
+                    "invalid {base} digit '{digit}' at offset {}",
+                    self.span.start
+                )
+            }
+            LexerErrorKind::MisplacedNumericSeparator => {
+                write!(
+                    f,
+                    "numeric separator '_' cannot appear at start or end of digits at offset {}",
                     self.span.start
                 )
             }
@@ -821,67 +873,122 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         if value == '0' && idx < chars.len() {
                             match chars[idx] {
                                 'x' | 'X' => {
-                                    idx += 1; // skip 'x'
+                                    idx += 1; // skip 'x'/'X'
+                                    // Error: no digits follow the prefix
+                                    if idx >= chars.len() || (!chars[idx].is_ascii_hexdigit() && chars[idx] != '_') {
+                                        return Err(LexerError::empty_numeric_literal("0x", Span::new(start, idx)));
+                                    }
+                                    // Error: separator at start
+                                    if chars[idx] == '_' {
+                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx + 1)));
+                                    }
                                     let digit_start = idx;
                                     while idx < chars.len()
                                         && (chars[idx].is_ascii_hexdigit() || chars[idx] == '_')
                                     {
                                         idx += 1;
                                     }
+                                    // Error: separator at end
+                                    if chars[idx - 1] == '_' {
+                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
+                                    }
                                     let digits: String = chars[digit_start..idx]
                                         .iter()
                                         .filter(|c| **c != '_')
                                         .collect();
                                     let int_value = i64::from_str_radix(&digits, 16)
-                                        .unwrap_or(0);
-                                    let lexeme = int_value.to_string();
+                                        .map_err(|_| LexerError::empty_numeric_literal("0x", Span::new(start, idx)))?;
                                     tokens.push(Token::with_lexeme(
                                         TokenKind::Integer,
-                                        lexeme,
+                                        int_value.to_string(),
                                         Span::new(start, idx),
                                     ));
                                     continue;
                                 }
                                 'o' | 'O' => {
-                                    idx += 1; // skip 'o'
+                                    idx += 1; // skip 'o'/'O'
+                                    // Error: no digits follow the prefix
+                                    if idx >= chars.len() || (!('0'..='7').contains(&chars[idx]) && chars[idx] != '_') {
+                                        // Check for invalid digit (e.g. 0o8)
+                                        if idx < chars.len() && chars[idx].is_ascii_digit() {
+                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "octal", Span::new(start, idx + 1)));
+                                        }
+                                        return Err(LexerError::empty_numeric_literal("0o", Span::new(start, idx)));
+                                    }
+                                    // Error: separator at start
+                                    if chars[idx] == '_' {
+                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx + 1)));
+                                    }
                                     let digit_start = idx;
-                                    while idx < chars.len()
-                                        && (('0'..='7').contains(&chars[idx]) || chars[idx] == '_')
-                                    {
-                                        idx += 1;
+                                    while idx < chars.len() {
+                                        if chars[idx] == '_' {
+                                            idx += 1;
+                                        } else if ('0'..='7').contains(&chars[idx]) {
+                                            idx += 1;
+                                        } else if chars[idx].is_ascii_digit() {
+                                            // digit 8 or 9 in octal literal
+                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "octal", Span::new(start, idx + 1)));
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    // Error: separator at end
+                                    if chars[idx - 1] == '_' {
+                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
                                     }
                                     let digits: String = chars[digit_start..idx]
                                         .iter()
                                         .filter(|c| **c != '_')
                                         .collect();
                                     let int_value = i64::from_str_radix(&digits, 8)
-                                        .unwrap_or(0);
-                                    let lexeme = int_value.to_string();
+                                        .map_err(|_| LexerError::empty_numeric_literal("0o", Span::new(start, idx)))?;
                                     tokens.push(Token::with_lexeme(
                                         TokenKind::Integer,
-                                        lexeme,
+                                        int_value.to_string(),
                                         Span::new(start, idx),
                                     ));
                                     continue;
                                 }
                                 'b' | 'B' => {
-                                    idx += 1; // skip 'b'
+                                    idx += 1; // skip 'b'/'B'
+                                    // Error: no digits follow the prefix
+                                    if idx >= chars.len() || (chars[idx] != '0' && chars[idx] != '1' && chars[idx] != '_') {
+                                        // Check for invalid digit (e.g. 0b2)
+                                        if idx < chars.len() && chars[idx].is_ascii_digit() {
+                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "binary", Span::new(start, idx + 1)));
+                                        }
+                                        return Err(LexerError::empty_numeric_literal("0b", Span::new(start, idx)));
+                                    }
+                                    // Error: separator at start
+                                    if chars[idx] == '_' {
+                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx + 1)));
+                                    }
                                     let digit_start = idx;
-                                    while idx < chars.len()
-                                        && (chars[idx] == '0' || chars[idx] == '1' || chars[idx] == '_')
-                                    {
-                                        idx += 1;
+                                    while idx < chars.len() {
+                                        if chars[idx] == '_' {
+                                            idx += 1;
+                                        } else if chars[idx] == '0' || chars[idx] == '1' {
+                                            idx += 1;
+                                        } else if chars[idx].is_ascii_digit() {
+                                            // digit 2-9 in binary literal
+                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "binary", Span::new(start, idx + 1)));
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    // Error: separator at end
+                                    if chars[idx - 1] == '_' {
+                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
                                     }
                                     let digits: String = chars[digit_start..idx]
                                         .iter()
                                         .filter(|c| **c != '_')
                                         .collect();
                                     let int_value = i64::from_str_radix(&digits, 2)
-                                        .unwrap_or(0);
-                                    let lexeme = int_value.to_string();
+                                        .map_err(|_| LexerError::empty_numeric_literal("0b", Span::new(start, idx)))?;
                                     tokens.push(Token::with_lexeme(
                                         TokenKind::Integer,
-                                        lexeme,
+                                        int_value.to_string(),
                                         Span::new(start, idx),
                                     ));
                                     continue;
@@ -897,6 +1004,11 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             idx += 1;
                         }
 
+                        // Error: separator at end of integer part
+                        if chars[idx - 1] == '_' {
+                            return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
+                        }
+
                         let mut kind = TokenKind::Integer;
                         if idx + 1 < chars.len()
                             && chars[idx] == '.'
@@ -909,6 +1021,11 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                                 && (chars[idx].is_ascii_digit() || chars[idx] == '_')
                             {
                                 idx += 1;
+                            }
+
+                            // Error: separator at end of fractional part
+                            if chars[idx - 1] == '_' {
+                                return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
                             }
                         }
 
@@ -1700,6 +1817,140 @@ mod tests {
                 "INT(2)",
                 "EOF",
             ]
+        );
+    }
+
+    // --- Numeric literal completeness tests ---
+
+    #[test]
+    fn scan_tokens_hex_literal_uppercase_prefix() {
+        let labels = dump_labels("0XFF");
+        assert_eq!(labels, ["INT(255)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_octal_literal_uppercase_prefix() {
+        let labels = dump_labels("0O77");
+        assert_eq!(labels, ["INT(63)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_binary_literal_uppercase_prefix() {
+        let labels = dump_labels("0B1010");
+        assert_eq!(labels, ["INT(10)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_hex_with_underscores() {
+        let labels = dump_labels("0xFF_FF");
+        assert_eq!(labels, ["INT(65535)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_binary_with_underscores() {
+        let labels = dump_labels("0b1010_1010");
+        assert_eq!(labels, ["INT(170)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_float_with_underscores() {
+        let labels = dump_labels("1_000.50");
+        assert_eq!(labels, ["FLOAT(1000.50)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_char_literal_space_is_question_operator() {
+        // ?<space> should be Question token (space is a separator, not char literal)
+        let labels = dump_labels("x? y");
+        assert_eq!(labels, ["IDENT(x)", "QUESTION", "IDENT(y)", "EOF"]);
+    }
+
+    #[test]
+    fn scan_tokens_char_literal_digit() {
+        // ?0 should be INTEGER(48)
+        let labels = dump_labels("?0");
+        assert_eq!(labels, ["INT(48)", "EOF"]);
+    }
+
+    // --- Error cases ---
+
+    #[test]
+    fn scan_tokens_rejects_hex_with_no_digits() {
+        let err = scan_tokens("0x")
+            .expect_err("0x with no digits should fail");
+        assert!(
+            err.to_string().contains("no digits"),
+            "expected 'no digits' in error: {err}"
+        );
+    }
+
+    #[test]
+    fn scan_tokens_rejects_octal_with_no_digits() {
+        let err = scan_tokens("0o")
+            .expect_err("0o with no digits should fail");
+        assert!(
+            err.to_string().contains("no digits"),
+            "expected 'no digits' in error: {err}"
+        );
+    }
+
+    #[test]
+    fn scan_tokens_rejects_binary_with_no_digits() {
+        let err = scan_tokens("0b")
+            .expect_err("0b with no digits should fail");
+        assert!(
+            err.to_string().contains("no digits"),
+            "expected 'no digits' in error: {err}"
+        );
+    }
+
+    #[test]
+    fn scan_tokens_rejects_binary_invalid_digit() {
+        let err = scan_tokens("0b12")
+            .expect_err("0b12 should fail — 2 is not a binary digit");
+        assert!(
+            err.to_string().contains("binary"),
+            "expected 'binary' in error: {err}"
+        );
+    }
+
+    #[test]
+    fn scan_tokens_rejects_octal_invalid_digit() {
+        let err = scan_tokens("0o78")
+            .expect_err("0o78 should fail — 8 is not an octal digit");
+        assert!(
+            err.to_string().contains("octal"),
+            "expected 'octal' in error: {err}"
+        );
+    }
+
+    #[test]
+    fn scan_tokens_rejects_hex_separator_at_start() {
+        let err = scan_tokens("0x_FF")
+            .expect_err("0x_FF should fail — separator at start");
+        assert!(
+            err.to_string().contains("separator"),
+            "expected 'separator' in error: {err}"
+        );
+    }
+
+    #[test]
+    fn scan_tokens_rejects_hex_separator_at_end() {
+        let err = scan_tokens("0xFF_")
+            .expect_err("0xFF_ should fail — separator at end");
+        assert!(
+            err.to_string().contains("separator"),
+            "expected 'separator' in error: {err}"
+        );
+    }
+
+    #[test]
+    fn scan_tokens_rejects_decimal_separator_at_end() {
+        let err = scan_tokens("100_")
+            .expect_err("100_ should fail — separator at end");
+        assert!(
+            err.to_string().contains("separator"),
+            "expected 'separator' in error: {err}"
         );
     }
 

@@ -11,6 +11,12 @@ pub struct TypeSummary {
 }
 
 impl TypeSummary {
+    /// Look up the inferred type signature for a fully-qualified function name
+    /// (e.g. `"Demo.run"`).
+    pub fn lookup(&self, name: &str) -> Option<&str> {
+        self.signatures.get(name).map(String::as_str)
+    }
+
     #[cfg(test)]
     pub fn signature(&self, name: &str) -> Option<&str> {
         self.signatures.get(name).map(String::as_str)
@@ -398,7 +404,12 @@ fn infer_expression_type(
 
             match op {
                 BinaryOp::Match => Ok(right_type),
-                BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Mul | BinaryOp::Div => {
+                BinaryOp::Plus
+                | BinaryOp::Minus
+                | BinaryOp::Mul
+                | BinaryOp::Div
+                | BinaryOp::IntDiv
+                | BinaryOp::Rem => {
                     solver.unify(Type::Int, left_type, Some(left.offset()))?;
                     solver.unify(Type::Int, right_type, Some(right.offset()))?;
                     Ok(Type::Int)

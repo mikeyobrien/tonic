@@ -121,5 +121,33 @@ pub(crate) fn match_pattern(
             }
             _ => false,
         },
+        IrPattern::Bitstring { segments } => match value {
+            RuntimeValue::List(bytes) => {
+                if bytes.len() != segments.len() {
+                    return false;
+                }
+                for (byte, segment) in bytes.iter().zip(segments.iter()) {
+                    match segment {
+                        crate::ir::IrBitstringSegment::Wildcard => {}
+                        crate::ir::IrBitstringSegment::Literal { value: expected } => {
+                            if *byte != RuntimeValue::Int(*expected as i64) {
+                                return false;
+                            }
+                        }
+                        crate::ir::IrBitstringSegment::Bind { name } => {
+                            if let Some(existing) = bindings.get(name) {
+                                if existing != byte {
+                                    return false;
+                                }
+                            } else {
+                                bindings.insert(name.clone(), byte.clone());
+                            }
+                        }
+                    }
+                }
+                true
+            }
+            _ => false,
+        },
     }
 }

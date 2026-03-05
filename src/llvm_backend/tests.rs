@@ -4,6 +4,7 @@ use crate::mir::{
     MirBinaryKind, MirBlock, MirFunction, MirInstruction, MirProgram, MirTerminator, MirType,
     MirTypedName, MirUnaryKind,
 };
+use crate::target::TargetTriple;
 
 #[test]
 fn lower_mir_subset_emits_deterministic_llvm_ir_for_int_bool_calls() {
@@ -110,7 +111,7 @@ fn lower_mir_subset_emits_deterministic_llvm_ir_for_int_bool_calls() {
         ],
     };
 
-    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("subset MIR should lower to LLVM IR");
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host()).expect("subset MIR should lower to LLVM IR");
 
     assert!(llvm_ir.contains("; tonic llvm backend mvp"));
     assert!(llvm_ir.contains(&format!(
@@ -158,7 +159,7 @@ fn lower_mir_subset_lowers_string_and_float_constants_to_runtime_helpers() {
         }],
     };
 
-    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir)
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host())
         .expect("const string/float should lower to runtime helpers");
 
     assert!(llvm_ir.contains("declare i64 @tn_runtime_const_string(i64)"));
@@ -199,7 +200,7 @@ fn lower_mir_subset_lowers_for_legacy_instruction_to_runtime_helper() {
         }],
     };
 
-    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir)
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host())
         .expect("for legacy op should lower to deterministic runtime helper call");
 
     assert!(llvm_ir.contains("declare i64 @tn_runtime_for(i64)"));
@@ -235,7 +236,7 @@ fn lower_mir_subset_rejects_unsupported_legacy_instruction() {
         }],
     };
 
-    let error = lower_mir_subset_to_llvm_ir(&mir)
+    let error = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host())
         .expect_err("unsupported legacy instruction should keep deterministic diagnostics");
 
     assert_eq!(
@@ -284,7 +285,7 @@ fn lower_mir_subset_emits_control_flow_blocks_for_jump_terminators() {
         }],
     };
 
-    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("jump lowering should succeed");
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host()).expect("jump lowering should succeed");
 
     assert!(llvm_ir.contains("bb0:"));
     assert!(llvm_ir.contains("br label %bb1"));
@@ -382,7 +383,7 @@ fn lower_mir_subset_emits_dispatcher_symbols_for_duplicate_function_clauses() {
     };
 
     let llvm_ir =
-        lower_mir_subset_to_llvm_ir(&mir).expect("duplicate clause lowering should succeed");
+        lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host()).expect("duplicate clause lowering should succeed");
 
     assert!(llvm_ir.contains("define i64 @tn_Demo_choose__arity1(i64 %arg0)"));
     assert!(llvm_ir.contains("define i64 @tn_Demo_choose__arity1__clause0(i64 %arg0)"));
@@ -483,7 +484,7 @@ fn lower_mir_subset_emits_collection_and_pattern_runtime_helpers() {
     };
 
     let llvm_ir =
-        lower_mir_subset_to_llvm_ir(&mir).expect("collections and pattern helpers should lower");
+        lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host()).expect("collections and pattern helpers should lower");
 
     assert!(llvm_ir.contains("declare i64 (i64, ...) @tn_runtime_make_list"));
     assert!(llvm_ir.contains("declare i64 @tn_runtime_make_map(i64, i64)"));
@@ -584,7 +585,7 @@ fn lower_mir_subset_emits_error_flow_runtime_helpers() {
         }],
     };
 
-    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("error helpers should lower");
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host()).expect("error helpers should lower");
 
     assert!(llvm_ir.contains("declare i64 @tn_runtime_make_ok(i64)"));
     assert!(llvm_ir.contains("declare i64 @tn_runtime_make_err(i64)"));
@@ -657,7 +658,7 @@ fn lower_mir_subset_emits_closure_runtime_helpers() {
         }],
     };
 
-    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("closure helpers should lower");
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host()).expect("closure helpers should lower");
 
     assert!(llvm_ir.contains("declare i64 @tn_runtime_make_closure(i64, i64, i64)"));
     assert!(llvm_ir.contains("declare i64 (i64, i64, ...) @tn_runtime_call_closure"));
@@ -724,7 +725,7 @@ fn lower_mir_subset_emits_host_interop_runtime_helpers() {
         }],
     };
 
-    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir).expect("host interop helpers should lower");
+    let llvm_ir = lower_mir_subset_to_llvm_ir(&mir, &TargetTriple::host()).expect("host interop helpers should lower");
 
     assert!(llvm_ir.contains("declare i64 (i64, ...) @tn_runtime_host_call"));
     assert!(llvm_ir.contains("declare i64 @tn_runtime_protocol_dispatch(i64)"));

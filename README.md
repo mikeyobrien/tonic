@@ -145,11 +145,15 @@ graph TD
     IR --> INTERP[interpreter runtime]
     IR --> MIR[MIR lowering]
     MIR --> OPT[optimization]
-    OPT --> CBACK[C backend]
-    OPT --> LLVM[LLVM backend]
+    OPT --> CBACK[C backend - primary]
+    OPT --> LLVM[LLVM backend - experimental]
     CBACK --> LINK[system compiler/linker]
     LINK --> EXE[native executable]
 ```
+
+The **C backend** is the primary native backend: portable, complete, and used for all production builds.
+The **LLVM backend** is experimental: it covers a partial subset of constructs, targets `x86_64-unknown-linux-gnu` only, and parity failures are non-blocking.
+See [docs/llvm-backend-status.md](docs/llvm-backend-status.md) for details.
 
 ## Engineering quality gates
 

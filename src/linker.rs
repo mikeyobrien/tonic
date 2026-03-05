@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use crate::target::TargetTriple;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LinkerError {
     pub(crate) stage: LinkerStage,
@@ -40,31 +42,37 @@ impl std::fmt::Display for LinkerError {
 
 impl std::error::Error for LinkerError {}
 
-/// Compile a C source file to a native executable.
+/// Compile a C source file to a native executable, targeting `target`.
 ///
-/// Searches for an available C compiler in PATH order:
-/// `clang`, `gcc`, `cc`
+/// For host compilation, searches for an available C compiler in PATH order:
+/// `clang`, `gcc`, `cc`.
+///
+/// For cross-compilation:
+/// - Prefers `clang` with `-target <triple>` (most portable).
+/// - Falls back to a GNU cross-compiler prefix (e.g. `aarch64-linux-gnu-gcc`).
 ///
 /// On success the executable is at `exe_path` with the executable bit set.
-pub(crate) fn compile_c_to_executable(c_path: &Path, exe_path: &Path) -> Result<(), LinkerError> {
-    let tool = find_c_compiler().ok_or_else(|| LinkerError::tool_not_found("cc"))?;
+pub(crate) fn compile_c_to_executable(
+    c_path: &Path,
+    exe_path: &Path,
+    target: &TargetTriple,
+) -> Result<(), LinkerError> {
+    let (tool, extra_flags) = resolve_compiler(target)?;
 
-    let output = Command::new(&tool)
-        .arg("-O2")
-        .arg("-o")
-        .arg(exe_path)
-        .arg(c_path)
-        .output()
-        .map_err(|error| {
-            LinkerError::tool_not_found(&tool);
-            LinkerError {
-                stage: LinkerStage::ToolNotFound,
-                message: format!(
-                    "failed to execute '{tool}': {error}; \
-                    install gcc or clang to enable native compilation"
-                ),
-            }
-        })?;
+    let mut cmd = Command::new(&tool);
+    cmd.arg("-O2");
+    for flag in &extra_flags {
+        cmd.arg(flag);
+    }
+    cmd.arg("-o").arg(exe_path).arg(c_path);
+
+    let output = cmd.output().map_err(|error| LinkerError {
+        stage: LinkerStage::ToolNotFound,
+        message: format!(
+            "failed to execute '{tool}': {error}; \
+            install gcc or clang to enable native compilation"
+        ),
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -95,6 +103,49 @@ pub(crate) fn compile_c_to_executable(c_path: &Path, exe_path: &Path) -> Result<
     }
 
     Ok(())
+}
+
+/// Resolve the compiler binary and any extra flags for the given target.
+///
+/// Returns `(tool_name, extra_flags)`.
+fn resolve_compiler(target: &TargetTriple) -> Result<(String, Vec<String>), LinkerError> {
+    if target.is_host() {
+        // Native compilation: pick the best available compiler.
+        let tool = find_c_compiler().ok_or_else(|| LinkerError::tool_not_found("cc"))?;
+        return Ok((tool, vec![]));
+    }
+
+    // Cross-compilation: try clang first (most portable, single binary).
+    if which_exists("clang") {
+        let flags = target.clang_target_flags();
+        return Ok(("clang".to_string(), flags));
+    }
+
+    // Fall back to GNU cross-compiler prefix.
+    if let Some(binary) = target.cross_compiler_binary() {
+        if which_exists(&binary) {
+            return Ok((binary, vec![]));
+        }
+        return Err(LinkerError {
+            stage: LinkerStage::ToolNotFound,
+            message: format!(
+                "cross-compilation toolchain not found for target '{}': \
+                 tried 'clang' (with -target) and '{binary}'; \
+                 install clang or the appropriate GNU cross-compiler",
+                target.as_str()
+            ),
+        });
+    }
+
+    // macOS cross-compilation requires clang (no GNU cross-compiler available).
+    Err(LinkerError {
+        stage: LinkerStage::ToolNotFound,
+        message: format!(
+            "cross-compilation to '{}' requires clang with -target support; \
+             install clang to enable cross-compilation to this target",
+            target.as_str()
+        ),
+    })
 }
 
 /// Detect the name of an available C compiler.
@@ -131,7 +182,8 @@ fn which_exists(program: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::find_c_compiler;
+    use super::{find_c_compiler, resolve_compiler};
+    use crate::target::TargetTriple;
 
     #[test]
     fn find_c_compiler_returns_some_on_linux() {
@@ -141,5 +193,42 @@ mod tests {
             result.is_some(),
             "expected at least one C compiler to be available"
         );
+    }
+
+    #[test]
+    fn resolve_compiler_host_picks_native_compiler() {
+        let host = TargetTriple::host();
+        let result = resolve_compiler(&host);
+        // Must succeed and return empty extra flags
+        assert!(result.is_ok(), "expected Ok for host target");
+        let (tool, flags) = result.unwrap();
+        assert!(!tool.is_empty());
+        assert!(
+            flags.is_empty(),
+            "host compilation should have no extra flags"
+        );
+    }
+
+    /// Verify that clang flags include -target for non-host cross targets.
+    ///
+    /// This tests flag generation only — it does not require the cross-compiler
+    /// to be installed.
+    #[test]
+    fn clang_flags_generated_for_cross_targets() {
+        let cross_targets = [
+            "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+        ];
+        for triple in cross_targets {
+            let t = TargetTriple::parse(triple).unwrap();
+            let flags = t.clang_target_flags();
+            assert_eq!(
+                flags[0], "-target",
+                "first clang flag must be -target for {triple}"
+            );
+            assert_eq!(flags[1], triple, "second clang flag must be triple for {triple}");
+        }
     }
 }

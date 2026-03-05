@@ -31,6 +31,9 @@ fn check_reports_non_exhaustive_case_when_wildcard_branch_is_missing() {
     assert!(stderr.contains(
         "error: [E3002] non-exhaustive case expression: missing wildcard branch at offset 37"
     ));
-    assert!(stderr.contains("--> line 3, column 5"));
+    assert!(
+        stderr.contains("--> examples/non_exhaustive_case.tn:3:5"),
+        "expected filename:line:col location, got: {stderr}"
+    );
     assert!(stderr.contains("3 |     case value() do"));
 }

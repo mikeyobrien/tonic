@@ -51,6 +51,45 @@ pub(crate) fn div_int(
     Ok(RuntimeValue::Int(left / right))
 }
 
+pub(crate) fn int_div(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+
+    if right == 0 {
+        return Err(NativeRuntimeError::at_offset(
+            NativeRuntimeErrorCode::DivisionByZero,
+            "integer division by zero",
+            offset,
+        ));
+    }
+
+    // Truncating integer division (toward zero)
+    Ok(RuntimeValue::Int(left / right))
+}
+
+pub(crate) fn rem_int(
+    left: RuntimeValue,
+    right: RuntimeValue,
+    offset: usize,
+) -> Result<RuntimeValue, NativeRuntimeError> {
+    let left = expect_int_operand(left, offset)?;
+    let right = expect_int_operand(right, offset)?;
+
+    if right == 0 {
+        return Err(NativeRuntimeError::at_offset(
+            NativeRuntimeErrorCode::DivisionByZero,
+            "remainder by zero",
+            offset,
+        ));
+    }
+
+    Ok(RuntimeValue::Int(left % right))
+}
+
 pub(crate) fn cmp_int(
     kind: CmpKind,
     left: RuntimeValue,

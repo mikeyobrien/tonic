@@ -11,6 +11,7 @@ mod ir;
 mod lexer;
 mod linker;
 mod llvm_backend;
+mod lsp;
 mod manifest;
 mod mir;
 pub mod native_abi;
@@ -18,9 +19,11 @@ mod native_artifact;
 pub mod native_runtime;
 mod parser;
 mod profiling;
+mod repl;
 mod resolver;
 mod resolver_diag;
 mod runtime;
+mod target;
 mod test_runner;
 mod typing;
 
@@ -30,6 +33,38 @@ use cache::{
     trace_cache_status,
 };
 use cli_diag::{CliDiagnostic, EXIT_FAILURE, EXIT_OK};
+
+/// A compilation error that preserves source offset for snippet rendering.
+#[derive(Debug)]
+struct CompileError {
+    message: String,
+    offset: Option<usize>,
+}
+
+impl CompileError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            offset: None,
+        }
+    }
+
+    fn with_offset(message: impl Into<String>, offset: Option<usize>) -> Self {
+        Self {
+            message: message.into(),
+            offset,
+        }
+    }
+
+    fn into_diagnostic(self, filename: Option<&str>, source: &str) -> CliDiagnostic {
+        CliDiagnostic::failure_with_filename_and_source(
+            self.message,
+            filename,
+            source,
+            self.offset,
+        )
+    }
+}
 use formatter::{format_path, FormatMode};
 use ir::{lower_ast_to_ir, IrProgram};
 use lexer::scan_tokens;
@@ -97,9 +132,15 @@ fn run(args: Vec<String>) -> i32 {
         Some("fmt") => handle_fmt(iter.collect()),
         Some("compile") => handle_compile(iter.collect()),
         Some("cache") => run_placeholder("cache"),
+        Some("repl") => repl::handle_repl(iter.collect()),
         Some("verify") => handle_verify(iter.collect()),
         Some("deps") => handle_deps(iter.collect()),
+        Some("publish") => handle_publish(iter.collect()),
         Some("docs") => docs::handle_docs(iter.collect()),
+        Some("lsp") => {
+            lsp::run_lsp_server();
+            EXIT_OK
+        }
         Some(other) => CliDiagnostic::usage_with_hint(
             format!("unknown command '{other}'"),
             "run `tonic --help` to see available commands",
@@ -161,7 +202,9 @@ fn handle_run(args: Vec<String>) -> i32 {
         Ok(None) | Err(_) => {
             let compiled_ir = match compile_source_to_ir(&source, &mut profiler) {
                 Ok(ir) => ir,
-                Err(error) => return CliDiagnostic::failure(error).emit(),
+                Err(error) => {
+                    return error.into_diagnostic(Some(&source_path), &source).emit()
+                }
             };
 
             if let Err(error) = profiling::profile_phase(&mut profiler, "run.cache_store", || {
@@ -181,7 +224,15 @@ fn handle_run(args: Vec<String>) -> i32 {
         evaluate_entrypoint(&ir)
     }) {
         Ok(value) => value,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+        Err(error) => {
+            return CliDiagnostic::failure_with_filename_and_source(
+                error.to_string(),
+                Some(&source_path),
+                &source,
+                error.offset(),
+            )
+            .emit()
+        }
     };
 
     match value {
@@ -238,21 +289,27 @@ fn handle_run_native_artifact(path: &str, profiler: &mut Option<profiling::Phase
 fn compile_source_to_ir(
     source: &str,
     profiler: &mut Option<profiling::PhaseProfiler>,
-) -> Result<IrProgram, String> {
-    let tokens = profiling::profile_phase(profiler, "frontend.scan_tokens", || scan_tokens(source))
-        .map_err(|error| error.to_string())?;
+) -> Result<IrProgram, CompileError> {
+    let tokens =
+        profiling::profile_phase(profiler, "frontend.scan_tokens", || scan_tokens(source))
+            .map_err(|error| {
+                // LexerError already includes offset in its Display output.
+                CompileError::new(error.to_string())
+            })?;
+
     let ast = profiling::profile_phase(profiler, "frontend.parse_ast", || parse_ast(&tokens))
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| CompileError::with_offset(error.to_string(), error.offset()))?;
 
     profiling::profile_phase(profiler, "frontend.resolve_ast", || resolve_ast(&ast))
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| CompileError::with_offset(error.to_string(), error.offset()))?;
+
     let type_summary =
         profiling::profile_phase(profiler, "frontend.infer_types", || infer_types(&ast))
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| CompileError::with_offset(error.to_string(), error.offset()))?;
     maybe_trace_type_summary(type_summary.len());
 
     profiling::profile_phase(profiler, "frontend.lower_ir", || lower_ast_to_ir(&ast))
-        .map_err(|error| error.to_string())
+        .map_err(|error| CompileError::new(error.to_string()))
 }
 
 fn maybe_trace_type_summary(signature_count: usize) {
@@ -318,6 +375,7 @@ fn handle_check(args: Vec<String>) -> i32 {
 
     let tokens = match scan_tokens(&source) {
         Ok(tokens) => tokens,
+        // LexerError embeds position in its Display output; no separate snippet.
         Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
     };
 
@@ -332,8 +390,13 @@ fn handle_check(args: Vec<String>) -> i32 {
     let ast = match parse_ast(&tokens) {
         Ok(ast) => ast,
         Err(error) => {
-            return CliDiagnostic::failure_with_source(error.to_string(), &source, error.offset())
-                .emit();
+            return CliDiagnostic::failure_with_filename_and_source(
+                error.to_string(),
+                Some(&source_path),
+                &source,
+                error.offset(),
+            )
+            .emit();
         }
     };
 
@@ -350,15 +413,25 @@ fn handle_check(args: Vec<String>) -> i32 {
     }
 
     if let Err(error) = resolve_ast(&ast) {
-        return CliDiagnostic::failure_with_source(error.to_string(), &source, error.offset())
-            .emit();
+        return CliDiagnostic::failure_with_filename_and_source(
+            error.to_string(),
+            Some(&source_path),
+            &source,
+            error.offset(),
+        )
+        .emit();
     }
 
     let type_summary = match infer_types(&ast) {
         Ok(summary) => summary,
         Err(error) => {
-            return CliDiagnostic::failure_with_source(error.to_string(), &source, error.offset())
-                .emit();
+            return CliDiagnostic::failure_with_filename_and_source(
+                error.to_string(),
+                Some(&source_path),
+                &source,
+                error.offset(),
+            )
+            .emit();
         }
     };
     maybe_trace_type_summary(type_summary.len());
@@ -455,9 +528,18 @@ fn handle_test(args: Vec<String>) -> i32 {
         Err(TestRunnerError::Failure(message)) => return CliDiagnostic::failure(message).emit(),
         Err(TestRunnerError::SourceDiagnostic {
             message,
+            filename,
             source,
             offset,
-        }) => return CliDiagnostic::failure_with_source(message, &source, offset).emit(),
+        }) => {
+            return CliDiagnostic::failure_with_filename_and_source(
+                message,
+                filename.as_deref(),
+                &source,
+                offset,
+            )
+            .emit()
+        }
     };
 
     match format {
@@ -536,6 +618,7 @@ fn handle_compile(args: Vec<String>) -> i32 {
 
     let source_path = args[0].clone();
     let mut out_path = None;
+    let mut target_triple = None;
     let mut idx = 1;
 
     while idx < args.len() {
@@ -548,11 +631,25 @@ fn handle_compile(args: Vec<String>) -> i32 {
                 out_path = Some(args[idx].clone());
                 idx += 1;
             }
+            "--target" => {
+                idx += 1;
+                if idx >= args.len() {
+                    return CliDiagnostic::usage("--target requires a value").emit();
+                }
+                let raw = &args[idx];
+                match target::TargetTriple::parse(raw) {
+                    Ok(t) => target_triple = Some(t),
+                    Err(err) => return CliDiagnostic::usage(err.message).emit(),
+                }
+                idx += 1;
+            }
             other => {
                 return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
             }
         }
     }
+
+    let target = target_triple.unwrap_or_else(target::TargetTriple::host);
 
     let mut profiler = profiling::PhaseProfiler::from_env("compile");
     let is_project_root_path = std::path::Path::new(&source_path).is_dir();
@@ -566,7 +663,7 @@ fn handle_compile(args: Vec<String>) -> i32 {
 
     let ir = match compile_source_to_ir(&source, &mut profiler) {
         Ok(ir) => ir,
-        Err(error) => return CliDiagnostic::failure(error).emit(),
+        Err(error) => return error.into_diagnostic(Some(&source_path), &source).emit(),
     };
 
     let artifact_stem = compile_artifact_stem(&source_path, is_project_root_path);
@@ -616,8 +713,9 @@ fn handle_compile(args: Vec<String>) -> i32 {
     }
 
     // --- LLVM IR sidecar (.ll) ---
+    llvm_backend::warn_experimental();
     let llvm_ir = match profiling::profile_phase(&mut profiler, "backend.lower_llvm", || {
-        llvm_backend::lower_mir_subset_to_llvm_ir(&optimized_mir)
+        llvm_backend::lower_mir_subset_to_llvm_ir(&optimized_mir, &target)
     }) {
         Ok(llvm_ir) => llvm_ir,
         Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
@@ -688,7 +786,7 @@ fn handle_compile(args: Vec<String>) -> i32 {
 
     // --- Compile C to native executable ---
     if let Err(error) = profiling::profile_phase(&mut profiler, "backend.link_executable", || {
-        linker::compile_c_to_executable(&c_path, &exe_path)
+        linker::compile_c_to_executable(&c_path, &exe_path, &target)
     }) {
         return CliDiagnostic::failure(error.to_string()).emit();
     }
@@ -986,7 +1084,10 @@ fn handle_deps(args: Vec<String>) -> i32 {
         Err(msg) => return CliDiagnostic::failure(msg).emit(),
     };
 
-    if manifest.dependencies.path.is_empty() && manifest.dependencies.git.is_empty() {
+    if manifest.dependencies.path.is_empty()
+        && manifest.dependencies.git.is_empty()
+        && manifest.dependencies.registry.is_empty()
+    {
         println!("No dependencies defined in tonic.toml");
         return EXIT_OK;
     }
@@ -1040,6 +1141,67 @@ fn find_project_root() -> Option<std::path::PathBuf> {
     }
 }
 
+fn handle_publish(args: Vec<String>) -> i32 {
+    if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
+        print_publish_help();
+        return EXIT_OK;
+    }
+
+    let project_root = find_project_root();
+    if project_root.is_none() {
+        return CliDiagnostic::failure("no tonic.toml found in current directory or parents").emit();
+    }
+    let project_root = project_root.unwrap();
+
+    let manifest = match manifest::load_project_manifest(&project_root) {
+        Ok(m) => m,
+        Err(msg) => return CliDiagnostic::failure(msg).emit(),
+    };
+
+    // Validate required package fields before attempting publish.
+    let package = match &manifest.package {
+        Some(p) => p,
+        None => {
+            return CliDiagnostic::failure(
+                "tonic.toml is missing a [package] section; add name, version, and description",
+            )
+            .emit();
+        }
+    };
+
+    let mut missing_fields = Vec::new();
+    if package.name.is_none() {
+        missing_fields.push("name");
+    }
+    if package.version.is_none() {
+        missing_fields.push("version");
+    }
+    if package.description.is_none() {
+        missing_fields.push("description");
+    }
+
+    if !missing_fields.is_empty() {
+        return CliDiagnostic::failure(format!(
+            "tonic.toml [package] is missing required fields: {}",
+            missing_fields.join(", ")
+        ))
+        .emit();
+    }
+
+    println!("Publishing to registry is not yet supported");
+    EXIT_OK
+}
+
+fn print_publish_help() {
+    println!(
+        "tonic publish - Publish package to registry (not yet implemented)\n\n\
+         Usage:\n  tonic publish\n\n\
+         Requires tonic.toml [package] section with:\n  \
+         name, version, description\n\n\
+         Publishing to a registry is not yet supported.\n"
+    );
+}
+
 fn print_deps_help() {
     println!(
         "tonic deps - Manage project dependencies\n\n\
@@ -1059,7 +1221,7 @@ fn benchmark_thresholds_report() -> serde_json::Value {
 
 fn print_help() {
     println!(
-        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  compile  Compile source to executable artifact\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n"
+        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  repl     Start interactive REPL\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  compile  Compile source to executable artifact\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n  docs     Generate API documentation\n  lsp      Start language server\n  publish  Publish package to registry (not yet implemented)\n"
     );
 }
 
@@ -1081,12 +1243,23 @@ fn print_fmt_help() {
 
 fn print_compile_help() {
     println!(
-        "Usage:\n  tonic compile <path> [--out <artifact-path>]\n\n\
+        "Usage:\n  tonic compile <path> [--out <artifact-path>] [--target <triple>]\n\n\
          Compile contract:\n\
-         \x20 Compile always produces a native executable artifact (ELF on Linux).\n\
+         \x20 Compile always produces a native executable artifact (ELF on Linux, Mach-O on macOS).\n\
          \x20 Default output: .tonic/build/<name>  (runnable as ./.tonic/build/<name>)\n\
-         \x20 --out <path>   Write executable to <path> directly\n\
-         \x20 Requires: cc, gcc, or clang in PATH\n"
+         \x20 --out <path>       Write executable to <path> directly\n\
+         \x20 --target <triple>  Cross-compile for the given target triple (default: host)\n\n\
+         Supported targets:\n\
+         \x20 x86_64-unknown-linux-gnu    (default on x86_64 Linux)\n\
+         \x20 aarch64-unknown-linux-gnu   (ARM64 Linux; requires aarch64-linux-gnu-gcc or clang)\n\
+         \x20 x86_64-apple-darwin         (Intel macOS; requires clang)\n\
+         \x20 aarch64-apple-darwin        (Apple Silicon; requires clang)\n\n\
+         Cross-compilation:\n\
+         \x20 Requires: clang (recommended, uses -target <triple>) or GNU cross-compilers\n\
+         \x20 For aarch64-linux: apt install gcc-aarch64-linux-gnu  (or use clang)\n\
+         \x20 For macOS targets: requires clang with macOS SDK support\n\
+         \x20 See docs/cross-compilation.md for detailed setup instructions.\n\n\
+         Requires: cc, gcc, or clang in PATH (native); clang or cross-gcc (cross)\n"
     );
 }
 

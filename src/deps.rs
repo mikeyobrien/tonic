@@ -30,6 +30,14 @@ impl Lockfile {
         dependencies: &Dependencies,
         _project_root: &Path,
     ) -> Result<Self, String> {
+        // Registry deps cannot be resolved yet; fail early with an actionable message.
+        if let Some(name) = dependencies.registry.keys().next() {
+            return Err(format!(
+                "registry dependency '{}': registry dependencies are not yet supported; use git or path deps",
+                name
+            ));
+        }
+
         let mut path_deps = BTreeMap::new();
         let mut git_deps = BTreeMap::new();
 

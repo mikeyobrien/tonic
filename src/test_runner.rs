@@ -104,6 +104,7 @@ pub enum TestRunnerError {
     Failure(String),
     SourceDiagnostic {
         message: String,
+        filename: Option<String>,
         source: String,
         offset: Option<usize>,
     },
@@ -241,14 +242,18 @@ fn is_test_file_name(path: &Path) -> bool {
 }
 
 fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError> {
+    let filename = Some(path.display().to_string());
+
     let tokens = scan_tokens(source).map_err(|error| TestRunnerError::SourceDiagnostic {
-        message: format!("{}: {}", path.display(), error),
+        message: error.to_string(),
+        filename: filename.clone(),
         source: source.to_string(),
         offset: None,
     })?;
 
     let ast = parse_ast(&tokens).map_err(|error| TestRunnerError::SourceDiagnostic {
-        message: format!("{}: {}", path.display(), error),
+        message: error.to_string(),
+        filename: filename.clone(),
         source: source.to_string(),
         offset: error.offset(),
     })?;
@@ -272,13 +277,15 @@ fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError
     tests.sort();
 
     resolve_ast(&ast).map_err(|error| TestRunnerError::SourceDiagnostic {
-        message: format!("{}: {}", path.display(), error),
+        message: error.to_string(),
+        filename: filename.clone(),
         source: source.to_string(),
         offset: error.offset(),
     })?;
 
     infer_types(&ast).map_err(|error| TestRunnerError::SourceDiagnostic {
-        message: format!("{}: {}", path.display(), error),
+        message: error.to_string(),
+        filename: filename.clone(),
         source: source.to_string(),
         offset: error.offset(),
     })?;

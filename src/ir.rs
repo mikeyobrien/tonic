@@ -114,6 +114,12 @@ pub(crate) enum IrOp {
     DivInt {
         offset: usize,
     },
+    IntDiv {
+        offset: usize,
+    },
+    RemInt {
+        offset: usize,
+    },
     CmpInt {
         kind: CmpKind,
         offset: usize,
@@ -1338,6 +1344,8 @@ fn lower_expr(
                 BinaryOp::Minus => IrOp::SubInt { offset: *offset },
                 BinaryOp::Mul => IrOp::MulInt { offset: *offset },
                 BinaryOp::Div => IrOp::DivInt { offset: *offset },
+                BinaryOp::IntDiv => IrOp::IntDiv { offset: *offset },
+                BinaryOp::Rem => IrOp::RemInt { offset: *offset },
                 BinaryOp::Eq => IrOp::CmpInt {
                     kind: CmpKind::Eq,
                     offset: *offset,

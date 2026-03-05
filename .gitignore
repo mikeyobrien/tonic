@@ -24,3 +24,4 @@ devenv.local.yaml
 
 # transient temp/scratch directories produced by tooling
 .tmp/
+.claude/worktrees/

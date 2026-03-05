@@ -195,6 +195,8 @@ pub(crate) enum MirBinaryKind {
     SubInt,
     MulInt,
     DivInt,
+    IntDiv,
+    RemInt,
     CmpIntEq,
     CmpIntNotEq,
     CmpIntLt,

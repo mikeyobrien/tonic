@@ -29,6 +29,9 @@ fn check_reports_deterministic_undefined_symbol_error_code() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
 
     assert!(stderr.contains("error: [E1001] undefined symbol 'missing' in Demo.run"));
-    assert!(stderr.contains("--> line 3, column 5"));
+    assert!(
+        stderr.contains("--> examples/resolver_undefined_symbol.tn:3:5"),
+        "expected filename:line:col location, got: {stderr}"
+    );
     assert!(stderr.contains("3 |     missing()"));
 }

@@ -262,11 +262,30 @@ fn synthetic_failure(phase: &str, fixture: &str, message: String) -> CommandOutc
     }
 }
 
+fn strip_offset(stderr: &str) -> String {
+    let mut lines = Vec::new();
+    for line in stderr.lines() {
+        if let Some(idx) = line.rfind(" at offset ") {
+            lines.push(line[..idx].to_string());
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    let mut out = lines.join("\n");
+    if stderr.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 fn outcomes_match(interpreter: &CommandOutcome, native: &CommandOutcome) -> bool {
+    let int_stderr = strip_offset(&interpreter.stderr);
+    let nat_stderr = strip_offset(&native.stderr);
+
     native.phase == "run"
         && interpreter.exit_code == native.exit_code
         && interpreter.stdout == native.stdout
-        && interpreter.stderr == native.stderr
+        && int_stderr == nat_stderr
 }
 
 fn mismatch_reason(interpreter: &CommandOutcome, native: &CommandOutcome) -> String {

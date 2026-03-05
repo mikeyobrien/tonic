@@ -332,7 +332,8 @@ fn register_pattern(
         | IrPattern::Integer { .. }
         | IrPattern::Bool { .. }
         | IrPattern::Nil
-        | IrPattern::String { .. } => {}
+        | IrPattern::String { .. }
+        | IrPattern::Bitstring { .. } => {}
     }
 
     Ok(())
@@ -512,6 +513,55 @@ fn emit_pattern_case(pattern_case: &PatternCase, out: &mut String) -> Result<(),
                 out.push_str(&format!("  if (!entry_matched_{index}) {{\n"));
                 out.push_str("    return 0;\n");
                 out.push_str("  }\n");
+            }
+
+            out.push_str("  return 1;\n");
+        }
+        IrPattern::Bitstring { segments } => {
+            out.push_str("  TnObj *list_obj = tn_get_obj(value);\n");
+            out.push_str("  if (list_obj == NULL || list_obj->kind != TN_OBJ_LIST) {\n");
+            out.push_str("    return 0;\n");
+            out.push_str("  }\n");
+            out.push_str(&format!(
+                "  if (list_obj->as.list.len != {}) {{\n",
+                segments.len()
+            ));
+            out.push_str("    return 0;\n");
+            out.push_str("  }\n");
+
+            for (index, segment) in segments.iter().enumerate() {
+                match segment {
+                    crate::ir::IrBitstringSegment::Wildcard => {}
+                    crate::ir::IrBitstringSegment::Literal { value } => {
+                        out.push_str(&format!(
+                            "  if (list_obj->as.list.items[{index}] != (TnVal){value}LL) {{\n"
+                        ));
+                        out.push_str("    return 0;\n");
+                        out.push_str("  }\n");
+                    }
+                    crate::ir::IrBitstringSegment::Bind { name } => {
+                        let name_hash = hash_text_i64(name);
+                        out.push_str(&format!("  {{\n"));
+                        out.push_str(&format!(
+                            "    TnVal bs_byte_{index} = list_obj->as.list.items[{index}];\n"
+                        ));
+                        out.push_str(&format!("    TnVal existing_{index} = 0;\n"));
+                        out.push_str(&format!(
+                            "    if (tn_binding_get((TnVal){name_hash}LL, &existing_{index})) {{\n"
+                        ));
+                        out.push_str(&format!(
+                            "      if (!tn_runtime_value_equal(existing_{index}, bs_byte_{index})) {{\n"
+                        ));
+                        out.push_str("        return 0;\n");
+                        out.push_str("      }\n");
+                        out.push_str("    } else {\n");
+                        out.push_str(&format!(
+                            "      tn_binding_set((TnVal){name_hash}LL, bs_byte_{index});\n"
+                        ));
+                        out.push_str("    }\n");
+                        out.push_str("  }\n");
+                    }
+                }
             }
 
             out.push_str("  return 1;\n");

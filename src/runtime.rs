@@ -169,6 +169,12 @@ impl fmt::Display for RuntimeError {
 
 impl std::error::Error for RuntimeError {}
 
+impl RuntimeError {
+    pub fn offset(&self) -> Option<usize> {
+        self.offset
+    }
+}
+
 pub fn evaluate_entrypoint(program: &IrProgram) -> Result<RuntimeValue, RuntimeError> {
     evaluate_function(program, ENTRYPOINT, &[], 0)
 }
@@ -508,6 +514,20 @@ fn evaluate_ops(
                     .map_err(map_native_runtime_error)?;
                 stack.push(result);
             }
+            IrOp::IntDiv { offset } => {
+                let right = pop_value(stack, *offset, "div")?;
+                let left = pop_value(stack, *offset, "div")?;
+                let result = native_runtime::ops::int_div(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
+            IrOp::RemInt { offset } => {
+                let right = pop_value(stack, *offset, "rem")?;
+                let left = pop_value(stack, *offset, "rem")?;
+                let result = native_runtime::ops::rem_int(left, right, *offset)
+                    .map_err(map_native_runtime_error)?;
+                stack.push(result);
+            }
             IrOp::CmpInt { kind, offset } => {
                 let right = pop_value(stack, *offset, "cmp")?;
                 let left = pop_value(stack, *offset, "cmp")?;
@@ -644,7 +664,7 @@ fn evaluate_ops(
                         let err_val = err
                             .raised_value
                             .clone()
-                            .unwrap_or_else(|| RuntimeValue::String(err.message.clone()));
+                            .unwrap_or_else(|| RuntimeValue::String(err.to_string()));
 
                         let mut handled = false;
                         for branch in rescue_branches {
@@ -757,137 +777,8 @@ fn evaluate_ops(
                 let value = pop_value(stack, *offset, "raise")?;
                 return Err(RuntimeError::raised(value, *offset));
             }
-            IrOp::Cond { branches, offset } => {
-                let mut matched = false;
-                for branch in branches {
-                    let mut cond_env = env.clone();
-                    let mut cond_stack = Vec::new();
-                    evaluate_ops(program, &branch.condition_ops, &mut cond_env, &mut cond_stack)?;
-                    let condition_value = pop_value(&mut cond_stack, *offset, "cond condition")?;
-                    let truthy =
-                        !matches!(condition_value, RuntimeValue::Nil | RuntimeValue::Bool(false));
-                    if truthy {
-                        matched = true;
-                        if let Some(ret) =
-                            evaluate_ops(program, &branch.ops, &mut cond_env, stack)?
-                        {
-                            return Ok(Some(ret));
-                        }
-                        break;
-                    }
-                }
-                if !matched {
-                    return Err(RuntimeError::at_offset(
-                        "no cond clause was satisfied",
-                        *offset,
-                    ));
-                }
-            }
-            IrOp::With {
-                clauses,
-                body_ops,
-                else_branches,
-                offset,
-            } => {
-                let mut with_env = env.clone();
-                let mut matched = true;
-                let mut failed_value = None;
-
-                for clause in clauses {
-                    let mut clause_stack = Vec::new();
-                    evaluate_ops(program, &clause.ops, &mut with_env, &mut clause_stack)?;
-                    let value = pop_value(&mut clause_stack, *offset, "with clause")?;
-
-                    let mut bindings = HashMap::new();
-                    if match_pattern(&value, &clause.pattern, &with_env, &mut bindings) {
-                        for (k, v) in bindings {
-                            with_env.insert(k, v);
-                        }
-                    } else {
-                        matched = false;
-                        failed_value = Some(value);
-                        break;
-                    }
-                }
-
-                if matched {
-                    if let Some(ret) =
-                        evaluate_ops(program, body_ops, &mut with_env, stack)?
-                    {
-                        return Ok(Some(ret));
-                    }
-                } else if let Some(failed) = failed_value {
-                    let mut else_matched = false;
-                    for branch in else_branches {
-                        let mut bindings = HashMap::new();
-                        if match_pattern(&failed, &branch.pattern, env, &mut bindings) {
-                            let mut branch_env = env.clone();
-                            for (k, v) in bindings {
-                                branch_env.insert(k, v);
-                            }
-                            else_matched = true;
-                            if let Some(ret) =
-                                evaluate_ops(program, &branch.ops, &mut branch_env, stack)?
-                            {
-                                return Ok(Some(ret));
-                            }
-                            break;
-                        }
-                    }
-                    if !else_matched {
-                        return Err(RuntimeError::at_offset(
-                            format!(
-                                "no with else clause matching: {}",
-                                failed.render()
-                            ),
-                            *offset,
-                        ));
-                    }
-                }
-            }
-            IrOp::MakeTuple { offset } => {
-                let right = pop_value(stack, *offset, "tuple right")?;
-                let left = pop_value(stack, *offset, "tuple left")?;
-                stack.push(RuntimeValue::Tuple(Box::new(left), Box::new(right)));
-            }
-            IrOp::MakeMap { size, offset } => {
-                let mut entries = Vec::with_capacity(*size);
-                for _ in 0..*size {
-                    let value = pop_value(stack, *offset, "map value")?;
-                    let key = pop_value(stack, *offset, "map key")?;
-                    entries.push((key, value));
-                }
-                entries.reverse();
-                stack.push(RuntimeValue::Map(entries));
-            }
-            IrOp::MakeKeyword { size, offset } => {
-                let mut entries = Vec::with_capacity(*size);
-                for _ in 0..*size {
-                    let value = pop_value(stack, *offset, "keyword value")?;
-                    let key = pop_value(stack, *offset, "keyword key")?;
-                    entries.push((key, value));
-                }
-                entries.reverse();
-                stack.push(RuntimeValue::Keyword(entries));
-            }
-            IrOp::MakeList { size, offset } => {
-                let mut items = Vec::with_capacity(*size);
-                for _ in 0..*size {
-                    items.push(pop_value(stack, *offset, "list item")?);
-                }
-                items.reverse();
-                stack.push(RuntimeValue::List(items));
-            }
-            IrOp::MakeResultOk { offset } => {
-                let value = pop_value(stack, *offset, "ok")?;
-                stack.push(RuntimeValue::ResultOk(Box::new(value)));
-            }
-            IrOp::MakeResultErr { offset } => {
-                let value = pop_value(stack, *offset, "err")?;
-                stack.push(RuntimeValue::ResultErr(Box::new(value)));
-            }
             IrOp::For {
-                generator,
+                generators,
                 body_ops,
                 into_ops,
                 reduce_ops,
@@ -895,7 +786,7 @@ fn evaluate_ops(
             } => {
                 let result = evaluate_for(
                     program,
-                    generator,
+                    generators,
                     body_ops,
                     into_ops.as_deref(),
                     reduce_ops.as_deref(),
@@ -904,54 +795,13 @@ fn evaluate_ops(
                 )?;
                 stack.push(result);
             }
-            IrOp::Pipe { ops, offset } => {
-                let left = pop_value(stack, *offset, "pipe")?;
-                let mut pipe_stack = vec![left];
-                evaluate_ops(program, ops, env, &mut pipe_stack)?;
-                if let Some(v) = pipe_stack.pop() {
-                    stack.push(v);
+            IrOp::Bitstring { count, offset } => {
+                let mut bytes = Vec::with_capacity(*count);
+                for _ in 0..*count {
+                    bytes.push(pop_value(stack, *offset, "bitstring byte")?);
                 }
-            }
-            IrOp::UpdateMap { updates, offset } => {
-                let map_value = pop_value(stack, *offset, "map update")?;
-                match map_value {
-                    RuntimeValue::Map(mut entries) => {
-                        for (key_ops, value_ops) in updates {
-                            let mut key_stack = Vec::new();
-                            evaluate_ops(program, key_ops, env, &mut key_stack)?;
-                            let key = pop_value(&mut key_stack, *offset, "map update key")?;
-
-                            let mut value_stack = Vec::new();
-                            evaluate_ops(program, value_ops, env, &mut value_stack)?;
-                            let value =
-                                pop_value(&mut value_stack, *offset, "map update value")?;
-
-                            if let Some(existing) =
-                                entries.iter_mut().find(|(k, _)| k == &key)
-                            {
-                                existing.1 = value;
-                            } else {
-                                return Err(RuntimeError::at_offset(
-                                    format!(
-                                        "key not found in map update: {}",
-                                        key.render()
-                                    ),
-                                    *offset,
-                                ));
-                            }
-                        }
-                        stack.push(RuntimeValue::Map(entries));
-                    }
-                    other => {
-                        return Err(RuntimeError::at_offset(
-                            format!(
-                                "map update requires map, found {}",
-                                other.kind_label()
-                            ),
-                            *offset,
-                        ));
-                    }
-                }
+                bytes.reverse();
+                stack.push(RuntimeValue::List(bytes));
             }
         }
     }
@@ -960,14 +810,14 @@ fn evaluate_ops(
 
 fn evaluate_for(
     program: &IrProgram,
-    generator: &IrForGenerator,
+    generators: &[IrForGenerator],
     body_ops: &[IrOp],
     into_ops: Option<&[IrOp]>,
     reduce_ops: Option<&[IrOp]>,
     env: &mut HashMap<String, RuntimeValue>,
     offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
-    let items = collect_for_items(program, generator, env, offset)?;
+    let items = collect_for_items(program, generators, env, offset)?;
 
     if let Some(reduce_ops) = reduce_ops {
         evaluate_for_reduce(program, &items, body_ops, reduce_ops, env, offset)
@@ -976,110 +826,17 @@ fn evaluate_for(
     }
 }
 
-fn collect_for_items(
-    program: &IrProgram,
-    generator: &IrForGenerator,
-    env: &mut HashMap<String, RuntimeValue>,
+fn iter_source_value(
+    source: RuntimeValue,
     offset: usize,
-) -> Result<Vec<(RuntimeValue, HashMap<String, RuntimeValue>)>, RuntimeError> {
-    match generator {
-        IrForGenerator::Single { source_ops, pattern, filter_ops } => {
-            let mut source_stack = Vec::new();
-            evaluate_ops(program, source_ops, env, &mut source_stack)?;
-            let source = pop_value(&mut source_stack, offset, "for source")?;
-
-            let items_iter: Vec<RuntimeValue> = match source {
-                RuntimeValue::List(items) => items,
-                RuntimeValue::Range(start, end) => {
-                    if start <= end {
-                        (start..=end).map(RuntimeValue::Int).collect()
-                    } else {
-                        Vec::new()
-                    }
-                }
-                RuntimeValue::SteppedRange(start, end, step) => {
-                    let mut items = Vec::new();
-                    let mut current = start;
-                    if step > 0 {
-                        while current <= end {
-                            items.push(RuntimeValue::Int(current));
-                            current += step;
-                        }
-                    } else if step < 0 {
-                        while current >= end {
-                            items.push(RuntimeValue::Int(current));
-                            current += step;
-                        }
-                    }
-                    items
-                }
-                RuntimeValue::Map(entries) => entries
-                    .into_iter()
-                    .map(|(k, v)| RuntimeValue::Tuple(Box::new(k), Box::new(v)))
-                    .collect(),
-                other => {
-                    return Err(RuntimeError::at_offset(
-                        format!("for requires iterable, found {}", other.kind_label()),
-                        offset,
-                    ));
-                }
-            };
-
-            let mut result = Vec::new();
-            for item in items_iter {
-                let mut bindings = HashMap::new();
-                if !match_pattern(&item, pattern, env, &mut bindings) {
-                    continue;
-                }
-
-                let mut item_env = env.clone();
-                for (k, v) in bindings {
-                    item_env.insert(k, v);
-                }
-
-                if let Some(filter_ops) = filter_ops {
-                    let mut filter_stack = Vec::new();
-                    evaluate_ops(program, filter_ops, &mut item_env, &mut filter_stack)?;
-                    let filter_val = pop_value(&mut filter_stack, offset, "for filter")?;
-                    if matches!(filter_val, RuntimeValue::Nil | RuntimeValue::Bool(false)) {
-                        continue;
-                    }
-                }
-
-                result.push((item, item_env));
-            }
-            Ok(result)
-        }
-        IrForGenerator::Nested { generators } => {
-            collect_nested_for_items(program, generators, env, offset)
-        }
-    }
-}
-
-fn collect_nested_for_items(
-    program: &IrProgram,
-    generators: &[crate::ir::IrForSingleGenerator],
-    env: &mut HashMap<String, RuntimeValue>,
-    offset: usize,
-) -> Result<Vec<(RuntimeValue, HashMap<String, RuntimeValue>)>, RuntimeError> {
-    if generators.is_empty() {
-        return Ok(vec![(RuntimeValue::Nil, env.clone())]);
-    }
-
-    let first = &generators[0];
-    let rest = &generators[1..];
-
-    let mut source_stack = Vec::new();
-    evaluate_ops(program, &first.source_ops, env, &mut source_stack)?;
-    let source = pop_value(&mut source_stack, offset, "for source")?;
-
-    let items_iter: Vec<RuntimeValue> = match source {
-        RuntimeValue::List(items) => items,
+) -> Result<Vec<RuntimeValue>, RuntimeError> {
+    match source {
+        RuntimeValue::List(items) => Ok(items),
         RuntimeValue::Range(start, end) => {
             if start <= end {
-                (start..=end).map(RuntimeValue::Int).collect()
+                Ok((start..=end).map(RuntimeValue::Int).collect())
             } else {
-                Vec::new()
+                Ok(Vec::new())
             }
         }
         RuntimeValue::SteppedRange(start, end, step) => {
@@ -1096,19 +853,36 @@ fn collect_nested_for_items(
                     current += step;
                 }
             }
-            items
+            Ok(items)
         }
-        RuntimeValue::Map(entries) => entries
+        RuntimeValue::Map(entries) => Ok(entries
             .into_iter()
             .map(|(k, v)| RuntimeValue::Tuple(Box::new(k), Box::new(v)))
-            .collect(),
-        other => {
-            return Err(RuntimeError::at_offset(
-                format!("for requires iterable, found {}", other.kind_label()),
-                offset,
-            ));
-        }
-    };
+            .collect()),
+        other => Err(RuntimeError::at_offset(
+            format!("for requires iterable, found {}", other.kind_label()),
+            offset,
+        )),
+    }
+}
+
+fn collect_for_items(
+    program: &IrProgram,
+    generators: &[IrForGenerator],
+    env: &mut HashMap<String, RuntimeValue>,
+    offset: usize,
+) -> Result<Vec<(RuntimeValue, HashMap<String, RuntimeValue>)>, RuntimeError> {
+    if generators.is_empty() {
+        return Ok(vec![(RuntimeValue::Nil, env.clone())]);
+    }
+
+    let first = &generators[0];
+    let rest = &generators[1..];
+
+    let mut source_stack = Vec::new();
+    evaluate_ops(program, &first.source_ops, env, &mut source_stack)?;
+    let source = pop_value(&mut source_stack, offset, "for source")?;
+    let items_iter = iter_source_value(source, offset)?;
 
     let mut result = Vec::new();
     for item in items_iter {
@@ -1122,20 +896,20 @@ fn collect_nested_for_items(
             item_env.insert(k, v);
         }
 
-        if let Some(filter_ops) = &first.filter_ops {
+        if let Some(guard_ops) = &first.guard_ops {
             let mut filter_stack = Vec::new();
-            evaluate_ops(program, filter_ops, &mut item_env, &mut filter_stack)?;
-            let filter_val = pop_value(&mut filter_stack, offset, "for filter")?;
+            evaluate_ops(program, guard_ops, &mut item_env, &mut filter_stack)?;
+            let filter_val = pop_value(&mut filter_stack, offset, "for guard")?;
             if matches!(filter_val, RuntimeValue::Nil | RuntimeValue::Bool(false)) {
                 continue;
             }
         }
 
-        let nested_results = collect_nested_for_items(program, rest, &mut item_env, offset)?;
-        for (nested_item, nested_env) in nested_results {
-            if matches!(nested_item, RuntimeValue::Nil) && rest.is_empty() {
-                result.push((item.clone(), item_env.clone()));
-            } else {
+        if rest.is_empty() {
+            result.push((item, item_env));
+        } else {
+            let nested = collect_for_items(program, rest, &mut item_env, offset)?;
+            for (nested_item, nested_env) in nested {
                 result.push((nested_item, nested_env));
             }
         }
@@ -1224,9 +998,10 @@ fn evaluate_call(
     let args: Vec<RuntimeValue> = stack.drain(stack.len() - argc..).collect();
 
     match callee {
-        IrCallTarget::Named(name) => evaluate_function(program, name, &args, offset),
-        IrCallTarget::NativeOp(op) => {
-            native_runtime::call_native_op(op, &args, offset).map_err(map_native_runtime_error)
+        IrCallTarget::Function { name } => evaluate_function(program, name, &args, offset),
+        IrCallTarget::Builtin { name } => {
+            native_runtime::evaluate_builtin_call(name, args, offset)
+                .map_err(map_native_runtime_error)
         }
     }
 }
@@ -1301,84 +1076,8 @@ fn match_pattern(
     env: &HashMap<String, RuntimeValue>,
     bindings: &mut HashMap<String, RuntimeValue>,
 ) -> bool {
-    match pattern {
-        IrPattern::Wildcard => true,
-        IrPattern::Bind(name) => {
-            bindings.insert(name.clone(), value.clone());
-            true
-        }
-        IrPattern::Pin(name) => {
-            let pinned = env.get(name).or_else(|| bindings.get(name));
-            pinned.map(|v| v == value).unwrap_or(false)
-        }
-        IrPattern::Int(expected) => matches!(value, RuntimeValue::Int(v) if v == expected),
-        IrPattern::Float(expected) => matches!(value, RuntimeValue::Float(v) if v == expected),
-        IrPattern::Bool(expected) => matches!(value, RuntimeValue::Bool(v) if v == expected),
-        IrPattern::Nil => matches!(value, RuntimeValue::Nil),
-        IrPattern::String(expected) => matches!(value, RuntimeValue::String(v) if v == expected),
-        IrPattern::Atom(expected) => matches!(value, RuntimeValue::Atom(v) if v == expected),
-        IrPattern::Tuple(left_pattern, right_pattern) => match value {
-            RuntimeValue::Tuple(left, right) => {
-                match_pattern(left, left_pattern, env, bindings)
-                    && match_pattern(right, right_pattern, env, bindings)
-            }
-            _ => false,
-        },
-        IrPattern::List(patterns) => match value {
-            RuntimeValue::List(items) => {
-                if patterns.len() != items.len() {
-                    return false;
-                }
-                patterns
-                    .iter()
-                    .zip(items.iter())
-                    .all(|(p, v)| match_pattern(v, p, env, bindings))
-            }
-            _ => false,
-        },
-        IrPattern::ListHeadTail(head_pattern, tail_pattern) => match value {
-            RuntimeValue::List(items) => {
-                if items.is_empty() {
-                    return false;
-                }
-                let head = &items[0];
-                let tail = RuntimeValue::List(items[1..].to_vec());
-                match_pattern(head, head_pattern, env, bindings)
-                    && match_pattern(&tail, tail_pattern, env, bindings)
-            }
-            _ => false,
-        },
-        IrPattern::Map(pattern_entries) => match value {
-            RuntimeValue::Map(entries) => pattern_entries.iter().all(|(key_pattern, val_pattern)| {
-                entries.iter().any(|(k, v)| {
-                    let mut key_bindings = HashMap::new();
-                    if match_pattern(k, key_pattern, env, &mut key_bindings) {
-                        let mut val_bindings = HashMap::new();
-                        if match_pattern(v, val_pattern, env, &mut val_bindings) {
-                            bindings.extend(key_bindings);
-                            bindings.extend(val_bindings);
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                })
-            }),
-            _ => false,
-        },
-        IrPattern::ResultOk(inner) => match value {
-            RuntimeValue::ResultOk(inner_value) => match_pattern(inner_value, inner, env, bindings),
-            _ => false,
-        },
-        IrPattern::ResultErr(inner) => match value {
-            RuntimeValue::ResultErr(inner_value) => {
-                match_pattern(inner_value, inner, env, bindings)
-            }
-            _ => false,
-        },
-    }
+    use crate::native_runtime::pattern::match_pattern as native_match;
+    native_match(value, pattern, env, bindings)
 }
 
 fn ir_op_offset(op: &IrOp) -> usize {
@@ -1389,6 +1088,7 @@ fn ir_op_offset(op: &IrOp) -> usize {
         IrOp::ConstNil { offset } => *offset,
         IrOp::ConstString { offset, .. } => *offset,
         IrOp::ConstAtom { offset, .. } => *offset,
+        IrOp::ToString { offset } => *offset,
         IrOp::LoadVariable { offset, .. } => *offset,
         IrOp::Call { offset, .. } => *offset,
         IrOp::CallValue { offset, .. } => *offset,
@@ -1416,6 +1116,8 @@ fn ir_op_offset(op: &IrOp) -> usize {
         IrOp::SubInt { offset } => *offset,
         IrOp::MulInt { offset } => *offset,
         IrOp::DivInt { offset } => *offset,
+        IrOp::IntDiv { offset } => *offset,
+        IrOp::RemInt { offset } => *offset,
         IrOp::CmpInt { offset, .. } => *offset,
         IrOp::Match { offset, .. } => *offset,
         IrOp::Return { offset } => *offset,
@@ -1423,76 +1125,23 @@ fn ir_op_offset(op: &IrOp) -> usize {
         IrOp::Case { offset, .. } => *offset,
         IrOp::Try { offset, .. } => *offset,
         IrOp::Raise { offset } => *offset,
-        IrOp::Cond { offset, .. } => *offset,
-        IrOp::With { offset, .. } => *offset,
-        IrOp::MakeTuple { offset } => *offset,
-        IrOp::MakeMap { offset, .. } => *offset,
-        IrOp::MakeKeyword { offset, .. } => *offset,
-        IrOp::MakeList { offset, .. } => *offset,
-        IrOp::MakeResultOk { offset } => *offset,
-        IrOp::MakeResultErr { offset } => *offset,
         IrOp::For { offset, .. } => *offset,
-        IrOp::Pipe { offset, .. } => *offset,
-        IrOp::UpdateMap { offset, .. } => *offset,
-        IrOp::ToString { offset } => *offset,
+        IrOp::Bitstring { offset, .. } => *offset,
     }
 }
 
 fn map_native_runtime_error(err: native_runtime::NativeRuntimeError) -> RuntimeError {
     RuntimeError {
-        message: err.message,
-        offset: Some(err.offset),
-        raised_value: err.raised_value.map(map_native_value),
-    }
-}
-
-fn map_native_value(value: native_runtime::NativeRuntimeValue) -> RuntimeValue {
-    match value {
-        native_runtime::NativeRuntimeValue::Int(i) => RuntimeValue::Int(i),
-        native_runtime::NativeRuntimeValue::Float(f) => RuntimeValue::Float(f),
-        native_runtime::NativeRuntimeValue::Bool(b) => RuntimeValue::Bool(b),
-        native_runtime::NativeRuntimeValue::Nil => RuntimeValue::Nil,
-        native_runtime::NativeRuntimeValue::String(s) => RuntimeValue::String(s),
-        native_runtime::NativeRuntimeValue::Atom(a) => RuntimeValue::Atom(a),
-        native_runtime::NativeRuntimeValue::ResultOk(v) => {
-            RuntimeValue::ResultOk(Box::new(map_native_value(*v)))
-        }
-        native_runtime::NativeRuntimeValue::ResultErr(v) => {
-            RuntimeValue::ResultErr(Box::new(map_native_value(*v)))
-        }
-        native_runtime::NativeRuntimeValue::Tuple(l, r) => RuntimeValue::Tuple(
-            Box::new(map_native_value(*l)),
-            Box::new(map_native_value(*r)),
-        ),
-        native_runtime::NativeRuntimeValue::Map(entries) => RuntimeValue::Map(
-            entries
-                .into_iter()
-                .map(|(k, v)| (map_native_value(k), map_native_value(v)))
-                .collect(),
-        ),
-        native_runtime::NativeRuntimeValue::Keyword(entries) => RuntimeValue::Keyword(
-            entries
-                .into_iter()
-                .map(|(k, v)| (map_native_value(k), map_native_value(v)))
-                .collect(),
-        ),
-        native_runtime::NativeRuntimeValue::List(items) => {
-            RuntimeValue::List(items.into_iter().map(map_native_value).collect())
-        }
-        native_runtime::NativeRuntimeValue::Range(s, e) => RuntimeValue::Range(s, e),
-        native_runtime::NativeRuntimeValue::SteppedRange(s, e, step) => {
-            RuntimeValue::SteppedRange(s, e, step)
-        }
+        message: err.message().to_string(),
+        offset: Some(err.offset()),
+        raised_value: None,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{
-        IrCaseBranch, IrCondBranch, IrForGenerator, IrForSingleGenerator, IrFunction,
-        IrRescueBranch, IrTryCatchBranch, IrWithClause, IrWithElseBranch,
-    };
+    use crate::ir::{IrCaseBranch, IrForGenerator, IrFunction};
 
     fn make_program(functions: Vec<IrFunction>) -> IrProgram {
         IrProgram { functions }
@@ -1546,7 +1195,7 @@ mod tests {
                 guard_ops: None,
                 ops: vec![
                     IrOp::Call {
-                        callee: IrCallTarget::Named("Demo.helper".to_string()),
+                        callee: IrCallTarget::Function { name: "Demo.helper".to_string() },
                         argc: 0,
                         offset: 0,
                     },
@@ -1597,7 +1246,7 @@ mod tests {
                 IrOp::Case {
                     branches: vec![
                         IrCaseBranch {
-                            pattern: IrPattern::Int(1),
+                            pattern: IrPattern::Integer { value: 1 },
                             guard_ops: None,
                             ops: vec![
                                 IrOp::ConstAtom { value: "one".to_string(), offset: 0 },
@@ -1632,7 +1281,7 @@ mod tests {
             guard_ops: None,
             ops: vec![
                 IrOp::ConstInt { value: 42, offset: 0 },
-                IrOp::Match { pattern: IrPattern::Bind("x".to_string()), offset: 0 },
+                IrOp::Match { pattern: IrPattern::Bind { name: "x".to_string() }, offset: 0 },
                 IrOp::LoadVariable { name: "x".to_string(), offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1649,15 +1298,15 @@ mod tests {
             guard_ops: None,
             ops: vec![
                 IrOp::For {
-                    generator: IrForGenerator::Single {
+                    generators: vec![IrForGenerator {
                         source_ops: vec![
                             IrOp::ConstInt { value: 1, offset: 0 },
                             IrOp::ConstInt { value: 3, offset: 0 },
                             IrOp::Range { offset: 0 },
                         ],
-                        pattern: IrPattern::Bind("x".to_string()),
-                        filter_ops: None,
-                    },
+                        pattern: IrPattern::Bind { name: "x".to_string() },
+                        guard_ops: None,
+                    }],
                     body_ops: vec![
                         IrOp::LoadVariable { name: "x".to_string(), offset: 0 },
                         IrOp::ConstInt { value: 2, offset: 0 },
@@ -1681,41 +1330,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cond() {
-        let program = make_program(vec![IrFunction {
-            name: "Demo.run".to_string(),
-            params: vec![],
-            param_patterns: None,
-            guard_ops: None,
-            ops: vec![
-                IrOp::Cond {
-                    branches: vec![
-                        IrCondBranch {
-                            condition_ops: vec![IrOp::ConstBool { value: false, offset: 0 }],
-                            ops: vec![
-                                IrOp::ConstAtom { value: "no".to_string(), offset: 0 },
-                                IrOp::Return { offset: 0 },
-                            ],
-                        },
-                        IrCondBranch {
-                            condition_ops: vec![IrOp::ConstBool { value: true, offset: 0 }],
-                            ops: vec![
-                                IrOp::ConstAtom { value: "yes".to_string(), offset: 0 },
-                                IrOp::Return { offset: 0 },
-                            ],
-                        },
-                    ],
-                    offset: 0,
-                },
-            ],
-        }]);
-        assert_eq!(
-            evaluate_entrypoint(&program),
-            Ok(RuntimeValue::Atom("yes".to_string()))
-        );
-    }
-
-    #[test]
     fn test_try_rescue() {
         let program = make_program(vec![IrFunction {
             name: "Demo.run".to_string(),
@@ -1728,8 +1342,8 @@ mod tests {
                         IrOp::ConstString { value: "boom".to_string(), offset: 0 },
                         IrOp::Raise { offset: 0 },
                     ],
-                    rescue_branches: vec![IrRescueBranch {
-                        pattern: IrPattern::Bind("e".to_string()),
+                    rescue_branches: vec![IrCaseBranch {
+                        pattern: IrPattern::Bind { name: "e".to_string() },
                         guard_ops: None,
                         ops: vec![
                             IrOp::ConstAtom { value: "rescued".to_string(), offset: 0 },
@@ -1776,7 +1390,74 @@ mod tests {
     }
 
     #[test]
-    fn test_make_list() {
+    fn test_bitwise_and() {
+        let program = make_program(vec![IrFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            ops: vec![
+                IrOp::ConstInt { value: 5, offset: 0 },
+                IrOp::ConstInt { value: 3, offset: 0 },
+                IrOp::BitwiseAnd { offset: 0 },
+                IrOp::Return { offset: 0 },
+            ],
+        }]);
+        assert_eq!(evaluate_entrypoint(&program), Ok(RuntimeValue::Int(1)));
+    }
+
+    #[test]
+    fn test_bitwise_or() {
+        let program = make_program(vec![IrFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            ops: vec![
+                IrOp::ConstInt { value: 5, offset: 0 },
+                IrOp::ConstInt { value: 3, offset: 0 },
+                IrOp::BitwiseOr { offset: 0 },
+                IrOp::Return { offset: 0 },
+            ],
+        }]);
+        assert_eq!(evaluate_entrypoint(&program), Ok(RuntimeValue::Int(7)));
+    }
+
+    #[test]
+    fn test_bitwise_xor() {
+        let program = make_program(vec![IrFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            ops: vec![
+                IrOp::ConstInt { value: 5, offset: 0 },
+                IrOp::ConstInt { value: 6, offset: 0 },
+                IrOp::BitwiseXor { offset: 0 },
+                IrOp::Return { offset: 0 },
+            ],
+        }]);
+        assert_eq!(evaluate_entrypoint(&program), Ok(RuntimeValue::Int(3)));
+    }
+
+    #[test]
+    fn test_bitwise_not() {
+        let program = make_program(vec![IrFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            ops: vec![
+                IrOp::ConstInt { value: 5, offset: 0 },
+                IrOp::BitwiseNot { offset: 0 },
+                IrOp::Return { offset: 0 },
+            ],
+        }]);
+        assert_eq!(evaluate_entrypoint(&program), Ok(RuntimeValue::Int(-6)));
+    }
+
+    #[test]
+    fn test_bitwise_shift_left() {
         let program = make_program(vec![IrFunction {
             name: "Demo.run".to_string(),
             params: vec![],
@@ -1784,29 +1465,28 @@ mod tests {
             guard_ops: None,
             ops: vec![
                 IrOp::ConstInt { value: 1, offset: 0 },
-                IrOp::ConstInt { value: 2, offset: 0 },
-                IrOp::ConstInt { value: 3, offset: 0 },
-                IrOp::MakeList { size: 3, offset: 0 },
+                IrOp::ConstInt { value: 4, offset: 0 },
+                IrOp::BitwiseShiftLeft { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
         }]);
-        let mut result_stack = Vec::new();
-        let program_ref = &program;
-        let mut env = HashMap::new();
-        evaluate_ops(
-            program_ref,
-            &program.functions[0].ops,
-            &mut env,
-            &mut result_stack,
-        )
-        .unwrap();
-        assert_eq!(
-            result_stack,
-            vec![RuntimeValue::List(vec![
-                RuntimeValue::Int(1),
-                RuntimeValue::Int(2),
-                RuntimeValue::Int(3),
-            ])]
-        );
+        assert_eq!(evaluate_entrypoint(&program), Ok(RuntimeValue::Int(16)));
+    }
+
+    #[test]
+    fn test_bitwise_shift_right() {
+        let program = make_program(vec![IrFunction {
+            name: "Demo.run".to_string(),
+            params: vec![],
+            param_patterns: None,
+            guard_ops: None,
+            ops: vec![
+                IrOp::ConstInt { value: 16, offset: 0 },
+                IrOp::ConstInt { value: 2, offset: 0 },
+                IrOp::BitwiseShiftRight { offset: 0 },
+                IrOp::Return { offset: 0 },
+            ],
+        }]);
+        assert_eq!(evaluate_entrypoint(&program), Ok(RuntimeValue::Int(4)));
     }
 }

@@ -142,6 +142,12 @@ impl FunctionLowerer {
             IrOp::DivInt { offset } => {
                 self.push_binary(block_id, stack, MirBinaryKind::DivInt, offset, MirType::Int)
             }
+            IrOp::IntDiv { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::IntDiv, offset, MirType::Int)
+            }
+            IrOp::RemInt { offset } => {
+                self.push_binary(block_id, stack, MirBinaryKind::RemInt, offset, MirType::Int)
+            }
             IrOp::CmpInt { kind, offset } => {
                 let binary_kind = match kind {
                     CmpKind::Eq | CmpKind::StrictEq => MirBinaryKind::CmpIntEq,
@@ -297,6 +303,22 @@ impl FunctionLowerer {
                         offset,
                         value_type: Some(value.value_type),
                     });
+                stack.push(value);
+                Ok(())
+            }
+            IrOp::Bitstring { count, offset } => {
+                let args = pop_n(stack, count, "bitstring elements")?;
+                let value = self.alloc_value(MirType::Dynamic);
+                self.block_mut(block_id)
+                    .instructions
+                    .push(MirInstruction::Legacy {
+                        dest: Some(value.id),
+                        source: IrOp::Bitstring { count, offset },
+                        offset,
+                        value_type: Some(value.value_type),
+                    });
+                // drop the args since the legacy handler owns them
+                let _ = args;
                 stack.push(value);
                 Ok(())
             }

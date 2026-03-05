@@ -89,6 +89,82 @@ Boundary entrypoints for host interop continue to use the same core call ABI:
 Errors from unknown host functions, key-type mismatch, and arity mismatch are returned as
 `TCallStatus::Err` with deterministic string payloads in `TCallResult.error`.
 
+## Host interop function registry
+
+The `HostRegistry` (see `src/interop.rs`) holds all registered host functions.  The following table lists currently registered keys and their arity:
+
+### File system
+
+| Key | Arity | Returns |
+|-----|-------|---------|
+| `sys_path_exists` | 1 | `Bool` |
+| `sys_ensure_dir` | 1 | `Bool` |
+| `sys_write_text` | 2 | `Bool` |
+| `sys_append_text` | 2 | `Bool` |
+| `sys_write_text_atomic` | 2 | `Bool` |
+| `sys_lock_acquire` | 1 | `Bool` (`true` when lock file is acquired, `false` when already held) |
+| `sys_lock_release` | 1 | `Bool` (`true` when released, `false` when missing) |
+| `sys_read_text` | 1 | `String` |
+| `sys_read_stdin` | 0 | `String` |
+
+`sys_append_text` appends bytes to the target file and creates parent directories on demand.
+`sys_write_text_atomic` writes via a temporary sibling file and `rename` replacement.
+`sys_lock_acquire`/`sys_lock_release` provide advisory lock-file semantics for persistence workflows.
+
+### Process
+
+| Key | Arity | Returns |
+|-----|-------|---------|
+| `sys_run` | 1 | `Map {exit_code, output}` |
+| `sys_sleep_ms` | 1 | `Bool` |
+| `sys_retry_plan` | 7 | `Map {retry, delay_ms, source}` |
+| `sys_log` | 3 | `Bool` |
+| `sys_argv` | 0 | `List[String]` |
+| `sys_env` | 1 | `String \| Nil` |
+| `sys_which` | 1 | `String \| Nil` |
+| `sys_cwd` | 0 | `String` |
+
+`sys_log` writes newline-delimited JSON payloads to an append sink. If `TONIC_SYSTEM_LOG_PATH`
+is set, the runtime appends to that file (creating parent directories when needed); otherwise
+it emits the JSON line to stderr.
+
+### Crypto
+
+| Key | Arity | Returns |
+|-----|-------|---------|
+| `sys_random_token` | 1 | `String` |
+| `sys_hmac_sha256_hex` | 2 | `String` |
+| `sys_constant_time_eq` | 2 | `Bool` |
+| `sys_discord_ed25519_verify` | 4 | `Bool` |
+
+### HTTP client
+
+| Key | Arity | Returns |
+|-----|-------|---------|
+| `sys_http_request` | 5 | `Map {status, headers, body, final_url}` |
+
+### HTTP server
+
+HTTP server primitives use **process-scoped opaque handle strings** (`"listener:N"`, `"conn:N"`) as the primary state management mechanism.  Handles are allocated from a global `AtomicU64` counter and stored in `LazyLock<Mutex<HashMap>>` maps.  Handle state is not transferred across process boundaries.
+
+| Key | Arity | Returns |
+|-----|-------|---------|
+| `sys_http_listen` | 2 | `Map {status: :ok, listener_id}` |
+| `sys_http_accept` | 2 | `Map {status: :ok, connection_id, client_ip, client_port}` |
+| `sys_http_read_request` | 1 | `Map {status: :ok, method, path, query_string, headers, body}` |
+| `sys_http_write_response` | 4 | `Bool` |
+
+**Handle lifecycle**
+
+1. `sys_http_listen` → allocates a `TcpListener`, returns `listener:N`
+2. `sys_http_accept` → clones the listener fd, blocks/polls for a connection, allocates a `TcpStream`, returns `conn:M`
+3. `sys_http_read_request` → clones the stream fd, reads the HTTP/1.1 request
+4. `sys_http_write_response` → **removes** the stream from the map, writes the response, drops the stream (closes connection)
+
+After `sys_http_write_response` the `connection_id` is no longer valid.  The `listener_id` remains valid until the process exits (no explicit close API in v1).
+
+See `docs/system-stdlib.md` for full API reference, error contracts, and examples.
+
 ## Conversion helpers
 
 - `runtime_to_tvalue(RuntimeValue) -> Result<TValue, AbiError>`

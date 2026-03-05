@@ -2,10 +2,12 @@ use super::{mangle_function_name, value_register, LlvmBackendError, LLVM_COMPATI
 use crate::guard_builtins;
 use crate::ir::{CmpKind, IrCallTarget, IrOp, IrPattern};
 use crate::mir::{MirBinaryKind, MirBlock, MirFunction, MirInstruction, MirProgram, MirTerminator};
+use crate::target::TargetTriple;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn lower_mir_subset_to_llvm_ir_impl(
     mir: &MirProgram,
+    target: &TargetTriple,
 ) -> Result<String, LlvmBackendError> {
     let groups = group_functions(mir);
     let mut callable_symbols = BTreeMap::<(String, usize), String>::new();
@@ -32,7 +34,7 @@ pub(super) fn lower_mir_subset_to_llvm_ir_impl(
     let mut lines = vec![
         "; tonic llvm backend mvp".to_string(),
         format!("; llvm_compatibility={LLVM_COMPATIBILITY_VERSION}"),
-        "target triple = \"x86_64-unknown-linux-gnu\"".to_string(),
+        format!("target triple = \"{}\"", target.as_str()),
         String::new(),
         "declare i64 @tn_runtime_error_no_matching_clause()".to_string(),
         "declare i64 @tn_runtime_error_bad_match()".to_string(),
@@ -713,12 +715,16 @@ fn emit_instructions(
                 MirBinaryKind::AddInt
                 | MirBinaryKind::SubInt
                 | MirBinaryKind::MulInt
-                | MirBinaryKind::DivInt => {
+                | MirBinaryKind::DivInt
+                | MirBinaryKind::IntDiv
+                | MirBinaryKind::RemInt => {
                     let op = match kind {
                         MirBinaryKind::AddInt => "add",
                         MirBinaryKind::SubInt => "sub",
                         MirBinaryKind::MulInt => "mul",
                         MirBinaryKind::DivInt => "sdiv",
+                        MirBinaryKind::IntDiv => "sdiv",
+                        MirBinaryKind::RemInt => "srem",
                         _ => unreachable!(),
                     };
 
@@ -1382,6 +1388,8 @@ fn collect_capture_names_from_ops(
             | IrOp::SubInt { .. }
             | IrOp::MulInt { .. }
             | IrOp::DivInt { .. }
+            | IrOp::IntDiv { .. }
+            | IrOp::RemInt { .. }
             | IrOp::CmpInt { .. }
             | IrOp::Not { .. }
             | IrOp::Bang { .. }
@@ -1398,6 +1406,7 @@ fn collect_capture_names_from_ops(
             | IrOp::BitwiseShiftLeft { .. }
             | IrOp::BitwiseShiftRight { .. }
             | IrOp::SteppedRange { .. }
+            | IrOp::Bitstring { .. }
             | IrOp::Match { .. }
             | IrOp::Return { .. } => {}
         }

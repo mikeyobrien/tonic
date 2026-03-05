@@ -1,0 +1,207 @@
+use super::{host_value_kind, HostError, HostRegistry};
+use crate::runtime::RuntimeValue;
+use std::io::Write;
+
+fn expect_exact_args(
+    function: &str,
+    args: &[RuntimeValue],
+    expected: usize,
+) -> Result<(), HostError> {
+    if args.len() == expected {
+        Ok(())
+    } else {
+        Err(HostError::new(format!(
+            "{} expects exactly {} argument{}, found {}",
+            function,
+            expected,
+            if expected == 1 { "" } else { "s" },
+            args.len()
+        )))
+    }
+}
+
+fn expect_string_arg(
+    function: &str,
+    args: &[RuntimeValue],
+    index: usize,
+) -> Result<String, HostError> {
+    let Some(value) = args.get(index) else {
+        return Err(HostError::new(format!(
+            "{} missing required argument {}",
+            function,
+            index + 1
+        )));
+    };
+
+    match value {
+        RuntimeValue::String(s) => Ok(s.clone()),
+        other => Err(HostError::new(format!(
+            "{} expects string argument {}; found {}",
+            function,
+            index + 1,
+            host_value_kind(other)
+        ))),
+    }
+}
+
+fn host_io_puts(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.puts", args, 1)?;
+    let s = expect_string_arg("IO.puts", args, 0)?;
+    println!("{s}");
+    Ok(RuntimeValue::Nil)
+}
+
+fn host_io_inspect(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    if args.is_empty() {
+        return Err(HostError::new(
+            "IO.inspect expects at least 1 argument, found 0",
+        ));
+    }
+
+    let value = args[0].clone();
+    eprintln!("{}", value.render());
+    Ok(value)
+}
+
+fn host_io_gets(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.gets", args, 1)?;
+    let prompt = expect_string_arg("IO.gets", args, 0)?;
+
+    print!("{prompt}");
+    std::io::stdout()
+        .flush()
+        .map_err(|e| HostError::new(format!("IO.gets failed to flush stdout: {e}")))?;
+
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .map_err(|e| HostError::new(format!("IO.gets failed to read line: {e}")))?;
+
+    // Strip trailing newline like Elixir does
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+
+    Ok(RuntimeValue::String(line))
+}
+
+fn host_io_ansi_red(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.ansi_red", args, 1)?;
+    let s = expect_string_arg("IO.ansi_red", args, 0)?;
+    Ok(RuntimeValue::String(format!("\x1b[31m{s}\x1b[0m")))
+}
+
+fn host_io_ansi_green(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.ansi_green", args, 1)?;
+    let s = expect_string_arg("IO.ansi_green", args, 0)?;
+    Ok(RuntimeValue::String(format!("\x1b[32m{s}\x1b[0m")))
+}
+
+fn host_io_ansi_yellow(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.ansi_yellow", args, 1)?;
+    let s = expect_string_arg("IO.ansi_yellow", args, 0)?;
+    Ok(RuntimeValue::String(format!("\x1b[33m{s}\x1b[0m")))
+}
+
+fn host_io_ansi_blue(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.ansi_blue", args, 1)?;
+    let s = expect_string_arg("IO.ansi_blue", args, 0)?;
+    Ok(RuntimeValue::String(format!("\x1b[34m{s}\x1b[0m")))
+}
+
+fn host_io_ansi_reset(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.ansi_reset", args, 0)?;
+    Ok(RuntimeValue::String("\x1b[0m".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::interop::HOST_REGISTRY;
+    use crate::runtime::RuntimeValue;
+
+    fn s(text: &str) -> RuntimeValue {
+        RuntimeValue::String(text.to_string())
+    }
+
+    #[test]
+    fn io_ansi_red_wraps_in_ansi_codes() {
+        let result = HOST_REGISTRY
+            .call("io_ansi_red", &[s("hello")])
+            .expect("io_ansi_red should succeed");
+        assert_eq!(result, s("\x1b[31mhello\x1b[0m"));
+    }
+
+    #[test]
+    fn io_ansi_green_wraps_in_ansi_codes() {
+        let result = HOST_REGISTRY
+            .call("io_ansi_green", &[s("hello")])
+            .expect("io_ansi_green should succeed");
+        assert_eq!(result, s("\x1b[32mhello\x1b[0m"));
+    }
+
+    #[test]
+    fn io_ansi_yellow_wraps_in_ansi_codes() {
+        let result = HOST_REGISTRY
+            .call("io_ansi_yellow", &[s("warn")])
+            .expect("io_ansi_yellow should succeed");
+        assert_eq!(result, s("\x1b[33mwarn\x1b[0m"));
+    }
+
+    #[test]
+    fn io_ansi_blue_wraps_in_ansi_codes() {
+        let result = HOST_REGISTRY
+            .call("io_ansi_blue", &[s("info")])
+            .expect("io_ansi_blue should succeed");
+        assert_eq!(result, s("\x1b[34minfo\x1b[0m"));
+    }
+
+    #[test]
+    fn io_ansi_reset_returns_reset_sequence() {
+        let result = HOST_REGISTRY
+            .call("io_ansi_reset", &[])
+            .expect("io_ansi_reset should succeed");
+        assert_eq!(result, s("\x1b[0m"));
+    }
+
+    #[test]
+    fn io_ansi_red_rejects_wrong_arity() {
+        let error = HOST_REGISTRY
+            .call("io_ansi_red", &[])
+            .expect_err("io_ansi_red should reject zero arguments");
+        assert_eq!(
+            error.to_string(),
+            "host error: IO.ansi_red expects exactly 1 argument, found 0"
+        );
+    }
+
+    #[test]
+    fn io_puts_rejects_non_string() {
+        let error = HOST_REGISTRY
+            .call("io_puts", &[RuntimeValue::Int(42)])
+            .expect_err("io_puts should reject non-string");
+        assert!(error.to_string().contains("IO.puts expects string argument"));
+    }
+
+    #[test]
+    fn io_inspect_returns_value_unchanged() {
+        let value = RuntimeValue::Int(42);
+        let result = HOST_REGISTRY
+            .call("io_inspect", &[value.clone()])
+            .expect("io_inspect should succeed");
+        assert_eq!(result, value);
+    }
+}
+
+pub fn register_io_host_functions(registry: &HostRegistry) {
+    registry.register("io_puts", host_io_puts);
+    registry.register("io_inspect", host_io_inspect);
+    registry.register("io_gets", host_io_gets);
+    registry.register("io_ansi_red", host_io_ansi_red);
+    registry.register("io_ansi_green", host_io_ansi_green);
+    registry.register("io_ansi_yellow", host_io_ansi_yellow);
+    registry.register("io_ansi_blue", host_io_ansi_blue);
+    registry.register("io_ansi_reset", host_io_ansi_reset);
+}

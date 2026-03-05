@@ -57,6 +57,9 @@ fn check_rejects_guard_builtin_calls_outside_guards() {
     assert!(stderr.contains(
         "error: [E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
     ));
-    assert!(stderr.contains("--> line 3, column 5"));
+    assert!(
+        stderr.contains("--> examples/check_guard_builtin_outside_when.tn:3:5"),
+        "expected filename:line:col location, got: {stderr}"
+    );
     assert!(stderr.contains("3 |     is_integer(1)"));
 }

@@ -31,6 +31,9 @@ fn check_reports_deterministic_error_for_question_on_non_result_expression() {
     assert!(
         stderr.contains("error: [E3001] ? operator requires Result value, found int at offset 74")
     );
-    assert!(stderr.contains("--> line 7, column"));
+    assert!(
+        stderr.contains("--> examples/result_non_result_question.tn:7:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
     assert!(stderr.contains("7 |     value()?"));
 }

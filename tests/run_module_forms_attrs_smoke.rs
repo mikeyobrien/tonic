@@ -59,6 +59,9 @@ fn check_rejects_unsupported_module_form_option() {
     assert!(stderr.contains(
         "error: unsupported alias option 'via'; supported syntax: alias Module, as: Name at offset 32"
     ));
-    assert!(stderr.contains("--> line 2, column 15"));
+    assert!(
+        stderr.contains("--> examples/invalid_module_form.tn:2:15"),
+        "expected filename:line:col location, got: {stderr}"
+    );
     assert!(stderr.contains("2 |   alias Math, via: M"));
 }

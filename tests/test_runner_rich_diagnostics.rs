@@ -161,7 +161,10 @@ fn check_diagnostics_include_line_column_and_source_snippet() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(stderr.contains("[E1001] undefined symbol 'missing' in Demo.run"));
-    assert!(stderr.contains("--> line 3, column 5"));
+    assert!(
+        stderr.contains("--> examples/resolver_error.tn:3:5"),
+        "expected filename:line:col location, got: {stderr}"
+    );
     assert!(stderr.contains("3 |     missing()"));
     assert!(stderr.contains("|     ^"));
 }
@@ -183,7 +186,10 @@ fn test_command_surfaces_rich_source_diagnostics_for_frontend_errors() {
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(stderr.contains("expected map fat arrow `=>`, found INT(2)"));
-    assert!(stderr.contains("--> line 3, column"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
     assert!(stderr.contains("3 |     %{1 2}"));
 }
 

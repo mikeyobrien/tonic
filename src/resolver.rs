@@ -338,6 +338,7 @@ impl ModuleGraph {
             return CallResolution::Found;
         }
 
+        // Use rsplit_once to split on the LAST dot, so "Foo.Bar.greet" → module="Foo.Bar", fn="greet"
         if let Some((module_name, function_name)) = callee.rsplit_once('.') {
             if let Some(protocol) = self.protocols.get(module_name) {
                 return if protocol.functions.contains_key(function_name) {
@@ -940,7 +941,7 @@ mod tests {
 
     #[test]
     fn resolve_ast_accepts_struct_module_references() {
-        let source = "defmodule Point do\n  defstruct [:x, :y]\n\n  def new(x, y) do\n    %Point{x: x, y: y}\n  end\nend\n";
+        let source = "defmodule Point do\n  defstruct x: nil, y: nil\n\n  def new(x, y) do\n    %Point{x: x, y: y}\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize struct fixture");
         let ast = parse_ast(&tokens).expect("parser should build struct fixture ast");
 
@@ -959,7 +960,7 @@ mod tests {
 
     #[test]
     fn resolve_ast_rejects_unknown_struct_fields() {
-        let source = "defmodule Point do\n  defstruct [:x, :y]\n\n  def new(x, y, z) do\n    %Point{x: x, y: y, z: z}\n  end\nend\n";
+        let source = "defmodule Point do\n  defstruct x: nil, y: nil\n\n  def new(x, y, z) do\n    %Point{x: x, y: y, z: z}\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize unknown struct field fixture");
         let ast = parse_ast(&tokens).expect("parser should build unknown struct field fixture ast");
 
@@ -969,7 +970,7 @@ mod tests {
 
     #[test]
     fn resolve_ast_accepts_defprotocol_and_defimpl() {
-        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
+        let source = "defmodule Protocols do\n  defprotocol Size do\n    def size(term)\n  end\n\n  defimpl Size, for: MyList do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize protocol fixture");
         let ast = parse_ast(&tokens).expect("parser should build protocol fixture ast");
 
@@ -978,7 +979,7 @@ mod tests {
 
     #[test]
     fn resolve_ast_rejects_unknown_protocol_in_defimpl() {
-        let source = "defmodule MyList do\n  defimpl Unknown do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
+        let source = "defmodule MyList do\n  defimpl Unknown, for: MyList do\n    def size(term) do\n      length(term)\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize unknown protocol fixture");
         let ast = parse_ast(&tokens).expect("parser should build unknown protocol fixture ast");
 
@@ -988,7 +989,7 @@ mod tests {
 
     #[test]
     fn resolve_ast_rejects_duplicate_defimpl_for_same_target() {
-        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      1\n    end\n  end\n\n  defimpl Size do\n    def size(term) do\n      2\n    end\n  end\nend\n";
+        let source = "defmodule Protocols do\n  defprotocol Size do\n    def size(term)\n  end\n\n  defimpl Size, for: MyList do\n    def size(term) do\n      1\n    end\n  end\n\n  defimpl Size, for: MyList do\n    def size(term) do\n      2\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize duplicate impl fixture");
         let ast = parse_ast(&tokens).expect("parser should build duplicate impl fixture ast");
 
@@ -998,7 +999,7 @@ mod tests {
 
     #[test]
     fn resolve_ast_rejects_protocol_impl_with_missing_function() {
-        let source = "defprotocol Size do\n  def size(term)\n  def count(term)\nend\n\ndefmodule MyList do\n  defimpl Size do\n    def size(term) do\n      1\n    end\n  end\nend\n";
+        let source = "defmodule Protocols do\n  defprotocol Size do\n    def size(term)\n    def count(term)\n  end\n\n  defimpl Size, for: MyList do\n    def size(term) do\n      1\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize missing fn fixture");
         let ast = parse_ast(&tokens).expect("parser should build missing fn fixture ast");
 
@@ -1008,7 +1009,7 @@ mod tests {
 
     #[test]
     fn resolve_ast_rejects_protocol_impl_with_arity_mismatch() {
-        let source = "defprotocol Size do\n  def size(term)\nend\n\ndefmodule Tuple do\n  defimpl Size do\n    def size(term, extra) do\n      2\n    end\n  end\nend\n";
+        let source = "defmodule Protocols do\n  defprotocol Size do\n    def size(term)\n  end\n\n  defimpl Size, for: Tuple do\n    def size(term, extra) do\n      2\n    end\n  end\nend\n";
         let tokens = scan_tokens(source).expect("scanner should tokenize arity mismatch fixture");
         let ast = parse_ast(&tokens).expect("parser should build arity mismatch fixture ast");
 
