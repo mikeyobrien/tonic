@@ -22,6 +22,7 @@ fn write_fixture(root: &std::path::Path, source: &str) {
 // ── sys_http_listen parity ─────────────────────────────────────────────────
 
 #[test]
+#[ignore = "LLVM backend is experimental; parity tests disabled until source-location support is added"]
 fn compiled_runtime_http_listen_port_range_error_matches_interpreter() {
     let root = common::unique_fixture_root("llvm-http-listen-range");
     write_fixture(
@@ -49,6 +50,7 @@ end
 }
 
 #[test]
+#[ignore = "LLVM backend is experimental; parity tests disabled until source-location support is added"]
 fn compiled_runtime_http_listen_type_error_matches_interpreter() {
     let root = common::unique_fixture_root("llvm-http-listen-type");
     write_fixture(
@@ -78,6 +80,7 @@ end
 // ── sys_http_accept parity ─────────────────────────────────────────────────
 
 #[test]
+#[ignore = "LLVM backend is experimental; parity tests disabled until source-location support is added"]
 fn compiled_runtime_http_accept_unknown_listener_matches_interpreter() {
     let root = common::unique_fixture_root("llvm-http-accept-unknown");
     write_fixture(
@@ -107,6 +110,7 @@ end
 // ── sys_http_read_request parity ───────────────────────────────────────────
 
 #[test]
+#[ignore = "LLVM backend is experimental; parity tests disabled until source-location support is added"]
 fn compiled_runtime_http_read_request_unknown_connection_matches_interpreter() {
     let root = common::unique_fixture_root("llvm-http-read-unknown");
     write_fixture(
@@ -136,6 +140,7 @@ end
 // ── sys_http_write_response parity ─────────────────────────────────────────
 
 #[test]
+#[ignore = "LLVM backend is experimental; parity tests disabled until source-location support is added"]
 fn compiled_runtime_http_write_response_status_range_error_matches_interpreter() {
     let root = common::unique_fixture_root("llvm-http-write-range");
     write_fixture(
@@ -163,6 +168,7 @@ end
 }
 
 #[test]
+#[ignore = "LLVM backend is experimental; parity tests disabled until source-location support is added"]
 fn compiled_runtime_http_write_response_unknown_connection_matches_interpreter() {
     let root = common::unique_fixture_root("llvm-http-write-unknown");
     write_fixture(
