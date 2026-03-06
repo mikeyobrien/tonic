@@ -9,7 +9,7 @@ use super::{
 };
 use rand::random;
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Map, Value};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -28,6 +28,7 @@ pub(crate) struct ObservabilityRun {
     worktree_root: PathBuf,
     output_root: PathBuf,
     target_path: Option<String>,
+    command_metadata: Map<String, Value>,
     started_at: OffsetDateTime,
     started_at_instant: Instant,
     phases: Vec<PhaseRecord>,
@@ -72,6 +73,7 @@ impl ObservabilityRun {
             worktree_root: cwd.to_path_buf(),
             output_root,
             target_path,
+            command_metadata: Map::new(),
             started_at: OffsetDateTime::now_utc(),
             started_at_instant: Instant::now(),
             phases: Vec::new(),
@@ -117,6 +119,14 @@ impl ObservabilityRun {
             path: path.display().to_string(),
             bytes,
         });
+    }
+
+    pub(crate) fn set_target_path(&mut self, target_path: impl Into<String>) {
+        self.target_path = Some(target_path.into());
+    }
+
+    pub(crate) fn record_metadata(&mut self, key: &str, value: impl Into<Value>) {
+        self.command_metadata.insert(key.to_string(), value.into());
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -173,6 +183,8 @@ impl ObservabilityRun {
             worktree_root: self.worktree_root.display().to_string(),
             argv: self.argv.clone(),
             target_path: self.target_path.clone(),
+            command_metadata: (!self.command_metadata.is_empty())
+                .then_some(self.command_metadata.clone()),
             status: status.to_string(),
             exit_code,
             started_at: started_at.clone(),

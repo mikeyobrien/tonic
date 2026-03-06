@@ -170,6 +170,30 @@ fn observe_phase_result<T, E>(
     }
 }
 
+fn observe_command_phase<T>(
+    observed_run: &mut Option<ObservabilityRun>,
+    phase_name: &str,
+    run: impl FnOnce() -> T,
+) -> T {
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.phase(phase_name, run)
+    } else {
+        run()
+    }
+}
+
+fn observe_command_phase_result<T, E>(
+    observed_run: &mut Option<ObservabilityRun>,
+    phase_name: &str,
+    run: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.phase_result(phase_name, run)
+    } else {
+        run()
+    }
+}
+
 fn extract_diagnostic_code(message: &str) -> Option<String> {
     let stripped = message.strip_prefix('[')?;
     let code = stripped.split(']').next()?;
@@ -652,35 +676,93 @@ fn handle_check(args: Vec<String>) -> i32 {
         .emit();
     }
 
-    let source = match load_run_source(&source_path) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut observed_run = ObservabilityRun::from_env("check", &command_argv("check", &args), &cwd);
+    if let Some(observed_run) = observed_run.as_mut() {
+        if dump_tokens {
+            observed_run.record_metadata("dump_mode", "tokens");
+        } else if dump_ast {
+            observed_run.record_metadata("dump_mode", "ast");
+        } else if dump_ir {
+            observed_run.record_metadata("dump_mode", "ir");
+        } else if dump_mir {
+            observed_run.record_metadata("dump_mode", "mir");
+        }
+    }
+
+    let source = match observe_command_phase_result(&mut observed_run, "check.load_source", || {
+        load_run_source(&source_path)
+    }) {
         Ok(source) => source,
-        Err(error) => return CliDiagnostic::failure(error).emit(),
+        Err(error) => {
+            let message = error;
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "io_error",
+                    "check.load_source",
+                    message,
+                    None,
+                )),
+            );
+        }
     };
 
-    let tokens = match scan_tokens(&source) {
-        Ok(tokens) => tokens,
-        // LexerError embeds position in its Display output; no separate snippet.
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
-    };
+    let tokens =
+        match observe_command_phase_result(&mut observed_run, "frontend.scan_tokens", || {
+            scan_tokens(&source)
+        }) {
+            Ok(tokens) => tokens,
+            Err(error) => {
+                let message = error.to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "lexer_error",
+                        "frontend.scan_tokens",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
 
     if dump_tokens {
         for token in tokens {
             println!("{}", token.dump_label());
         }
 
-        return EXIT_OK;
+        return finalize_observed_run(&mut observed_run, EXIT_OK, None);
     }
 
-    let ast = match parse_ast(&tokens) {
+    let ast = match observe_command_phase_result(&mut observed_run, "frontend.parse_ast", || {
+        parse_ast(&tokens)
+    }) {
         Ok(ast) => ast,
         Err(error) => {
-            return CliDiagnostic::failure_with_filename_and_source(
-                error.to_string(),
+            let message = error.to_string();
+            let source_info = observability_error_source(&source_path, &source, error.offset());
+            let exit_code = CliDiagnostic::failure_with_filename_and_source(
+                message.clone(),
                 Some(&source_path),
                 &source,
                 error.offset(),
             )
             .emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "parser_error",
+                    "frontend.parse_ast",
+                    message,
+                    source_info,
+                )),
+            );
         }
     };
 
@@ -688,82 +770,191 @@ fn handle_check(args: Vec<String>) -> i32 {
         let json = match serde_json::to_string(&ast) {
             Ok(value) => value,
             Err(_) => {
-                return CliDiagnostic::failure("failed to serialize ast".to_string()).emit();
+                let message = "failed to serialize ast".to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "check.dump_ast",
+                        message,
+                        None,
+                    )),
+                );
             }
         };
 
         println!("{json}");
-        return EXIT_OK;
+        return finalize_observed_run(&mut observed_run, EXIT_OK, None);
     }
 
-    if let Err(error) = resolve_ast(&ast) {
-        return CliDiagnostic::failure_with_filename_and_source(
-            error.to_string(),
+    if let Err(error) =
+        observe_command_phase_result(&mut observed_run, "frontend.resolve_ast", || {
+            resolve_ast(&ast)
+        })
+    {
+        let message = error.to_string();
+        let source_info = observability_error_source(&source_path, &source, error.offset());
+        let exit_code = CliDiagnostic::failure_with_filename_and_source(
+            message.clone(),
             Some(&source_path),
             &source,
             error.offset(),
         )
         .emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "resolver_error",
+                "frontend.resolve_ast",
+                message,
+                source_info,
+            )),
+        );
     }
 
-    let type_summary = match infer_types(&ast) {
-        Ok(summary) => summary,
-        Err(error) => {
-            return CliDiagnostic::failure_with_filename_and_source(
-                error.to_string(),
-                Some(&source_path),
-                &source,
-                error.offset(),
-            )
-            .emit();
-        }
-    };
+    let type_summary =
+        match observe_command_phase_result(&mut observed_run, "frontend.infer_types", || {
+            infer_types(&ast)
+        }) {
+            Ok(summary) => summary,
+            Err(error) => {
+                let message = error.to_string();
+                let source_info = observability_error_source(&source_path, &source, error.offset());
+                let exit_code = CliDiagnostic::failure_with_filename_and_source(
+                    message.clone(),
+                    Some(&source_path),
+                    &source,
+                    error.offset(),
+                )
+                .emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "typing_error",
+                        "frontend.infer_types",
+                        message,
+                        source_info,
+                    )),
+                );
+            }
+        };
     maybe_trace_type_summary(type_summary.len());
 
     if dump_ir {
-        let ir = match lower_ast_to_ir(&ast) {
+        let ir = match observe_command_phase_result(&mut observed_run, "frontend.lower_ir", || {
+            lower_ast_to_ir(&ast)
+        }) {
             Ok(ir) => ir,
-            Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+            Err(error) => {
+                let message = error.to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "ir_lowering_error",
+                        "frontend.lower_ir",
+                        message,
+                        None,
+                    )),
+                );
+            }
         };
 
         let json = match serde_json::to_string(&ir) {
             Ok(value) => value,
             Err(_) => {
-                return CliDiagnostic::failure("failed to serialize ir".to_string()).emit();
+                let message = "failed to serialize ir".to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "check.dump_ir",
+                        message,
+                        None,
+                    )),
+                );
             }
         };
 
         println!("{json}");
-        return EXIT_OK;
+        return finalize_observed_run(&mut observed_run, EXIT_OK, None);
     }
 
     if dump_mir {
-        let ir = match lower_ast_to_ir(&ast) {
+        let ir = match observe_command_phase_result(&mut observed_run, "frontend.lower_ir", || {
+            lower_ast_to_ir(&ast)
+        }) {
             Ok(ir) => ir,
-            Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+            Err(error) => {
+                let message = error.to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "ir_lowering_error",
+                        "frontend.lower_ir",
+                        message,
+                        None,
+                    )),
+                );
+            }
         };
 
-        let mir = match lower_ir_to_mir(&ir) {
+        let mir = match observe_command_phase_result(&mut observed_run, "backend.lower_mir", || {
+            lower_ir_to_mir(&ir)
+        }) {
             Ok(mir) => mir,
-            Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+            Err(error) => {
+                let message = error.to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "mir_lowering_error",
+                        "backend.lower_mir",
+                        message,
+                        None,
+                    )),
+                );
+            }
         };
 
         let json = match serde_json::to_string(&mir) {
             Ok(value) => value,
             Err(_) => {
-                return CliDiagnostic::failure("failed to serialize mir".to_string()).emit();
+                let message = "failed to serialize mir".to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "check.dump_mir",
+                        message,
+                        None,
+                    )),
+                );
             }
         };
 
         println!("{json}");
-        return EXIT_OK;
+        return finalize_observed_run(&mut observed_run, EXIT_OK, None);
     }
 
     if is_project_root_path {
         println!("check: ok");
     }
 
-    EXIT_OK
+    finalize_observed_run(&mut observed_run, EXIT_OK, None)
 }
 
 fn handle_test(args: Vec<String>) -> i32 {
@@ -807,24 +998,68 @@ fn handle_test(args: Vec<String>) -> i32 {
         }
     }
 
-    let report = match test_runner::run(&source_path) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut observed_run = ObservabilityRun::from_env("test", &command_argv("test", &args), &cwd);
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_metadata(
+            "format",
+            match format {
+                TestOutputFormat::Text => "text",
+                TestOutputFormat::Json => "json",
+            },
+        );
+    }
+
+    let report = match observe_command_phase_result(&mut observed_run, "test.run_suite", || {
+        test_runner::run(&source_path)
+    }) {
         Ok(report) => report,
-        Err(TestRunnerError::Failure(message)) => return CliDiagnostic::failure(message).emit(),
+        Err(TestRunnerError::Failure(message)) => {
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "io_error",
+                    "test.run_suite",
+                    message,
+                    None,
+                )),
+            );
+        }
         Err(TestRunnerError::SourceDiagnostic {
             message,
             filename,
             source,
             offset,
         }) => {
-            return CliDiagnostic::failure_with_filename_and_source(
-                message,
-                filename.as_deref(),
+            let source_path = filename.unwrap_or_else(|| source_path.clone());
+            let source_info = observability_error_source(&source_path, &source, offset);
+            let exit_code = CliDiagnostic::failure_with_filename_and_source(
+                message.clone(),
+                Some(&source_path),
                 &source,
                 offset,
             )
-            .emit()
+            .emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "typing_error",
+                    "test.run_suite",
+                    message,
+                    source_info,
+                )),
+            );
         }
     };
+
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_metadata("total", report.total as u64);
+        observed_run.record_metadata("passed", report.passed as u64);
+        observed_run.record_metadata("failed", report.failed as u64);
+    }
 
     match format {
         TestOutputFormat::Text => {
@@ -838,9 +1073,18 @@ fn handle_test(args: Vec<String>) -> i32 {
     }
 
     if report.succeeded() {
-        EXIT_OK
+        finalize_observed_run(&mut observed_run, EXIT_OK, None)
     } else {
-        EXIT_FAILURE
+        finalize_observed_run(
+            &mut observed_run,
+            EXIT_FAILURE,
+            Some(make_observability_error(
+                "script_error",
+                "test.run_suite",
+                format!("{} test(s) failed", report.failed),
+                None,
+            )),
+        )
     }
 }
 
@@ -868,22 +1112,63 @@ fn handle_fmt(args: Vec<String>) -> i32 {
         }
     }
 
-    let report = match format_path(&source_path, mode) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut observed_run = ObservabilityRun::from_env("fmt", &command_argv("fmt", &args), &cwd);
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_metadata(
+            "mode",
+            match mode {
+                FormatMode::Write => "write",
+                FormatMode::Check => "check",
+            },
+        );
+    }
+
+    let report = match observe_command_phase_result(&mut observed_run, "fmt.format_path", || {
+        format_path(&source_path, mode)
+    }) {
         Ok(report) => report,
-        Err(error) => return CliDiagnostic::failure(error).emit(),
+        Err(error) => {
+            let exit_code = CliDiagnostic::failure(error.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "io_error",
+                    "fmt.format_path",
+                    error,
+                    None,
+                )),
+            );
+        }
     };
+
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_metadata("checked_files", report.checked_files as u64);
+        observed_run.record_metadata("changed_files", report.changed_files as u64);
+    }
 
     if mode == FormatMode::Check && report.changed_files > 0 {
         let suffix = if report.changed_files == 1 { "" } else { "s" };
-        return CliDiagnostic::failure(format!(
+        let message = format!(
             "formatting required for {} file{} (run `tonic fmt <path>` to apply fixes)",
             report.changed_files, suffix
-        ))
-        .emit();
+        );
+        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "script_error",
+                "fmt.format_path",
+                message,
+                None,
+            )),
+        );
     }
 
     println!("fmt: ok");
-    EXIT_OK
+    finalize_observed_run(&mut observed_run, EXIT_OK, None)
 }
 
 fn handle_compile(args: Vec<String>) -> i32 {
@@ -1339,54 +1624,121 @@ fn handle_verify_run(args: Vec<String>) -> i32 {
         }
     }
 
-    let acceptance = match load_acceptance_yaml(&slice_id) {
-        Ok(metadata) => metadata,
-        Err(message) => return CliDiagnostic::failure(message).emit(),
-    };
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut observed_run =
+        ObservabilityRun::from_env("verify", &command_argv("verify", &args), &cwd);
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.set_target_path(slice_id.clone());
+        observed_run.record_metadata("subcommand", "run");
+        observed_run.record_metadata("mode", mode.as_str());
+    }
 
-    let scenarios = match load_feature_scenarios(&acceptance.feature_files) {
-        Ok(scenarios) => scenarios,
-        Err(message) => return CliDiagnostic::failure(message).emit(),
-    };
+    let acceptance =
+        match observe_command_phase_result(&mut observed_run, "verify.load_acceptance", || {
+            load_acceptance_yaml(&slice_id)
+        }) {
+            Ok(metadata) => metadata,
+            Err(message) => {
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "verify.load_acceptance",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
+
+    let scenarios =
+        match observe_command_phase_result(&mut observed_run, "verify.load_scenarios", || {
+            load_feature_scenarios(&acceptance.feature_files)
+        }) {
+            Ok(scenarios) => scenarios,
+            Err(message) => {
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "verify.load_scenarios",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
 
     let mode_tags = mode.selected_tags();
-    let filtered_scenarios = scenarios
-        .into_iter()
-        .filter(|scenario| {
-            scenario
-                .tags
-                .iter()
-                .any(|tag| mode_tags.contains(&tag.as_str()))
-        })
-        .collect::<Vec<_>>();
+    let verify_result = observe_command_phase_result(
+        &mut observed_run,
+        "verify.evaluate_gates",
+        || {
+            let filtered_scenarios = scenarios
+            .iter()
+            .filter(|scenario| {
+                scenario
+                    .tags
+                    .iter()
+                    .any(|tag| mode_tags.contains(&tag.as_str()))
+            })
+            .map(|scenario| serde_json::json!({ "id": scenario.id.clone(), "tags": scenario.tags.clone() }))
+            .collect::<Vec<_>>();
 
-    let (benchmark_failed, benchmark_report) =
-        benchmark_gate_report(acceptance.benchmark_metrics.as_ref());
-    let (manual_evidence_failed, manual_evidence_report) =
-        manual_evidence_gate_report(acceptance.manual_evidence.for_mode(mode.as_str()));
-    let verify_failed = benchmark_failed || manual_evidence_failed;
+            let (benchmark_failed, benchmark_report) =
+                benchmark_gate_report(acceptance.benchmark_metrics.as_ref());
+            let (manual_evidence_failed, manual_evidence_report) =
+                manual_evidence_gate_report(acceptance.manual_evidence.for_mode(mode.as_str()));
+            let verify_failed = benchmark_failed || manual_evidence_failed;
 
-    let report = serde_json::json!({
-        "slice_id": slice_id,
-        "mode": mode.as_str(),
-        "status": if verify_failed { "fail" } else { "pass" },
-        "acceptance_file": acceptance.path.display().to_string(),
-        "mode_tags": mode_tags,
-        "scenarios": filtered_scenarios
-            .into_iter()
-            .map(|scenario| serde_json::json!({ "id": scenario.id, "tags": scenario.tags }))
-            .collect::<Vec<_>>(),
-        "benchmark": benchmark_report,
-        "manual_evidence": manual_evidence_report,
-    });
+            let report = serde_json::json!({
+                "slice_id": slice_id,
+                "mode": mode.as_str(),
+                "status": if verify_failed { "fail" } else { "pass" },
+                "acceptance_file": acceptance.path.display().to_string(),
+                "mode_tags": mode_tags,
+                "scenarios": filtered_scenarios,
+                "benchmark": benchmark_report,
+                "manual_evidence": manual_evidence_report,
+            });
+
+            if verify_failed {
+                Err(report)
+            } else {
+                Ok(report)
+            }
+        },
+    );
+
+    let (report, exit_code, error) = match verify_result {
+        Ok(report) => (report, EXIT_OK, None),
+        Err(report) => {
+            let message = format!(
+                "verification failed: benchmark={} manual_evidence={}",
+                report["benchmark"]["status"].as_str().unwrap_or("unknown"),
+                report["manual_evidence"]["status"]
+                    .as_str()
+                    .unwrap_or("unknown")
+            );
+            (
+                report,
+                EXIT_FAILURE,
+                Some(make_observability_error(
+                    "script_error",
+                    "verify.evaluate_gates",
+                    message,
+                    None,
+                )),
+            )
+        }
+    };
 
     println!("{report}");
-
-    if verify_failed {
-        EXIT_FAILURE
-    } else {
-        EXIT_OK
-    }
+    finalize_observed_run(&mut observed_run, exit_code, error)
 }
 
 fn benchmark_gate_report(
@@ -1517,62 +1869,143 @@ fn handle_deps(args: Vec<String>) -> i32 {
         }
     };
 
-    // Find project root by looking for tonic.toml
-    let project_root = find_project_root();
-    if project_root.is_none() {
-        return CliDiagnostic::failure("no tonic.toml found in current directory or parents")
-            .emit();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut observed_run = ObservabilityRun::from_env("deps", &command_argv("deps", &args), &cwd);
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_metadata("subcommand", subcommand.clone());
     }
-    let project_root = project_root.unwrap();
 
-    // Load manifest
-    let manifest = match manifest::load_project_manifest(&project_root) {
-        Ok(m) => m,
-        Err(msg) => return CliDiagnostic::failure(msg).emit(),
+    let project_root = match observe_command_phase(
+        &mut observed_run,
+        "deps.find_project_root",
+        find_project_root,
+    ) {
+        Some(project_root) => project_root,
+        None => {
+            let message = "no tonic.toml found in current directory or parents".to_string();
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "io_error",
+                    "deps.find_project_root",
+                    message,
+                    None,
+                )),
+            );
+        }
     };
+
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.set_target_path(project_root.display().to_string());
+    }
+
+    let manifest =
+        match observe_command_phase_result(&mut observed_run, "deps.load_manifest", || {
+            manifest::load_project_manifest(&project_root)
+        }) {
+            Ok(manifest) => manifest,
+            Err(message) => {
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "deps.load_manifest",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
 
     if manifest.dependencies.path.is_empty()
         && manifest.dependencies.git.is_empty()
         && manifest.dependencies.registry.is_empty()
     {
         println!("No dependencies defined in tonic.toml");
-        return EXIT_OK;
+        return finalize_observed_run(&mut observed_run, EXIT_OK, None);
     }
 
     match subcommand.as_str() {
         "sync" | "fetch" => {
             println!("Syncing dependencies...");
-            match deps::DependencyResolver::sync(&manifest.dependencies, &project_root) {
+            match observe_command_phase_result(&mut observed_run, "deps.sync", || {
+                deps::DependencyResolver::sync(&manifest.dependencies, &project_root)
+            }) {
                 Ok(lockfile) => {
+                    if let Some(observed_run) = observed_run.as_mut() {
+                        observed_run
+                            .record_metadata("path_dependencies", lockfile.path_deps.len() as u64);
+                        observed_run
+                            .record_metadata("git_dependencies", lockfile.git_deps.len() as u64);
+                    }
                     println!("Dependencies synced successfully.");
                     println!("Lockfile saved to tonic.lock");
                     println!("  - path dependencies: {}", lockfile.path_deps.len());
                     println!("  - git dependencies: {}", lockfile.git_deps.len());
-                    EXIT_OK
+                    finalize_observed_run(&mut observed_run, EXIT_OK, None)
                 }
                 Err(msg) => {
-                    CliDiagnostic::failure(format!("failed to sync dependencies: {}", msg)).emit()
+                    let message = format!("failed to sync dependencies: {msg}");
+                    let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                    finalize_observed_run(
+                        &mut observed_run,
+                        exit_code,
+                        Some(make_observability_error(
+                            "io_error",
+                            "deps.sync",
+                            message,
+                            None,
+                        )),
+                    )
                 }
             }
         }
         "lock" => {
             println!("Generating lockfile...");
-            match deps::Lockfile::generate(&manifest.dependencies, &project_root) {
+            match observe_command_phase_result(&mut observed_run, "deps.lock", || {
+                deps::Lockfile::generate(&manifest.dependencies, &project_root)
+            }) {
                 Ok(lockfile) => match lockfile.save(&project_root) {
                     Ok(()) => {
                         println!("Lockfile generated: tonic.lock");
-                        EXIT_OK
+                        finalize_observed_run(&mut observed_run, EXIT_OK, None)
                     }
                     Err(msg) => {
-                        CliDiagnostic::failure(format!("failed to save lockfile: {}", msg)).emit()
+                        let message = format!("failed to save lockfile: {msg}");
+                        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                        finalize_observed_run(
+                            &mut observed_run,
+                            exit_code,
+                            Some(make_observability_error(
+                                "io_error",
+                                "deps.lock",
+                                message,
+                                None,
+                            )),
+                        )
                     }
                 },
                 Err(msg) => {
-                    CliDiagnostic::failure(format!("failed to generate lockfile: {}", msg)).emit()
+                    let message = format!("failed to generate lockfile: {msg}");
+                    let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                    finalize_observed_run(
+                        &mut observed_run,
+                        exit_code,
+                        Some(make_observability_error(
+                            "io_error",
+                            "deps.lock",
+                            message,
+                            None,
+                        )),
+                    )
                 }
             }
         }
-        _ => EXIT_OK,
+        _ => finalize_observed_run(&mut observed_run, EXIT_OK, None),
     }
 }
 

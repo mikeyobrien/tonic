@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::{Map, Value};
 
 pub(super) const RUN_SCHEMA_NAME: &str = "tonic.observability.run";
 pub(super) const ARTIFACT_SCHEMA_NAME: &str = "tonic.observability.artifacts";
@@ -95,6 +96,8 @@ pub(super) struct Summary {
     pub(super) argv: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) target_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) command_metadata: Option<Map<String, Value>>,
     pub(super) status: String,
     pub(super) exit_code: i32,
     pub(super) started_at: String,
