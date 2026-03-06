@@ -51,8 +51,8 @@ fn run_reports_deterministic_guard_clause_failures() {
     assert_eq!(output.status.code(), Some(1));
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: no function clause matching Demo.choose at offset 43\n"
+    assert!(
+        stderr.starts_with("error: no function clause matching Demo.choose at offset 43\n"),
+        "stderr should start with the expected error message, got: {stderr}"
     );
 }

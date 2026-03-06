@@ -65,15 +65,13 @@ pub fn position_to_offset(source: &str, position: Position) -> usize {
     for (i, ch) in source.char_indices() {
         if current_line == position.line {
             // Walk character-by-character within this line to find the column.
-            let mut col = 0u32;
-            for (j, c) in source[line_start_byte..].char_indices() {
-                if col == position.character {
+            for (col, (j, c)) in source[line_start_byte..].char_indices().enumerate() {
+                if col as u32 == position.character {
                     return line_start_byte + j;
                 }
                 if c == '\n' {
                     break;
                 }
-                col += 1;
             }
             // Column past end of line — return end of line.
             return line_start_byte

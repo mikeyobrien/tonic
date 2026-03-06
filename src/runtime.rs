@@ -71,7 +71,7 @@ impl RuntimeValue {
                 format!("[{}]", items.join(", "))
             }
             Self::Range(start, end) => format!("{}..{}", start, end),
-            Self::SteppedRange(start, end, step) => format!("{}..{}//{}" , start, end, step),
+            Self::SteppedRange(start, end, step) => format!("{}..{}//{}", start, end, step),
             Self::Closure(closure) => format!("#Function<{}>", closure.params.len()),
         }
     }
@@ -866,12 +866,14 @@ fn iter_source_value(
     }
 }
 
+type ForItems = Vec<(RuntimeValue, HashMap<String, RuntimeValue>)>;
+
 fn collect_for_items(
     program: &IrProgram,
     generators: &[IrForGenerator],
     env: &mut HashMap<String, RuntimeValue>,
     offset: usize,
-) -> Result<Vec<(RuntimeValue, HashMap<String, RuntimeValue>)>, RuntimeError> {
+) -> Result<ForItems, RuntimeError> {
     if generators.is_empty() {
         return Ok(vec![(RuntimeValue::Nil, env.clone())]);
     }
@@ -923,35 +925,106 @@ fn evaluate_for_collect(
     body_ops: &[IrOp],
     into_ops: Option<&[IrOp]>,
     env: &mut HashMap<String, RuntimeValue>,
-    _offset: usize,
+    offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
-    let mut results = Vec::new();
-
-    for (_item, item_env) in items {
-        let mut body_env = item_env.clone();
-        let mut body_stack = Vec::new();
-
-        match evaluate_ops(program, body_ops, &mut body_env, &mut body_stack) {
-            Ok(Some(_ret)) => {
-                // Early return from body - skip this item
-            }
-            Ok(None) => {
-                if let Some(v) = body_stack.pop() {
-                    results.push(v);
-                }
-            }
-            Err(e) => return Err(e),
-        }
-    }
-
     if let Some(into_ops) = into_ops {
-        let mut into_env = env.clone();
-        let result_list = RuntimeValue::List(results);
-        into_env.insert("__for_results".to_string(), result_list);
-        let mut into_stack = Vec::new();
-        evaluate_ops(program, into_ops, &mut into_env, &mut into_stack)?;
-        Ok(into_stack.pop().unwrap_or(RuntimeValue::Nil))
+        // Evaluate the seed expression to determine the destination type
+        let mut seed_stack = Vec::new();
+        evaluate_ops(program, into_ops, env, &mut seed_stack)?;
+        let seed = seed_stack.pop().unwrap_or(RuntimeValue::Nil);
+
+        match seed {
+            RuntimeValue::Map(mut acc) => {
+                for (_item, item_env) in items {
+                    let mut body_env = item_env.clone();
+                    let mut body_stack = Vec::new();
+                    match evaluate_ops(program, body_ops, &mut body_env, &mut body_stack) {
+                        Ok(Some(_)) => {}
+                        Ok(None) => {
+                            let v = body_stack.pop().unwrap_or(RuntimeValue::Nil);
+                            match v {
+                                RuntimeValue::Tuple(k, val) => acc.push((*k, *val)),
+                                other => {
+                                    return Err(RuntimeError::at_offset(
+                                        format!(
+                                            "for into map expects tuple {{key, value}}, found {}",
+                                            other.kind_label()
+                                        ),
+                                        offset,
+                                    ))
+                                }
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                Ok(RuntimeValue::Map(acc))
+            }
+            RuntimeValue::Keyword(mut acc) => {
+                for (_item, item_env) in items {
+                    let mut body_env = item_env.clone();
+                    let mut body_stack = Vec::new();
+                    match evaluate_ops(program, body_ops, &mut body_env, &mut body_stack) {
+                        Ok(Some(_)) => {}
+                        Ok(None) => {
+                            let v = body_stack.pop().unwrap_or(RuntimeValue::Nil);
+                            match v {
+                                RuntimeValue::Tuple(k, val) => acc.push((*k, *val)),
+                                other => return Err(RuntimeError::at_offset(
+                                    format!(
+                                        "for into keyword expects tuple {{key, value}}, found {}",
+                                        other.kind_label()
+                                    ),
+                                    offset,
+                                )),
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                Ok(RuntimeValue::Keyword(acc))
+            }
+            RuntimeValue::List(mut acc) => {
+                for (_item, item_env) in items {
+                    let mut body_env = item_env.clone();
+                    let mut body_stack = Vec::new();
+                    match evaluate_ops(program, body_ops, &mut body_env, &mut body_stack) {
+                        Ok(Some(_)) => {}
+                        Ok(None) => {
+                            if let Some(v) = body_stack.pop() {
+                                acc.push(v);
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                Ok(RuntimeValue::List(acc))
+            }
+            other => Err(RuntimeError::at_offset(
+                format!(
+                    "for into destination must be a list, map, or keyword, found {}",
+                    other.kind_label()
+                ),
+                offset,
+            )),
+        }
     } else {
+        let mut results = Vec::new();
+        for (_item, item_env) in items {
+            let mut body_env = item_env.clone();
+            let mut body_stack = Vec::new();
+            match evaluate_ops(program, body_ops, &mut body_env, &mut body_stack) {
+                Ok(Some(_ret)) => {
+                    // Early return from body - skip this item
+                }
+                Ok(None) => {
+                    if let Some(v) = body_stack.pop() {
+                        results.push(v);
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
         Ok(RuntimeValue::List(results))
     }
 }
@@ -999,10 +1072,8 @@ fn evaluate_call(
 
     match callee {
         IrCallTarget::Function { name } => evaluate_function(program, name, &args, offset),
-        IrCallTarget::Builtin { name } => {
-            native_runtime::evaluate_builtin_call(name, args, offset)
-                .map_err(map_native_runtime_error)
-        }
+        IrCallTarget::Builtin { name } => native_runtime::evaluate_builtin_call(name, args, offset)
+            .map_err(map_native_runtime_error),
     }
 }
 
@@ -1013,7 +1084,9 @@ fn evaluate_call_value(
     offset: usize,
 ) -> Result<RuntimeValue, RuntimeError> {
     let args: Vec<RuntimeValue> = stack.drain(stack.len() - argc..).collect();
-    let callee = stack.pop().ok_or_else(|| RuntimeError::at_offset("empty stack", offset))?;
+    let callee = stack
+        .pop()
+        .ok_or_else(|| RuntimeError::at_offset("empty stack", offset))?;
 
     match callee {
         RuntimeValue::Closure(closure) => {
@@ -1034,11 +1107,15 @@ fn evaluate_call_value(
             }
 
             let mut closure_stack = Vec::new();
-            if let Some(ret) = evaluate_ops(program, &closure.ops, &mut closure_env, &mut closure_stack)? {
+            if let Some(ret) =
+                evaluate_ops(program, &closure.ops, &mut closure_env, &mut closure_stack)?
+            {
                 return Ok(ret);
             }
 
-            closure_stack.pop().ok_or_else(|| RuntimeError::at_offset("closure returned no value", offset))
+            closure_stack
+                .pop()
+                .ok_or_else(|| RuntimeError::at_offset("closure returned no value", offset))
         }
         other => Err(RuntimeError::at_offset(
             format!("call value requires function, found {}", other.kind_label()),
@@ -1062,12 +1139,9 @@ fn pop_value(
     offset: usize,
     context: &str,
 ) -> Result<RuntimeValue, RuntimeError> {
-    stack.pop().ok_or_else(|| {
-        RuntimeError::at_offset(
-            format!("empty stack in {context}"),
-            offset,
-        )
-    })
+    stack
+        .pop()
+        .ok_or_else(|| RuntimeError::at_offset(format!("empty stack in {context}"), offset))
 }
 
 fn match_pattern(
@@ -1155,7 +1229,10 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 42, offset: 0 },
+                IrOp::ConstInt {
+                    value: 42,
+                    offset: 0,
+                },
                 IrOp::Return { offset: 0 },
             ],
         }]);
@@ -1170,8 +1247,14 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 1, offset: 0 },
-                IrOp::ConstInt { value: 2, offset: 0 },
+                IrOp::ConstInt {
+                    value: 1,
+                    offset: 0,
+                },
+                IrOp::ConstInt {
+                    value: 2,
+                    offset: 0,
+                },
                 IrOp::AddInt { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1195,7 +1278,9 @@ mod tests {
                 guard_ops: None,
                 ops: vec![
                     IrOp::Call {
-                        callee: IrCallTarget::Function { name: "Demo.helper".to_string() },
+                        callee: IrCallTarget::Function {
+                            name: "Demo.helper".to_string(),
+                        },
                         argc: 0,
                         offset: 0,
                     },
@@ -1208,7 +1293,10 @@ mod tests {
                 param_patterns: None,
                 guard_ops: None,
                 ops: vec![
-                    IrOp::ConstInt { value: 99, offset: 0 },
+                    IrOp::ConstInt {
+                        value: 99,
+                        offset: 0,
+                    },
                     IrOp::Return { offset: 0 },
                 ],
             },
@@ -1224,7 +1312,10 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::LoadVariable { name: "x".to_string(), offset: 0 },
+                IrOp::LoadVariable {
+                    name: "x".to_string(),
+                    offset: 0,
+                },
                 IrOp::Return { offset: 0 },
             ],
         }]);
@@ -1242,14 +1333,20 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 1, offset: 0 },
+                IrOp::ConstInt {
+                    value: 1,
+                    offset: 0,
+                },
                 IrOp::Case {
                     branches: vec![
                         IrCaseBranch {
                             pattern: IrPattern::Integer { value: 1 },
                             guard_ops: None,
                             ops: vec![
-                                IrOp::ConstAtom { value: "one".to_string(), offset: 0 },
+                                IrOp::ConstAtom {
+                                    value: "one".to_string(),
+                                    offset: 0,
+                                },
                                 IrOp::Return { offset: 0 },
                             ],
                         },
@@ -1257,7 +1354,10 @@ mod tests {
                             pattern: IrPattern::Wildcard,
                             guard_ops: None,
                             ops: vec![
-                                IrOp::ConstAtom { value: "other".to_string(), offset: 0 },
+                                IrOp::ConstAtom {
+                                    value: "other".to_string(),
+                                    offset: 0,
+                                },
                                 IrOp::Return { offset: 0 },
                             ],
                         },
@@ -1280,9 +1380,20 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 42, offset: 0 },
-                IrOp::Match { pattern: IrPattern::Bind { name: "x".to_string() }, offset: 0 },
-                IrOp::LoadVariable { name: "x".to_string(), offset: 0 },
+                IrOp::ConstInt {
+                    value: 42,
+                    offset: 0,
+                },
+                IrOp::Match {
+                    pattern: IrPattern::Bind {
+                        name: "x".to_string(),
+                    },
+                    offset: 0,
+                },
+                IrOp::LoadVariable {
+                    name: "x".to_string(),
+                    offset: 0,
+                },
                 IrOp::Return { offset: 0 },
             ],
         }]);
@@ -1300,16 +1411,30 @@ mod tests {
                 IrOp::For {
                     generators: vec![IrForGenerator {
                         source_ops: vec![
-                            IrOp::ConstInt { value: 1, offset: 0 },
-                            IrOp::ConstInt { value: 3, offset: 0 },
+                            IrOp::ConstInt {
+                                value: 1,
+                                offset: 0,
+                            },
+                            IrOp::ConstInt {
+                                value: 3,
+                                offset: 0,
+                            },
                             IrOp::Range { offset: 0 },
                         ],
-                        pattern: IrPattern::Bind { name: "x".to_string() },
+                        pattern: IrPattern::Bind {
+                            name: "x".to_string(),
+                        },
                         guard_ops: None,
                     }],
                     body_ops: vec![
-                        IrOp::LoadVariable { name: "x".to_string(), offset: 0 },
-                        IrOp::ConstInt { value: 2, offset: 0 },
+                        IrOp::LoadVariable {
+                            name: "x".to_string(),
+                            offset: 0,
+                        },
+                        IrOp::ConstInt {
+                            value: 2,
+                            offset: 0,
+                        },
                         IrOp::MulInt { offset: 0 },
                     ],
                     into_ops: None,
@@ -1339,14 +1464,22 @@ mod tests {
             ops: vec![
                 IrOp::Try {
                     body_ops: vec![
-                        IrOp::ConstString { value: "boom".to_string(), offset: 0 },
+                        IrOp::ConstString {
+                            value: "boom".to_string(),
+                            offset: 0,
+                        },
                         IrOp::Raise { offset: 0 },
                     ],
                     rescue_branches: vec![IrCaseBranch {
-                        pattern: IrPattern::Bind { name: "e".to_string() },
+                        pattern: IrPattern::Bind {
+                            name: "e".to_string(),
+                        },
                         guard_ops: None,
                         ops: vec![
-                            IrOp::ConstAtom { value: "rescued".to_string(), offset: 0 },
+                            IrOp::ConstAtom {
+                                value: "rescued".to_string(),
+                                offset: 0,
+                            },
                             IrOp::Return { offset: 0 },
                         ],
                     }],
@@ -1374,14 +1507,23 @@ mod tests {
                 IrOp::MakeClosure {
                     params: vec!["x".to_string()],
                     ops: vec![
-                        IrOp::LoadVariable { name: "x".to_string(), offset: 0 },
-                        IrOp::ConstInt { value: 1, offset: 0 },
+                        IrOp::LoadVariable {
+                            name: "x".to_string(),
+                            offset: 0,
+                        },
+                        IrOp::ConstInt {
+                            value: 1,
+                            offset: 0,
+                        },
                         IrOp::AddInt { offset: 0 },
                         IrOp::Return { offset: 0 },
                     ],
                     offset: 0,
                 },
-                IrOp::ConstInt { value: 5, offset: 0 },
+                IrOp::ConstInt {
+                    value: 5,
+                    offset: 0,
+                },
                 IrOp::CallValue { argc: 1, offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1397,8 +1539,14 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 5, offset: 0 },
-                IrOp::ConstInt { value: 3, offset: 0 },
+                IrOp::ConstInt {
+                    value: 5,
+                    offset: 0,
+                },
+                IrOp::ConstInt {
+                    value: 3,
+                    offset: 0,
+                },
                 IrOp::BitwiseAnd { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1414,8 +1562,14 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 5, offset: 0 },
-                IrOp::ConstInt { value: 3, offset: 0 },
+                IrOp::ConstInt {
+                    value: 5,
+                    offset: 0,
+                },
+                IrOp::ConstInt {
+                    value: 3,
+                    offset: 0,
+                },
                 IrOp::BitwiseOr { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1431,8 +1585,14 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 5, offset: 0 },
-                IrOp::ConstInt { value: 6, offset: 0 },
+                IrOp::ConstInt {
+                    value: 5,
+                    offset: 0,
+                },
+                IrOp::ConstInt {
+                    value: 6,
+                    offset: 0,
+                },
                 IrOp::BitwiseXor { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1448,7 +1608,10 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 5, offset: 0 },
+                IrOp::ConstInt {
+                    value: 5,
+                    offset: 0,
+                },
                 IrOp::BitwiseNot { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1464,8 +1627,14 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 1, offset: 0 },
-                IrOp::ConstInt { value: 4, offset: 0 },
+                IrOp::ConstInt {
+                    value: 1,
+                    offset: 0,
+                },
+                IrOp::ConstInt {
+                    value: 4,
+                    offset: 0,
+                },
                 IrOp::BitwiseShiftLeft { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],
@@ -1481,8 +1650,14 @@ mod tests {
             param_patterns: None,
             guard_ops: None,
             ops: vec![
-                IrOp::ConstInt { value: 16, offset: 0 },
-                IrOp::ConstInt { value: 2, offset: 0 },
+                IrOp::ConstInt {
+                    value: 16,
+                    offset: 0,
+                },
+                IrOp::ConstInt {
+                    value: 2,
+                    offset: 0,
+                },
                 IrOp::BitwiseShiftRight { offset: 0 },
                 IrOp::Return { offset: 0 },
             ],

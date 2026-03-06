@@ -25,10 +25,7 @@ fn run_div_operator_basic() {
         "expected success, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "3\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "3\n");
 }
 
 #[test]
@@ -50,10 +47,7 @@ fn run_div_operator_truncates_toward_zero_negative() {
 
     assert!(output.status.success());
     // -7 div 2 = -3 (truncation toward zero)
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "-3\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "-3\n");
 }
 
 #[test]
@@ -101,10 +95,7 @@ fn run_rem_operator_basic() {
         .expect("execute");
 
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "1\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "1\n");
 }
 
 #[test]
@@ -126,10 +117,7 @@ fn run_rem_operator_sign_follows_dividend() {
 
     assert!(output.status.success());
     // -7 rem 2 = -1 (sign follows dividend)
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "-1\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "-1\n");
 }
 
 #[test]
@@ -178,10 +166,7 @@ fn run_div_has_same_precedence_as_mul() {
         .expect("execute");
 
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "5\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "5\n");
 }
 
 // ── not in operator ───────────────────────────────────────────────────────────
@@ -204,10 +189,7 @@ fn run_not_in_returns_true_for_absent_element() {
         .expect("execute");
 
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "true\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "true\n");
 }
 
 #[test]
@@ -228,10 +210,7 @@ fn run_not_in_returns_false_for_present_element() {
         .expect("execute");
 
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "false\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "false\n");
 }
 
 #[test]
@@ -252,10 +231,7 @@ fn run_not_in_works_in_range() {
         .expect("execute");
 
     assert!(output.status.success());
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("utf8"),
-        "true\n"
-    );
+    assert_eq!(String::from_utf8(output.stdout).expect("utf8"), "true\n");
 }
 
 // ── stepped ranges ────────────────────────────────────────────────────────────

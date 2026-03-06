@@ -99,7 +99,11 @@ pub(crate) fn cmp_int(
     // StrictEq and StrictNotEq compare without coercion
     if kind == CmpKind::StrictEq || kind == CmpKind::StrictNotEq {
         let equal = left == right;
-        return Ok(RuntimeValue::Bool(if kind == CmpKind::StrictEq { equal } else { !equal }));
+        return Ok(RuntimeValue::Bool(if kind == CmpKind::StrictEq {
+            equal
+        } else {
+            !equal
+        }));
     }
 
     let left = expect_int_operand(left, offset)?;

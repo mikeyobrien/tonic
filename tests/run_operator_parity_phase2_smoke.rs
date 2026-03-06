@@ -6,11 +6,8 @@ fn run_tonic_source(test_name: &str, source: &str) -> String {
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
-    fs::write(
-        examples_dir.join("test.tn"),
-        source,
-    )
-    .expect("fixture setup should write source file");
+    fs::write(examples_dir.join("test.tn"), source)
+        .expect("fixture setup should write source file");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)

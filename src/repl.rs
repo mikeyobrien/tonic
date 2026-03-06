@@ -7,8 +7,11 @@ use crate::typing::infer_types;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-const WELCOME: &str =
-    concat!("Tonic v", env!("CARGO_PKG_VERSION"), " (type :help for commands, :quit to exit)");
+const WELCOME: &str = concat!(
+    "Tonic v",
+    env!("CARGO_PKG_VERSION"),
+    " (type :help for commands, :quit to exit)"
+);
 const PROMPT_NORMAL: &str = "tonic> ";
 const PROMPT_CONT: &str = "  ...> ";
 const HISTORY_FILE: &str = ".tonic_history";
@@ -17,7 +20,6 @@ const REPL_FN: &str = "Repl.__repl_entry__";
 
 // Tokens that indicate a block is open and more lines are expected.
 const BLOCK_OPENERS: &[&str] = &["do", "fn", "->", "(", "[", "{", "\\"];
-
 
 enum ReadResult {
     Eof,
@@ -87,14 +89,27 @@ fn needs_continuation(lines: &[String]) -> bool {
         }
     }
 
-    // Balance check: more openers than closers means we need more input.
+    // Balance check for brackets: more openers than closers means we need more input.
     let opens = count_chars(trimmed, &['{', '(', '[']);
     let closes = count_chars(trimmed, &['}', ')', ']']);
-    opens > closes
+    if opens > closes {
+        return true;
+    }
+
+    // Balance check for do/end blocks (word-boundary aware).
+    let do_count = count_keyword(trimmed, "do");
+    let fn_count = count_keyword(trimmed, "fn");
+    let end_count = count_keyword(trimmed, "end");
+    (do_count + fn_count) > end_count
 }
 
 fn count_chars(s: &str, targets: &[char]) -> usize {
     s.chars().filter(|c| targets.contains(c)).count()
+}
+
+/// Count occurrences of a keyword at word boundaries (not inside identifiers).
+fn count_keyword(s: &str, keyword: &str) -> usize {
+    s.split_whitespace().filter(|word| *word == keyword).count()
 }
 
 fn handle_command(cmd: &str, accumulated: &[IrFunction]) {
@@ -117,7 +132,10 @@ fn handle_command(cmd: &str, accumulated: &[IrFunction]) {
             }
         }
         other => {
-            eprintln!("unknown command '{}' — type :help for available commands", other);
+            eprintln!(
+                "unknown command '{}' — type :help for available commands",
+                other
+            );
         }
     }
 }
@@ -156,7 +174,9 @@ fn handle_type_command(expr: &str, accumulated: &[IrFunction]) {
             if let Ok(ir) = lower_ast_to_ir(&ast) {
                 let mut full_functions: Vec<IrFunction> = accumulated.to_vec();
                 full_functions.extend(ir.functions);
-                let program = IrProgram { functions: full_functions };
+                let program = IrProgram {
+                    functions: full_functions,
+                };
                 if let Ok(value) = evaluate_named_function(&program, REPL_FN) {
                     println!("runtime type: {}", value_type_label(&value));
                 }
@@ -435,8 +455,14 @@ mod tests {
         let def = "defmodule Helpers do\n  def double(x) do x * 2 end\nend\n\
                    defmodule Repl do\n  def __repl_entry__() do nil end\nend\n";
         let _ = compile_and_run(def, &mut acc, &mut externals);
-        assert!(!acc.is_empty(), "accumulator should have functions after definition");
-        assert!(externals.contains_key("Helpers"), "externals should include Helpers module");
+        assert!(
+            !acc.is_empty(),
+            "accumulator should have functions after definition"
+        );
+        assert!(
+            externals.contains_key("Helpers"),
+            "externals should include Helpers module"
+        );
 
         // Call the helper in a subsequent input.
         let call = wrap_expr_in_module("Helpers.double(5)");

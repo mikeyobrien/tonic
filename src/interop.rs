@@ -574,7 +574,10 @@ mod tests {
         let append_wrong_type = HOST_REGISTRY
             .call(
                 "sys_append_text",
-                &[RuntimeValue::Int(7), RuntimeValue::String("payload".to_string())],
+                &[
+                    RuntimeValue::Int(7),
+                    RuntimeValue::String("payload".to_string()),
+                ],
             )
             .expect_err("sys_append_text should reject non-string paths");
 
@@ -841,7 +844,10 @@ mod tests {
             )
             .expect("sys_retry_plan should parse Retry-After seconds");
 
-        assert_eq!(map_lookup(&result, "retry"), Some(&RuntimeValue::Bool(true)));
+        assert_eq!(
+            map_lookup(&result, "retry"),
+            Some(&RuntimeValue::Bool(true))
+        );
         assert_eq!(
             map_lookup(&result, "delay_ms"),
             Some(&RuntimeValue::Int(5_000))
@@ -869,8 +875,14 @@ mod tests {
             )
             .expect("sys_retry_plan should fall back to backoff when header is invalid");
 
-        assert_eq!(map_lookup(&result, "retry"), Some(&RuntimeValue::Bool(true)));
-        assert_eq!(map_lookup(&result, "delay_ms"), Some(&RuntimeValue::Int(500)));
+        assert_eq!(
+            map_lookup(&result, "retry"),
+            Some(&RuntimeValue::Bool(true))
+        );
+        assert_eq!(
+            map_lookup(&result, "delay_ms"),
+            Some(&RuntimeValue::Int(500))
+        );
         assert_eq!(
             map_lookup(&result, "source"),
             Some(&RuntimeValue::Atom("backoff".to_string()))
@@ -894,7 +906,10 @@ mod tests {
             )
             .expect("sys_retry_plan should stop retries when attempt budget is exhausted");
 
-        assert_eq!(map_lookup(&result, "retry"), Some(&RuntimeValue::Bool(false)));
+        assert_eq!(
+            map_lookup(&result, "retry"),
+            Some(&RuntimeValue::Bool(false))
+        );
         assert_eq!(map_lookup(&result, "delay_ms"), Some(&RuntimeValue::Int(0)));
         assert_eq!(
             map_lookup(&result, "source"),
@@ -972,10 +987,7 @@ mod tests {
                 .as_nanos()
         ));
         let sink_path = fixture_root.join("audit").join("events.jsonl");
-        let _env_guard = EnvVarGuard::set(
-            "TONIC_SYSTEM_LOG_PATH",
-            sink_path.display().to_string(),
-        );
+        let _env_guard = EnvVarGuard::set("TONIC_SYSTEM_LOG_PATH", sink_path.display().to_string());
 
         let first = HOST_REGISTRY
             .call(
@@ -1037,7 +1049,11 @@ mod tests {
         let sink = std::fs::read_to_string(&sink_path)
             .expect("structured log sink should be readable after writes");
         let lines = sink.lines().collect::<Vec<_>>();
-        assert_eq!(lines.len(), 2, "sys_log should append one JSONL line per call");
+        assert_eq!(
+            lines.len(),
+            2,
+            "sys_log should append one JSONL line per call"
+        );
 
         let first_json: serde_json::Value =
             serde_json::from_str(lines[0]).expect("first log line should be valid JSON");

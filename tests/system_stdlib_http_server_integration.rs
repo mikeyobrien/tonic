@@ -78,7 +78,7 @@ end
         ),
     );
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tonic"))
+    let child = Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&root)
         .args(["run", "."])
         .stdout(std::process::Stdio::piped())
@@ -154,7 +154,7 @@ end
         ),
     );
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tonic"))
+    let child = Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&root)
         .args(["run", "."])
         .stdout(std::process::Stdio::piped())
@@ -240,7 +240,7 @@ end
         ),
     );
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tonic"))
+    let child = Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&root)
         .args(["run", "."])
         .stdout(std::process::Stdio::piped())
@@ -304,7 +304,7 @@ end
         ),
     );
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tonic"))
+    let child = Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&root)
         .args(["run", "."])
         .stdout(std::process::Stdio::piped())

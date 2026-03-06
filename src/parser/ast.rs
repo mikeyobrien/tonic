@@ -858,12 +858,7 @@ impl Expr {
         }
     }
 
-    pub(crate) fn anonymous_fn(
-        id: NodeId,
-        offset: usize,
-        params: Vec<String>,
-        body: Expr,
-    ) -> Self {
+    pub(crate) fn anonymous_fn(id: NodeId, offset: usize, params: Vec<String>, body: Expr) -> Self {
         Self::Fn {
             id,
             offset,

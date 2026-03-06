@@ -251,9 +251,14 @@ enum LexerErrorKind {
     InvalidToken(char),
     UnterminatedString,
     /// No digits follow a radix prefix (e.g. `0x`, `0o`, `0b` with nothing after)
-    EmptyNumericLiteral { prefix: &'static str },
+    EmptyNumericLiteral {
+        prefix: &'static str,
+    },
     /// A digit is invalid for the given base (e.g. `0b12` — `2` is not binary)
-    InvalidDigitForBase { digit: char, base: &'static str },
+    InvalidDigitForBase {
+        digit: char,
+        base: &'static str,
+    },
     /// Underscore separator at start or end of digit sequence (e.g. `0x_FF` or `0xFF_`)
     MisplacedNumericSeparator,
 }
@@ -461,7 +466,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         let start = idx;
                         if chars.get(idx + 1) == Some(&'^') && chars.get(idx + 2) == Some(&'^') {
                             idx += 3;
-                            tokens.push(Token::simple(TokenKind::CaretCaretCaret, Span::new(start, idx)));
+                            tokens.push(Token::simple(
+                                TokenKind::CaretCaretCaret,
+                                Span::new(start, idx),
+                            ));
                         } else {
                             idx += 1;
                             tokens.push(Token::simple(TokenKind::Caret, Span::new(start, idx)));
@@ -500,7 +508,8 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         let start = idx;
                         if chars.get(idx + 1) == Some(&'/') {
                             idx += 2;
-                            tokens.push(Token::simple(TokenKind::SlashSlash, Span::new(start, idx)));
+                            tokens
+                                .push(Token::simple(TokenKind::SlashSlash, Span::new(start, idx)));
                         } else {
                             idx += 1;
                             tokens.push(Token::simple(TokenKind::Slash, Span::new(start, idx)));
@@ -526,7 +535,9 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         if chars.get(idx + 1) == Some(&'>') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::FatArrow, Span::new(start, idx)));
-                        } else if chars.get(idx + 1) == Some(&'=') && chars.get(idx + 2) == Some(&'=') {
+                        } else if chars.get(idx + 1) == Some(&'=')
+                            && chars.get(idx + 2) == Some(&'=')
+                        {
                             idx += 3;
                             tokens.push(Token::simple(TokenKind::StrictEq, Span::new(start, idx)));
                         } else if chars.get(idx + 1) == Some(&'=') {
@@ -541,7 +552,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         let start = idx;
                         if chars.get(idx + 1) == Some(&'=') && chars.get(idx + 2) == Some(&'=') {
                             idx += 3;
-                            tokens.push(Token::simple(TokenKind::StrictBangEq, Span::new(start, idx)));
+                            tokens.push(Token::simple(
+                                TokenKind::StrictBangEq,
+                                Span::new(start, idx),
+                            ));
                         } else if chars.get(idx + 1) == Some(&'=') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::BangEq, Span::new(start, idx)));
@@ -593,7 +607,15 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         let start = idx;
                         idx += 1;
                         // Char literal: ?a, ?\n, etc.
-                        if idx < chars.len() && chars[idx] != ' ' && chars[idx] != '\n' && chars[idx] != '\t' && chars[idx] != ')' && chars[idx] != ',' && chars[idx] != ']' && chars[idx] != '}' {
+                        if idx < chars.len()
+                            && chars[idx] != ' '
+                            && chars[idx] != '\n'
+                            && chars[idx] != '\t'
+                            && chars[idx] != ')'
+                            && chars[idx] != ','
+                            && chars[idx] != ']'
+                            && chars[idx] != '}'
+                        {
                             // Check if this looks like a char literal rather than the ? operator.
                             // The ? operator is always followed by whitespace, closing delimiters, or EOF in expression position.
                             // Char literals are ?<char> or ?\<escape>.
@@ -618,7 +640,11 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                                 idx += 1;
                             }
                             let lexeme = char_value.to_string();
-                            tokens.push(Token::with_lexeme(TokenKind::Integer, lexeme, Span::new(start, idx)));
+                            tokens.push(Token::with_lexeme(
+                                TokenKind::Integer,
+                                lexeme,
+                                Span::new(start, idx),
+                            ));
                         } else {
                             tokens.push(Token::simple(TokenKind::Question, Span::new(start, idx)));
                         }
@@ -628,9 +654,14 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         if chars.get(idx + 1) == Some(&'>') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::PipeGt, Span::new(start, idx)));
-                        } else if chars.get(idx + 1) == Some(&'|') && chars.get(idx + 2) == Some(&'|') {
+                        } else if chars.get(idx + 1) == Some(&'|')
+                            && chars.get(idx + 2) == Some(&'|')
+                        {
                             idx += 3;
-                            tokens.push(Token::simple(TokenKind::PipePipePipe, Span::new(start, idx)));
+                            tokens.push(Token::simple(
+                                TokenKind::PipePipePipe,
+                                Span::new(start, idx),
+                            ));
                         } else if chars.get(idx + 1) == Some(&'|') {
                             idx += 2;
                             tokens.push(Token::simple(TokenKind::OrOr, Span::new(start, idx)));
@@ -680,7 +711,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         // ~~~ is bitwise not (unary operator)
                         if chars.get(idx + 1) == Some(&'~') && chars.get(idx + 2) == Some(&'~') {
                             idx += 3;
-                            tokens.push(Token::simple(TokenKind::TildeTildeTilde, Span::new(start, idx)));
+                            tokens.push(Token::simple(
+                                TokenKind::TildeTildeTilde,
+                                Span::new(start, idx),
+                            ));
                             continue;
                         }
                         let Some(sigil_kind) = chars.get(idx + 1).copied() else {
@@ -740,7 +774,10 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             tokens.push(Token::simple(TokenKind::LBracket, Span::new(start, idx)));
                             for (i, word) in words.iter().enumerate() {
                                 if i > 0 {
-                                    tokens.push(Token::simple(TokenKind::Comma, Span::new(start, idx)));
+                                    tokens.push(Token::simple(
+                                        TokenKind::Comma,
+                                        Span::new(start, idx),
+                                    ));
                                 }
                                 if use_atoms {
                                     tokens.push(Token::with_lexeme(
@@ -874,13 +911,20 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                             match chars[idx] {
                                 'x' | 'X' => {
                                     idx += 1; // skip 'x'/'X'
-                                    // Error: no digits follow the prefix
-                                    if idx >= chars.len() || (!chars[idx].is_ascii_hexdigit() && chars[idx] != '_') {
-                                        return Err(LexerError::empty_numeric_literal("0x", Span::new(start, idx)));
+                                              // Error: no digits follow the prefix
+                                    if idx >= chars.len()
+                                        || (!chars[idx].is_ascii_hexdigit() && chars[idx] != '_')
+                                    {
+                                        return Err(LexerError::empty_numeric_literal(
+                                            "0x",
+                                            Span::new(start, idx),
+                                        ));
                                     }
                                     // Error: separator at start
                                     if chars[idx] == '_' {
-                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx + 1)));
+                                        return Err(LexerError::misplaced_numeric_separator(
+                                            Span::new(start, idx + 1),
+                                        ));
                                     }
                                     let digit_start = idx;
                                     while idx < chars.len()
@@ -890,14 +934,21 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                                     }
                                     // Error: separator at end
                                     if chars[idx - 1] == '_' {
-                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
+                                        return Err(LexerError::misplaced_numeric_separator(
+                                            Span::new(start, idx),
+                                        ));
                                     }
                                     let digits: String = chars[digit_start..idx]
                                         .iter()
                                         .filter(|c| **c != '_')
                                         .collect();
-                                    let int_value = i64::from_str_radix(&digits, 16)
-                                        .map_err(|_| LexerError::empty_numeric_literal("0x", Span::new(start, idx)))?;
+                                    let int_value =
+                                        i64::from_str_radix(&digits, 16).map_err(|_| {
+                                            LexerError::empty_numeric_literal(
+                                                "0x",
+                                                Span::new(start, idx),
+                                            )
+                                        })?;
                                     tokens.push(Token::with_lexeme(
                                         TokenKind::Integer,
                                         int_value.to_string(),
@@ -907,41 +958,63 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                                 }
                                 'o' | 'O' => {
                                     idx += 1; // skip 'o'/'O'
-                                    // Error: no digits follow the prefix
-                                    if idx >= chars.len() || (!('0'..='7').contains(&chars[idx]) && chars[idx] != '_') {
+                                              // Error: no digits follow the prefix
+                                    if idx >= chars.len()
+                                        || (!('0'..='7').contains(&chars[idx]) && chars[idx] != '_')
+                                    {
                                         // Check for invalid digit (e.g. 0o8)
                                         if idx < chars.len() && chars[idx].is_ascii_digit() {
-                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "octal", Span::new(start, idx + 1)));
+                                            return Err(LexerError::invalid_digit_for_base(
+                                                chars[idx],
+                                                "octal",
+                                                Span::new(start, idx + 1),
+                                            ));
                                         }
-                                        return Err(LexerError::empty_numeric_literal("0o", Span::new(start, idx)));
+                                        return Err(LexerError::empty_numeric_literal(
+                                            "0o",
+                                            Span::new(start, idx),
+                                        ));
                                     }
                                     // Error: separator at start
                                     if chars[idx] == '_' {
-                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx + 1)));
+                                        return Err(LexerError::misplaced_numeric_separator(
+                                            Span::new(start, idx + 1),
+                                        ));
                                     }
                                     let digit_start = idx;
                                     while idx < chars.len() {
-                                        if chars[idx] == '_' {
-                                            idx += 1;
-                                        } else if ('0'..='7').contains(&chars[idx]) {
+                                        if chars[idx] == '_'
+                                            || (chars[idx].is_ascii_digit() && chars[idx] <= '7')
+                                        {
                                             idx += 1;
                                         } else if chars[idx].is_ascii_digit() {
                                             // digit 8 or 9 in octal literal
-                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "octal", Span::new(start, idx + 1)));
+                                            return Err(LexerError::invalid_digit_for_base(
+                                                chars[idx],
+                                                "octal",
+                                                Span::new(start, idx + 1),
+                                            ));
                                         } else {
                                             break;
                                         }
                                     }
                                     // Error: separator at end
                                     if chars[idx - 1] == '_' {
-                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
+                                        return Err(LexerError::misplaced_numeric_separator(
+                                            Span::new(start, idx),
+                                        ));
                                     }
                                     let digits: String = chars[digit_start..idx]
                                         .iter()
                                         .filter(|c| **c != '_')
                                         .collect();
-                                    let int_value = i64::from_str_radix(&digits, 8)
-                                        .map_err(|_| LexerError::empty_numeric_literal("0o", Span::new(start, idx)))?;
+                                    let int_value =
+                                        i64::from_str_radix(&digits, 8).map_err(|_| {
+                                            LexerError::empty_numeric_literal(
+                                                "0o",
+                                                Span::new(start, idx),
+                                            )
+                                        })?;
                                     tokens.push(Token::with_lexeme(
                                         TokenKind::Integer,
                                         int_value.to_string(),
@@ -951,41 +1024,63 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                                 }
                                 'b' | 'B' => {
                                     idx += 1; // skip 'b'/'B'
-                                    // Error: no digits follow the prefix
-                                    if idx >= chars.len() || (chars[idx] != '0' && chars[idx] != '1' && chars[idx] != '_') {
+                                              // Error: no digits follow the prefix
+                                    if idx >= chars.len()
+                                        || (chars[idx] != '0'
+                                            && chars[idx] != '1'
+                                            && chars[idx] != '_')
+                                    {
                                         // Check for invalid digit (e.g. 0b2)
                                         if idx < chars.len() && chars[idx].is_ascii_digit() {
-                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "binary", Span::new(start, idx + 1)));
+                                            return Err(LexerError::invalid_digit_for_base(
+                                                chars[idx],
+                                                "binary",
+                                                Span::new(start, idx + 1),
+                                            ));
                                         }
-                                        return Err(LexerError::empty_numeric_literal("0b", Span::new(start, idx)));
+                                        return Err(LexerError::empty_numeric_literal(
+                                            "0b",
+                                            Span::new(start, idx),
+                                        ));
                                     }
                                     // Error: separator at start
                                     if chars[idx] == '_' {
-                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx + 1)));
+                                        return Err(LexerError::misplaced_numeric_separator(
+                                            Span::new(start, idx + 1),
+                                        ));
                                     }
                                     let digit_start = idx;
                                     while idx < chars.len() {
-                                        if chars[idx] == '_' {
-                                            idx += 1;
-                                        } else if chars[idx] == '0' || chars[idx] == '1' {
+                                        if chars[idx] == '_' || matches!(chars[idx], '0' | '1') {
                                             idx += 1;
                                         } else if chars[idx].is_ascii_digit() {
                                             // digit 2-9 in binary literal
-                                            return Err(LexerError::invalid_digit_for_base(chars[idx], "binary", Span::new(start, idx + 1)));
+                                            return Err(LexerError::invalid_digit_for_base(
+                                                chars[idx],
+                                                "binary",
+                                                Span::new(start, idx + 1),
+                                            ));
                                         } else {
                                             break;
                                         }
                                     }
                                     // Error: separator at end
                                     if chars[idx - 1] == '_' {
-                                        return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
+                                        return Err(LexerError::misplaced_numeric_separator(
+                                            Span::new(start, idx),
+                                        ));
                                     }
                                     let digits: String = chars[digit_start..idx]
                                         .iter()
                                         .filter(|c| **c != '_')
                                         .collect();
-                                    let int_value = i64::from_str_radix(&digits, 2)
-                                        .map_err(|_| LexerError::empty_numeric_literal("0b", Span::new(start, idx)))?;
+                                    let int_value =
+                                        i64::from_str_radix(&digits, 2).map_err(|_| {
+                                            LexerError::empty_numeric_literal(
+                                                "0b",
+                                                Span::new(start, idx),
+                                            )
+                                        })?;
                                     tokens.push(Token::with_lexeme(
                                         TokenKind::Integer,
                                         int_value.to_string(),
@@ -1006,7 +1101,9 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
 
                         // Error: separator at end of integer part
                         if chars[idx - 1] == '_' {
-                            return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
+                            return Err(LexerError::misplaced_numeric_separator(Span::new(
+                                start, idx,
+                            )));
                         }
 
                         let mut kind = TokenKind::Integer;
@@ -1025,15 +1122,15 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
 
                             // Error: separator at end of fractional part
                             if chars[idx - 1] == '_' {
-                                return Err(LexerError::misplaced_numeric_separator(Span::new(start, idx)));
+                                return Err(LexerError::misplaced_numeric_separator(Span::new(
+                                    start, idx,
+                                )));
                             }
                         }
 
                         // Strip underscores from the lexeme
-                        let lexeme: String = chars[start..idx]
-                            .iter()
-                            .filter(|c| **c != '_')
-                            .collect();
+                        let lexeme: String =
+                            chars[start..idx].iter().filter(|c| **c != '_').collect();
                         tokens.push(Token::with_lexeme(kind, lexeme, Span::new(start, idx)));
                     }
                     value if is_ident_start(value) => {
@@ -1642,16 +1739,7 @@ mod tests {
         let labels = dump_labels("<<72, 101, 108>>");
         assert_eq!(
             labels,
-            [
-                "LT_LT",
-                "INT(72)",
-                "COMMA",
-                "INT(101)",
-                "COMMA",
-                "INT(108)",
-                "GT_GT",
-                "EOF",
-            ]
+            ["LT_LT", "INT(72)", "COMMA", "INT(101)", "COMMA", "INT(108)", "GT_GT", "EOF",]
         );
     }
 
@@ -1661,18 +1749,8 @@ mod tests {
         assert_eq!(
             labels,
             [
-                "LT_LT",
-                "IDENT(a)",
-                "COLON",
-                "COLON",
-                "INT(8)",
-                "COMMA",
-                "IDENT(b)",
-                "COLON",
-                "COLON",
-                "INT(16)",
-                "GT_GT",
-                "EOF",
+                "LT_LT", "IDENT(a)", "COLON", "COLON", "INT(8)", "COMMA", "IDENT(b)", "COLON",
+                "COLON", "INT(16)", "GT_GT", "EOF",
             ]
         );
     }
@@ -1795,14 +1873,7 @@ mod tests {
         let labels = dump_labels("a <<< b >>> c");
         assert_eq!(
             labels,
-            [
-                "IDENT(a)",
-                "LT_LT_LT",
-                "IDENT(b)",
-                "GT_GT_GT",
-                "IDENT(c)",
-                "EOF",
-            ]
+            ["IDENT(a)", "LT_LT_LT", "IDENT(b)", "GT_GT_GT", "IDENT(c)", "EOF",]
         );
     }
 
@@ -1878,8 +1949,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_hex_with_no_digits() {
-        let err = scan_tokens("0x")
-            .expect_err("0x with no digits should fail");
+        let err = scan_tokens("0x").expect_err("0x with no digits should fail");
         assert!(
             err.to_string().contains("no digits"),
             "expected 'no digits' in error: {err}"
@@ -1888,8 +1958,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_octal_with_no_digits() {
-        let err = scan_tokens("0o")
-            .expect_err("0o with no digits should fail");
+        let err = scan_tokens("0o").expect_err("0o with no digits should fail");
         assert!(
             err.to_string().contains("no digits"),
             "expected 'no digits' in error: {err}"
@@ -1898,8 +1967,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_binary_with_no_digits() {
-        let err = scan_tokens("0b")
-            .expect_err("0b with no digits should fail");
+        let err = scan_tokens("0b").expect_err("0b with no digits should fail");
         assert!(
             err.to_string().contains("no digits"),
             "expected 'no digits' in error: {err}"
@@ -1908,8 +1976,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_binary_invalid_digit() {
-        let err = scan_tokens("0b12")
-            .expect_err("0b12 should fail — 2 is not a binary digit");
+        let err = scan_tokens("0b12").expect_err("0b12 should fail — 2 is not a binary digit");
         assert!(
             err.to_string().contains("binary"),
             "expected 'binary' in error: {err}"
@@ -1918,8 +1985,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_octal_invalid_digit() {
-        let err = scan_tokens("0o78")
-            .expect_err("0o78 should fail — 8 is not an octal digit");
+        let err = scan_tokens("0o78").expect_err("0o78 should fail — 8 is not an octal digit");
         assert!(
             err.to_string().contains("octal"),
             "expected 'octal' in error: {err}"
@@ -1928,8 +1994,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_hex_separator_at_start() {
-        let err = scan_tokens("0x_FF")
-            .expect_err("0x_FF should fail — separator at start");
+        let err = scan_tokens("0x_FF").expect_err("0x_FF should fail — separator at start");
         assert!(
             err.to_string().contains("separator"),
             "expected 'separator' in error: {err}"
@@ -1938,8 +2003,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_hex_separator_at_end() {
-        let err = scan_tokens("0xFF_")
-            .expect_err("0xFF_ should fail — separator at end");
+        let err = scan_tokens("0xFF_").expect_err("0xFF_ should fail — separator at end");
         assert!(
             err.to_string().contains("separator"),
             "expected 'separator' in error: {err}"
@@ -1948,8 +2012,7 @@ mod tests {
 
     #[test]
     fn scan_tokens_rejects_decimal_separator_at_end() {
-        let err = scan_tokens("100_")
-            .expect_err("100_ should fail — separator at end");
+        let err = scan_tokens("100_").expect_err("100_ should fail — separator at end");
         assert!(
             err.to_string().contains("separator"),
             "expected 'separator' in error: {err}"

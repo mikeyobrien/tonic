@@ -64,8 +64,7 @@ impl<'a> Parser<'a> {
             let binding = self.expect_ident("rescue exception binding")?;
             self.expect(TokenKind::In, "in")?;
             let (module, module_offset) = self.parse_rescue_module_reference()?;
-            let guard =
-                self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
+            let guard = self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
             self.expect(TokenKind::Arrow, "->")?;
             let body = self.parse_expression()?;
             return Ok(CaseBranch::new(
@@ -78,8 +77,7 @@ impl<'a> Parser<'a> {
         if self.current_starts_module_reference() {
             let (module, module_offset) = self.parse_rescue_module_reference()?;
             let binding = RESCUE_EXCEPTION_BINDING.to_string();
-            let guard =
-                self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
+            let guard = self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
             self.expect(TokenKind::Arrow, "->")?;
             let body = self.parse_expression()?;
             return Ok(CaseBranch::new(
@@ -134,12 +132,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    fn build_rescue_module_guard(
-        &mut self,
-        binding: &str,
-        module: String,
-        offset: usize,
-    ) -> Expr {
+    fn build_rescue_module_guard(&mut self, binding: &str, module: String, offset: usize) -> Expr {
         let module_pattern = Pattern::Map {
             entries: vec![MapPatternEntry::new(
                 Pattern::Atom {

@@ -40,10 +40,7 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for wrong arity"
-    );
+    assert!(!output.status.success(), "expected failure for wrong arity");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
         stderr.contains("arity") || stderr.contains("expects exactly"),

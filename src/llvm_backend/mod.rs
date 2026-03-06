@@ -16,9 +16,7 @@ pub(crate) const LLVM_COMPATIBILITY_VERSION: &str = "18.1.8";
 /// [`lower_mir_subset_to_llvm_ir`].
 pub(crate) fn warn_experimental() {
     if std::io::stderr().is_terminal() {
-        eprintln!(
-            "warning: LLVM backend is experimental. Use C backend for production builds."
-        );
+        eprintln!("warning: LLVM backend is experimental. Use C backend for production builds.");
     }
 }
 

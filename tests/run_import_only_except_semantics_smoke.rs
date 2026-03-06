@@ -139,8 +139,9 @@ fn check_reports_import_filter_exclusion_and_ambiguity() {
 
     let ambiguous_stderr = String::from_utf8(ambiguous.stderr).expect("stderr should be utf8");
     assert!(
-        ambiguous_stderr
-            .contains("error: [E1014] ambiguous imported call 'helper/1' in Demo; matches: Helpers, Math"),
+        ambiguous_stderr.contains(
+            "error: [E1014] ambiguous imported call 'helper/1' in Demo; matches: Helpers, Math"
+        ),
         "unexpected ambiguity diagnostic: {ambiguous_stderr}"
     );
 }

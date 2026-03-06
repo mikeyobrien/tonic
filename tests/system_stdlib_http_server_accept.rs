@@ -43,10 +43,7 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for wrong arity"
-    );
+    assert!(!output.status.success(), "expected failure for wrong arity");
     // The error comes from the Tonic type-checker or call-site resolver.
     // Both the "arity mismatch" and the host-function error are acceptable
     // deterministic contracts at the CLI level.
@@ -79,9 +76,7 @@ end
     );
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
-        stderr.contains(
-            "error: host error: sys_http_accept expects string argument 1; found int"
-        ),
+        stderr.contains("error: host error: sys_http_accept expects string argument 1; found int"),
         "expected deterministic type error for listener_id, got: {stderr}"
     );
 }
@@ -108,9 +103,7 @@ end
     );
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
-        stderr.contains(
-            "error: host error: sys_http_accept timeout_ms must be >= 0, found -1"
-        ),
+        stderr.contains("error: host error: sys_http_accept timeout_ms must be >= 0, found -1"),
         "expected deterministic negative-timeout error, got: {stderr}"
     );
 }
@@ -135,9 +128,7 @@ end
     );
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
-        stderr.contains(
-            "error: host error: sys_http_accept timeout_ms out of range: 9999999999"
-        ),
+        stderr.contains("error: host error: sys_http_accept timeout_ms out of range: 9999999999"),
         "expected deterministic timeout-range error, got: {stderr}"
     );
 }

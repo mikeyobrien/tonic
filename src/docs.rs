@@ -53,11 +53,8 @@ fn function_docs(module: &Module) -> Vec<(String, usize, Vec<String>, Option<Str
         .iter()
         .filter(|func| !func.is_private())
         .map(|func| {
-            let param_names: Vec<String> = func
-                .params
-                .iter()
-                .map(|p| p.name().to_string())
-                .collect();
+            let param_names: Vec<String> =
+                func.params.iter().map(|p| p.name().to_string()).collect();
             let arity = param_names.len();
             let doc = doc_iter.next().map(|s| s.to_string());
             (func.name.clone(), arity, param_names, doc)
@@ -126,19 +123,14 @@ fn write_docs_to_dir(
     let mut module_summaries: Vec<(String, Option<String>)> = Vec::new();
 
     for module in modules {
-        total_functions += module
-            .functions
-            .iter()
-            .filter(|f| !f.is_private())
-            .count();
+        total_functions += module.functions.iter().filter(|f| !f.is_private()).count();
 
         let content = render_module_doc(module);
         let filename = format!("{}.md", module.name.to_lowercase());
         let file_path = output_dir.join(&filename);
 
-        std::fs::write(&file_path, &content).map_err(|e| {
-            format!("failed to write {}: {}", file_path.display(), e)
-        })?;
+        std::fs::write(&file_path, &content)
+            .map_err(|e| format!("failed to write {}: {}", file_path.display(), e))?;
 
         module_summaries.push((module.name.clone(), module_summary(module)));
     }
@@ -189,7 +181,10 @@ fn parse_modules(source: &str) -> Vec<Module> {
 /// Entry point for `tonic docs <path> [--output <dir>]`.
 pub fn handle_docs(args: Vec<String>) -> i32 {
     if args.is_empty()
-        || matches!(args.first().map(String::as_str), Some("-h") | Some("--help"))
+        || matches!(
+            args.first().map(String::as_str),
+            Some("-h") | Some("--help")
+        )
     {
         if args.is_empty() {
             return CliDiagnostic::usage_with_hint(
@@ -359,25 +354,30 @@ end
     fn render_module_doc_contains_module_name() {
         let modules = parse_source("defmodule Hello do\n  def run() do 1 end\nend\n");
         let output = render_module_doc(&modules[0]);
-        assert!(output.contains("# Hello"), "expected '# Hello' in:\n{output}");
+        assert!(
+            output.contains("# Hello"),
+            "expected '# Hello' in:\n{output}"
+        );
     }
 
     #[test]
     fn render_module_doc_includes_function_signature() {
-        let modules = parse_source(
-            "defmodule M do\n  def add(a, b) do\n    a + b\n  end\nend\n",
-        );
+        let modules = parse_source("defmodule M do\n  def add(a, b) do\n    a + b\n  end\nend\n");
         let output = render_module_doc(&modules[0]);
-        assert!(output.contains("add(a, b)"), "expected signature in:\n{output}");
+        assert!(
+            output.contains("add(a, b)"),
+            "expected signature in:\n{output}"
+        );
     }
 
     #[test]
     fn render_module_doc_includes_arity_in_heading() {
-        let modules = parse_source(
-            "defmodule M do\n  def add(a, b) do\n    a + b\n  end\nend\n",
-        );
+        let modules = parse_source("defmodule M do\n  def add(a, b) do\n    a + b\n  end\nend\n");
         let output = render_module_doc(&modules[0]);
-        assert!(output.contains("### add/2"), "expected 'add/2' heading in:\n{output}");
+        assert!(
+            output.contains("### add/2"),
+            "expected 'add/2' heading in:\n{output}"
+        );
     }
 
     #[test]

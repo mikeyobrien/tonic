@@ -40,10 +40,7 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for wrong arity"
-    );
+    assert!(!output.status.success(), "expected failure for wrong arity");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
         stderr.contains("arity") || stderr.contains("expects exactly"),
@@ -94,10 +91,7 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for int headers"
-    );
+    assert!(!output.status.success(), "expected failure for int headers");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
         stderr.contains(
@@ -123,15 +117,10 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for status 600"
-    );
+    assert!(!output.status.success(), "expected failure for status 600");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
-        stderr.contains(
-            "error: host error: sys_http_write_response status code out of range: 600"
-        ),
+        stderr.contains("error: host error: sys_http_write_response status code out of range: 600"),
         "expected deterministic range error, got: {stderr}"
     );
 }
@@ -150,15 +139,10 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for status 99"
-    );
+    assert!(!output.status.success(), "expected failure for status 99");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
-        stderr.contains(
-            "error: host error: sys_http_write_response status code out of range: 99"
-        ),
+        stderr.contains("error: host error: sys_http_write_response status code out of range: 99"),
         "expected deterministic range error, got: {stderr}"
     );
 }

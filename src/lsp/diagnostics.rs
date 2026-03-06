@@ -1,7 +1,7 @@
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, Url};
 
-use crate::lsp::document::offset_to_position;
 use crate::lexer::scan_tokens;
+use crate::lsp::document::offset_to_position;
 use crate::parser::parse_ast;
 use crate::resolver::resolve_ast;
 use crate::typing::infer_types;
@@ -96,7 +96,11 @@ mod tests {
     fn clean_source_produces_no_diagnostics() {
         let source = "defmodule Demo do\n  def run() do\n    42\n  end\nend\n";
         let diags = compile_diagnostics(&dummy_uri(), source);
-        assert!(diags.is_empty(), "expected no diagnostics, got: {:?}", diags);
+        assert!(
+            diags.is_empty(),
+            "expected no diagnostics, got: {:?}",
+            diags
+        );
     }
 
     #[test]

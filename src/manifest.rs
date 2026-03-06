@@ -230,8 +230,7 @@ struct ProjectSourceAnalysis {
     referenced_modules: Vec<String>,
 }
 
-const STDLIB_MODULE_NAMES: &[&str] =
-    &["Enum", "System", "String", "List", "Map", "IO", "Path"];
+const STDLIB_MODULE_NAMES: &[&str] = &["Enum", "System", "String", "List", "Map", "IO", "Path"];
 
 fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {
     let Some(ast) = parse_project_ast(source) else {
@@ -645,20 +644,16 @@ fn parse_dep_table(
     if has_version {
         let version = match table.get("version") {
             Some(toml::Value::String(s)) => s.clone(),
-            _ => {
-                return Err(format!(
-                    "invalid tonic.toml: registry dependency '{name}' has non-string 'version' value"
-                ))
-            }
+            _ => return Err(format!(
+                "invalid tonic.toml: registry dependency '{name}' has non-string 'version' value"
+            )),
         };
         let registry = match table.get("registry") {
             None => None,
             Some(toml::Value::String(s)) => Some(s.clone()),
-            Some(_) => {
-                return Err(format!(
-                    "invalid tonic.toml: registry dependency '{name}' has non-string 'registry' value"
-                ))
-            }
+            Some(_) => return Err(format!(
+                "invalid tonic.toml: registry dependency '{name}' has non-string 'registry' value"
+            )),
         };
         deps.registry
             .insert(name.to_string(), RegistryDep { version, registry });
@@ -932,8 +927,8 @@ mod tests {
     #[test]
     fn parse_manifest_package_section_is_optional() {
         let source = "[project]\nentry = \"main.tn\"\n";
-        let manifest =
-            parse_manifest(source, Path::new(".")).expect("manifest without [package] should parse");
+        let manifest = parse_manifest(source, Path::new("."))
+            .expect("manifest without [package] should parse");
         assert_eq!(manifest.package, None);
     }
 
@@ -942,7 +937,9 @@ mod tests {
         let source = "[project]\nentry = \"main.tn\"\n\n[package]\nname = \"core\"\n";
         let manifest = parse_manifest(source, Path::new("."))
             .expect("manifest with partial [package] should parse");
-        let pkg = manifest.package.expect("[package] section should be present");
+        let pkg = manifest
+            .package
+            .expect("[package] section should be present");
         assert_eq!(pkg.name, Some("core".to_string()));
         assert_eq!(pkg.version, None);
         assert_eq!(pkg.description, None);

@@ -282,9 +282,7 @@ impl<'a> Parser<'a> {
                         break;
                     }
                     // peek ahead 1: should be Ident
-                    let next_is_ident = self
-                        .peek(1)
-                        .is_some_and(|t| t.kind() == TokenKind::Ident);
+                    let next_is_ident = self.peek(1).is_some_and(|t| t.kind() == TokenKind::Ident);
                     if !next_is_ident {
                         break;
                     }
@@ -293,9 +291,7 @@ impl<'a> Parser<'a> {
                     // If after .Ident we have (, another .Ident, or a no-paren arg start, consume.
                     let should_consume = matches!(after_next, Some(TokenKind::LParen))
                         || matches!(after_next, Some(TokenKind::Dot))
-                            && self
-                                .peek(3)
-                                .is_some_and(|t| t.kind() == TokenKind::Ident)
+                            && self.peek(3).is_some_and(|t| t.kind() == TokenKind::Ident)
                         || (is_no_paren_qualified
                             && after_next.is_some_and(token_can_start_no_paren_arg));
                     if !should_consume {
@@ -325,5 +321,4 @@ impl<'a> Parser<'a> {
 
         Ok(Expr::variable(self.node_ids.next_expr(), offset, callee))
     }
-
 }

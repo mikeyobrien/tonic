@@ -147,10 +147,7 @@ impl<'a> Parser<'a> {
         let base = self.parse_module_reference("aliased module")?;
 
         // Detect multi-alias: Foo.{Bar, Baz} — current token is `.` next is `{`
-        if self.check(TokenKind::Dot)
-            && self
-                .peek(1)
-                .is_some_and(|t| t.kind() == TokenKind::LBrace)
+        if self.check(TokenKind::Dot) && self.peek(1).is_some_and(|t| t.kind() == TokenKind::LBrace)
         {
             self.advance(); // consume `.`
             return self.parse_multi_alias(base);
@@ -468,9 +465,7 @@ impl<'a> Parser<'a> {
         // Only consume `.` when followed by an ident (not `{` or other tokens).
         // This allows `alias Foo.{Bar, Baz}` to leave the `.{` for the caller to handle.
         while self.check(TokenKind::Dot)
-            && self
-                .peek(1)
-                .is_some_and(|t| t.kind() == TokenKind::Ident)
+            && self.peek(1).is_some_and(|t| t.kind() == TokenKind::Ident)
         {
             self.advance(); // consume `.`
             let segment = self.expect_ident("module name segment")?;

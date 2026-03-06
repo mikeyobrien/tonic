@@ -74,10 +74,7 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for wrong arity"
-    );
+    assert!(!output.status.success(), "expected failure for wrong arity");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
         stderr.contains("arity") || stderr.contains("expects exactly"),
@@ -101,15 +98,10 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for int host"
-    );
+    assert!(!output.status.success(), "expected failure for int host");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
-        stderr.contains(
-            "error: host error: sys_http_listen expects string argument 1; found int"
-        ),
+        stderr.contains("error: host error: sys_http_listen expects string argument 1; found int"),
         "expected deterministic type error for host, got: {stderr}"
     );
 }
@@ -128,15 +120,10 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for string port"
-    );
+    assert!(!output.status.success(), "expected failure for string port");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
-        stderr.contains(
-            "error: host error: sys_http_listen expects int argument 2; found string"
-        ),
+        stderr.contains("error: host error: sys_http_listen expects int argument 2; found string"),
         "expected deterministic type error for port, got: {stderr}"
     );
 }
@@ -157,10 +144,7 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for port 99999"
-    );
+    assert!(!output.status.success(), "expected failure for port 99999");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
         stderr.contains("error: host error: sys_http_listen port out of range: 99999"),
@@ -182,10 +166,7 @@ end
     );
 
     let output = run_tonic(&root);
-    assert!(
-        !output.status.success(),
-        "expected failure for port -1"
-    );
+    assert!(!output.status.success(), "expected failure for port -1");
     let stderr = String::from_utf8(output.stderr).expect("utf8");
     assert!(
         stderr.contains("error: host error: sys_http_listen port out of range: -1"),

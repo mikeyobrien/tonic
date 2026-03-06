@@ -302,8 +302,7 @@ impl<'a> Parser<'a> {
 
     pub(super) fn lower_truthy_guard(&mut self, condition: Expr) -> Expr {
         let offset = condition.offset();
-        let first_bang =
-            Expr::unary(self.node_ids.next_expr(), offset, UnaryOp::Bang, condition);
+        let first_bang = Expr::unary(self.node_ids.next_expr(), offset, UnaryOp::Bang, condition);
         Expr::unary(self.node_ids.next_expr(), offset, UnaryOp::Bang, first_bang)
     }
 
@@ -343,5 +342,4 @@ impl<'a> Parser<'a> {
 
         Ok(CaseBranch::new(pattern, guard, body))
     }
-
 }

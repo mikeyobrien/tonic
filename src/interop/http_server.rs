@@ -63,8 +63,7 @@ fn allocate_listener(listener: TcpListener) -> String {
 
 fn clone_listener(id: &str) -> Option<TcpListener> {
     let map = LISTENER_MAP.lock().unwrap();
-    map.get(id)
-        .and_then(|l| l.try_clone().ok())
+    map.get(id).and_then(|l| l.try_clone().ok())
 }
 
 fn allocate_connection(stream: TcpStream) -> String {
@@ -79,8 +78,7 @@ fn allocate_connection(stream: TcpStream) -> String {
 
 fn clone_connection(id: &str) -> Option<TcpStream> {
     let map = CONNECTION_MAP.lock().unwrap();
-    map.get(id)
-        .and_then(|s| s.try_clone().ok())
+    map.get(id).and_then(|s| s.try_clone().ok())
 }
 
 fn take_connection(id: &str) -> Option<TcpStream> {
@@ -235,9 +233,9 @@ fn host_sys_http_accept(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError
     // TcpListener has no set_read_timeout, so we use a thread + channel for the
     // timed case; for timeout_ms == 0 we block directly (no overhead).
     let (stream, peer_addr) = if timeout_ms == 0 {
-        listener.accept().map_err(|e| {
-            HostError::new(format!("sys_http_accept failed: {e}"))
-        })?
+        listener
+            .accept()
+            .map_err(|e| HostError::new(format!("sys_http_accept failed: {e}")))?
     } else {
         use std::sync::mpsc;
         let (tx, rx) = mpsc::channel();
@@ -299,16 +297,14 @@ fn host_sys_http_read_request(args: &[RuntimeValue]) -> Result<RuntimeValue, Hos
     // ── Parse request line ────────────────────────────────────────────────
     let mut request_line = String::new();
     reader.read_line(&mut request_line).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::TimedOut
-            || e.kind() == std::io::ErrorKind::WouldBlock
-        {
+        if e.kind() == std::io::ErrorKind::TimedOut || e.kind() == std::io::ErrorKind::WouldBlock {
             HostError::new("sys_http_read_request timeout reading headers".to_string())
         } else {
             HostError::new(format!("sys_http_read_request failed to read: {e}"))
         }
     })?;
 
-    let request_line = request_line.trim_end_matches(|c| c == '\r' || c == '\n');
+    let request_line = request_line.trim_end_matches(['\r', '\n']);
     let parts: Vec<&str> = request_line.splitn(3, ' ').collect();
     if parts.len() < 2 {
         return Err(HostError::new(format!(
@@ -332,8 +328,9 @@ fn host_sys_http_read_request(args: &[RuntimeValue]) -> Result<RuntimeValue, Hos
         Some((p, q)) => (p, q.to_string()),
         None => (path_and_query, String::new()),
     };
-    let path = url_decode(raw_path)
-        .ok_or_else(|| HostError::new("sys_http_read_request invalid path in request".to_string()))?;
+    let path = url_decode(raw_path).ok_or_else(|| {
+        HostError::new("sys_http_read_request invalid path in request".to_string())
+    })?;
 
     // ── Parse headers ─────────────────────────────────────────────────────
     let mut headers: Vec<(String, String)> = Vec::new();
@@ -349,15 +346,13 @@ fn host_sys_http_read_request(args: &[RuntimeValue]) -> Result<RuntimeValue, Hos
             }
         })?;
 
-        let trimmed = line.trim_end_matches(|c| c == '\r' || c == '\n');
+        let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             break; // blank line signals end of headers
         }
 
         let (name, value) = trimmed.split_once(':').ok_or_else(|| {
-            HostError::new(format!(
-                "sys_http_read_request malformed header: {trimmed}"
-            ))
+            HostError::new(format!("sys_http_read_request malformed header: {trimmed}"))
         })?;
         headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
     }
@@ -468,26 +463,23 @@ fn host_sys_http_write_response(args: &[RuntimeValue]) -> Result<RuntimeValue, H
     let reason = status_reason(status);
 
     // ── Write status line ─────────────────────────────────────────────────
-    write!(stream, "HTTP/1.1 {status} {reason}\r\n").map_err(|e| {
-        HostError::new(format!("sys_http_write_response failed to write: {e}"))
-    })?;
+    write!(stream, "HTTP/1.1 {status} {reason}\r\n")
+        .map_err(|e| HostError::new(format!("sys_http_write_response failed to write: {e}")))?;
 
     // ── Write caller-supplied headers ─────────────────────────────────────
     let has_content_length = headers
         .iter()
-        .any(|(k, _)| k.to_ascii_lowercase() == "content-length");
+        .any(|(k, _)| k.eq_ignore_ascii_case("content-length"));
 
     for (name, value) in &headers {
-        write!(stream, "{name}: {value}\r\n").map_err(|e| {
-            HostError::new(format!("sys_http_write_response failed to write: {e}"))
-        })?;
+        write!(stream, "{name}: {value}\r\n")
+            .map_err(|e| HostError::new(format!("sys_http_write_response failed to write: {e}")))?;
     }
 
     // ── Auto-insert Content-Length if not provided ────────────────────────
     if !has_content_length {
-        write!(stream, "Content-Length: {}\r\n", body.len()).map_err(|e| {
-            HostError::new(format!("sys_http_write_response failed to write: {e}"))
-        })?;
+        write!(stream, "Content-Length: {}\r\n", body.len())
+            .map_err(|e| HostError::new(format!("sys_http_write_response failed to write: {e}")))?;
     }
 
     // ── End of headers ────────────────────────────────────────────────────
@@ -497,9 +489,9 @@ fn host_sys_http_write_response(args: &[RuntimeValue]) -> Result<RuntimeValue, H
 
     // ── Write body ────────────────────────────────────────────────────────
     if !body.is_empty() {
-        stream.write_all(body.as_bytes()).map_err(|e| {
-            HostError::new(format!("sys_http_write_response failed to write: {e}"))
-        })?;
+        stream
+            .write_all(body.as_bytes())
+            .map_err(|e| HostError::new(format!("sys_http_write_response failed to write: {e}")))?;
     }
 
     stream
@@ -625,7 +617,10 @@ mod tests {
     #[test]
     fn listen_rejects_wrong_arity() {
         let err = HOST_REGISTRY
-            .call("sys_http_listen", &[RuntimeValue::String("127.0.0.1".to_string())])
+            .call(
+                "sys_http_listen",
+                &[RuntimeValue::String("127.0.0.1".to_string())],
+            )
             .expect_err("wrong arity should be rejected");
 
         assert_eq!(
@@ -672,13 +667,19 @@ mod tests {
         let r1 = HOST_REGISTRY
             .call(
                 "sys_http_listen",
-                &[RuntimeValue::String("127.0.0.1".to_string()), RuntimeValue::Int(0)],
+                &[
+                    RuntimeValue::String("127.0.0.1".to_string()),
+                    RuntimeValue::Int(0),
+                ],
             )
             .expect("first listen should succeed");
         let r2 = HOST_REGISTRY
             .call(
                 "sys_http_listen",
-                &[RuntimeValue::String("127.0.0.1".to_string()), RuntimeValue::Int(0)],
+                &[
+                    RuntimeValue::String("127.0.0.1".to_string()),
+                    RuntimeValue::Int(0),
+                ],
             )
             .expect("second listen should succeed");
 
@@ -692,7 +693,10 @@ mod tests {
     #[test]
     fn accept_rejects_wrong_arity() {
         let err = HOST_REGISTRY
-            .call("sys_http_accept", &[RuntimeValue::String("listener:99".to_string())])
+            .call(
+                "sys_http_accept",
+                &[RuntimeValue::String("listener:99".to_string())],
+            )
             .expect_err("wrong arity should be rejected");
 
         assert_eq!(
@@ -779,7 +783,10 @@ mod tests {
         let listen_result = HOST_REGISTRY
             .call(
                 "sys_http_listen",
-                &[RuntimeValue::String("127.0.0.1".to_string()), RuntimeValue::Int(0)],
+                &[
+                    RuntimeValue::String("127.0.0.1".to_string()),
+                    RuntimeValue::Int(0),
+                ],
             )
             .expect("listen should succeed");
         let listener_id = match map_get(&listen_result, "listener_id") {
@@ -809,7 +816,10 @@ mod tests {
         let listen_result = HOST_REGISTRY
             .call(
                 "sys_http_listen",
-                &[RuntimeValue::String("127.0.0.1".to_string()), RuntimeValue::Int(0)],
+                &[
+                    RuntimeValue::String("127.0.0.1".to_string()),
+                    RuntimeValue::Int(0),
+                ],
             )
             .expect("listen should succeed");
         let listener_id = match map_get(&listen_result, "listener_id") {
@@ -829,17 +839,13 @@ mod tests {
         // Connect from a separate thread before accepting.
         let client_thread = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(10));
-            TcpStream::connect(format!("127.0.0.1:{port}"))
-                .expect("client connect should succeed")
+            TcpStream::connect(format!("127.0.0.1:{port}")).expect("client connect should succeed")
         });
 
         let accept_result = HOST_REGISTRY
             .call(
                 "sys_http_accept",
-                &[
-                    RuntimeValue::String(listener_id),
-                    RuntimeValue::Int(2000),
-                ],
+                &[RuntimeValue::String(listener_id), RuntimeValue::Int(2000)],
             )
             .expect("accept should succeed");
 
@@ -909,7 +915,10 @@ mod tests {
         let listen_result = HOST_REGISTRY
             .call(
                 "sys_http_listen",
-                &[RuntimeValue::String("127.0.0.1".to_string()), RuntimeValue::Int(0)],
+                &[
+                    RuntimeValue::String("127.0.0.1".to_string()),
+                    RuntimeValue::Int(0),
+                ],
             )
             .expect("listen should succeed");
         let listener_id = match map_get(&listen_result, "listener_id") {
@@ -927,8 +936,7 @@ mod tests {
 
         let client_thread = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(10));
-            TcpStream::connect(format!("127.0.0.1:{port}"))
-                .expect("client connect should succeed")
+            TcpStream::connect(format!("127.0.0.1:{port}")).expect("client connect should succeed")
         });
 
         let accept_result = HOST_REGISTRY
@@ -1041,7 +1049,9 @@ mod tests {
         client
             .write_all(request.as_bytes())
             .expect("client write should succeed");
-        client.write_all(body).expect("client body write should succeed");
+        client
+            .write_all(body)
+            .expect("client body write should succeed");
         drop(client);
 
         let result = HOST_REGISTRY
@@ -1321,7 +1331,10 @@ mod tests {
         let listen_result = HOST_REGISTRY
             .call(
                 "sys_http_listen",
-                &[RuntimeValue::String("127.0.0.1".to_string()), RuntimeValue::Int(0)],
+                &[
+                    RuntimeValue::String("127.0.0.1".to_string()),
+                    RuntimeValue::Int(0),
+                ],
             )
             .expect("listen should succeed");
         let listener_id = match map_get(&listen_result, "listener_id") {
@@ -1340,8 +1353,8 @@ mod tests {
         // Client thread: connect, send GET, read response.
         let client_thread = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(10));
-            let mut stream = TcpStream::connect(format!("127.0.0.1:{port}"))
-                .expect("client should connect");
+            let mut stream =
+                TcpStream::connect(format!("127.0.0.1:{port}")).expect("client should connect");
             stream
                 .write_all(b"GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n")
                 .expect("client should write request");
@@ -1370,7 +1383,10 @@ mod tests {
                 &[RuntimeValue::String(connection_id.clone())],
             )
             .expect("read_request should succeed");
-        assert_eq!(map_get(&req, "path"), Some(&RuntimeValue::String("/ping".to_string())));
+        assert_eq!(
+            map_get(&req, "path"),
+            Some(&RuntimeValue::String("/ping".to_string()))
+        );
 
         HOST_REGISTRY
             .call(

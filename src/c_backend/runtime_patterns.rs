@@ -541,7 +541,7 @@ fn emit_pattern_case(pattern_case: &PatternCase, out: &mut String) -> Result<(),
                     }
                     crate::ir::IrBitstringSegment::Bind { name } => {
                         let name_hash = hash_text_i64(name);
-                        out.push_str(&format!("  {{\n"));
+                        out.push_str("  {\n");
                         out.push_str(&format!(
                             "    TnVal bs_byte_{index} = list_obj->as.list.items[{index}];\n"
                         ));

@@ -409,13 +409,7 @@ pub(super) fn apply_indentation(lines: &[LogicalLine]) -> String {
         let is_branch_head = ends_arrow;
 
         // PRE-EMIT indent adjustments
-        if is_block_reopen {
-            if in_branch_body {
-                indent = indent.saturating_sub(1);
-                in_branch_body = false;
-            }
-            indent = indent.saturating_sub(1);
-        } else if is_end {
+        if is_block_reopen || is_end {
             if in_branch_body {
                 indent = indent.saturating_sub(1);
                 in_branch_body = false;

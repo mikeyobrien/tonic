@@ -57,12 +57,7 @@ impl CompileError {
     }
 
     fn into_diagnostic(self, filename: Option<&str>, source: &str) -> CliDiagnostic {
-        CliDiagnostic::failure_with_filename_and_source(
-            self.message,
-            filename,
-            source,
-            self.offset,
-        )
+        CliDiagnostic::failure_with_filename_and_source(self.message, filename, source, self.offset)
     }
 }
 use formatter::{format_path, FormatMode};
@@ -202,9 +197,7 @@ fn handle_run(args: Vec<String>) -> i32 {
         Ok(None) | Err(_) => {
             let compiled_ir = match compile_source_to_ir(&source, &mut profiler) {
                 Ok(ir) => ir,
-                Err(error) => {
-                    return error.into_diagnostic(Some(&source_path), &source).emit()
-                }
+                Err(error) => return error.into_diagnostic(Some(&source_path), &source).emit(),
             };
 
             if let Err(error) = profiling::profile_phase(&mut profiler, "run.cache_store", || {
@@ -290,12 +283,11 @@ fn compile_source_to_ir(
     source: &str,
     profiler: &mut Option<profiling::PhaseProfiler>,
 ) -> Result<IrProgram, CompileError> {
-    let tokens =
-        profiling::profile_phase(profiler, "frontend.scan_tokens", || scan_tokens(source))
-            .map_err(|error| {
-                // LexerError already includes offset in its Display output.
-                CompileError::new(error.to_string())
-            })?;
+    let tokens = profiling::profile_phase(profiler, "frontend.scan_tokens", || scan_tokens(source))
+        .map_err(|error| {
+            // LexerError already includes offset in its Display output.
+            CompileError::new(error.to_string())
+        })?;
 
     let ast = profiling::profile_phase(profiler, "frontend.parse_ast", || parse_ast(&tokens))
         .map_err(|error| CompileError::with_offset(error.to_string(), error.offset()))?;
@@ -1149,7 +1141,8 @@ fn handle_publish(args: Vec<String>) -> i32 {
 
     let project_root = find_project_root();
     if project_root.is_none() {
-        return CliDiagnostic::failure("no tonic.toml found in current directory or parents").emit();
+        return CliDiagnostic::failure("no tonic.toml found in current directory or parents")
+            .emit();
     }
     let project_root = project_root.unwrap();
 

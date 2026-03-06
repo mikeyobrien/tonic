@@ -514,8 +514,17 @@ impl ModuleGraph {
 fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
-        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
-            | "div" | "rem" | "byte_size" | "bit_size"
+        "ok" | "err"
+            | "tuple"
+            | "list"
+            | "map"
+            | "keyword"
+            | "protocol_dispatch"
+            | "host_call"
+            | "div"
+            | "rem"
+            | "byte_size"
+            | "bit_size"
     )
 }
 
@@ -905,7 +914,8 @@ mod tests {
         let tokens = scan_tokens(source).expect("scanner should tokenize ambiguous import fixture");
         let ast = parse_ast(&tokens).expect("parser should build ambiguous import fixture ast");
 
-        let err = resolve_ast(&ast).expect_err("resolver should reject ambiguous unqualified import");
+        let err =
+            resolve_ast(&ast).expect_err("resolver should reject ambiguous unqualified import");
         assert_eq!(err.code(), ResolverDiagnosticCode::AmbiguousImportCall);
     }
 
@@ -915,7 +925,8 @@ mod tests {
         let tokens = scan_tokens(source).expect("scanner should tokenize import filter fixture");
         let ast = parse_ast(&tokens).expect("parser should build import filter fixture ast");
 
-        let err = resolve_ast(&ast).expect_err("resolver should reject call excluded by import filter");
+        let err =
+            resolve_ast(&ast).expect_err("resolver should reject call excluded by import filter");
         assert_eq!(err.code(), ResolverDiagnosticCode::ImportFilterExcludesCall);
     }
 
@@ -935,7 +946,8 @@ mod tests {
         let tokens = scan_tokens(source).expect("scanner should tokenize undefined module fixture");
         let ast = parse_ast(&tokens).expect("parser should build undefined module fixture ast");
 
-        let err = resolve_ast(&ast).expect_err("resolver should reject undefined module references");
+        let err =
+            resolve_ast(&ast).expect_err("resolver should reject undefined module references");
         assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedSymbol);
     }
 
@@ -952,7 +964,8 @@ mod tests {
     #[test]
     fn resolve_ast_accepts_private_function_calls_within_same_module() {
         let source = "defmodule Math do\n  def run() do\n    helper()\n  end\n\n  defp helper() do\n    1\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize same-module private fixture");
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize same-module private fixture");
         let ast = parse_ast(&tokens).expect("parser should build same-module private fixture ast");
 
         resolve_ast(&ast).expect("resolver should accept same-module private function calls");
@@ -970,10 +983,12 @@ mod tests {
     #[test]
     fn resolve_ast_rejects_guard_builtins_in_non_guard_context() {
         let source = "defmodule Demo do\n  def run(x) do\n    is_integer(x)\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize non-guard context fixture");
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize non-guard context fixture");
         let ast = parse_ast(&tokens).expect("parser should build non-guard context fixture ast");
 
-        let err = resolve_ast(&ast).expect_err("resolver should reject guard builtins outside guard");
+        let err =
+            resolve_ast(&ast).expect_err("resolver should reject guard builtins outside guard");
         assert_eq!(err.code(), ResolverDiagnosticCode::GuardBuiltinOutsideGuard);
     }
 
@@ -999,7 +1014,8 @@ mod tests {
     #[test]
     fn resolve_ast_rejects_unknown_struct_fields() {
         let source = "defmodule Point do\n  defstruct x: nil, y: nil\n\n  def new(x, y, z) do\n    %Point{x: x, y: y, z: z}\n  end\nend\n";
-        let tokens = scan_tokens(source).expect("scanner should tokenize unknown struct field fixture");
+        let tokens =
+            scan_tokens(source).expect("scanner should tokenize unknown struct field fixture");
         let ast = parse_ast(&tokens).expect("parser should build unknown struct field fixture ast");
 
         let err = resolve_ast(&ast).expect_err("resolver should reject unknown struct fields");
@@ -1021,7 +1037,8 @@ mod tests {
         let tokens = scan_tokens(source).expect("scanner should tokenize unknown protocol fixture");
         let ast = parse_ast(&tokens).expect("parser should build unknown protocol fixture ast");
 
-        let err = resolve_ast(&ast).expect_err("resolver should reject unknown protocol in defimpl");
+        let err =
+            resolve_ast(&ast).expect_err("resolver should reject unknown protocol in defimpl");
         assert_eq!(err.code(), ResolverDiagnosticCode::UnknownProtocol);
     }
 
@@ -1031,7 +1048,8 @@ mod tests {
         let tokens = scan_tokens(source).expect("scanner should tokenize duplicate impl fixture");
         let ast = parse_ast(&tokens).expect("parser should build duplicate impl fixture ast");
 
-        let err = resolve_ast(&ast).expect_err("resolver should reject duplicate protocol impl for same target");
+        let err = resolve_ast(&ast)
+            .expect_err("resolver should reject duplicate protocol impl for same target");
         assert_eq!(err.code(), ResolverDiagnosticCode::DuplicateProtocolImpl);
     }
 

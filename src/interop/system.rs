@@ -258,7 +258,9 @@ fn runtime_value_to_json(
         }
         RuntimeValue::Bool(value) => Ok(JsonValue::Bool(*value)),
         RuntimeValue::Nil => Ok(JsonValue::Null),
-        RuntimeValue::String(text) | RuntimeValue::Atom(text) => Ok(JsonValue::String(text.clone())),
+        RuntimeValue::String(text) | RuntimeValue::Atom(text) => {
+            Ok(JsonValue::String(text.clone()))
+        }
         RuntimeValue::ResultOk(inner) => {
             let mut object = JsonMap::new();
             object.insert(
@@ -279,11 +281,9 @@ fn runtime_value_to_json(
             runtime_value_to_json(function, &log_field_path(path, "0"), left)?,
             runtime_value_to_json(function, &log_field_path(path, "1"), right)?,
         ])),
-        RuntimeValue::Map(entries) | RuntimeValue::Keyword(entries) => {
-            Ok(JsonValue::Object(runtime_entries_to_json_object(
-                function, path, entries,
-            )?))
-        }
+        RuntimeValue::Map(entries) | RuntimeValue::Keyword(entries) => Ok(JsonValue::Object(
+            runtime_entries_to_json_object(function, path, entries)?,
+        )),
         RuntimeValue::List(items) => {
             let mut json_items = Vec::with_capacity(items.len());
             for (index, item) in items.iter().enumerate() {
@@ -727,11 +727,7 @@ fn host_sys_retry_plan(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError>
                 host_value_kind(other)
             )))
         }
-        None => {
-            return Err(HostError::new(
-                "sys_retry_plan missing required argument 7",
-            ))
-        }
+        None => return Err(HostError::new("sys_retry_plan missing required argument 7")),
     };
 
     if !(RETRY_STATUS_MIN..=RETRY_STATUS_MAX).contains(&status_code) {
@@ -970,12 +966,16 @@ fn host_sys_append_text(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError
         .create(true)
         .append(true)
         .open(target)
-        .map_err(|error| HostError::new(format!("sys_append_text failed for '{}': {error}", path)))?;
+        .map_err(|error| {
+            HostError::new(format!("sys_append_text failed for '{}': {error}", path))
+        })?;
 
-    sink.write_all(content.as_bytes())
-        .map_err(|error| HostError::new(format!("sys_append_text failed for '{}': {error}", path)))?;
-    sink.sync_data()
-        .map_err(|error| HostError::new(format!("sys_append_text failed for '{}': {error}", path)))?;
+    sink.write_all(content.as_bytes()).map_err(|error| {
+        HostError::new(format!("sys_append_text failed for '{}': {error}", path))
+    })?;
+    sink.sync_data().map_err(|error| {
+        HostError::new(format!("sys_append_text failed for '{}': {error}", path))
+    })?;
 
     Ok(RuntimeValue::Bool(true))
 }
@@ -1021,12 +1021,12 @@ fn host_sys_lock_acquire(args: &[RuntimeValue]) -> Result<RuntimeValue, HostErro
         unix_timestamp_ms()
     );
 
-    handle
-        .write_all(marker.as_bytes())
-        .map_err(|error| HostError::new(format!("sys_lock_acquire failed for '{}': {error}", path)))?;
-    handle
-        .sync_all()
-        .map_err(|error| HostError::new(format!("sys_lock_acquire failed for '{}': {error}", path)))?;
+    handle.write_all(marker.as_bytes()).map_err(|error| {
+        HostError::new(format!("sys_lock_acquire failed for '{}': {error}", path))
+    })?;
+    handle.sync_all().map_err(|error| {
+        HostError::new(format!("sys_lock_acquire failed for '{}': {error}", path))
+    })?;
 
     Ok(RuntimeValue::Bool(true))
 }
@@ -1317,7 +1317,10 @@ pub(super) fn register_system_host_functions(registry: &HostRegistry) {
     registry.register("sys_cwd", host_sys_cwd);
     registry.register("sys_argv", host_sys_argv);
     registry.register("sys_constant_time_eq", host_sys_constant_time_eq);
-    registry.register("sys_discord_ed25519_verify", host_sys_discord_ed25519_verify);
+    registry.register(
+        "sys_discord_ed25519_verify",
+        host_sys_discord_ed25519_verify,
+    );
     registry.register("sys_random_token", host_sys_random_token);
     registry.register("sys_hmac_sha256_hex", host_sys_hmac_sha256_hex);
 }

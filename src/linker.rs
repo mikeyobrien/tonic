@@ -228,7 +228,10 @@ mod tests {
                 flags[0], "-target",
                 "first clang flag must be -target for {triple}"
             );
-            assert_eq!(flags[1], triple, "second clang flag must be triple for {triple}");
+            assert_eq!(
+                flags[1], triple,
+                "second clang flag must be triple for {triple}"
+            );
         }
     }
 }

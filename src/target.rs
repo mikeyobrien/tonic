@@ -5,7 +5,7 @@
 /// - `aarch64-unknown-linux-gnu`
 /// - `x86_64-apple-darwin`
 /// - `aarch64-apple-darwin`
-
+///
 /// A parsed target triple.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TargetTriple {

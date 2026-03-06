@@ -151,7 +151,10 @@ pub(crate) fn evaluate_builtin_call(
                 RuntimeValue::List(ref items) => Ok(RuntimeValue::Int(items.len() as i64)),
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::UnsupportedBuiltin,
-                    format!("byte_size expects a bitstring (list), found {}", runtime_value_kind(&arg)),
+                    format!(
+                        "byte_size expects a bitstring (list), found {}",
+                        runtime_value_kind(&arg)
+                    ),
                     offset,
                 )),
             }
@@ -162,7 +165,10 @@ pub(crate) fn evaluate_builtin_call(
                 RuntimeValue::List(ref items) => Ok(RuntimeValue::Int((items.len() * 8) as i64)),
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::UnsupportedBuiltin,
-                    format!("bit_size expects a bitstring (list), found {}", runtime_value_kind(&arg)),
+                    format!(
+                        "bit_size expects a bitstring (list), found {}",
+                        runtime_value_kind(&arg)
+                    ),
                     offset,
                 )),
             }

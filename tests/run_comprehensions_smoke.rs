@@ -231,7 +231,7 @@ fn run_reports_deterministic_error_for_non_list_generator() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("for expects list generator, found int"),
+        stderr.contains("for requires iterable, found int"),
         "expected deterministic non-list generator runtime diagnostic, stderr was: {stderr}"
     );
 }

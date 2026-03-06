@@ -213,7 +213,10 @@ fn docs_generates_stdlib_subdirectory() {
 
     // stdlib subdir should exist with at least System and Enum
     let stdlib_dir = out_dir.join("stdlib");
-    assert!(stdlib_dir.exists(), "stdlib/ subdirectory should be created");
+    assert!(
+        stdlib_dir.exists(),
+        "stdlib/ subdirectory should be created"
+    );
 
     let system_file = stdlib_dir.join("system.md");
     assert!(

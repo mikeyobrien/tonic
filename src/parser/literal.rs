@@ -68,9 +68,7 @@ impl<'a> Parser<'a> {
         Ok(Expr::tuple(self.node_ids.next_expr(), offset, items))
     }
 
-    pub(super) fn parse_list_or_keyword_literal_expression(
-        &mut self,
-    ) -> Result<Expr, ParserError> {
+    pub(super) fn parse_list_or_keyword_literal_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::LBracket, "[")?.span().start();
 
         if self.check(TokenKind::RBracket) {

@@ -460,46 +460,98 @@ fn substitute_module_attrs(expr: Expr, attrs: &HashMap<String, Expr>) -> Expr {
         Expr::Tuple { id, offset, items } => Expr::Tuple {
             id,
             offset,
-            items: items.into_iter().map(|e| substitute_module_attrs(e, attrs)).collect(),
+            items: items
+                .into_iter()
+                .map(|e| substitute_module_attrs(e, attrs))
+                .collect(),
         },
         Expr::List { id, offset, items } => Expr::List {
             id,
             offset,
-            items: items.into_iter().map(|e| substitute_module_attrs(e, attrs)).collect(),
+            items: items
+                .into_iter()
+                .map(|e| substitute_module_attrs(e, attrs))
+                .collect(),
         },
-        Expr::Binary { id, offset, op, left, right } => Expr::Binary {
-            id, offset, op,
+        Expr::Binary {
+            id,
+            offset,
+            op,
+            left,
+            right,
+        } => Expr::Binary {
+            id,
+            offset,
+            op,
             left: Box::new(substitute_module_attrs(*left, attrs)),
             right: Box::new(substitute_module_attrs(*right, attrs)),
         },
-        Expr::Unary { id, offset, op, value } => Expr::Unary {
-            id, offset, op,
+        Expr::Unary {
+            id,
+            offset,
+            op,
+            value,
+        } => Expr::Unary {
+            id,
+            offset,
+            op,
             value: Box::new(substitute_module_attrs(*value, attrs)),
         },
-        Expr::Call { id, offset, callee, args } => Expr::Call {
-            id, offset, callee,
-            args: args.into_iter().map(|e| substitute_module_attrs(e, attrs)).collect(),
+        Expr::Call {
+            id,
+            offset,
+            callee,
+            args,
+        } => Expr::Call {
+            id,
+            offset,
+            callee,
+            args: args
+                .into_iter()
+                .map(|e| substitute_module_attrs(e, attrs))
+                .collect(),
         },
-        Expr::FieldAccess { id, offset, base, label } => Expr::FieldAccess {
-            id, offset, label,
+        Expr::FieldAccess {
+            id,
+            offset,
+            base,
+            label,
+        } => Expr::FieldAccess {
+            id,
+            offset,
+            label,
             base: Box::new(substitute_module_attrs(*base, attrs)),
         },
-        Expr::IndexAccess { id, offset, base, index } => Expr::IndexAccess {
-            id, offset,
+        Expr::IndexAccess {
+            id,
+            offset,
+            base,
+            index,
+        } => Expr::IndexAccess {
+            id,
+            offset,
             base: Box::new(substitute_module_attrs(*base, attrs)),
             index: Box::new(substitute_module_attrs(*index, attrs)),
         },
-        Expr::Pipe { id, offset, left, right } => Expr::Pipe {
-            id, offset,
+        Expr::Pipe {
+            id,
+            offset,
+            left,
+            right,
+        } => Expr::Pipe {
+            id,
+            offset,
             left: Box::new(substitute_module_attrs(*left, attrs)),
             right: Box::new(substitute_module_attrs(*right, attrs)),
         },
         Expr::Group { id, offset, inner } => Expr::Group {
-            id, offset,
+            id,
+            offset,
             inner: Box::new(substitute_module_attrs(*inner, attrs)),
         },
         Expr::Question { id, offset, value } => Expr::Question {
-            id, offset,
+            id,
+            offset,
             value: Box::new(substitute_module_attrs(*value, attrs)),
         },
         // For other expressions (Case, For, Try, If/Unless via Call, etc.), just return as-is.
@@ -527,7 +579,12 @@ fn lower_named_function(
     let guard_ops = if let Some(guard) = guard {
         let subst_guard = substitute_module_attrs(guard.clone(), module_attrs);
         let mut guard_ops = Vec::new();
-        lower_expr(&subst_guard, current_module, struct_definitions, &mut guard_ops)?;
+        lower_expr(
+            &subst_guard,
+            current_module,
+            struct_definitions,
+            &mut guard_ops,
+        )?;
         Some(guard_ops)
     } else {
         None
@@ -1077,7 +1134,6 @@ fn lower_expr(
             offset,
             ..
         } => {
-  
             if updates.is_empty() {
                 return Err(LoweringError::unsupported("struct update arity", *offset));
             }
@@ -1847,14 +1903,9 @@ fn lower_pattern(pattern: &Pattern) -> Result<IrPattern, LoweringError> {
                     Pattern::Integer { value } => Ok(IrBitstringSegment::Literal {
                         value: *value as u8,
                     }),
-                    Pattern::Bind { name } => Ok(IrBitstringSegment::Bind {
-                        name: name.clone(),
-                    }),
+                    Pattern::Bind { name } => Ok(IrBitstringSegment::Bind { name: name.clone() }),
                     Pattern::Wildcard => Ok(IrBitstringSegment::Wildcard),
-                    _other => Err(LoweringError::unsupported(
-                        "bitstring pattern segment",
-                        0,
-                    )),
+                    _other => Err(LoweringError::unsupported("bitstring pattern segment", 0)),
                 })
                 .collect::<Result<Vec<_>, LoweringError>>()?;
             Ok(IrPattern::Bitstring { segments })
@@ -1885,8 +1936,17 @@ fn qualify_call_target(current_module: &str, callee: &str) -> IrCallTarget {
 fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
-        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
-            | "div" | "rem" | "byte_size" | "bit_size"
+        "ok" | "err"
+            | "tuple"
+            | "list"
+            | "map"
+            | "keyword"
+            | "protocol_dispatch"
+            | "host_call"
+            | "div"
+            | "rem"
+            | "byte_size"
+            | "bit_size"
     ) || guard_builtins::is_guard_builtin(callee)
 }
 

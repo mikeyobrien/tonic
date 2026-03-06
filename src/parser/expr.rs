@@ -129,8 +129,7 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::LParen, "(")?;
                     let args = self.parse_call_args()?;
                     self.expect(TokenKind::RParen, ")")?;
-                    expression =
-                        Expr::invoke(self.node_ids.next_expr(), offset, expression, args);
+                    expression = Expr::invoke(self.node_ids.next_expr(), offset, expression, args);
                     continue;
                 } else if self
                     .peek(1)
@@ -383,8 +382,6 @@ impl<'a> Parser<'a> {
 
         Err(self.expected("expression"))
     }
-
-
 
     pub(super) fn parse_call_args(&mut self) -> Result<Vec<Expr>, ParserError> {
         let mut args = Vec::new();

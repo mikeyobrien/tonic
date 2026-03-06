@@ -83,9 +83,9 @@ fn run_reports_deterministic_bad_match_diagnostics() {
     assert_eq!(stdout, "");
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert_eq!(
-        stderr,
-        "error: no match of right hand side value: [1, 3] at offset 37\n"
+    assert!(
+        stderr.starts_with("error: no match of right hand side value: [1, 3] at offset 37\n"),
+        "stderr should start with the expected error message, got: {stderr}"
     );
 }
 

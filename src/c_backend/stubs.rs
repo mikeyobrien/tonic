@@ -2823,7 +2823,11 @@ fn evaluate_static_for_ops(
                     CmpKind::Lte => left <= right,
                     CmpKind::Gt => left > right,
                     CmpKind::Gte => left >= right,
-                    CmpKind::StrictEq | CmpKind::StrictNotEq => return Err(StaticForEvalIssue::Unsupported("strict equality not supported in static for".to_string())),
+                    CmpKind::StrictEq | CmpKind::StrictNotEq => {
+                        return Err(StaticForEvalIssue::Unsupported(
+                            "strict equality not supported in static for".to_string(),
+                        ))
+                    }
                 };
                 stack.push(StaticForValue::Bool(result));
             }
@@ -3145,68 +3149,133 @@ fn emit_runtime_try_case(
     out.push_str("    int tn_try_handled = 0;\n");
 
     for (branch_index, branch) in rescue_branches.iter().enumerate() {
-        if branch.guard_ops.is_some() {
-            return Err(CBackendError::new(format!(
-                "c backend try helper does not support rescue guard ops (case {index}, branch {branch_index})"
-            )));
-        }
         let pattern_hash = hash_pattern_i64(&branch.pattern)?;
         out.push_str(&format!(
             "    if (tn_try_handled == 0 && tn_runtime_pattern_matches(tn_try_error, (TnVal){pattern_hash}LL)) {{\n"
         ));
-        out.push_str("      int tn_branch_raised = 0;\n");
-        out.push_str("      TnVal tn_branch_error = tn_runtime_const_nil();\n");
-        out.push_str("      TnVal tn_branch_result = tn_runtime_const_nil();\n");
+
+        // Determine indent for the branch body — deeper when a guard wraps it.
+        let body_indent = if branch.guard_ops.is_some() {
+            "        "
+        } else {
+            "      "
+        };
+
+        if let Some(guard_ops) = &branch.guard_ops {
+            let guard_label = format!("tn_try_case_{index}_rescue_{branch_index}_guard");
+            out.push_str("      TnVal tn_guard_result = tn_runtime_const_nil();\n");
+            out.push_str("      int tn_guard_raised = 0;\n");
+            out.push_str("      TnVal tn_guard_error = tn_runtime_const_nil();\n");
+            emit_try_ops(
+                guard_ops,
+                "tn_guard_result",
+                "tn_guard_raised",
+                "tn_guard_error",
+                &guard_label,
+                "      ",
+                out,
+            )?;
+            out.push_str(
+                "      if (tn_guard_raised == 0 && tn_runtime_is_truthy(tn_guard_result)) {\n",
+            );
+        }
+
+        out.push_str(&format!("{body_indent}int tn_branch_raised = 0;\n"));
+        out.push_str(&format!(
+            "{body_indent}TnVal tn_branch_error = tn_runtime_const_nil();\n"
+        ));
+        out.push_str(&format!(
+            "{body_indent}TnVal tn_branch_result = tn_runtime_const_nil();\n"
+        ));
         emit_try_ops(
             &branch.ops,
             "tn_branch_result",
             "tn_branch_raised",
             "tn_branch_error",
             &format!("tn_try_case_{index}_rescue_{branch_index}"),
-            "      ",
+            body_indent,
             out,
         )?;
-        out.push_str("      if (tn_branch_raised != 0) {\n");
-        out.push_str("        tn_try_raised = 1;\n");
-        out.push_str("        tn_try_error = tn_branch_error;\n");
-        out.push_str("      } else {\n");
-        out.push_str("        tn_try_raised = 0;\n");
-        out.push_str("        tn_try_result = tn_branch_result;\n");
-        out.push_str("        tn_try_handled = 1;\n");
-        out.push_str("      }\n");
+        out.push_str(&format!("{body_indent}if (tn_branch_raised != 0) {{\n"));
+        out.push_str(&format!("{body_indent}  tn_try_raised = 1;\n"));
+        out.push_str(&format!("{body_indent}  tn_try_error = tn_branch_error;\n"));
+        out.push_str(&format!("{body_indent}}} else {{\n"));
+        out.push_str(&format!("{body_indent}  tn_try_raised = 0;\n"));
+        out.push_str(&format!(
+            "{body_indent}  tn_try_result = tn_branch_result;\n"
+        ));
+        out.push_str(&format!("{body_indent}  tn_try_handled = 1;\n"));
+        out.push_str(&format!("{body_indent}}}\n"));
+
+        if branch.guard_ops.is_some() {
+            out.push_str("      }\n");
+        }
+
         out.push_str("    }\n");
     }
 
     for (branch_index, branch) in catch_branches.iter().enumerate() {
-        if branch.guard_ops.is_some() {
-            return Err(CBackendError::new(format!(
-                "c backend try helper does not support catch guard ops (case {index}, branch {branch_index})"
-            )));
-        }
         let pattern_hash = hash_pattern_i64(&branch.pattern)?;
         out.push_str(&format!(
             "    if (tn_try_raised != 0 && tn_try_handled == 0 && tn_runtime_pattern_matches(tn_try_error, (TnVal){pattern_hash}LL)) {{\n"
         ));
-        out.push_str("      int tn_branch_raised = 0;\n");
-        out.push_str("      TnVal tn_branch_error = tn_runtime_const_nil();\n");
-        out.push_str("      TnVal tn_branch_result = tn_runtime_const_nil();\n");
+
+        let body_indent = if branch.guard_ops.is_some() {
+            "        "
+        } else {
+            "      "
+        };
+
+        if let Some(guard_ops) = &branch.guard_ops {
+            let guard_label = format!("tn_try_case_{index}_catch_{branch_index}_guard");
+            out.push_str("      TnVal tn_guard_result = tn_runtime_const_nil();\n");
+            out.push_str("      int tn_guard_raised = 0;\n");
+            out.push_str("      TnVal tn_guard_error = tn_runtime_const_nil();\n");
+            emit_try_ops(
+                guard_ops,
+                "tn_guard_result",
+                "tn_guard_raised",
+                "tn_guard_error",
+                &guard_label,
+                "      ",
+                out,
+            )?;
+            out.push_str(
+                "      if (tn_guard_raised == 0 && tn_runtime_is_truthy(tn_guard_result)) {\n",
+            );
+        }
+
+        out.push_str(&format!("{body_indent}int tn_branch_raised = 0;\n"));
+        out.push_str(&format!(
+            "{body_indent}TnVal tn_branch_error = tn_runtime_const_nil();\n"
+        ));
+        out.push_str(&format!(
+            "{body_indent}TnVal tn_branch_result = tn_runtime_const_nil();\n"
+        ));
         emit_try_ops(
             &branch.ops,
             "tn_branch_result",
             "tn_branch_raised",
             "tn_branch_error",
             &format!("tn_try_case_{index}_catch_{branch_index}"),
-            "      ",
+            body_indent,
             out,
         )?;
-        out.push_str("      if (tn_branch_raised != 0) {\n");
-        out.push_str("        tn_try_raised = 1;\n");
-        out.push_str("        tn_try_error = tn_branch_error;\n");
-        out.push_str("      } else {\n");
-        out.push_str("        tn_try_raised = 0;\n");
-        out.push_str("        tn_try_result = tn_branch_result;\n");
-        out.push_str("        tn_try_handled = 1;\n");
-        out.push_str("      }\n");
+        out.push_str(&format!("{body_indent}if (tn_branch_raised != 0) {{\n"));
+        out.push_str(&format!("{body_indent}  tn_try_raised = 1;\n"));
+        out.push_str(&format!("{body_indent}  tn_try_error = tn_branch_error;\n"));
+        out.push_str(&format!("{body_indent}}} else {{\n"));
+        out.push_str(&format!("{body_indent}  tn_try_raised = 0;\n"));
+        out.push_str(&format!(
+            "{body_indent}  tn_try_result = tn_branch_result;\n"
+        ));
+        out.push_str(&format!("{body_indent}  tn_try_handled = 1;\n"));
+        out.push_str(&format!("{body_indent}}}\n"));
+
+        if branch.guard_ops.is_some() {
+            out.push_str("      }\n");
+        }
+
         out.push_str("    }\n");
     }
 
@@ -3457,6 +3526,44 @@ fn emit_try_ops(
                 out.push_str(&format!("{indent}  tn_runtime_root_register({temp});\n"));
                 out.push_str(&format!("{indent}  tn_runtime_release({temp});\n"));
                 stack.push(temp);
+            }
+            IrOp::Case { branches, .. } => {
+                let subject = pop_stack_value(&mut stack, "try case subject")?;
+                let case_result = format!("{label}_case_{temp_index}");
+                temp_index += 1;
+                out.push_str(&format!(
+                    "{indent}  TnVal {case_result} = tn_runtime_const_nil();\n"
+                ));
+
+                let mut first = true;
+                for (arm_index, arm) in branches.iter().enumerate() {
+                    let arm_pattern_hash = hash_pattern_i64(&arm.pattern)?;
+                    let condition = if matches!(arm.pattern, IrPattern::Wildcard) {
+                        "1".to_string()
+                    } else {
+                        format!(
+                            "tn_runtime_pattern_matches({subject}, (TnVal){arm_pattern_hash}LL)"
+                        )
+                    };
+                    let keyword = if first { "if" } else { "} else if" };
+                    first = false;
+                    out.push_str(&format!("{indent}  {keyword} ({condition}) {{\n"));
+
+                    let arm_label = format!("{label}_case_{}_arm_{arm_index}", temp_index - 1);
+                    emit_try_ops(
+                        &arm.ops,
+                        &case_result,
+                        raised_flag_var,
+                        raised_value_var,
+                        &arm_label,
+                        &format!("{indent}    "),
+                        out,
+                    )?;
+                }
+                if !branches.is_empty() {
+                    out.push_str(&format!("{indent}  }}\n"));
+                }
+                stack.push(case_result);
             }
             other => {
                 return Err(CBackendError::new(format!(

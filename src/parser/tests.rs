@@ -74,9 +74,8 @@ fn parse_ast_supports_nested_calls_with_plus_precedence() {
 
 #[test]
 fn parse_ast_supports_module_qualified_calls() {
-    let tokens =
-        scan_tokens("defmodule Demo do\n  def run() do\n    Math.helper()\n  end\nend\n")
-            .expect("scanner should tokenize parser fixture");
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    Math.helper()\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
 
     let ast = parse_ast(&tokens).expect("parser should produce ast");
 
@@ -177,9 +176,8 @@ fn parse_ast_supports_postfix_question_operator() {
 #[test]
 #[ignore = "bitstring literals in expression position not yet implemented"]
 fn parse_ast_supports_bitstring_literals_as_list_values() {
-    let tokens =
-        scan_tokens("defmodule Demo do\n  def run() do\n    <<1, 2, 3>>\n  end\nend\n")
-            .expect("scanner should tokenize parser fixture");
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    <<1, 2, 3>>\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
 
     let ast = parse_ast(&tokens).expect("parser should produce ast");
 
@@ -813,8 +811,7 @@ fn parse_ast_rejects_non_trailing_default_params() {
     )
     .expect("scanner should tokenize parser fixture");
 
-    let error =
-        parse_ast(&tokens).expect_err("parser should reject non-trailing default params");
+    let error = parse_ast(&tokens).expect_err("parser should reject non-trailing default params");
 
     assert!(
         error
@@ -974,9 +971,9 @@ fn parse_ast_rejects_malformed_import_filter_options() {
         .expect_err("parser should reject malformed import filter option payload");
 
     assert!(
-        error.to_string().starts_with(
-            "invalid import only option; expected only: [name: arity, ...] at offset"
-        ),
+        error
+            .to_string()
+            .starts_with("invalid import only option; expected only: [name: arity, ...] at offset"),
         "unexpected parser error: {error}"
     );
 }
