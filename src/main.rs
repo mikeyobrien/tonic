@@ -17,6 +17,7 @@ mod mir;
 pub mod native_abi;
 mod native_artifact;
 pub mod native_runtime;
+mod observability;
 mod parser;
 mod profiling;
 mod repl;
