@@ -644,16 +644,20 @@ fn parse_dep_table(
     if has_version {
         let version = match table.get("version") {
             Some(toml::Value::String(s)) => s.clone(),
-            _ => return Err(format!(
+            _ => {
+                return Err(format!(
                 "invalid tonic.toml: registry dependency '{name}' has non-string 'version' value"
-            )),
+            ))
+            }
         };
         let registry = match table.get("registry") {
             None => None,
             Some(toml::Value::String(s)) => Some(s.clone()),
-            Some(_) => return Err(format!(
+            Some(_) => {
+                return Err(format!(
                 "invalid tonic.toml: registry dependency '{name}' has non-string 'registry' value"
-            )),
+            ))
+            }
         };
         deps.registry
             .insert(name.to_string(), RegistryDep { version, registry });

@@ -970,13 +970,15 @@ fn evaluate_for_collect(
                             let v = body_stack.pop().unwrap_or(RuntimeValue::Nil);
                             match v {
                                 RuntimeValue::Tuple(k, val) => acc.push((*k, *val)),
-                                other => return Err(RuntimeError::at_offset(
-                                    format!(
+                                other => {
+                                    return Err(RuntimeError::at_offset(
+                                        format!(
                                         "for into keyword expects tuple {{key, value}}, found {}",
                                         other.kind_label()
                                     ),
-                                    offset,
-                                )),
+                                        offset,
+                                    ))
+                                }
                             }
                         }
                         Err(e) => return Err(e),
