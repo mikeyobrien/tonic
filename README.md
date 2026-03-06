@@ -185,6 +185,9 @@ Benchmark docs and manifests:
 - `TONIC_PROFILE_STDERR=1` — per-phase timings on stderr
 - `TONIC_PROFILE_OUT=<path>` — JSONL timing output
 - `TONIC_MEMORY_MODE=<append_only|rc|trace>` + `TONIC_MEMORY_STATS=1` — memory diagnostics
+- `TONIC_OBS_ENABLE=1` — local observability bundles under `.tonic/observability/` for agent/debug workflows
+
+See [docs/observability.md](docs/observability.md) for bundle layout, task correlation, and investigation workflows.
 
 ## Repository layout
 
@@ -201,6 +204,7 @@ Benchmark docs and manifests:
 - [PARITY.md](PARITY.md)
 - [docs/native-runtime.md](docs/native-runtime.md)
 - [docs/runtime-abi.md](docs/runtime-abi.md)
+- [docs/observability.md](docs/observability.md)
 - [docs/differential-testing.md](docs/differential-testing.md)
 - [docs/native-regression-policy.md](docs/native-regression-policy.md)
 - [docs/release-checklist.md](docs/release-checklist.md)
