@@ -1,5 +1,6 @@
 use crate::ir::{lower_ast_to_ir, IrFunction, IrProgram};
 use crate::lexer::scan_tokens;
+use crate::observability::ObservabilityRun;
 use crate::parser::parse_ast;
 use crate::resolver::{resolve_ast_with_externals, ExternalModules};
 use crate::runtime::{evaluate_named_function, RuntimeValue};
@@ -328,10 +329,26 @@ pub fn handle_repl(args: Vec<String>) -> i32 {
         return crate::cli_diag::EXIT_OK;
     }
 
-    // Run the interactive loop; it exits cleanly on :quit / EOF.
-    run_repl_with_clear();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut argv = Vec::with_capacity(args.len() + 1);
+    argv.push("repl".to_string());
+    argv.extend(args.iter().cloned());
+    let mut observed_run = ObservabilityRun::from_env("repl", &argv, &cwd);
 
-    crate::cli_diag::EXIT_OK
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.phase("repl.session", run_repl_with_clear);
+    } else {
+        // Run the interactive loop; it exits cleanly on :quit / EOF.
+        run_repl_with_clear();
+    }
+
+    let exit_code = crate::cli_diag::EXIT_OK;
+    if let Some(observed_run) = observed_run.as_mut() {
+        for warning in observed_run.finish_with_status(exit_code, None) {
+            eprintln!("warning: {warning}");
+        }
+    }
+    exit_code
 }
 
 /// Extended loop that handles :clear by resetting accumulated state.
