@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/observability.sh
+source "$script_dir/lib/observability.sh"
+tonic_obs_script_init "release-alpha-readiness" "$@"
+trap 'tonic_obs_finish "$?"' EXIT
+
 usage() {
   printf '%s\n' "Usage: scripts/release-alpha-readiness.sh [--version <semver>]"
 }
@@ -53,7 +59,7 @@ fi
 manifest_path="${TONIC_ALPHA_MANIFEST:-Cargo.toml}"
 changelog_path="${TONIC_ALPHA_CHANGELOG:-CHANGELOG.md}"
 artifact_dir="${TONIC_ALPHA_ARTIFACT_DIR:-.tonic/native-gates}"
-native_gates_cmd="${TONIC_NATIVE_GATES_CMD:-./scripts/native-gates.sh}"
+native_gates_cmd="${TONIC_NATIVE_GATES_CMD:-$script_dir/native-gates.sh}"
 
 if [[ ! -f "$manifest_path" ]]; then
   fail "manifest not found at $manifest_path"
@@ -90,15 +96,16 @@ fi
 info "changelog contains version heading"
 
 info "running native gates command: $native_gates_cmd"
-if ! TONIC_NATIVE_ARTIFACT_DIR="$artifact_dir" "$native_gates_cmd"; then
+if ! tonic_obs_run_step 'scripts/native-gates.sh' \
+  env TONIC_NATIVE_ARTIFACT_DIR="$artifact_dir" "$native_gates_cmd"; then
   fail "native gates command failed: $native_gates_cmd"
 fi
 
 required_artifacts=(
-  "native-compiler-summary.json"
-  "native-compiler-summary.md"
-  "native-compiled-summary.json"
-  "native-compiled-summary.md"
+  'native-compiler-summary.json'
+  'native-compiler-summary.md'
+  'native-compiled-summary.json'
+  'native-compiled-summary.md'
 )
 
 for artifact in "${required_artifacts[@]}"; do
@@ -106,7 +113,8 @@ for artifact in "${required_artifacts[@]}"; do
   if [[ ! -s "$artifact_path" ]]; then
     fail "required artifact missing or empty: $artifact_path"
   fi
+  tonic_obs_record_artifact 'release-artifact' "$artifact_path"
   info "artifact ok: $artifact_path"
 done
 
-info "pass: alpha release readiness checks succeeded"
+info 'pass: alpha release readiness checks succeeded'

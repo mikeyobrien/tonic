@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/observability.sh
+source "$script_dir/lib/observability.sh"
+tonic_obs_script_init "native-regression-policy" "$@"
+trap 'tonic_obs_finish "$?"' EXIT
+
 usage() {
   printf '%s\n' "Usage: scripts/native-regression-policy.sh <summary.json> [--mode strict|advisory]"
 }
@@ -32,7 +38,9 @@ if [[ ! -f "$report_path" ]]; then
   exit 64
 fi
 
-python3 - "$report_path" "$mode" <<'PY'
+tonic_obs_record_artifact 'native-regression-summary-json' "$report_path"
+tonic_obs_run_step 'python3 native-regression-policy evaluator' \
+  python3 - "$report_path" "$mode" <<'PY'
 import json
 import math
 import sys

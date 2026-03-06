@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/observability.sh
+source "$script_dir/lib/observability.sh"
+tonic_obs_script_init "bench-interpreter-vs-compiled" "$@"
+trap 'tonic_obs_finish "$?"' EXIT
+
 manifest="${1:-benchmarks/interpreter-vs-compiled-suite.toml}"
 runs="${TONIC_BENCH_RUNS:-20}"
 warmup="${TONIC_BENCH_WARMUP:-5}"
@@ -12,7 +18,7 @@ mkdir -p "$(dirname "$json_out")"
 mkdir -p "$(dirname "$markdown_out")"
 
 printf 'Building release binaries...\n'
-cargo build --release -q
+tonic_obs_run_step 'cargo build --release -q' cargo build --release -q
 
 printf 'Running interpreter-vs-compiled benchmark suite...\n'
 cmd=(
@@ -29,4 +35,6 @@ if [[ "$enforce" == "1" ]]; then
   cmd+=(--enforce)
 fi
 
-"${cmd[@]}"
+tonic_obs_run_step 'target/release/benchsuite' "${cmd[@]}"
+tonic_obs_record_artifact 'benchmark-summary-json' "$json_out"
+tonic_obs_record_artifact 'benchmark-summary-md' "$markdown_out"

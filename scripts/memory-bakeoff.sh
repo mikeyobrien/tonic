@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/observability.sh
+source "$script_dir/lib/observability.sh"
+tonic_obs_script_init "memory-bakeoff" "$@"
+trap 'tonic_obs_finish "$?"' EXIT
+
 usage() {
   printf '%s\n' "Usage: scripts/memory-bakeoff.sh [--ci]"
 }
@@ -58,7 +64,7 @@ mkdir -p "$artifact_dir/bin" "$artifact_dir/logs"
 
 if [[ ! -x "$tonic_bin" ]]; then
   printf 'Building tonic binary at %s...\n' "$tonic_bin"
-  cargo build -q --bin tonic
+  tonic_obs_run_step 'cargo build -q --bin tonic' cargo build -q --bin tonic
 fi
 
 printf 'scenario\tmode\treported_mode\titeration\telapsed_us\trss_kb\treclaims_total\tgc_collections_total\theap_live_slots\n' >"$raw_tsv"
@@ -75,7 +81,8 @@ for scenario_entry in "${scenarios[@]}"; do
 
   exe_path="$artifact_dir/bin/$scenario_name"
   compile_log="$artifact_dir/logs/$scenario_name.compile.log"
-  "$tonic_bin" compile "$fixture_path" --out "$exe_path" >"$compile_log" 2>&1
+  tonic_obs_run_step "tonic compile $fixture_path --out $exe_path" \
+    "$tonic_bin" compile "$fixture_path" --out "$exe_path" >"$compile_log" 2>&1
 
   for mode in "${modes[@]}"; do
     for iteration in $(seq 1 "$iterations"); do
@@ -85,10 +92,12 @@ for scenario_entry in "${scenarios[@]}"; do
 
       start_ns="$(date +%s%N)"
       if [[ "$mode" == "default" ]]; then
-        "$time_bin" -f '%M' -o "$time_log" -- \
+        tonic_obs_run_step "$scenario_name default iteration $iteration" \
+          "$time_bin" -f '%M' -o "$time_log" -- \
           env TONIC_MEMORY_STATS=1 "$exe_path" >"$stdout_log" 2>"$stderr_log"
       else
-        "$time_bin" -f '%M' -o "$time_log" -- \
+        tonic_obs_run_step "$scenario_name $mode iteration $iteration" \
+          "$time_bin" -f '%M' -o "$time_log" -- \
           env TONIC_MEMORY_STATS=1 TONIC_MEMORY_MODE="$mode" "$exe_path" >"$stdout_log" 2>"$stderr_log"
       fi
       end_ns="$(date +%s%N)"
@@ -133,7 +142,8 @@ for scenario_entry in "${scenarios[@]}"; do
   done
 done
 
-python3 - "$raw_tsv" "$summary_tsv" "$summary_md" "$ci_mode" <<'PY'
+tonic_obs_run_step 'python3 memory-bakeoff summary reducer' \
+  python3 - "$raw_tsv" "$summary_tsv" "$summary_md" "$ci_mode" <<'PY'
 import csv
 import math
 import statistics
@@ -283,6 +293,9 @@ if ci_mode:
         raise SystemExit(1)
 PY
 
+tonic_obs_record_artifact 'memory-bakeoff-raw-tsv' "$raw_tsv"
+tonic_obs_record_artifact 'memory-bakeoff-summary-tsv' "$summary_tsv"
+tonic_obs_record_artifact 'memory-bakeoff-summary-md' "$summary_md"
 printf 'memory bakeoff raw rows: %s\n' "$raw_tsv"
 printf 'memory bakeoff summary: %s\n' "$summary_tsv"
 printf 'memory bakeoff report: %s\n' "$summary_md"

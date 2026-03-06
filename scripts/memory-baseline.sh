@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/observability.sh
+source "$script_dir/lib/observability.sh"
+tonic_obs_script_init "memory-baseline" "$@"
+trap 'tonic_obs_finish "$?"' EXIT
+
 tonic_bin="${TONIC_MEMORY_TONIC_BIN:-target/debug/tonic}"
 fixture_dir="${TONIC_MEMORY_FIXTURE_DIR:-examples/memory}"
 artifact_dir="${TONIC_MEMORY_ARTIFACT_DIR:-.tonic/memory-baseline}"
@@ -8,16 +14,16 @@ summary_tsv="${TONIC_MEMORY_SUMMARY_TSV:-$artifact_dir/baseline.tsv}"
 summary_md="${TONIC_MEMORY_SUMMARY_MD:-$artifact_dir/baseline.md}"
 
 fixtures=(
-  "list_nesting_stress.tn"
-  "map_growth_stress.tn"
-  "closure_capture_stress.tn"
+  'list_nesting_stress.tn'
+  'map_growth_stress.tn'
+  'closure_capture_stress.tn'
 )
 
 mkdir -p "$artifact_dir"
 
 if [[ ! -x "$tonic_bin" ]]; then
   printf 'Building tonic binary at %s...\n' "$tonic_bin"
-  cargo build -q
+  tonic_obs_run_step 'cargo build -q' cargo build -q
 fi
 
 printf 'fixture\tobjects_total\theap_slots\theap_slots_hwm\theap_capacity\theap_capacity_hwm\n' >"$summary_tsv"
@@ -38,8 +44,10 @@ for fixture_name in "${fixtures[@]}"; do
   stdout_log="$artifact_dir/$stem.stdout.log"
   stderr_log="$artifact_dir/$stem.stderr.log"
 
-  "$tonic_bin" compile "$fixture_path" --out "$exe_path" >"$compile_log" 2>&1
-  TONIC_MEMORY_STATS=1 "$exe_path" >"$stdout_log" 2>"$stderr_log"
+  tonic_obs_run_step "tonic compile $fixture_path --out $exe_path" \
+    "$tonic_bin" compile "$fixture_path" --out "$exe_path" >"$compile_log" 2>&1
+  tonic_obs_run_step "$stem runtime memory baseline" \
+    env TONIC_MEMORY_STATS=1 "$exe_path" >"$stdout_log" 2>"$stderr_log"
 
   stats_line="$(grep -m1 '^memory.stats c_runtime ' "$stderr_log" || true)"
   if [[ -z "$stats_line" ]]; then
@@ -81,5 +89,7 @@ for fixture_name in "${fixtures[@]}"; do
     "$heap_capacity_hwm" >>"$summary_md"
 done
 
+tonic_obs_record_artifact 'memory-baseline-tsv' "$summary_tsv"
+tonic_obs_record_artifact 'memory-baseline-md' "$summary_md"
 printf 'memory baseline written: %s\n' "$summary_tsv"
 printf 'memory baseline report: %s\n' "$summary_md"

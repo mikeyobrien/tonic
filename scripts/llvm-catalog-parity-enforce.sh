@@ -3,6 +3,12 @@
 # not block CI. Set TONIC_LLVM_PARITY_ENFORCE=1 to restore blocking behaviour.
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/observability.sh
+source "$script_dir/lib/observability.sh"
+tonic_obs_script_init "llvm-catalog-parity-enforce" "$@"
+trap 'tonic_obs_finish "$?"' EXIT
+
 artifact_dir="${TONIC_PARITY_ARTIFACT_DIR:-.tonic/parity}"
 catalog="${TONIC_PARITY_CATALOG:-examples/parity/catalog.toml}"
 report_json="${TONIC_PARITY_REPORT_JSON:-$artifact_dir/llvm-catalog-parity.json}"
@@ -15,7 +21,8 @@ mkdir -p "$artifact_dir"
 
 if [[ ! -x "$parity_bin" || ! -x "$tonic_bin" ]]; then
   printf 'Building debug tonic + llvm_catalog_parity binaries...\n'
-  cargo build -q --bin tonic --bin llvm_catalog_parity
+  tonic_obs_run_step 'cargo build -q --bin tonic --bin llvm_catalog_parity' \
+    cargo build -q --bin tonic --bin llvm_catalog_parity
 fi
 
 if [[ "$enforce" == "1" ]]; then
@@ -28,6 +35,7 @@ if [[ "$enforce" == "1" ]]; then
     --tonic-bin "$tonic_bin"
     --enforce
   )
+  step_name='llvm_catalog_parity --enforce'
 else
   printf 'Running LLVM catalog parity gate in informational mode (experimental backend)...\n'
   cmd=(
@@ -37,12 +45,13 @@ else
     --report-md "$report_md"
     --tonic-bin "$tonic_bin"
   )
+  step_name='llvm_catalog_parity'
 fi
 
 # Run parity check; capture exit code without aborting the script so that
 # informational mode never blocks the pipeline.
 set +e
-"${cmd[@]}"
+tonic_obs_run_step "$step_name" "${cmd[@]}"
 parity_exit=$?
 set -e
 
@@ -55,4 +64,6 @@ if [[ $parity_exit -ne 0 ]]; then
   fi
 fi
 
+tonic_obs_record_artifact 'llvm-parity-report-json' "$report_json"
+tonic_obs_record_artifact 'llvm-parity-report-md' "$report_md"
 printf 'LLVM parity reports:\n  %s\n  %s\n' "$report_json" "$report_md"
