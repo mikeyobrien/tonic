@@ -10,7 +10,7 @@ mod schema;
 #[cfg_attr(not(test), allow(unused_imports))]
 pub(crate) use runtime::ObservabilityRun;
 #[cfg_attr(not(test), allow(unused_imports))]
-pub(crate) use schema::ObservabilityError;
+pub(crate) use schema::{ErrorSource, ObservabilityError};
 
 #[cfg(test)]
 mod tests;

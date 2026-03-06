@@ -91,6 +91,25 @@ impl ObservabilityRun {
         value
     }
 
+    pub(crate) fn phase_result<T, E>(
+        &mut self,
+        name: &str,
+        run: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E> {
+        let started_at = Instant::now();
+        let result = run();
+        self.phases.push(PhaseRecord {
+            name: name.to_string(),
+            status: if result.is_ok() {
+                "ok".to_string()
+            } else {
+                "error".to_string()
+            },
+            elapsed_ms: started_at.elapsed().as_secs_f64() * 1000.0,
+        });
+        result
+    }
+
     pub(crate) fn record_artifact(&mut self, kind: &str, path: &Path) {
         let bytes = fs::metadata(path).ok().map(|metadata| metadata.len());
         self.artifacts.push(ArtifactRecord {
@@ -116,6 +135,18 @@ impl ObservabilityRun {
     ) -> Vec<String> {
         self.error = Some(error);
         self.finish("error", exit_code)
+    }
+
+    pub(crate) fn finish_with_status(
+        &mut self,
+        exit_code: i32,
+        error: Option<ObservabilityError>,
+    ) -> Vec<String> {
+        match error {
+            Some(error) => self.finish_error(exit_code, error),
+            None if exit_code == 0 => self.finish_ok(exit_code),
+            None => self.finish("error", exit_code),
+        }
     }
 
     fn finish(&self, status: &str, exit_code: i32) -> Vec<String> {

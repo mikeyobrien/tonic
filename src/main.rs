@@ -34,31 +34,92 @@ use cache::{
     trace_cache_status,
 };
 use cli_diag::{CliDiagnostic, EXIT_FAILURE, EXIT_OK};
+use observability::{ErrorSource, ObservabilityError, ObservabilityRun};
 
 /// A compilation error that preserves source offset for snippet rendering.
 #[derive(Debug)]
 struct CompileError {
+    kind: &'static str,
+    phase: &'static str,
+    diagnostic_code: Option<String>,
     message: String,
     offset: Option<usize>,
 }
 
 impl CompileError {
-    fn new(message: impl Into<String>) -> Self {
+    fn new(kind: &'static str, phase: &'static str, message: impl Into<String>) -> Self {
         Self {
+            kind,
+            phase,
+            diagnostic_code: None,
             message: message.into(),
             offset: None,
         }
     }
 
-    fn with_offset(message: impl Into<String>, offset: Option<usize>) -> Self {
+    fn with_offset(
+        kind: &'static str,
+        phase: &'static str,
+        message: impl Into<String>,
+        offset: Option<usize>,
+    ) -> Self {
+        let message = message.into();
         Self {
-            message: message.into(),
+            kind,
+            phase,
+            diagnostic_code: extract_diagnostic_code(&message),
+            message,
             offset,
         }
     }
 
+    fn from_lexer(error: lexer::LexerError) -> Self {
+        Self::with_offset(
+            "lexer_error",
+            "frontend.scan_tokens",
+            error.to_string(),
+            Some(error.offset()),
+        )
+    }
+
+    fn from_parser(error: parser::ParserError) -> Self {
+        Self::with_offset(
+            "parser_error",
+            "frontend.parse_ast",
+            error.to_string(),
+            error.offset(),
+        )
+    }
+
+    fn from_resolver(error: resolver_diag::ResolverError) -> Self {
+        Self::with_offset(
+            "resolver_error",
+            "frontend.resolve_ast",
+            error.to_string(),
+            error.offset(),
+        )
+    }
+
+    fn from_typing_message(message: impl Into<String>, offset: Option<usize>) -> Self {
+        Self::with_offset("typing_error", "frontend.infer_types", message, offset)
+    }
+
+    fn from_ir_lowering(error: impl ToString) -> Self {
+        Self::new("ir_lowering_error", "frontend.lower_ir", error.to_string())
+    }
+
     fn into_diagnostic(self, filename: Option<&str>, source: &str) -> CliDiagnostic {
         CliDiagnostic::failure_with_filename_and_source(self.message, filename, source, self.offset)
+    }
+
+    fn to_observability_error(&self, filename: &str, source: &str) -> ObservabilityError {
+        ObservabilityError {
+            kind: self.kind.to_string(),
+            diagnostic_code: self.diagnostic_code.clone(),
+            phase: Some(self.phase.to_string()),
+            message: self.message.clone(),
+            source: observability_error_source(filename, source, self.offset),
+        }
     }
 }
 use formatter::{format_path, FormatMode};
@@ -71,6 +132,105 @@ use resolver::resolve_ast;
 use runtime::{evaluate_entrypoint, RuntimeValue};
 use test_runner::{TestOutputFormat, TestRunnerError};
 use typing::infer_types;
+
+fn command_argv(command: &str, args: &[String]) -> Vec<String> {
+    let mut argv = Vec::with_capacity(args.len() + 1);
+    argv.push(command.to_string());
+    argv.extend(args.iter().cloned());
+    argv
+}
+
+fn observe_phase<T>(
+    profiler: &mut Option<profiling::PhaseProfiler>,
+    observed_run: &mut Option<ObservabilityRun>,
+    phase_name: &str,
+    run: impl FnOnce() -> T,
+) -> T {
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.phase(phase_name, || {
+            profiling::profile_phase(profiler, phase_name, run)
+        })
+    } else {
+        profiling::profile_phase(profiler, phase_name, run)
+    }
+}
+
+fn observe_phase_result<T, E>(
+    profiler: &mut Option<profiling::PhaseProfiler>,
+    observed_run: &mut Option<ObservabilityRun>,
+    phase_name: &str,
+    run: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.phase_result(phase_name, || {
+            profiling::profile_phase(profiler, phase_name, run)
+        })
+    } else {
+        profiling::profile_phase(profiler, phase_name, run)
+    }
+}
+
+fn extract_diagnostic_code(message: &str) -> Option<String> {
+    let stripped = message.strip_prefix('[')?;
+    let code = stripped.split(']').next()?;
+    (!code.is_empty()).then(|| code.to_string())
+}
+
+fn observability_error_source(
+    path: &str,
+    source: &str,
+    offset: Option<usize>,
+) -> Option<ErrorSource> {
+    let offset = offset?;
+    if offset > source.len() || !source.is_char_boundary(offset) {
+        return None;
+    }
+
+    let before = &source[..offset];
+    let line_start = before.rfind('\n').map(|index| index + 1).unwrap_or(0);
+    let line = before.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = source[line_start..offset].chars().count() + 1;
+
+    Some(ErrorSource {
+        path: path.to_string(),
+        line,
+        column,
+        offset,
+    })
+}
+
+fn make_observability_error(
+    kind: &'static str,
+    phase: &'static str,
+    message: impl Into<String>,
+    source: Option<ErrorSource>,
+) -> ObservabilityError {
+    let message = message.into();
+    ObservabilityError {
+        kind: kind.to_string(),
+        diagnostic_code: extract_diagnostic_code(&message),
+        phase: Some(phase.to_string()),
+        message,
+        source,
+    }
+}
+
+fn emit_observability_warnings(warnings: Vec<String>) {
+    for warning in warnings {
+        eprintln!("warning: {warning}");
+    }
+}
+
+fn finalize_observed_run(
+    observed_run: &mut Option<ObservabilityRun>,
+    exit_code: i32,
+    error: Option<ObservabilityError>,
+) -> i32 {
+    if let Some(observed_run) = observed_run.as_mut() {
+        emit_observability_warnings(observed_run.finish_with_status(exit_code, error));
+    }
+    exit_code
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerifyMode {
@@ -160,21 +320,35 @@ fn handle_run(args: Vec<String>) -> i32 {
     }
 
     let source_path = args[0].clone();
-
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut observed_run = ObservabilityRun::from_env("run", &command_argv("run", &args), &cwd);
     let mut profiler = profiling::PhaseProfiler::from_env("run");
 
     if native_artifact::is_native_artifact_path(&source_path) {
-        return handle_run_native_artifact(&source_path, &mut profiler);
+        return handle_run_native_artifact(&source_path, &mut profiler, &mut observed_run);
     }
 
-    let source = match profiling::profile_phase(&mut profiler, "run.load_source", || {
-        load_run_source(&source_path)
-    }) {
-        Ok(source) => source,
-        Err(error) => return CliDiagnostic::failure(error).emit(),
-    };
+    let source =
+        match observe_phase_result(&mut profiler, &mut observed_run, "run.load_source", || {
+            load_run_source(&source_path)
+        }) {
+            Ok(source) => source,
+            Err(error) => {
+                let message = error;
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "run.load_source",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
 
-    // Derive project_root from source_path (same logic as load_run_source)
     let source_path_obj = std::path::Path::new(&source_path);
     let project_root = if source_path_obj.is_dir() {
         source_path_obj.to_path_buf()
@@ -188,94 +362,204 @@ fn handle_run(args: Vec<String>) -> i32 {
     let cache_key = build_run_cache_key(&source, &project_root);
     let mut cache_status = "miss";
 
-    let ir = match profiling::profile_phase(&mut profiler, "run.cache_lookup", || {
-        load_cached_ir(&cache_key)
-    }) {
-        Ok(Some(cached_ir)) => {
-            cache_status = "hit";
-            cached_ir
-        }
-        Ok(None) | Err(_) => {
-            let compiled_ir = match compile_source_to_ir(&source, &mut profiler) {
-                Ok(ir) => ir,
-                Err(error) => return error.into_diagnostic(Some(&source_path), &source).emit(),
-            };
-
-            if let Err(error) = profiling::profile_phase(&mut profiler, "run.cache_store", || {
-                store_cached_ir(&cache_key, &compiled_ir)
-            }) {
-                eprintln!("warning: {}", error);
+    let ir =
+        match observe_phase_result(&mut profiler, &mut observed_run, "run.cache_lookup", || {
+            load_cached_ir(&cache_key)
+        }) {
+            Ok(Some(cached_ir)) => {
+                cache_status = "hit";
+                cached_ir
             }
-            compiled_ir
-        }
-    };
+            Ok(None) | Err(_) => {
+                let compiled_ir =
+                    match compile_source_to_ir(&source, &mut profiler, &mut observed_run) {
+                        Ok(ir) => ir,
+                        Err(error) => {
+                            let obs_error = error.to_observability_error(&source_path, &source);
+                            let exit_code =
+                                error.into_diagnostic(Some(&source_path), &source).emit();
+                            return finalize_observed_run(
+                                &mut observed_run,
+                                exit_code,
+                                Some(obs_error),
+                            );
+                        }
+                    };
+
+                if let Err(error) = observe_phase_result(
+                    &mut profiler,
+                    &mut observed_run,
+                    "run.cache_store",
+                    || store_cached_ir(&cache_key, &compiled_ir),
+                ) {
+                    eprintln!("warning: {error}");
+                }
+                compiled_ir
+            }
+        };
 
     if should_trace_cache_status() {
         trace_cache_status(cache_status);
     }
 
-    let value = match profiling::profile_phase(&mut profiler, "run.evaluate_entrypoint", || {
-        evaluate_entrypoint(&ir)
-    }) {
+    let value = match observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "run.evaluate_entrypoint",
+        || evaluate_entrypoint(&ir),
+    ) {
         Ok(value) => value,
         Err(error) => {
-            return CliDiagnostic::failure_with_filename_and_source(
-                error.to_string(),
+            let message = error.to_string();
+            let source_info = observability_error_source(&source_path, &source, error.offset());
+            let exit_code = CliDiagnostic::failure_with_filename_and_source(
+                message.clone(),
                 Some(&source_path),
                 &source,
                 error.offset(),
             )
-            .emit()
+            .emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "runtime_error",
+                    "run.evaluate_entrypoint",
+                    message,
+                    source_info,
+                )),
+            );
         }
     };
 
     match value {
         RuntimeValue::ResultErr(reason) => {
-            CliDiagnostic::failure(format!("runtime returned err({})", reason.render())).emit()
+            let message = format!("runtime returned err({})", reason.render());
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "runtime_error",
+                    "run.evaluate_entrypoint",
+                    message,
+                    None,
+                )),
+            )
         }
         other => {
             println!("{}", other.render());
-            EXIT_OK
+            finalize_observed_run(&mut observed_run, EXIT_OK, None)
         }
     }
 }
 
-fn handle_run_native_artifact(path: &str, profiler: &mut Option<profiling::PhaseProfiler>) -> i32 {
+fn handle_run_native_artifact(
+    path: &str,
+    profiler: &mut Option<profiling::PhaseProfiler>,
+    observed_run: &mut Option<ObservabilityRun>,
+) -> i32 {
     let manifest_path = std::path::Path::new(path);
-    let manifest = match profiling::profile_phase(profiler, "run.native.load_manifest", || {
-        native_artifact::load_manifest(manifest_path)
-    }) {
-        Ok(manifest) => manifest,
-        Err(error) => return CliDiagnostic::failure(error).emit(),
-    };
+    let manifest =
+        match observe_phase_result(profiler, observed_run, "run.native.load_manifest", || {
+            native_artifact::load_manifest(manifest_path)
+        }) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                let message = error;
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "run.native.load_manifest",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
 
-    if let Err(error) = profiling::profile_phase(profiler, "run.native.validate_manifest", || {
-        native_artifact::validate_manifest_for_host(&manifest)
-    }) {
-        return CliDiagnostic::failure(error).emit();
+    if let Err(error) = observe_phase_result(
+        profiler,
+        observed_run,
+        "run.native.validate_manifest",
+        || native_artifact::validate_manifest_for_host(&manifest),
+    ) {
+        let message = error;
+        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+        return finalize_observed_run(
+            observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "io_error",
+                "run.native.validate_manifest",
+                message,
+                None,
+            )),
+        );
     }
 
-    let ir = match profiling::profile_phase(profiler, "run.native.load_ir", || {
+    let ir = match observe_phase_result(profiler, observed_run, "run.native.load_ir", || {
         native_artifact::load_ir_from_manifest(manifest_path, &manifest)
     }) {
         Ok(ir) => ir,
-        Err(error) => return CliDiagnostic::failure(error).emit(),
+        Err(error) => {
+            let message = error;
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "io_error",
+                    "run.native.load_ir",
+                    message,
+                    None,
+                )),
+            );
+        }
     };
 
-    let value = match profiling::profile_phase(profiler, "run.evaluate_entrypoint", || {
-        evaluate_entrypoint(&ir)
-    }) {
-        Ok(value) => value,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
-    };
+    let value =
+        match observe_phase_result(profiler, observed_run, "run.evaluate_entrypoint", || {
+            evaluate_entrypoint(&ir)
+        }) {
+            Ok(value) => value,
+            Err(error) => {
+                let message = error.to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "runtime_error",
+                        "run.evaluate_entrypoint",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
 
     match value {
         RuntimeValue::ResultErr(reason) => {
-            CliDiagnostic::failure(format!("runtime returned err({})", reason.render())).emit()
+            let message = format!("runtime returned err({})", reason.render());
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            finalize_observed_run(
+                observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "runtime_error",
+                    "run.evaluate_entrypoint",
+                    message,
+                    None,
+                )),
+            )
         }
         other => {
             println!("{}", other.render());
-            EXIT_OK
+            finalize_observed_run(observed_run, EXIT_OK, None)
         }
     }
 }
@@ -283,26 +567,33 @@ fn handle_run_native_artifact(path: &str, profiler: &mut Option<profiling::Phase
 fn compile_source_to_ir(
     source: &str,
     profiler: &mut Option<profiling::PhaseProfiler>,
+    observed_run: &mut Option<ObservabilityRun>,
 ) -> Result<IrProgram, CompileError> {
-    let tokens = profiling::profile_phase(profiler, "frontend.scan_tokens", || scan_tokens(source))
-        .map_err(|error| {
-            // LexerError already includes offset in its Display output.
-            CompileError::new(error.to_string())
-        })?;
+    let tokens = observe_phase_result(profiler, observed_run, "frontend.scan_tokens", || {
+        scan_tokens(source)
+    })
+    .map_err(CompileError::from_lexer)?;
 
-    let ast = profiling::profile_phase(profiler, "frontend.parse_ast", || parse_ast(&tokens))
-        .map_err(|error| CompileError::with_offset(error.to_string(), error.offset()))?;
+    let ast = observe_phase_result(profiler, observed_run, "frontend.parse_ast", || {
+        parse_ast(&tokens)
+    })
+    .map_err(CompileError::from_parser)?;
 
-    profiling::profile_phase(profiler, "frontend.resolve_ast", || resolve_ast(&ast))
-        .map_err(|error| CompileError::with_offset(error.to_string(), error.offset()))?;
+    observe_phase_result(profiler, observed_run, "frontend.resolve_ast", || {
+        resolve_ast(&ast)
+    })
+    .map_err(CompileError::from_resolver)?;
 
-    let type_summary =
-        profiling::profile_phase(profiler, "frontend.infer_types", || infer_types(&ast))
-            .map_err(|error| CompileError::with_offset(error.to_string(), error.offset()))?;
+    let type_summary = observe_phase_result(profiler, observed_run, "frontend.infer_types", || {
+        infer_types(&ast)
+    })
+    .map_err(|error| CompileError::from_typing_message(error.to_string(), error.offset()))?;
     maybe_trace_type_summary(type_summary.len());
 
-    profiling::profile_phase(profiler, "frontend.lower_ir", || lower_ast_to_ir(&ast))
-        .map_err(|error| CompileError::new(error.to_string()))
+    observe_phase_result(profiler, observed_run, "frontend.lower_ir", || {
+        lower_ast_to_ir(&ast)
+    })
+    .map_err(CompileError::from_ir_lowering)
 }
 
 fn maybe_trace_type_summary(signature_count: usize) {
@@ -643,35 +934,75 @@ fn handle_compile(args: Vec<String>) -> i32 {
     }
 
     let target = target_triple.unwrap_or_else(target::TargetTriple::host);
-
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut observed_run =
+        ObservabilityRun::from_env("compile", &command_argv("compile", &args), &cwd);
     let mut profiler = profiling::PhaseProfiler::from_env("compile");
     let is_project_root_path = std::path::Path::new(&source_path).is_dir();
 
-    let source = match profiling::profile_phase(&mut profiler, "compile.load_source", || {
-        load_run_source(&source_path)
-    }) {
+    let source = match observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "compile.load_source",
+        || load_run_source(&source_path),
+    ) {
         Ok(source) => source,
-        Err(error) => return CliDiagnostic::failure(error).emit(),
+        Err(error) => {
+            let message = error;
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "io_error",
+                    "compile.load_source",
+                    message,
+                    None,
+                )),
+            );
+        }
     };
 
-    let ir = match compile_source_to_ir(&source, &mut profiler) {
+    let ir = match compile_source_to_ir(&source, &mut profiler, &mut observed_run) {
         Ok(ir) => ir,
-        Err(error) => return error.into_diagnostic(Some(&source_path), &source).emit(),
+        Err(error) => {
+            let obs_error = error.to_observability_error(&source_path, &source);
+            let exit_code = error.into_diagnostic(Some(&source_path), &source).emit();
+            return finalize_observed_run(&mut observed_run, exit_code, Some(obs_error));
+        }
     };
 
     let artifact_stem = compile_artifact_stem(&source_path, is_project_root_path);
-    let mir =
-        match profiling::profile_phase(&mut profiler, "backend.lower_mir", || lower_ir_to_mir(&ir))
-        {
-            Ok(mir) => mir,
-            Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
-        };
+    let mir = match observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "backend.lower_mir",
+        || lower_ir_to_mir(&ir),
+    ) {
+        Ok(mir) => mir,
+        Err(error) => {
+            let message = error.to_string();
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "mir_lowering_error",
+                    "backend.lower_mir",
+                    message,
+                    None,
+                )),
+            );
+        }
+    };
 
-    let optimized_mir = profiling::profile_phase(&mut profiler, "backend.optimize_mir", || {
-        optimize_for_native_backend(mir)
-    });
+    let optimized_mir = observe_phase(
+        &mut profiler,
+        &mut observed_run,
+        "backend.optimize_mir",
+        || optimize_for_native_backend(mir),
+    );
 
-    // Sidecar artifacts always land in the default build directory.
     let sidecar_base = {
         let mut p = default_compile_build_dir();
         p.push(&artifact_stem);
@@ -681,71 +1012,135 @@ fn handle_compile(args: Vec<String>) -> i32 {
     let c_path = sidecar_base.with_extension("c");
     let ir_path = sidecar_base.with_extension("tir.json");
     let manifest_path = sidecar_base.with_extension("tnx.json");
-
-    // The executable is written to --out if given, otherwise to the
-    // default build dir with no extension (idiomatic Linux binary).
     let exe_path = match out_path {
         Some(ref path) => std::path::PathBuf::from(path),
         None => sidecar_base.clone(),
     };
 
-    // Reject --out paths that already exist as directories - the linker
-    // would fail with an opaque "Is a directory" error; surface it early.
     if exe_path.is_dir() {
-        return CliDiagnostic::usage(format!(
-            "--out path '{}' is a directory",
-            exe_path.display()
-        ))
-        .emit();
+        let message = format!("--out path '{}' is a directory", exe_path.display());
+        let exit_code = CliDiagnostic::usage(message.clone()).emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "usage_error",
+                "backend.prepare_artifacts",
+                message,
+                None,
+            )),
+        );
     }
 
     for path in [&ll_path, &c_path, &ir_path, &manifest_path, &exe_path] {
         if let Err(message) = ensure_artifact_parent(path) {
-            return CliDiagnostic::failure(message).emit();
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "io_error",
+                    "backend.prepare_artifacts",
+                    message,
+                    None,
+                )),
+            );
         }
     }
 
-    // --- LLVM IR sidecar (.ll) ---
     llvm_backend::warn_experimental();
-    let llvm_ir = match profiling::profile_phase(&mut profiler, "backend.lower_llvm", || {
-        llvm_backend::lower_mir_subset_to_llvm_ir(&optimized_mir, &target)
-    }) {
+    let llvm_ir = match observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "backend.lower_llvm",
+        || llvm_backend::lower_mir_subset_to_llvm_ir(&optimized_mir, &target),
+    ) {
         Ok(llvm_ir) => llvm_ir,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
+        Err(error) => {
+            let message = error.to_string();
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "backend_error",
+                    "backend.lower_llvm",
+                    message,
+                    None,
+                )),
+            );
+        }
     };
 
-    if let Err(error) = profiling::profile_phase(&mut profiler, "backend.write_llvm_ir", || {
-        crate::cache::write_atomic(&ll_path, &llvm_ir)
-    }) {
-        return CliDiagnostic::failure(format!(
+    if let Err(error) = observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "backend.write_llvm_ir",
+        || crate::cache::write_atomic(&ll_path, &llvm_ir),
+    ) {
+        let message = format!(
             "failed to write llvm ir sidecar to {}: {error}",
             ll_path.display()
-        ))
-        .emit();
+        );
+        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "io_error",
+                "backend.write_llvm_ir",
+                message,
+                None,
+            )),
+        );
+    }
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_artifact("llvm-ir", &ll_path);
     }
 
-    // --- IR sidecar (.tir.json) ---
     let serialized_ir = match serde_json::to_string(&ir) {
         Ok(s) => s,
         Err(error) => {
-            return CliDiagnostic::failure(format!(
-                "failed to serialize compile artifact: {error}"
-            ))
-            .emit();
+            let message = format!("failed to serialize compile artifact: {error}");
+            let exit_code = CliDiagnostic::failure(message.clone()).emit();
+            return finalize_observed_run(
+                &mut observed_run,
+                exit_code,
+                Some(make_observability_error(
+                    "ir_lowering_error",
+                    "backend.write_ir",
+                    message,
+                    None,
+                )),
+            );
         }
     };
 
-    if let Err(error) = profiling::profile_phase(&mut profiler, "backend.write_ir", || {
-        crate::cache::write_atomic(&ir_path, &serialized_ir)
-    }) {
-        return CliDiagnostic::failure(format!(
+    if let Err(error) =
+        observe_phase_result(&mut profiler, &mut observed_run, "backend.write_ir", || {
+            crate::cache::write_atomic(&ir_path, &serialized_ir)
+        })
+    {
+        let message = format!(
             "failed to write ir sidecar to {}: {error}",
             ir_path.display()
-        ))
-        .emit();
+        );
+        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "io_error",
+                "backend.write_ir",
+                message,
+                None,
+            )),
+        );
+    }
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_artifact("ir-sidecar", &ir_path);
     }
 
-    // --- Manifest sidecar (.tnx.json) for backward-compat tonic run ---
     let manifest = native_artifact::build_executable_manifest(
         &source,
         &manifest_path,
@@ -753,39 +1148,98 @@ fn handle_compile(args: Vec<String>) -> i32 {
         &exe_path,
         &ir_path,
     );
-    if let Err(error) = profiling::profile_phase(&mut profiler, "backend.write_manifest", || {
-        native_artifact::write_manifest(&manifest_path, &manifest)
-    }) {
-        return CliDiagnostic::failure(error).emit();
+    if let Err(error) = observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "backend.write_manifest",
+        || native_artifact::write_manifest(&manifest_path, &manifest),
+    ) {
+        let message = error;
+        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "io_error",
+                "backend.write_manifest",
+                message,
+                None,
+            )),
+        );
+    }
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_artifact("native-manifest", &manifest_path);
     }
 
-    // --- C code generation ---
-    let c_source = match profiling::profile_phase(&mut profiler, "backend.lower_c", || {
-        c_backend::lower_mir_to_c(&optimized_mir)
-    }) {
-        Ok(src) => src,
-        Err(error) => return CliDiagnostic::failure(error.to_string()).emit(),
-    };
+    let c_source =
+        match observe_phase_result(&mut profiler, &mut observed_run, "backend.lower_c", || {
+            c_backend::lower_mir_to_c(&optimized_mir)
+        }) {
+            Ok(src) => src,
+            Err(error) => {
+                let message = error.to_string();
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "backend_error",
+                        "backend.lower_c",
+                        message,
+                        None,
+                    )),
+                );
+            }
+        };
 
-    if let Err(error) = profiling::profile_phase(&mut profiler, "backend.write_c_source", || {
-        crate::cache::write_atomic(&c_path, &c_source)
-    }) {
-        return CliDiagnostic::failure(format!(
-            "failed to write c source to {}: {error}",
-            c_path.display()
-        ))
-        .emit();
+    if let Err(error) = observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "backend.write_c_source",
+        || crate::cache::write_atomic(&c_path, &c_source),
+    ) {
+        let message = format!("failed to write c source to {}: {error}", c_path.display());
+        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "io_error",
+                "backend.write_c_source",
+                message,
+                None,
+            )),
+        );
+    }
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_artifact("c-source", &c_path);
     }
 
-    // --- Compile C to native executable ---
-    if let Err(error) = profiling::profile_phase(&mut profiler, "backend.link_executable", || {
-        linker::compile_c_to_executable(&c_path, &exe_path, &target)
-    }) {
-        return CliDiagnostic::failure(error.to_string()).emit();
+    if let Err(error) = observe_phase_result(
+        &mut profiler,
+        &mut observed_run,
+        "backend.link_executable",
+        || linker::compile_c_to_executable(&c_path, &exe_path, &target),
+    ) {
+        let message = error.to_string();
+        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+        return finalize_observed_run(
+            &mut observed_run,
+            exit_code,
+            Some(make_observability_error(
+                "linker_error",
+                "backend.link_executable",
+                message,
+                None,
+            )),
+        );
+    }
+    if let Some(observed_run) = observed_run.as_mut() {
+        observed_run.record_artifact("native-executable", &exe_path);
     }
 
     println!("compile: ok {}", exe_path.display());
-    EXIT_OK
+    finalize_observed_run(&mut observed_run, EXIT_OK, None)
 }
 
 fn compile_artifact_stem(source_path: &str, is_project_root_path: bool) -> String {
