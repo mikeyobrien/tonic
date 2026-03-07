@@ -1400,7 +1400,301 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("    return (TnVal)churn;\n");
     out.push_str("  }\n\n");
     out.push_str(
-        r###"  if (strcmp(key, "path_join") == 0) {
+        r###"  if (strcmp(key, "str_split") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: String.split expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    TnObj *delimiter_obj = tn_get_obj(args[2]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.split expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (delimiter_obj == NULL || delimiter_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.split expects string argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    const char *text = text_obj->as.text.text;
+    const char *delimiter = delimiter_obj->as.text.text;
+    size_t text_len = strlen(text);
+    size_t delimiter_len = strlen(delimiter);
+
+    if (delimiter_len == 0) {
+      size_t part_count = text_len + 2;
+      TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+      list_obj->as.list.len = part_count;
+      list_obj->as.list.items = part_count == 0 ? NULL : (TnVal *)calloc(part_count, sizeof(TnVal));
+      if (part_count > 0 && list_obj->as.list.items == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      list_obj->as.list.items[0] = tn_runtime_const_string((TnVal)(intptr_t)"");
+      tn_runtime_retain(list_obj->as.list.items[0]);
+      for (size_t i = 0; i < text_len; i += 1) {
+        char part[2];
+        part[0] = text[i];
+        part[1] = '\0';
+        list_obj->as.list.items[i + 1] = tn_runtime_const_string((TnVal)(intptr_t)part);
+        tn_runtime_retain(list_obj->as.list.items[i + 1]);
+      }
+      list_obj->as.list.items[part_count - 1] = tn_runtime_const_string((TnVal)(intptr_t)"");
+      tn_runtime_retain(list_obj->as.list.items[part_count - 1]);
+      free(args);
+      return tn_heap_store(list_obj);
+    }
+
+    size_t part_count = 1;
+    const char *scan = text;
+    for (;;) {
+      const char *match = strstr(scan, delimiter);
+      if (match == NULL) {
+        break;
+      }
+      part_count += 1;
+      scan = match + delimiter_len;
+    }
+
+    TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+    list_obj->as.list.len = part_count;
+    list_obj->as.list.items = part_count == 0 ? NULL : (TnVal *)calloc(part_count, sizeof(TnVal));
+    if (part_count > 0 && list_obj->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+
+    const char *cursor = text;
+    for (size_t index = 0; index < part_count; index += 1) {
+      const char *match = strstr(cursor, delimiter);
+      size_t part_len = match == NULL ? strlen(cursor) : (size_t)(match - cursor);
+      char *part = (char *)malloc(part_len + 1);
+      if (part == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      memcpy(part, cursor, part_len);
+      part[part_len] = '\0';
+      list_obj->as.list.items[index] = tn_runtime_const_string((TnVal)(intptr_t)part);
+      tn_runtime_retain(list_obj->as.list.items[index]);
+      free(part);
+      if (match == NULL) {
+        break;
+      }
+      cursor = match + delimiter_len;
+    }
+
+    free(args);
+    return tn_heap_store(list_obj);
+  }
+
+  if (strcmp(key, "str_trim") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.trim expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.trim expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *text = text_obj->as.text.text;
+    size_t start = 0;
+    size_t end = strlen(text);
+    while (start < end && (text[start] == ' ' || text[start] == '\n' || text[start] == '\r' || text[start] == '\t' || text[start] == '\f' || text[start] == '\v')) {
+      start += 1;
+    }
+    while (end > start && (text[end - 1] == ' ' || text[end - 1] == '\n' || text[end - 1] == '\r' || text[end - 1] == '\t' || text[end - 1] == '\f' || text[end - 1] == '\v')) {
+      end -= 1;
+    }
+    size_t trimmed_len = end - start;
+    char *trimmed = (char *)malloc(trimmed_len + 1);
+    if (trimmed == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    memcpy(trimmed, text + start, trimmed_len);
+    trimmed[trimmed_len] = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)trimmed);
+    free(trimmed);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_trim_leading") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.trim_leading expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.trim_leading expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *text = text_obj->as.text.text;
+    size_t start = 0;
+    size_t end = strlen(text);
+    while (start < end && (text[start] == ' ' || text[start] == '\n' || text[start] == '\r' || text[start] == '\t' || text[start] == '\f' || text[start] == '\v')) {
+      start += 1;
+    }
+    size_t trimmed_len = end - start;
+    char *trimmed = (char *)malloc(trimmed_len + 1);
+    if (trimmed == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    memcpy(trimmed, text + start, trimmed_len);
+    trimmed[trimmed_len] = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)trimmed);
+    free(trimmed);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_trim_trailing") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.trim_trailing expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.trim_trailing expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *text = text_obj->as.text.text;
+    size_t end = strlen(text);
+    while (end > 0 && (text[end - 1] == ' ' || text[end - 1] == '\n' || text[end - 1] == '\r' || text[end - 1] == '\t' || text[end - 1] == '\f' || text[end - 1] == '\v')) {
+      end -= 1;
+    }
+    char *trimmed = (char *)malloc(end + 1);
+    if (trimmed == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    memcpy(trimmed, text, end);
+    trimmed[end] = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)trimmed);
+    free(trimmed);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_starts_with") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: String.starts_with expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    TnObj *prefix_obj = tn_get_obj(args[2]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.starts_with expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (prefix_obj == NULL || prefix_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.starts_with expects string argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    const char *text = text_obj->as.text.text;
+    const char *prefix = prefix_obj->as.text.text;
+    size_t text_len = strlen(text);
+    size_t prefix_len = strlen(prefix);
+    free(args);
+    return tn_runtime_const_bool((TnVal)(text_len >= prefix_len && strncmp(text, prefix, prefix_len) == 0));
+  }
+
+  if (strcmp(key, "str_ends_with") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: String.ends_with expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    TnObj *suffix_obj = tn_get_obj(args[2]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.ends_with expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (suffix_obj == NULL || suffix_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.ends_with expects string argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    const char *text = text_obj->as.text.text;
+    const char *suffix = suffix_obj->as.text.text;
+    size_t text_len = strlen(text);
+    size_t suffix_len = strlen(suffix);
+    free(args);
+    return tn_runtime_const_bool((TnVal)(text_len >= suffix_len && strcmp(text + text_len - suffix_len, suffix) == 0));
+  }
+
+  if (strcmp(key, "str_contains") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: String.contains expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    TnObj *substr_obj = tn_get_obj(args[2]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.contains expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (substr_obj == NULL || substr_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.contains expects string argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    free(args);
+    return tn_runtime_const_bool((TnVal)(strstr(text_obj->as.text.text, substr_obj->as.text.text) != NULL));
+  }
+
+  if (strcmp(key, "str_slice") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: String.slice expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.slice expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (tn_is_boxed(args[2])) {
+      return tn_runtime_failf("host error: String.slice expects int argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    if (tn_is_boxed(args[3])) {
+      return tn_runtime_failf("host error: String.slice expects int argument 3; found %s", tn_runtime_value_kind(args[3]));
+    }
+    const char *text = text_obj->as.text.text;
+    size_t text_len = strlen(text);
+    int64_t start = (int64_t)args[2];
+    int64_t len = (int64_t)args[3];
+    int64_t resolved_start = start < 0 ? (int64_t)text_len + start : start;
+    if (resolved_start < 0) {
+      resolved_start = 0;
+    }
+    if ((size_t)resolved_start > text_len) {
+      resolved_start = (int64_t)text_len;
+    }
+    size_t resolved_len = len < 0 ? 0 : (size_t)len;
+    size_t max_len = text_len - (size_t)resolved_start;
+    if (resolved_len > max_len) {
+      resolved_len = max_len;
+    }
+    char *slice = (char *)malloc(resolved_len + 1);
+    if (slice == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    memcpy(slice, text + resolved_start, resolved_len);
+    slice[resolved_len] = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)slice);
+    free(slice);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_to_integer") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.to_integer expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.to_integer expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *text = text_obj->as.text.text;
+    const char *start = text;
+    while (*start == ' ' || *start == '\n' || *start == '\r' || *start == '\t' || *start == '\f' || *start == '\v') {
+      start += 1;
+    }
+    errno = 0;
+    char *end = NULL;
+    long long value = strtoll(start, &end, 10);
+    while (end != NULL && (*end == ' ' || *end == '\n' || *end == '\r' || *end == '\t' || *end == '\f' || *end == '\v')) {
+      end += 1;
+    }
+    if (start == end || errno == ERANGE || end == NULL || *end != '\0') {
+      return tn_runtime_failf("host error: String.to_integer could not parse \"%s\" as integer", text);
+    }
+    free(args);
+    return (TnVal)((int64_t)value);
+  }
+
+  if (strcmp(key, "path_join") == 0) {
     if (argc != 3) {
       return tn_runtime_failf("host error: Path.join expects exactly 2 arguments, found %zu", argc - 1);
     }
@@ -2816,18 +3110,24 @@ fn emit_runtime_for_case(
     out.push_str(&format!(
         "static TnVal tn_runtime_for_case_{index}(void) {{\n"
     ));
+    out.push_str("  TnBinding tn_for_bindings[TN_MAX_BINDINGS];\n");
+    out.push_str("  size_t tn_for_bindings_len = 0;\n");
+    out.push_str("  tn_binding_snapshot(tn_for_bindings, &tn_for_bindings_len);\n");
 
     match evaluate_for_spec(&for_spec.op) {
         Ok(value) => {
             let mut temp_index = 0usize;
             let rendered = emit_static_for_value(&value, out, &mut temp_index);
+            out.push_str("  tn_binding_restore(tn_for_bindings, tn_for_bindings_len);\n");
             out.push_str(&format!("  return {rendered};\n"));
         }
         Err(StaticForEvalIssue::Runtime(message)) => {
             let escaped = c_string_literal(&message);
+            out.push_str("  tn_binding_restore(tn_for_bindings, tn_for_bindings_len);\n");
             out.push_str(&format!("  return tn_runtime_fail({escaped});\n"));
         }
         Err(StaticForEvalIssue::Unsupported(_)) => {
+            out.push_str("  tn_binding_restore(tn_for_bindings, tn_for_bindings_len);\n");
             out.push_str("  return tn_stub_abort(\"tn_runtime_for\");\n");
         }
     }
@@ -3484,6 +3784,9 @@ fn emit_runtime_try_case(
     out.push_str(&format!(
         "static TnVal tn_runtime_try_case_{index}(void) {{\n"
     ));
+    out.push_str("  TnBinding tn_try_bindings[TN_MAX_BINDINGS];\n");
+    out.push_str("  size_t tn_try_bindings_len = 0;\n");
+    out.push_str("  tn_binding_snapshot(tn_try_bindings, &tn_try_bindings_len);\n");
     out.push_str("  int tn_try_raised = 0;\n");
     out.push_str("  TnVal tn_try_error = tn_runtime_const_nil();\n");
     out.push_str("  TnVal tn_try_result = tn_runtime_const_nil();\n");
@@ -3655,6 +3958,7 @@ fn emit_runtime_try_case(
 
     out.push_str("  if (tn_try_raised != 0) {\n");
     out.push_str("    TnObj *err_obj = tn_get_obj(tn_try_error);\n");
+    out.push_str("    tn_binding_restore(tn_try_bindings, tn_try_bindings_len);\n");
     out.push_str("    if (err_obj != NULL && err_obj->kind == TN_OBJ_STRING) {\n");
     out.push_str("      return tn_runtime_fail(err_obj->as.text.text);\n");
     out.push_str("    }\n");
@@ -3664,6 +3968,7 @@ fn emit_runtime_try_case(
     out.push_str("    return tn_runtime_fail(\"exception raised\");\n");
     out.push_str("  }\n");
 
+    out.push_str("  tn_binding_restore(tn_try_bindings, tn_try_bindings_len);\n");
     out.push_str("  return tn_try_result;\n");
     out.push_str("}\n\n");
 
@@ -4024,7 +4329,10 @@ fn emit_compiled_closure_body(
         closure.params.len()
     ));
     out.push_str("  }\n\n");
-    out.push_str("  size_t tn_closure_root_frame = tn_runtime_root_frame_push();\n\n");
+    out.push_str("  size_t tn_closure_root_frame = tn_runtime_root_frame_push();\n");
+    out.push_str("  TnBinding tn_closure_bindings[TN_MAX_BINDINGS];\n");
+    out.push_str("  size_t tn_closure_bindings_len = 0;\n");
+    out.push_str("  tn_binding_snapshot(tn_closure_bindings, &tn_closure_bindings_len);\n\n");
 
     let mut params = BTreeMap::<String, usize>::new();
     for (position, name) in closure.params.iter().enumerate() {
@@ -4208,11 +4516,18 @@ fn emit_compiled_closure_body(
                 let value = pop_stack_value(&mut stack, "return value")?;
                 out.push_str(&format!("  tn_runtime_retain({value});\n"));
                 out.push_str("  tn_runtime_root_frame_pop(tn_closure_root_frame);\n");
+                out.push_str(
+                    "  tn_binding_restore(tn_closure_bindings, tn_closure_bindings_len);\n",
+                );
                 out.push_str(&format!("  return {value};\n"));
                 emitted_return = true;
                 break;
             }
             _ => {
+                out.push_str("  tn_runtime_root_frame_pop(tn_closure_root_frame);\n");
+                out.push_str(
+                    "  tn_binding_restore(tn_closure_bindings, tn_closure_bindings_len);\n",
+                );
                 out.push_str(
                     "  return tn_runtime_fail(\"unsupported closure operation in native runtime\");\n",
                 );
@@ -4226,8 +4541,11 @@ fn emit_compiled_closure_body(
         if let Some(value) = stack.pop() {
             out.push_str(&format!("  tn_runtime_retain({value});\n"));
             out.push_str("  tn_runtime_root_frame_pop(tn_closure_root_frame);\n");
+            out.push_str("  tn_binding_restore(tn_closure_bindings, tn_closure_bindings_len);\n");
             out.push_str(&format!("  return {value};\n"));
         } else {
+            out.push_str("  tn_runtime_root_frame_pop(tn_closure_root_frame);\n");
+            out.push_str("  tn_binding_restore(tn_closure_bindings, tn_closure_bindings_len);\n");
             out.push_str(
                 "  return tn_runtime_fail(\"anonymous function ended without return\");\n",
             );

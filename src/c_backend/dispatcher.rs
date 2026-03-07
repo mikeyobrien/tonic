@@ -24,6 +24,9 @@ pub(super) fn emit_dispatcher(
         .join(", ");
 
     out.push_str(&format!("static TnVal {dispatcher_symbol}({params}) {{\n"));
+    out.push_str("  TnBinding tn_dispatch_bindings[TN_MAX_BINDINGS];\n");
+    out.push_str("  size_t tn_dispatch_bindings_len = 0;\n");
+    out.push_str("  tn_binding_snapshot(tn_dispatch_bindings, &tn_dispatch_bindings_len);\n");
 
     for (clause_index, function_index) in group.clause_indices.iter().copied().enumerate() {
         let function = &mir.functions[function_index];
@@ -72,12 +75,13 @@ pub(super) fn emit_dispatcher(
 
         if clause_index + 1 == group.clause_indices.len() {
             out.push_str(&format!(
-                "  if ({full_cond}) {{ return {clause_symbol}({call_args}); }}\n"
+                "  if ({full_cond}) {{ TnVal tn_dispatch_result = {clause_symbol}({call_args}); tn_binding_restore(tn_dispatch_bindings, tn_dispatch_bindings_len); return tn_dispatch_result; }}\n"
             ));
+            out.push_str("  tn_binding_restore(tn_dispatch_bindings, tn_dispatch_bindings_len);\n");
             out.push_str("  return tn_runtime_error_no_matching_clause();\n");
         } else {
             out.push_str(&format!(
-                "  if ({full_cond}) {{ return {clause_symbol}({call_args}); }}\n"
+                "  if ({full_cond}) {{ TnVal tn_dispatch_result = {clause_symbol}({call_args}); tn_binding_restore(tn_dispatch_bindings, tn_dispatch_bindings_len); return tn_dispatch_result; }}\n"
             ));
         }
     }

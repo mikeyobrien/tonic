@@ -47,6 +47,9 @@ pub(super) fn emit_function(
         out.push_str(&format!("  TnVal {decls};\n"));
     }
     out.push_str("  size_t tn_function_root_frame = tn_runtime_root_frame_push();\n");
+    out.push_str("  TnBinding tn_function_bindings[TN_MAX_BINDINGS];\n");
+    out.push_str("  size_t tn_function_bindings_len = 0;\n");
+    out.push_str("  tn_binding_snapshot(tn_function_bindings, &tn_function_bindings_len);\n");
 
     for block in &function.blocks {
         out.push_str(&format!("  bb{}: ;\n", block.id));

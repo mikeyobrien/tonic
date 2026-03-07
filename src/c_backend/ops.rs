@@ -111,11 +111,7 @@ pub(super) fn emit_c_instructions(
                     *offset,
                     out,
                 )?;
-                // Named Tonic functions return with rc=1 from their terminator
-                // retain, so no extra retain is needed here; we balance with a
-                // register (+1) then release (-1) -> net rc=1 in outer frame.
-                // Builtin calls return rc=0 (no terminator), so we do need an
-                // explicit retain first to hold the value across the frame pop.
+                // Builtins return rc=0, named calls already return rc=1.
                 if matches!(callee, IrCallTarget::Builtin { .. }) {
                     out.push_str(&format!("  tn_runtime_retain(v{dest});\n"));
                 }
@@ -296,7 +292,18 @@ fn emit_c_call(
         IrCallTarget::Function { name } => {
             let key = (name.clone(), args.len());
             if let Some(symbol) = callable_symbols.get(&key) {
+                out.push_str(&format!(
+                    "  TnBinding tn_call_bindings_{dest}[TN_MAX_BINDINGS];\n"
+                ));
+                out.push_str(&format!("  size_t tn_call_bindings_len_{dest} = 0;\n"));
+                out.push_str(&format!("  tn_binding_snapshot(tn_call_bindings_{dest}, &tn_call_bindings_len_{dest});\n"));
+                out.push_str(&format!(
+                    "  tn_binding_restore(tn_call_bindings_{dest}, 0);\n"
+                ));
                 out.push_str(&format!("  v{dest} = {symbol}({rendered_args});\n"));
+                out.push_str(&format!(
+                    "  tn_binding_restore(tn_call_bindings_{dest}, tn_call_bindings_len_{dest});\n"
+                ));
                 return Ok(());
             }
 

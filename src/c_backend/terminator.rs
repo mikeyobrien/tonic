@@ -17,6 +17,7 @@ pub(super) fn emit_c_terminator_with_phi(
         crate::mir::MirTerminator::Return { value, .. } => {
             out.push_str(&format!("  tn_runtime_retain(v{value});\n"));
             out.push_str("  tn_runtime_root_frame_pop(tn_function_root_frame);\n");
+            out.push_str("  tn_binding_restore(tn_function_bindings, tn_function_bindings_len);\n");
             out.push_str(&format!("  return v{value};\n"));
         }
         crate::mir::MirTerminator::Jump { target, args } => {
