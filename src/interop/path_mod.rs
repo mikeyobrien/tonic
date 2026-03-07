@@ -107,7 +107,9 @@ fn host_path_expand(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
             .join(p)
     };
 
-    Ok(RuntimeValue::String(absolute.to_string_lossy().into_owned()))
+    Ok(RuntimeValue::String(
+        absolute.to_string_lossy().into_owned(),
+    ))
 }
 
 fn host_path_relative_to(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
@@ -126,6 +128,15 @@ fn host_path_relative_to(args: &[RuntimeValue]) -> Result<RuntimeValue, HostErro
         // Return original path if base is not a prefix
         Err(_) => Ok(RuntimeValue::String(path)),
     }
+}
+
+pub fn register_path_host_functions(registry: &HostRegistry) {
+    registry.register("path_join", host_path_join);
+    registry.register("path_dirname", host_path_dirname);
+    registry.register("path_basename", host_path_basename);
+    registry.register("path_extname", host_path_extname);
+    registry.register("path_expand", host_path_expand);
+    registry.register("path_relative_to", host_path_relative_to);
 }
 
 #[cfg(test)]
@@ -180,10 +191,7 @@ mod tests {
     #[test]
     fn path_relative_to_strips_base_prefix() {
         let result = HOST_REGISTRY
-            .call(
-                "path_relative_to",
-                &[s("/tmp/foo/bar.txt"), s("/tmp/foo")],
-            )
+            .call("path_relative_to", &[s("/tmp/foo/bar.txt"), s("/tmp/foo")])
             .expect("path_relative_to should succeed");
         assert_eq!(result, s("bar.txt"));
     }
@@ -191,10 +199,7 @@ mod tests {
     #[test]
     fn path_relative_to_returns_original_when_no_prefix() {
         let result = HOST_REGISTRY
-            .call(
-                "path_relative_to",
-                &[s("/tmp/foo/bar.txt"), s("/other")],
-            )
+            .call("path_relative_to", &[s("/tmp/foo/bar.txt"), s("/other")])
             .expect("path_relative_to should succeed when base is not a prefix");
         assert_eq!(result, s("/tmp/foo/bar.txt"));
     }
@@ -223,13 +228,4 @@ mod tests {
             "host error: Path.join expects exactly 2 arguments, found 1"
         );
     }
-}
-
-pub fn register_path_host_functions(registry: &HostRegistry) {
-    registry.register("path_join", host_path_join);
-    registry.register("path_dirname", host_path_dirname);
-    registry.register("path_basename", host_path_basename);
-    registry.register("path_extname", host_path_extname);
-    registry.register("path_expand", host_path_expand);
-    registry.register("path_relative_to", host_path_relative_to);
 }

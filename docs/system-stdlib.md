@@ -85,6 +85,10 @@ System.lock_release("/tmp/state/proposal.lock")
 
 Reads and returns the full contents of `path`.  Raises if the file cannot be read.
 
+**Support status:** interpreter + native compiled runtime
+
+**Regression coverage:** `tests/system_stdlib_http_input_smoke.rs`, `tests/runtime_llvm_system_stdlib_smoke.rs`
+
 **Error contract**
 
 | Condition | Error message |
@@ -103,6 +107,10 @@ content = System.read_text("/tmp/hello.txt")   # → "hello, world"
 ### `System.read_stdin() → String`
 
 Reads all bytes from stdin until EOF and returns them as a string.
+
+**Support status:** interpreter + native compiled runtime
+
+**Regression coverage:** `tests/system_stdlib_http_input_smoke.rs`, `tests/runtime_llvm_system_stdlib_smoke.rs`
 
 ```elixir
 input = System.read_stdin()

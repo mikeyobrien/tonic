@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 mod http_server;
+mod path_mod;
+mod string_mod;
 mod system;
 
 /// Host function signature: takes runtime values, returns result
@@ -131,6 +133,12 @@ impl HostRegistry {
 
         // System interop primitives for tonicctl and similar tooling.
         system::register_system_host_functions(self);
+
+        // String stdlib interop primitives for interpreter-backed String.* calls.
+        string_mod::register_string_host_functions(self);
+
+        // Path stdlib interop primitives for interpreter-backed Path.* calls.
+        path_mod::register_path_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);

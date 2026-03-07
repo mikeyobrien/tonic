@@ -79,7 +79,9 @@ fn host_string_replace(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError>
     let s = expect_string_arg("String.replace", args, 0)?;
     let pattern = expect_string_arg("String.replace", args, 1)?;
     let replacement = expect_string_arg("String.replace", args, 2)?;
-    Ok(RuntimeValue::String(s.replace(pattern.as_str(), &replacement)))
+    Ok(RuntimeValue::String(
+        s.replace(pattern.as_str(), &replacement),
+    ))
 }
 
 fn host_string_trim(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
@@ -212,7 +214,9 @@ fn host_string_pad_leading(args: &[RuntimeValue]) -> Result<RuntimeValue, HostEr
         ));
     }
     if padding.is_empty() {
-        return Err(HostError::new("String.pad_leading padding must not be empty"));
+        return Err(HostError::new(
+            "String.pad_leading padding must not be empty",
+        ));
     }
 
     let target = count as usize;
@@ -268,6 +272,27 @@ fn host_string_reverse(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError>
     Ok(RuntimeValue::String(s.chars().rev().collect()))
 }
 
+pub fn register_string_host_functions(registry: &HostRegistry) {
+    registry.register("str_split", host_string_split);
+    registry.register("str_replace", host_string_replace);
+    registry.register("str_trim", host_string_trim);
+    registry.register("str_trim_leading", host_string_trim_leading);
+    registry.register("str_trim_trailing", host_string_trim_trailing);
+    registry.register("str_starts_with", host_string_starts_with);
+    registry.register("str_ends_with", host_string_ends_with);
+    registry.register("str_contains", host_string_contains);
+    registry.register("str_upcase", host_string_upcase);
+    registry.register("str_downcase", host_string_downcase);
+    registry.register("str_length", host_string_length);
+    registry.register("str_at", host_string_at);
+    registry.register("str_slice", host_string_slice);
+    registry.register("str_to_integer", host_string_to_integer);
+    registry.register("str_to_float", host_string_to_float);
+    registry.register("str_pad_leading", host_string_pad_leading);
+    registry.register("str_pad_trailing", host_string_pad_trailing);
+    registry.register("str_reverse", host_string_reverse);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,10 +311,7 @@ mod tests {
         let result = HOST_REGISTRY
             .call("str_split", &[s("a,b,c"), s(",")])
             .expect("str_split should succeed");
-        assert_eq!(
-            result,
-            RuntimeValue::List(vec![s("a"), s("b"), s("c")])
-        );
+        assert_eq!(result, RuntimeValue::List(vec![s("a"), s("b"), s("c")]));
     }
 
     #[test]
@@ -462,26 +484,5 @@ mod tests {
 
     // Suppress unused import warning for single-module test registry
     #[allow(dead_code)]
-    fn _use_local_registry(r: &HostRegistry) {}
-}
-
-pub fn register_string_host_functions(registry: &HostRegistry) {
-    registry.register("str_split", host_string_split);
-    registry.register("str_replace", host_string_replace);
-    registry.register("str_trim", host_string_trim);
-    registry.register("str_trim_leading", host_string_trim_leading);
-    registry.register("str_trim_trailing", host_string_trim_trailing);
-    registry.register("str_starts_with", host_string_starts_with);
-    registry.register("str_ends_with", host_string_ends_with);
-    registry.register("str_contains", host_string_contains);
-    registry.register("str_upcase", host_string_upcase);
-    registry.register("str_downcase", host_string_downcase);
-    registry.register("str_length", host_string_length);
-    registry.register("str_at", host_string_at);
-    registry.register("str_slice", host_string_slice);
-    registry.register("str_to_integer", host_string_to_integer);
-    registry.register("str_to_float", host_string_to_float);
-    registry.register("str_pad_leading", host_string_pad_leading);
-    registry.register("str_pad_trailing", host_string_pad_trailing);
-    registry.register("str_reverse", host_string_reverse);
+    fn _use_local_registry(_r: &HostRegistry) {}
 }
