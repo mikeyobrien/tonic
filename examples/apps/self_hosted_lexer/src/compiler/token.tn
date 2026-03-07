@@ -1,10 +1,31 @@
 defmodule Compiler.Token do
-  def stub() do
+  def simple(kind, span_start, span_end) do
     %{
-      kind: :stub,
+      kind: kind,
       lexeme: "",
-      span_start: 0,
-      span_end: 0
+      span_start: span_start,
+      span_end: span_end
+    }
+  end
+
+  def with_lexeme(kind, lexeme, span_start, span_end) do
+    %{
+      kind: kind,
+      lexeme: lexeme,
+      span_start: span_start,
+      span_end: span_end
+    }
+  end
+
+  def eof(index) do
+    simple("EOF", index, index)
+  end
+
+  def error(message, span_start, span_end) do
+    %{
+      message: message,
+      span_start: span_start,
+      span_end: span_end
     }
   end
 end
