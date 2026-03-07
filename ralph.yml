@@ -32,6 +32,18 @@ core:
     - "Use existing project conventions and neighboring code as the default style guide."
     - "Confidence protocol: score decisions 0-100. >80 proceed autonomously; 50-80 proceed + document in .ralph/agent/decisions.md; <50 choose safe default + document."
 
+hooks:
+  enabled: true
+  defaults:
+    timeout_seconds: 30
+    max_output_bytes: 8192
+    suspend_mode: wait_for_resume
+  events:
+    post.loop.complete:
+      - name: pushover-complete
+        command: ["./scripts/hooks/pushover-loop-complete.sh"]
+        on_error: warn
+
 hats:
   planner:
     name: "📋 Planner"
