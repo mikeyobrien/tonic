@@ -864,6 +864,81 @@ fn host_sys_path_exists(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError
     Ok(RuntimeValue::Bool(Path::new(&path).exists()))
 }
 
+fn collect_relative_files_recursive(
+    root_path: &Path,
+    current_path: &Path,
+    files: &mut Vec<String>,
+) -> Result<(), HostError> {
+    let mut entries = std::fs::read_dir(current_path)
+        .map_err(|error| {
+            HostError::new(format!(
+                "sys_list_files_recursive failed for '{}': {error}",
+                root_path.display()
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            HostError::new(format!(
+                "sys_list_files_recursive failed for '{}': {error}",
+                root_path.display()
+            ))
+        })?;
+
+    entries.sort_by(|left, right| {
+        left.file_name()
+            .to_string_lossy()
+            .cmp(&right.file_name().to_string_lossy())
+    });
+
+    for entry in entries {
+        let entry_path = entry.path();
+        let file_type = entry.file_type().map_err(|error| {
+            HostError::new(format!(
+                "sys_list_files_recursive failed for '{}': {error}",
+                root_path.display()
+            ))
+        })?;
+
+        if file_type.is_dir() {
+            collect_relative_files_recursive(root_path, &entry_path, files)?;
+        } else if file_type.is_file() {
+            let relative_path = entry_path
+                .strip_prefix(root_path)
+                .map_err(|error| {
+                    HostError::new(format!(
+                        "sys_list_files_recursive failed for '{}': {error}",
+                        root_path.display()
+                    ))
+                })?
+                .to_string_lossy()
+                .replace('\\', "/");
+            files.push(relative_path);
+        }
+    }
+
+    Ok(())
+}
+
+fn host_sys_list_files_recursive(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("sys_list_files_recursive", args, 1)?;
+    let path = expect_string_arg("sys_list_files_recursive", args, 0)?;
+
+    if path.is_empty() {
+        return Err(HostError::new(
+            "sys_list_files_recursive path must not be empty",
+        ));
+    }
+
+    let root_path = Path::new(&path);
+    let mut files = Vec::new();
+
+    collect_relative_files_recursive(root_path, root_path, &mut files)?;
+
+    Ok(RuntimeValue::List(
+        files.into_iter().map(RuntimeValue::String).collect(),
+    ))
+}
+
 fn host_sys_ensure_dir(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("sys_ensure_dir", args, 1)?;
     let path = expect_string_arg("sys_ensure_dir", args, 0)?;
@@ -873,6 +948,48 @@ fn host_sys_ensure_dir(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError>
     })?;
 
     Ok(RuntimeValue::Bool(true))
+}
+
+fn remove_tree(path: &Path, display_path: &str) -> Result<bool, HostError> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(HostError::new(format!(
+                "sys_remove_tree failed for '{}': {error}",
+                display_path
+            )))
+        }
+    };
+
+    if metadata.file_type().is_dir() {
+        std::fs::remove_dir_all(path).map_err(|error| {
+            HostError::new(format!(
+                "sys_remove_tree failed for '{}': {error}",
+                display_path
+            ))
+        })?;
+    } else {
+        std::fs::remove_file(path).map_err(|error| {
+            HostError::new(format!(
+                "sys_remove_tree failed for '{}': {error}",
+                display_path
+            ))
+        })?;
+    }
+
+    Ok(true)
+}
+
+fn host_sys_remove_tree(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("sys_remove_tree", args, 1)?;
+    let path = expect_string_arg("sys_remove_tree", args, 0)?;
+
+    if path.is_empty() {
+        return Err(HostError::new("sys_remove_tree path must not be empty"));
+    }
+
+    Ok(RuntimeValue::Bool(remove_tree(Path::new(&path), &path)?))
 }
 
 fn ensure_parent_directory(function: &str, path: &Path) -> Result<(), HostError> {
@@ -1303,7 +1420,9 @@ pub(super) fn register_system_host_functions(registry: &HostRegistry) {
     registry.register("sys_retry_plan", host_sys_retry_plan);
     registry.register("sys_log", host_sys_log);
     registry.register("sys_path_exists", host_sys_path_exists);
+    registry.register("sys_list_files_recursive", host_sys_list_files_recursive);
     registry.register("sys_ensure_dir", host_sys_ensure_dir);
+    registry.register("sys_remove_tree", host_sys_remove_tree);
     registry.register("sys_write_text", host_sys_write_text);
     registry.register("sys_append_text", host_sys_append_text);
     registry.register("sys_write_text_atomic", host_sys_write_text_atomic);

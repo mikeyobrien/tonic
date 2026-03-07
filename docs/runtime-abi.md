@@ -98,7 +98,9 @@ The `HostRegistry` (see `src/interop.rs`) holds all registered host functions.  
 | Key | Arity | Returns |
 |-----|-------|---------|
 | `sys_path_exists` | 1 | `Bool` |
+| `sys_list_files_recursive` | 1 | `List[String]` — sorted relative paths; symlinks skipped (lstat); errors on missing/empty path |
 | `sys_ensure_dir` | 1 | `Bool` |
+| `sys_remove_tree` | 1 | `Bool` — `true` removed, `false` not found; symlinks removed as files (lstat); errors on empty path |
 | `sys_write_text` | 2 | `Bool` |
 | `sys_append_text` | 2 | `Bool` |
 | `sys_write_text_atomic` | 2 | `Bool` |

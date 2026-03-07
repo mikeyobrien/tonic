@@ -23,6 +23,7 @@ pub(super) fn emit_header(out: &mut String) {
     out.push_str("#include <stdarg.h>\n");
     out.push_str("#include <errno.h>\n");
     out.push_str("#include <limits.h>\n");
+    out.push_str("#include <dirent.h>\n");
     out.push_str("#include <sys/stat.h>\n");
     out.push_str("#include <sys/wait.h>\n");
     out.push_str("#include <unistd.h>\n");
@@ -1293,7 +1294,7 @@ static void tn_runtime_println(TnVal value) {
     out.push_str("}\n\n");
 
     out.push_str(
-        "// Globals for sys_argv
+        "typedef struct {\n  char **items;\n  size_t len;\n  size_t cap;\n} TnPathStringList;\n\nstatic int tn_path_string_compare(const void *left, const void *right) {\n  const char *const *left_item = (const char *const *)left;\n  const char *const *right_item = (const char *const *)right;\n  return strcmp(*left_item, *right_item);\n}\n\nstatic void tn_path_string_list_free(TnPathStringList *list) {\n  if (list == NULL) {\n    return;\n  }\n  for (size_t i = 0; i < list->len; i += 1) {\n    free(list->items[i]);\n  }\n  free(list->items);\n  list->items = NULL;\n  list->len = 0;\n  list->cap = 0;\n}\n\nstatic int tn_path_string_list_push(TnPathStringList *list, const char *value) {\n  if (list->len == list->cap) {\n    size_t next_cap = list->cap == 0 ? 8 : list->cap * 2;\n    char **next_items = (char **)realloc(list->items, next_cap * sizeof(char *));\n    if (next_items == NULL) {\n      return 0;\n    }\n    list->items = next_items;\n    list->cap = next_cap;\n  }\n\n  size_t value_len = strlen(value);\n  char *copy = (char *)malloc(value_len + 1);\n  if (copy == NULL) {\n    return 0;\n  }\n  memcpy(copy, value, value_len + 1);\n  list->items[list->len] = copy;\n  list->len += 1;\n  return 1;\n}\n\nstatic int tn_collect_relative_files_recursive(const char *root_path, const char *relative_path, TnPathStringList *files, char *error_message, size_t error_cap) {\n  char directory_path[PATH_MAX];\n  if (relative_path[0] == '\\0') {\n    if (snprintf(directory_path, sizeof(directory_path), \"%s\", root_path) >= (int)sizeof(directory_path)) {\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n  } else {\n    if (snprintf(directory_path, sizeof(directory_path), \"%s/%s\", root_path, relative_path) >= (int)sizeof(directory_path)) {\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n  }\n\n  DIR *directory = opendir(directory_path);\n  if (directory == NULL) {\n    snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': %s\", root_path, strerror(errno));\n    return 0;\n  }\n\n  TnPathStringList entry_names = {0};\n  struct dirent *entry = NULL;\n  while ((entry = readdir(directory)) != NULL) {\n    if (strcmp(entry->d_name, \".\") == 0 || strcmp(entry->d_name, \"..\") == 0) {\n      continue;\n    }\n    if (!tn_path_string_list_push(&entry_names, entry->d_name)) {\n      tn_path_string_list_free(&entry_names);\n      closedir(directory);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': out of memory\", root_path);\n      return 0;\n    }\n  }\n  closedir(directory);\n\n  qsort(entry_names.items, entry_names.len, sizeof(char *), tn_path_string_compare);\n\n  for (size_t i = 0; i < entry_names.len; i += 1) {\n    char child_relative[PATH_MAX];\n    if (relative_path[0] == '\\0') {\n      if (snprintf(child_relative, sizeof(child_relative), \"%s\", entry_names.items[i]) >= (int)sizeof(child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n        return 0;\n      }\n    } else {\n      if (snprintf(child_relative, sizeof(child_relative), \"%s/%s\", relative_path, entry_names.items[i]) >= (int)sizeof(child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n        return 0;\n      }\n    }\n\n    char child_path[PATH_MAX];\n    if (snprintf(child_path, sizeof(child_path), \"%s/%s\", root_path, child_relative) >= (int)sizeof(child_path)) {\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n\n    struct stat child_stat;\n    if (lstat(child_path, &child_stat) != 0) {\n      int stat_errno = errno;\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': %s\", root_path, strerror(stat_errno));\n      return 0;\n    }\n\n    if (S_ISDIR(child_stat.st_mode)) {\n      if (!tn_collect_relative_files_recursive(root_path, child_relative, files, error_message, error_cap)) {\n        tn_path_string_list_free(&entry_names);\n        return 0;\n      }\n    } else if (S_ISREG(child_stat.st_mode)) {\n      if (!tn_path_string_list_push(files, child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': out of memory\", root_path);\n        return 0;\n      }\n    }\n  }\n\n  tn_path_string_list_free(&entry_names);\n  return 1;\n}\n\nstatic int tn_remove_path_recursive(const char *path, char *error_message, size_t error_cap) {\n  struct stat path_stat;\n  if (lstat(path, &path_stat) != 0) {\n    if (errno == ENOENT) {\n      return 2;\n    }\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  if (!S_ISDIR(path_stat.st_mode)) {\n    if (unlink(path) != 0) {\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n      return 0;\n    }\n    return 1;\n  }\n\n  DIR *directory = opendir(path);\n  if (directory == NULL) {\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  TnPathStringList entry_names = {0};\n  struct dirent *entry = NULL;\n  while ((entry = readdir(directory)) != NULL) {\n    if (strcmp(entry->d_name, \".\") == 0 || strcmp(entry->d_name, \"..\") == 0) {\n      continue;\n    }\n    if (!tn_path_string_list_push(&entry_names, entry->d_name)) {\n      tn_path_string_list_free(&entry_names);\n      closedir(directory);\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': out of memory\", path);\n      return 0;\n    }\n  }\n  closedir(directory);\n\n  qsort(entry_names.items, entry_names.len, sizeof(char *), tn_path_string_compare);\n\n  for (size_t i = 0; i < entry_names.len; i += 1) {\n    char child_path[PATH_MAX];\n    if (snprintf(child_path, sizeof(child_path), \"%s/%s\", path, entry_names.items[i]) >= (int)sizeof(child_path)) {\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': path is too long\", path);\n      return 0;\n    }\n\n    int child_result = tn_remove_path_recursive(child_path, error_message, error_cap);\n    if (child_result == 0) {\n      tn_path_string_list_free(&entry_names);\n      return 0;\n    }\n  }\n\n  tn_path_string_list_free(&entry_names);\n\n  if (rmdir(path) != 0) {\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  return 1;\n}\n\n// Globals for sys_argv
 int tn_global_argc = 0;
 char **tn_global_argv = NULL;
 
@@ -1954,6 +1955,49 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     return tn_runtime_const_bool((TnVal)(exists != 0));
   }
 
+  if (strcmp(key, "sys_list_files_recursive") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_list_files_recursive expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_list_files_recursive expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *lfr_path = path_obj->as.text.text;
+    if (lfr_path[0] == '\0') {
+      return tn_runtime_fail("host error: sys_list_files_recursive path must not be empty");
+    }
+    if (strlen(lfr_path) >= PATH_MAX) {
+      return tn_runtime_fail("host error: sys_list_files_recursive path is too long");
+    }
+
+    char error_message[512] = {0};
+    TnPathStringList files = {0};
+    if (!tn_collect_relative_files_recursive(lfr_path, "", &files, error_message, sizeof(error_message))) {
+      tn_path_string_list_free(&files);
+      if (error_message[0] == '\0') {
+        return tn_runtime_failf("host error: sys_list_files_recursive failed for '%s'", lfr_path);
+      }
+      return tn_runtime_fail(error_message);
+    }
+
+    TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+    list_obj->as.list.len = files.len;
+    list_obj->as.list.items = files.len == 0 ? NULL : (TnVal *)calloc(files.len, sizeof(TnVal));
+    if (files.len > 0 && list_obj->as.list.items == NULL) {
+      tn_path_string_list_free(&files);
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    for (size_t i = 0; i < files.len; i += 1) {
+      list_obj->as.list.items[i] = tn_runtime_const_string((TnVal)(intptr_t)files.items[i]);
+      tn_runtime_retain(list_obj->as.list.items[i]);
+    }
+    tn_path_string_list_free(&files);
+    free(args);
+    return tn_heap_store(list_obj);
+  }
+
   if (strcmp(key, "sys_ensure_dir") == 0) {
     if (argc != 2) {
       return tn_runtime_failf("host error: sys_ensure_dir expects exactly 1 argument, found %zu", argc - 1);
@@ -1993,6 +2037,35 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
 
     free(args);
     return tn_runtime_const_bool((TnVal)1);
+  }
+
+  if (strcmp(key, "sys_remove_tree") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_remove_tree expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_remove_tree expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *path = path_obj->as.text.text;
+    if (path[0] == '\0') {
+      return tn_runtime_fail("host error: sys_remove_tree path must not be empty");
+    }
+    if (strlen(path) >= PATH_MAX) {
+      return tn_runtime_fail("host error: sys_remove_tree path is too long");
+    }
+
+    char error_message[512] = {0};
+    int remove_result = tn_remove_path_recursive(path, error_message, sizeof(error_message));
+    if (remove_result == 0) {
+      if (error_message[0] == '\0') {
+        return tn_runtime_failf("host error: sys_remove_tree failed for '%s'", path);
+      }
+      return tn_runtime_fail(error_message);
+    }
+
+    free(args);
+    return tn_runtime_const_bool((TnVal)(remove_result == 1));
   }
 
   if (strcmp(key, "sys_write_text") == 0) {

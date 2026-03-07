@@ -483,6 +483,80 @@ mod tests {
     }
 
     #[test]
+    fn host_registry_system_list_files_recursive_returns_sorted_relative_paths() {
+        let fixture_root = std::env::temp_dir().join(format!(
+            "tonic-list-files-recursive-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        let nested_dir = fixture_root.join("docs").join("guide");
+        std::fs::create_dir_all(&nested_dir).expect("fixture dirs should be created");
+        std::fs::write(fixture_root.join("z-style.css"), "root")
+            .expect("root fixture file should be writable");
+        std::fs::write(nested_dir.join("intro.css"), "nested")
+            .expect("nested fixture file should be writable");
+
+        let result = HOST_REGISTRY
+            .call(
+                "sys_list_files_recursive",
+                &[RuntimeValue::String(fixture_root.display().to_string())],
+            )
+            .expect("sys_list_files_recursive should succeed for existing directory");
+
+        assert_eq!(
+            result,
+            RuntimeValue::List(vec![
+                RuntimeValue::String("docs/guide/intro.css".to_string()),
+                RuntimeValue::String("z-style.css".to_string()),
+            ])
+        );
+
+        let _ = std::fs::remove_dir_all(&fixture_root);
+    }
+
+    #[test]
+    fn host_registry_system_remove_tree_removes_nested_tree_and_reports_missing() {
+        let fixture_root = std::env::temp_dir().join(format!(
+            "tonic-remove-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        let nested_dir = fixture_root.join("out with space").join("docs");
+        std::fs::create_dir_all(&nested_dir).expect("fixture dirs should be created");
+        std::fs::write(nested_dir.join("guide.css"), "nested")
+            .expect("nested fixture file should be writable");
+
+        let target_path = fixture_root.join("out with space");
+        let target_display = target_path.display().to_string();
+
+        let removed = HOST_REGISTRY
+            .call(
+                "sys_remove_tree",
+                &[RuntimeValue::String(target_display.clone())],
+            )
+            .expect("sys_remove_tree should succeed for existing directory");
+        assert_eq!(removed, RuntimeValue::Bool(true));
+        assert!(
+            !target_path.exists(),
+            "expected remove_tree target to be removed at {}",
+            target_path.display()
+        );
+
+        let missing = HOST_REGISTRY
+            .call("sys_remove_tree", &[RuntimeValue::String(target_display)])
+            .expect("sys_remove_tree should return false for missing path");
+        assert_eq!(missing, RuntimeValue::Bool(false));
+
+        let _ = std::fs::remove_dir_all(&fixture_root);
+    }
+
+    #[test]
     fn host_registry_system_append_text_and_write_text_atomic_persist_expected_content() {
         let fixture_root = std::env::temp_dir().join(format!(
             "tonic-system-persistence-{}-{}",

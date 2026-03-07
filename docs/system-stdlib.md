@@ -14,12 +14,47 @@ Returns `true` if `path` exists on the filesystem, `false` otherwise.
 System.path_exists("/tmp/my-file.txt")   # → true | false
 ```
 
+### `System.list_files_recursive(path: String) → [String]`
+
+Returns a deterministic, recursively discovered list of file paths under `path`, relative to `path` and sorted lexicographically. Directory entries are not included.
+
+**Symlink semantics:** symlinks are not followed. Symlinked files and symlinked directories are silently skipped in both interpreter and native compiled runtime. Only real (non-symlink) regular files appear in the result.
+
+**Error behavior:** raises when `path` does not exist, `path` is empty, or `path` is not a string.
+
+**Support status:** interpreter + native compiled runtime
+
+```elixir
+System.list_files_recursive("assets")
+# → ["docs/guide.css", "style.css"]
+# Note: symlinked entries inside "assets" are excluded.
+```
+
 ### `System.ensure_dir(path: String) → Bool`
 
 Creates `path` and all parent directories.  Returns `true` on success; raises on I/O failure.
 
 ```elixir
 System.ensure_dir("/tmp/out/nested")   # → true
+```
+
+### `System.remove_tree(path: String) → Bool`
+
+Removes `path` and its contents.
+
+- When `path` is a real directory: removes it recursively (all children, then the directory itself).
+- When `path` is a regular file: removes it directly.
+- When `path` is a symlink (to a file or directory): removes the symlink only; the symlink target is not affected.
+- Returns `true` when a target existed and was removed.
+- Returns `false` when `path` did not exist (idempotent).
+- Raises on I/O failure or when `path` is empty or not a string.
+
+Uses `lstat` semantics in both interpreter and native compiled runtime, so symlinks are never followed.
+
+**Support status:** interpreter + native compiled runtime
+
+```elixir
+System.remove_tree("/tmp/out")   # → true | false
 ```
 
 ### `System.write_text(path: String, content: String) → Bool`

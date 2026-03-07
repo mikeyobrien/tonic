@@ -72,7 +72,7 @@ loop landed.
 | Repeated successful `System.run/1` calls retaining `output` in matched maps | Yes | Supported | Supported | `tests/runtime_llvm_system_run_repeat.rs::compiled_runtime_retains_output_across_repeated_system_run_calls`; targeted guardrails in `tests/runtime_llvm_closures_bindings_interop.rs` and `tests/differential_backends.rs` | Fixed by restoring native pattern-binding snapshots at compiled scope boundaries so a prior `%{output: ...}` match cannot leak into later `System.run/1` result handling. |
 | Stress-repo text ingestion probes (`System.read_text/1`, `System.read_stdin/0`, single captured `System.run/1`) | Yes through the underlying stdlib contract | Supported | Supported | `test/verify/text_ingestion_probe.sh`; tonic stdlib tests above | No longer an honest blocker after the landed `System.read_text/1`, `System.read_stdin/0`, and repeated `System.run/1` fixes. |
 | Stress-repo output emission / static copy probes | Yes through `System.ensure_dir/1`, `System.write_text/2`, and `System.run/1` | Supported | Supported | `test/verify/output_emission_probe.sh`; `test/verify/static_copy_probe.sh` | No longer an upstream blocker. Static copy still leans on a shell `find` workaround for discovery, but the write/copy pipeline now succeeds in both modes. |
-| Directory listing / tree walking | No first-class stdlib contract | Workaround-only | Workaround-only | `src/sitegen_fs.tn`; `test/verify/fs_discovery_smoke.sh` | Still a product limitation. The current stress-harness failure is a stale expectation mismatch, not a tonic contract bug. |
+| Directory listing / tree walking | Yes — `System.list_files_recursive/1` and `System.remove_tree/1` | Supported | Supported | `tests/system_stdlib_http_input_smoke.rs`; `tests/runtime_llvm_system_stdlib_smoke.rs` | First-class stdlib contract now exists. Symlinks are skipped by both runtimes (lstat semantics). Shell workaround in the stress harness is superseded but left in place. |
 | Runtime text shape for parser-style list/bitstring matching | No stable parser-ready byte/list contract | Binary-only | Binary-only | `test/verify/text_shape_probe.sh`; `test/verify/bitstring_pattern_probe.sh` | Runtime text remains `is_binary: true` / `is_list: false`, so list-prefix and bitstring-byte-pattern parsers do not see parser-ready bytes today. |
 | Byte-oriented frontmatter parsing ergonomics | No stable contract | Research-grade | Research-grade | `test/verify/frontmatter_byte_probe.sh`; `tests/runtime_llvm_bindings_call_scope.rs` | Runtime text still does not enter the byte-list parser shape. The earlier compiled literal-byte abort was fixed repo-locally by isolating caller pattern bindings across named function calls, but that does not change the broader text-shape limitation. |
 
@@ -338,6 +338,59 @@ stub.
 - **Native compiled runtime:** supported for recursive literal-byte helper calls
   without leaking caller bindings into the callee
 
+---
+
+### 7. `System.list_files_recursive/1` and `System.remove_tree/1` — symlink parity and edge-case hardening
+
+**Original status:** parity bug confirmed in `tonic`  
+**Priority:** P1  
+**Current state:** fixed in interpreter and native compiled runtime
+
+#### Original reproduction
+
+A fixture tree containing a real file, a symlinked file, and a symlinked directory produced divergent output:
+
+- interpreter returned `["real/nested.txt", "root.txt"]` (symlinks silently skipped via `lstat`)
+- native compiled runtime returned `["linkdir/nested.txt", "linkfile.txt", "real/nested.txt", "root.txt"]` (symlinks followed via `stat`)
+
+The mismatch was a real parity bug for a new public filesystem traversal API.
+
+Documentation was also inconsistent: `docs/system-stdlib.md` and `docs/runtime-abi.md` advertised the APIs while `docs/app-authoring-gaps.md` still said directory listing had no first-class stdlib contract.
+
+#### Root cause confirmed in tonic
+
+- Interpreter `collect_relative_files_recursive` called `entry.file_type()` which uses `lstat` semantics, so `is_file()` and `is_dir()` return false for symlinks — symlinks were silently skipped.
+- Native C backend `tn_collect_relative_files_recursive` called `stat()` which follows symlinks, so `S_ISDIR` and `S_ISREG` returned true for the symlink target's type — symlinks were followed.
+- `tn_remove_path_recursive` already used `lstat` correctly; `remove_tree` behavior was already consistent.
+
+#### Landed fix
+
+- `src/c_backend/stubs.rs`: changed `stat(child_path, &child_stat)` to `lstat(child_path, &child_stat)` in `tn_collect_relative_files_recursive` so the native traversal uses the same file-type policy as the interpreter.
+- `src/c_backend/stubs.rs`: added empty-path guard for `sys_list_files_recursive` in the native dispatch, matching the interpreter and the existing `sys_remove_tree` guard.
+- `src/interop/system.rs`: added empty-path guard to `host_sys_list_files_recursive`.
+- `tests/system_stdlib_http_input_smoke.rs`: added symlink-parity, missing-path, type-error, empty-path, and remove-tree-symlink regressions for the interpreter.
+- `tests/runtime_llvm_system_stdlib_smoke.rs`: added the same set of regressions for the native compiled runtime.
+- `docs/system-stdlib.md`, `docs/runtime-abi.md`, `docs/app-authoring-gaps.md`: reconciled so all three documents agree on the API surface and symlink semantics.
+
+#### Chosen semantics
+
+**`System.list_files_recursive/1`:**
+- Symlinks are **skipped** (not followed) in both interpreter and native runtime.
+- Only real (non-symlink) regular files appear in results.
+- Missing path raises; empty path raises; non-string argument raises.
+
+**`System.remove_tree/1`:**
+- Uses `lstat` in both runtimes.
+- Symlinked files and symlinked directories are removed as symlinks (target not affected).
+- Missing path returns `false` (idempotent); empty path raises; non-string argument raises.
+
+#### Current support statement
+
+- **Interpreter:** supported with documented symlink semantics
+- **Native compiled runtime:** supported with matching symlink semantics
+
+---
+
 ## Remaining app-authoring limitations and reclassifications
 
 These are still worth tracking, but they are not the same class of issue as the
@@ -509,12 +562,15 @@ Confirmed, repo-local fixes landed in this loop:
 6. Compiled named function calls now isolate caller pattern bindings so
    literal-byte helper recursion no longer aborts with
    `tn_runtime_error_no_matching_clause`.
+7. `System.list_files_recursive/1` and `System.remove_tree/1` symlink parity:
+   native C backend now uses `lstat` instead of `stat` for traversal, matching
+   the interpreter's skip-symlinks behavior. Edge-case regressions added for
+   symlinks, missing paths, type errors, and empty paths in both runtimes.
+   Docs reconciled across `system-stdlib.md`, `runtime-abi.md`, and
+   `app-authoring-gaps.md`.
 
 Still-real application-authoring limitations that remain outside this fix loop:
 
-- first-class filesystem traversal APIs are still thin, and the current stress
-  `fs_discovery_smoke.sh` failure is a stale harness expectation rather than a
-  fresh tonic regression
 - runtime text is still binary rather than parser-ready byte/list data for
   frontmatter-style parsers
 - byte-oriented text/frontmatter processing is still awkward for real apps even
