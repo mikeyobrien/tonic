@@ -53,28 +53,12 @@ pub(crate) struct RegistryDep {
 
 pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("System", OPTIONAL_STDLIB_SYSTEM_SOURCE),
-    ("Enum", OPTIONAL_STDLIB_ENUM_SOURCE),
     ("String", OPTIONAL_STDLIB_STRING_SOURCE),
-    ("List", OPTIONAL_STDLIB_LIST_SOURCE),
-    ("Map", OPTIONAL_STDLIB_MAP_SOURCE),
-    ("IO", OPTIONAL_STDLIB_IO_SOURCE),
     ("Path", OPTIONAL_STDLIB_PATH_SOURCE),
 ];
 
-const OPTIONAL_STDLIB_ENUM_SOURCE: &str =
-    "defmodule Enum do\n  def identity() do\n    1\n  end\n\n  def count(list) do\n    host_call(:enum_count, list)\n  end\n\n  def sum(list) do\n    host_call(:enum_sum, list)\n  end\n\n  def join(list, sep) do\n    host_call(:enum_join, list, sep)\n  end\n\n  def sort(list) do\n    host_call(:enum_sort, list)\n  end\n\n  def reverse(list) do\n    host_call(:enum_reverse, list)\n  end\n\n  def take(list, n) do\n    host_call(:enum_take, list, n)\n  end\n\n  def drop(list, n) do\n    host_call(:enum_drop, list, n)\n  end\n\n  def chunk_every(list, n) do\n    host_call(:enum_chunk_every, list, n)\n  end\n\n  def unique(list) do\n    host_call(:enum_unique, list)\n  end\n\n  def into(list, collectable) do\n    host_call(:enum_into, list, collectable)\n  end\nend\n";
-
 const OPTIONAL_STDLIB_STRING_SOURCE: &str =
     "defmodule String do\n  def split(str, delimiter) do\n    host_call(:str_split, str, delimiter)\n  end\n\n  def replace(str, pattern, replacement) do\n    host_call(:str_replace, str, pattern, replacement)\n  end\n\n  def trim(str) do\n    host_call(:str_trim, str)\n  end\n\n  def trim_leading(str) do\n    host_call(:str_trim_leading, str)\n  end\n\n  def trim_trailing(str) do\n    host_call(:str_trim_trailing, str)\n  end\n\n  def starts_with(str, prefix) do\n    host_call(:str_starts_with, str, prefix)\n  end\n\n  def ends_with(str, suffix) do\n    host_call(:str_ends_with, str, suffix)\n  end\n\n  def contains(str, substr) do\n    host_call(:str_contains, str, substr)\n  end\n\n  def upcase(str) do\n    host_call(:str_upcase, str)\n  end\n\n  def downcase(str) do\n    host_call(:str_downcase, str)\n  end\n\n  def length(str) do\n    host_call(:str_length, str)\n  end\n\n  def at(str, index) do\n    host_call(:str_at, str, index)\n  end\n\n  def slice(str, start, len) do\n    host_call(:str_slice, str, start, len)\n  end\n\n  def to_integer(str) do\n    host_call(:str_to_integer, str)\n  end\n\n  def to_float(str) do\n    host_call(:str_to_float, str)\n  end\n\n  def pad_leading(str, count, padding) do\n    host_call(:str_pad_leading, str, count, padding)\n  end\n\n  def pad_trailing(str, count, padding) do\n    host_call(:str_pad_trailing, str, count, padding)\n  end\n\n  def reverse(str) do\n    host_call(:str_reverse, str)\n  end\nend\n";
-
-const OPTIONAL_STDLIB_LIST_SOURCE: &str =
-    "defmodule List do\n  def first(list) do\n    host_call(:list_first, list)\n  end\n\n  def last(list) do\n    host_call(:list_last, list)\n  end\n\n  def flatten(list) do\n    host_call(:list_flatten, list)\n  end\n\n  def zip(a, b) do\n    host_call(:list_zip, a, b)\n  end\n\n  def unzip(list) do\n    host_call(:list_unzip, list)\n  end\n\n  def wrap(value) do\n    host_call(:list_wrap, value)\n  end\nend\n";
-
-const OPTIONAL_STDLIB_MAP_SOURCE: &str =
-    "defmodule Map do\n  def keys(map) do\n    host_call(:map_keys, map)\n  end\n\n  def values(map) do\n    host_call(:map_values, map)\n  end\n\n  def merge(a, b) do\n    host_call(:map_merge, a, b)\n  end\n\n  def drop(map, keys) do\n    host_call(:map_drop, map, keys)\n  end\n\n  def take(map, keys) do\n    host_call(:map_take, map, keys)\n  end\n\n  def has_key?(map, key) do\n    host_call(:map_has_key, map, key)\n  end\n\n  def get(map, key, default) do\n    host_call(:map_get, map, key, default)\n  end\n\n  def put(map, key, value) do\n    host_call(:map_put, map, key, value)\n  end\n\n  def delete(map, key) do\n    host_call(:map_delete, map, key)\n  end\nend\n";
-
-const OPTIONAL_STDLIB_IO_SOURCE: &str =
-    "defmodule IO do\n  def puts(str) do\n    host_call(:io_puts, str)\n  end\n\n  def inspect(value) do\n    host_call(:io_inspect, value)\n  end\n\n  def gets(prompt) do\n    host_call(:io_gets, prompt)\n  end\n\n  def ansi_red(str) do\n    host_call(:io_ansi_red, str)\n  end\n\n  def ansi_green(str) do\n    host_call(:io_ansi_green, str)\n  end\n\n  def ansi_yellow(str) do\n    host_call(:io_ansi_yellow, str)\n  end\n\n  def ansi_blue(str) do\n    host_call(:io_ansi_blue, str)\n  end\n\n  def ansi_reset() do\n    host_call(:io_ansi_reset)\n  end\nend\n";
 
 const OPTIONAL_STDLIB_PATH_SOURCE: &str =
     "defmodule Path do\n  def join(a, b) do\n    host_call(:path_join, a, b)\n  end\n\n  def dirname(path) do\n    host_call(:path_dirname, path)\n  end\n\n  def basename(path) do\n    host_call(:path_basename, path)\n  end\n\n  def extname(path) do\n    host_call(:path_extname, path)\n  end\n\n  def expand(path) do\n    host_call(:path_expand, path)\n  end\n\n  def relative_to(path, base) do\n    host_call(:path_relative_to, path, base)\n  end\nend\n";
@@ -130,12 +114,8 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
     }
 
     let stdlib_modules: &[(&str, &str)] = &[
-        ("Enum", OPTIONAL_STDLIB_ENUM_SOURCE),
         ("System", OPTIONAL_STDLIB_SYSTEM_SOURCE),
         ("String", OPTIONAL_STDLIB_STRING_SOURCE),
-        ("List", OPTIONAL_STDLIB_LIST_SOURCE),
-        ("Map", OPTIONAL_STDLIB_MAP_SOURCE),
-        ("IO", OPTIONAL_STDLIB_IO_SOURCE),
         ("Path", OPTIONAL_STDLIB_PATH_SOURCE),
     ];
 
@@ -230,7 +210,7 @@ struct ProjectSourceAnalysis {
     referenced_modules: Vec<String>,
 }
 
-const STDLIB_MODULE_NAMES: &[&str] = &["Enum", "System", "String", "List", "Map", "IO", "Path"];
+const STDLIB_MODULE_NAMES: &[&str] = &["System", "String", "Path"];
 
 fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {
     let Some(ast) = parse_project_ast(source) else {

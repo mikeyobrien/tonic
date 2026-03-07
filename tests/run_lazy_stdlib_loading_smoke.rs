@@ -37,23 +37,21 @@ fn run_trace_skips_optional_stdlib_modules_when_unreferenced() {
 }
 
 #[test]
-fn run_trace_lazy_loads_optional_stdlib_module_when_referenced() {
+fn run_trace_does_not_lazy_load_enum_after_deadvertising() {
     let fixture_root = create_project_fixture(
-        "run-lazy-stdlib-referenced",
-        "defmodule Demo do\n  def run() do\n    Enum.identity()\n  end\nend\n",
+        "run-lazy-enum-stdlib-deadvertised",
+        "defmodule Demo do\n  def run() do\n    Enum.count([1, 2, 3])\n  end\nend\n",
     );
 
     let output = run_with_module_trace(&fixture_root);
 
     assert!(
-        output.status.success(),
-        "expected successful run for stdlib-referenced fixture, got status {:?} and stderr: {}",
+        !output.status.success(),
+        "expected Enum fixture to fail after de-advertising, got status {:?}, stdout: {}, stderr: {}",
         output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert_eq!(stdout, "1\n");
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
@@ -61,8 +59,12 @@ fn run_trace_lazy_loads_optional_stdlib_module_when_referenced() {
         "expected module-load trace to include project entry module, got: {stderr:?}"
     );
     assert!(
-        stderr.contains("module-load stdlib:Enum"),
-        "expected module-load trace to include lazy-loaded Enum stdlib module, got: {stderr:?}"
+        !stderr.contains("module-load stdlib:Enum"),
+        "expected Enum stdlib module to stay de-advertised, got: {stderr:?}"
+    );
+    assert!(
+        stderr.contains("undefined symbol 'Enum.count'"),
+        "expected undefined-symbol failure after removing Enum injection, got: {stderr:?}"
     );
 }
 
@@ -141,6 +143,90 @@ fn run_trace_lazy_loads_path_stdlib_module_when_referenced() {
     assert!(
         stderr.contains("module-load stdlib:Path"),
         "expected module-load trace to include lazy-loaded Path stdlib module, got: {stderr:?}"
+    );
+}
+
+#[test]
+fn run_trace_does_not_lazy_load_list_after_deadvertising() {
+    let fixture_root = create_project_fixture(
+        "run-lazy-list-stdlib-deadvertised",
+        "defmodule Demo do\n  def run() do\n    List.first([1, 2, 3])\n  end\nend\n",
+    );
+
+    let output = run_with_module_trace(&fixture_root);
+
+    assert!(
+        !output.status.success(),
+        "expected List fixture to fail after de-advertising, got status {:?}, stdout: {}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("module-load stdlib:List"),
+        "expected List stdlib module to stay de-advertised, got: {stderr:?}"
+    );
+    assert!(
+        stderr.contains("undefined symbol 'List.first'"),
+        "expected undefined-symbol failure after removing List injection, got: {stderr:?}"
+    );
+}
+
+#[test]
+fn run_trace_does_not_lazy_load_io_after_deadvertising() {
+    let fixture_root = create_project_fixture(
+        "run-lazy-io-stdlib-deadvertised",
+        "defmodule Demo do\n  def run() do\n    IO.inspect(123)\n  end\nend\n",
+    );
+
+    let output = run_with_module_trace(&fixture_root);
+
+    assert!(
+        !output.status.success(),
+        "expected IO fixture to fail after de-advertising, got status {:?}, stdout: {}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("module-load stdlib:IO"),
+        "expected IO stdlib module to stay de-advertised, got: {stderr:?}"
+    );
+    assert!(
+        stderr.contains("undefined symbol 'IO.inspect'"),
+        "expected undefined-symbol failure after removing IO injection, got: {stderr:?}"
+    );
+}
+
+#[test]
+fn run_trace_does_not_lazy_load_map_after_deadvertising() {
+    let fixture_root = create_project_fixture(
+        "run-lazy-map-stdlib-deadvertised",
+        "defmodule Demo do\n  def run() do\n    Map.keys(%{a: 1})\n  end\nend\n",
+    );
+
+    let output = run_with_module_trace(&fixture_root);
+
+    assert!(
+        !output.status.success(),
+        "expected Map fixture to fail after de-advertising, got status {:?}, stdout: {}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("module-load stdlib:Map"),
+        "expected Map stdlib module to stay de-advertised, got: {stderr:?}"
+    );
+    assert!(
+        stderr.contains("undefined symbol 'Map.keys'"),
+        "expected undefined-symbol failure after removing Map injection, got: {stderr:?}"
     );
 }
 

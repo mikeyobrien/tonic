@@ -67,8 +67,8 @@ A stdlib surface belongs in the Tonic Core Stdlib only if all of the following a
 If any of those are missing, the surface may be:
 
 - present in source,
-- injected by `manifest.rs`, or
-- experimentally usable,
+- experimentally usable, or
+- parked as future work in dormant host modules,
 
 but it is **not yet part of the supported core profile**.
 
@@ -78,8 +78,7 @@ but it is **not yet part of the supported core profile**.
 |---|---|
 | **Core-supported** | Workload-backed, interpreter + native supported, documented, and regression-covered |
 | **Available but secondary** | End-to-end working today, but not currently central to the main app-authoring workload |
-| **Advertised ahead of support** | Exposed by stdlib injection or docs, but not yet honest to treat as supported |
-| **Deferred** | Not currently part of the supported optional stdlib surface or not yet justified by workload |
+| **Deferred** | Not currently part of the supported optional stdlib surface, even if dormant implementation work exists in-tree |
 
 ## Current profile baseline
 
@@ -151,27 +150,33 @@ Current stance:
 - `Path` is not yet the reason to define the core profile
 - future workloads may promote it
 
-### 3. Advertised ahead of support
+At the manifest-injection level, the honest optional stdlib surface is now exactly:
 
-These modules are currently injected by `src/manifest.rs` but should **not** be treated as part of the supported core stdlib profile:
+- `System`
+- `String`
+- `Path`
+
+### 3. Explicitly deferred
+
+These modules are **not** currently injected by `src/manifest.rs` and should not be treated as part of the supported core stdlib profile:
 
 - `Enum`
 - `List`
 - `Map`
 - `IO`
 
-Current status from the audit:
+Current status after the closure slice:
 
-| Module | Current status | Why it is not in the core profile |
+| Module | Current status | Why it remains deferred |
 |---|---|---|
-| `Enum` | broken in project mode at runtime | host functions are not wired end to end |
-| `List` | broken in project mode at runtime | host functions are not wired end to end |
-| `IO` | broken in project mode at runtime | host functions are not wired end to end |
-| `Map` | broken before runtime in injected source | injected stdlib source is not even parse-safe today |
+| `Enum` | de-advertised from lazy injection | interpreter host helpers exist, but end-to-end registration and native dispatch are still missing |
+| `List` | de-advertised from lazy injection | interpreter host helpers exist, but end-to-end registration and native dispatch are still missing |
+| `IO` | de-advertised from lazy injection | interpreter host helpers exist, but end-to-end registration and native dispatch are still missing |
+| `Map` | de-advertised from lazy injection | injected source was parse-hostile and native/interop parity is still incomplete |
 
-Policy consequence: these modules may exist in `manifest.rs`, but they should be treated as **pre-profile / not yet supported** until interpreter + native support and regression coverage exist.
+Policy consequence: these modules remain future-work candidates only. They should be reintroduced to the optional stdlib surface only after interpreter + native support and regression coverage exist.
 
-### 4. Explicitly deferred
+### 4. Other deferred modules
 
 These are reasonable future candidates, but they are not part of the current Tonic Core Stdlib profile:
 
@@ -275,10 +280,10 @@ The profile goal is honest capability, not naming cosplay.
 | `String` workload subset | Core-supported | real sitegen demand + interpreter/native proof |
 | `System` workload subset | Core-supported | real sitegen demand + interpreter/native proof |
 | `Path` | Available but secondary | working today, but not central to current workload |
-| `Enum` | Advertised ahead of support | injected but missing end-to-end host support |
-| `List` | Advertised ahead of support | injected but missing end-to-end host support |
-| `IO` | Advertised ahead of support | injected but missing end-to-end host support |
-| `Map` | Advertised ahead of support | injected source still not parse-safe |
+| `Enum` | Deferred | de-advertised from lazy injection until interpreter/native parity exists |
+| `List` | Deferred | de-advertised from lazy injection until interpreter/native parity exists |
+| `IO` | Deferred | de-advertised from lazy injection until interpreter/native parity exists |
+| `Map` | Deferred | de-advertised from lazy injection after parse-hostile injected source audit |
 | `URI` / `Keyword` / `Integer` / `Float` / `Tuple` / `OptionParser` | Deferred | not current optional-stdlib reality and not yet workload-driven |
 
 ## What this profile means for future work
@@ -286,7 +291,7 @@ The profile goal is honest capability, not naming cosplay.
 Near-term stdlib work should follow this order:
 
 1. keep docs honest about the current profile boundary
-2. stop treating injected-but-broken modules as supported
+2. keep `Enum`, `List`, `IO`, and `Map` de-advertised until parity work is real
 3. define the text/binary/parser contract explicitly
 4. add new stdlib surface only when there is workload demand plus parity evidence
 
@@ -298,7 +303,7 @@ The current honest Tonic Core Stdlib profile is:
 
 - **Core-supported:** `String` and `System`, using the workload-proven subsets
 - **Available but secondary:** `Path`
-- **Not profile-ready despite injection:** `Enum`, `List`, `IO`, `Map`
+- **Deferred:** `Enum`, `List`, `IO`, and `Map` until real interpreter/native parity exists
 - **Deferred:** broader Elixir-shaped utility modules until workload and parity justify them
 
 That is a smaller claim than “Tonic has an Elixir-like stdlib,” but it is the right one. It gives app authors a clearer answer about what they can rely on today, and it sets a better bar for every stdlib surface added next.

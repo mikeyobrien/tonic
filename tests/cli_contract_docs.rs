@@ -211,7 +211,7 @@ fn docs_generates_stdlib_subdirectory() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // stdlib subdir should exist with at least System and Enum
+    // stdlib subdir should exist with the currently supported injected modules.
     let stdlib_dir = out_dir.join("stdlib");
     assert!(
         stdlib_dir.exists(),
