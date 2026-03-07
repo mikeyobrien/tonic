@@ -117,6 +117,16 @@ fn compiled_runtime_supports_string_stdlib_frontmatter_helper_set_on_literals() 
             "true\n",
         ),
         (
+            "to-charlist-ascii",
+            "defmodule Demo do\n  def run() do\n    String.to_charlist(\"tonic\")\n  end\nend\n",
+            "[116, 111, 110, 105, 99]\n",
+        ),
+        (
+            "to-charlist-unicode",
+            "defmodule Demo do\n  def run() do\n    String.to_charlist(\"hé🙂\")\n  end\nend\n",
+            "[104, 233, 128578]\n",
+        ),
+        (
             "slice",
             "defmodule Demo do\n  def run() do\n    String.slice(\"hello\", 1, 3)\n  end\nend\n",
             "\"ell\"\n",

@@ -141,6 +141,16 @@ fn host_string_length(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> 
     Ok(RuntimeValue::Int(s.chars().count() as i64))
 }
 
+fn host_string_to_charlist(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("String.to_charlist", args, 1)?;
+    let s = expect_string_arg("String.to_charlist", args, 0)?;
+    Ok(RuntimeValue::List(
+        s.chars()
+            .map(|ch| RuntimeValue::Int(i64::from(u32::from(ch))))
+            .collect(),
+    ))
+}
+
 fn host_string_at(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("String.at", args, 2)?;
     let s = expect_string_arg("String.at", args, 0)?;
@@ -284,6 +294,7 @@ pub fn register_string_host_functions(registry: &HostRegistry) {
     registry.register("str_upcase", host_string_upcase);
     registry.register("str_downcase", host_string_downcase);
     registry.register("str_length", host_string_length);
+    registry.register("str_to_charlist", host_string_to_charlist);
     registry.register("str_at", host_string_at);
     registry.register("str_slice", host_string_slice);
     registry.register("str_to_integer", host_string_to_integer);
@@ -397,6 +408,33 @@ mod tests {
             .call("str_length", &[s("hello")])
             .expect("str_length should succeed");
         assert_eq!(result, i(5));
+    }
+
+    #[test]
+    fn str_to_charlist_returns_empty_list_for_empty_string() {
+        let result = HOST_REGISTRY
+            .call("str_to_charlist", &[s("")])
+            .expect("str_to_charlist should succeed");
+        assert_eq!(result, RuntimeValue::List(vec![]));
+    }
+
+    #[test]
+    fn str_to_charlist_returns_ascii_codepoints() {
+        let result = HOST_REGISTRY
+            .call("str_to_charlist", &[s("tonic")])
+            .expect("str_to_charlist should succeed");
+        assert_eq!(
+            result,
+            RuntimeValue::List(vec![i(116), i(111), i(110), i(105), i(99)])
+        );
+    }
+
+    #[test]
+    fn str_to_charlist_returns_unicode_codepoints_not_utf8_bytes() {
+        let result = HOST_REGISTRY
+            .call("str_to_charlist", &[s("hé🙂")])
+            .expect("str_to_charlist should succeed");
+        assert_eq!(result, RuntimeValue::List(vec![i(104), i(233), i(128578)]));
     }
 
     #[test]
