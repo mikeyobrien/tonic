@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,95 +148,154 @@ impl Token {
         self.span
     }
 
+    pub fn dump_record(&self) -> DumpToken<'_> {
+        DumpToken {
+            kind: self.kind.dump_name(),
+            lexeme: self.lexeme(),
+            span_start: self.span.start(),
+            span_end: self.span.end(),
+        }
+    }
+
     pub fn dump_label(&self) -> String {
         match self.kind {
-            TokenKind::Defmodule => format!("DEFMODULE({})", self.lexeme),
-            TokenKind::Def => format!("DEF({})", self.lexeme),
-            TokenKind::Defp => format!("DEFP({})", self.lexeme),
-            TokenKind::Do => format!("DO({})", self.lexeme),
-            TokenKind::End => format!("END({})", self.lexeme),
-            TokenKind::If => format!("IF({})", self.lexeme),
-            TokenKind::Unless => format!("UNLESS({})", self.lexeme),
-            TokenKind::Case => format!("CASE({})", self.lexeme),
-            TokenKind::Cond => format!("COND({})", self.lexeme),
-            TokenKind::With => format!("WITH({})", self.lexeme),
-            TokenKind::For => format!("FOR({})", self.lexeme),
-            TokenKind::Fn => format!("FN({})", self.lexeme),
-            TokenKind::Else => format!("ELSE({})", self.lexeme),
-            TokenKind::Try => format!("TRY({})", self.lexeme),
-            TokenKind::Rescue => format!("RESCUE({})", self.lexeme),
-            TokenKind::Catch => format!("CATCH({})", self.lexeme),
-            TokenKind::After => format!("AFTER({})", self.lexeme),
-            TokenKind::Raise => format!("RAISE({})", self.lexeme),
-            TokenKind::True => format!("TRUE({})", self.lexeme),
-            TokenKind::False => format!("FALSE({})", self.lexeme),
-            TokenKind::Nil => format!("NIL({})", self.lexeme),
-            TokenKind::And => format!("AND({})", self.lexeme),
-            TokenKind::Or => format!("OR({})", self.lexeme),
-            TokenKind::Not => format!("NOT({})", self.lexeme),
-            TokenKind::In => format!("IN({})", self.lexeme),
-            TokenKind::When => format!("WHEN({})", self.lexeme),
-            TokenKind::Ident => format!("IDENT({})", self.lexeme),
-            TokenKind::Atom => format!("ATOM({})", self.lexeme),
-            TokenKind::Integer => format!("INT({})", self.lexeme),
-            TokenKind::Float => format!("FLOAT({})", self.lexeme),
-            TokenKind::String => format!("STRING({})", self.lexeme),
-            TokenKind::StringStart => "STRING_START".to_string(),
-            TokenKind::StringPart => format!("STRING_PART({})", self.lexeme),
-            TokenKind::InterpolationStart => "INTERPOLATION_START".to_string(),
-            TokenKind::InterpolationEnd => "INTERPOLATION_END".to_string(),
-            TokenKind::StringEnd => "STRING_END".to_string(),
-            TokenKind::LParen => "LPAREN".to_string(),
-            TokenKind::RParen => "RPAREN".to_string(),
-            TokenKind::LBrace => "LBRACE".to_string(),
-            TokenKind::RBrace => "RBRACE".to_string(),
-            TokenKind::LBracket => "LBRACKET".to_string(),
-            TokenKind::RBracket => "RBRACKET".to_string(),
-            TokenKind::Percent => "PERCENT".to_string(),
-            TokenKind::At => "AT".to_string(),
-            TokenKind::Colon => "COLON".to_string(),
-            TokenKind::Comma => "COMMA".to_string(),
-            TokenKind::Semicolon => "SEMICOLON".to_string(),
-            TokenKind::Dot => "DOT".to_string(),
-            TokenKind::DotDot => "DOT_DOT".to_string(),
-            TokenKind::Caret => "CARET".to_string(),
-            TokenKind::Plus => "PLUS".to_string(),
-            TokenKind::PlusPlus => "PLUS_PLUS".to_string(),
-            TokenKind::Minus => "MINUS".to_string(),
-            TokenKind::MinusMinus => "MINUS_MINUS".to_string(),
-            TokenKind::Star => "STAR".to_string(),
-            TokenKind::Slash => "SLASH".to_string(),
-            TokenKind::MatchEq => "MATCH_EQ".to_string(),
-            TokenKind::EqEq => "EQ_EQ".to_string(),
-            TokenKind::BangEq => "BANG_EQ".to_string(),
-            TokenKind::Bang => "BANG".to_string(),
-            TokenKind::Lt => "LT".to_string(),
-            TokenKind::LtEq => "LT_EQ".to_string(),
-            TokenKind::Gt => "GT".to_string(),
-            TokenKind::GtEq => "GT_EQ".to_string(),
-            TokenKind::LessGreater => "LESS_GREATER".to_string(),
-            TokenKind::Question => "QUESTION".to_string(),
-            TokenKind::Pipe => "PIPE".to_string(),
-            TokenKind::PipeGt => "PIPE_GT".to_string(),
-            TokenKind::FatArrow => "FAT_ARROW".to_string(),
-            TokenKind::Arrow => "ARROW".to_string(),
-            TokenKind::LeftArrow => "LEFT_ARROW".to_string(),
-            TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH".to_string(),
-            TokenKind::Ampersand => "AMPERSAND".to_string(),
-            TokenKind::AndAnd => "AND_AND".to_string(),
-            TokenKind::AmpAmpAmp => "AMP_AMP_AMP".to_string(),
-            TokenKind::OrOr => "OR_OR".to_string(),
-            TokenKind::PipePipePipe => "PIPE_PIPE_PIPE".to_string(),
-            TokenKind::CaretCaretCaret => "CARET_CARET_CARET".to_string(),
-            TokenKind::TildeTildeTilde => "TILDE_TILDE_TILDE".to_string(),
-            TokenKind::LtLt => "LT_LT".to_string(),
-            TokenKind::GtGt => "GT_GT".to_string(),
-            TokenKind::LtLtLt => "LT_LT_LT".to_string(),
-            TokenKind::GtGtGt => "GT_GT_GT".to_string(),
-            TokenKind::StrictEq => "STRICT_EQ".to_string(),
-            TokenKind::StrictBangEq => "STRICT_BANG_EQ".to_string(),
-            TokenKind::SlashSlash => "SLASH_SLASH".to_string(),
-            TokenKind::Eof => "EOF".to_string(),
+            TokenKind::Defmodule
+            | TokenKind::Def
+            | TokenKind::Defp
+            | TokenKind::Do
+            | TokenKind::End
+            | TokenKind::If
+            | TokenKind::Unless
+            | TokenKind::Case
+            | TokenKind::Cond
+            | TokenKind::With
+            | TokenKind::For
+            | TokenKind::Fn
+            | TokenKind::Else
+            | TokenKind::Try
+            | TokenKind::Rescue
+            | TokenKind::Catch
+            | TokenKind::After
+            | TokenKind::Raise
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::Nil
+            | TokenKind::And
+            | TokenKind::Or
+            | TokenKind::Not
+            | TokenKind::In
+            | TokenKind::When
+            | TokenKind::Ident
+            | TokenKind::Atom
+            | TokenKind::Integer
+            | TokenKind::Float
+            | TokenKind::String
+            | TokenKind::StringPart => {
+                format!("{}({})", self.kind.dump_name(), self.lexeme)
+            }
+            _ => self.kind.dump_name().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct DumpToken<'a> {
+    pub kind: &'a str,
+    pub lexeme: &'a str,
+    pub span_start: usize,
+    pub span_end: usize,
+}
+
+impl TokenKind {
+    pub fn dump_name(self) -> &'static str {
+        match self {
+            TokenKind::Defmodule => "DEFMODULE",
+            TokenKind::Def => "DEF",
+            TokenKind::Defp => "DEFP",
+            TokenKind::Do => "DO",
+            TokenKind::End => "END",
+            TokenKind::If => "IF",
+            TokenKind::Unless => "UNLESS",
+            TokenKind::Case => "CASE",
+            TokenKind::Cond => "COND",
+            TokenKind::With => "WITH",
+            TokenKind::For => "FOR",
+            TokenKind::Fn => "FN",
+            TokenKind::Else => "ELSE",
+            TokenKind::Try => "TRY",
+            TokenKind::Rescue => "RESCUE",
+            TokenKind::Catch => "CATCH",
+            TokenKind::After => "AFTER",
+            TokenKind::Raise => "RAISE",
+            TokenKind::True => "TRUE",
+            TokenKind::False => "FALSE",
+            TokenKind::Nil => "NIL",
+            TokenKind::And => "AND",
+            TokenKind::Or => "OR",
+            TokenKind::Not => "NOT",
+            TokenKind::In => "IN",
+            TokenKind::When => "WHEN",
+            TokenKind::Ident => "IDENT",
+            TokenKind::Atom => "ATOM",
+            TokenKind::Integer => "INT",
+            TokenKind::Float => "FLOAT",
+            TokenKind::String => "STRING",
+            TokenKind::StringStart => "STRING_START",
+            TokenKind::StringPart => "STRING_PART",
+            TokenKind::InterpolationStart => "INTERPOLATION_START",
+            TokenKind::InterpolationEnd => "INTERPOLATION_END",
+            TokenKind::StringEnd => "STRING_END",
+            TokenKind::LParen => "LPAREN",
+            TokenKind::RParen => "RPAREN",
+            TokenKind::LBrace => "LBRACE",
+            TokenKind::RBrace => "RBRACE",
+            TokenKind::LBracket => "LBRACKET",
+            TokenKind::RBracket => "RBRACKET",
+            TokenKind::Percent => "PERCENT",
+            TokenKind::At => "AT",
+            TokenKind::Colon => "COLON",
+            TokenKind::Comma => "COMMA",
+            TokenKind::Semicolon => "SEMICOLON",
+            TokenKind::Dot => "DOT",
+            TokenKind::DotDot => "DOT_DOT",
+            TokenKind::Caret => "CARET",
+            TokenKind::Plus => "PLUS",
+            TokenKind::PlusPlus => "PLUS_PLUS",
+            TokenKind::Minus => "MINUS",
+            TokenKind::MinusMinus => "MINUS_MINUS",
+            TokenKind::Star => "STAR",
+            TokenKind::Slash => "SLASH",
+            TokenKind::MatchEq => "MATCH_EQ",
+            TokenKind::EqEq => "EQ_EQ",
+            TokenKind::BangEq => "BANG_EQ",
+            TokenKind::Bang => "BANG",
+            TokenKind::Lt => "LT",
+            TokenKind::LtEq => "LT_EQ",
+            TokenKind::Gt => "GT",
+            TokenKind::GtEq => "GT_EQ",
+            TokenKind::LessGreater => "LESS_GREATER",
+            TokenKind::Question => "QUESTION",
+            TokenKind::Pipe => "PIPE",
+            TokenKind::PipeGt => "PIPE_GT",
+            TokenKind::FatArrow => "FAT_ARROW",
+            TokenKind::Arrow => "ARROW",
+            TokenKind::LeftArrow => "LEFT_ARROW",
+            TokenKind::BackslashBackslash => "BACKSLASH_BACKSLASH",
+            TokenKind::Ampersand => "AMPERSAND",
+            TokenKind::AndAnd => "AND_AND",
+            TokenKind::AmpAmpAmp => "AMP_AMP_AMP",
+            TokenKind::OrOr => "OR_OR",
+            TokenKind::PipePipePipe => "PIPE_PIPE_PIPE",
+            TokenKind::CaretCaretCaret => "CARET_CARET_CARET",
+            TokenKind::TildeTildeTilde => "TILDE_TILDE_TILDE",
+            TokenKind::LtLt => "LT_LT",
+            TokenKind::GtGt => "GT_GT",
+            TokenKind::LtLtLt => "LT_LT_LT",
+            TokenKind::GtGtGt => "GT_GT_GT",
+            TokenKind::StrictEq => "STRICT_EQ",
+            TokenKind::StrictBangEq => "STRICT_BANG_EQ",
+            TokenKind::SlashSlash => "SLASH_SLASH",
+            TokenKind::Eof => "EOF",
         }
     }
 }

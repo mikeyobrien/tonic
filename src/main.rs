@@ -651,13 +651,44 @@ fn handle_check(args: Vec<String>) -> i32 {
     let mut dump_ast = false;
     let mut dump_ir = false;
     let mut dump_mir = false;
+    let mut token_dump_format = TestOutputFormat::Text;
+    let mut token_dump_format_explicit = false;
+    let mut index = 1;
 
-    for argument in args.iter().skip(1) {
-        match argument.as_str() {
-            "--dump-tokens" => dump_tokens = true,
-            "--dump-ast" => dump_ast = true,
-            "--dump-ir" => dump_ir = true,
-            "--dump-mir" => dump_mir = true,
+    while index < args.len() {
+        match args[index].as_str() {
+            "--dump-tokens" => {
+                dump_tokens = true;
+                index += 1;
+            }
+            "--dump-ast" => {
+                dump_ast = true;
+                index += 1;
+            }
+            "--dump-ir" => {
+                dump_ir = true;
+                index += 1;
+            }
+            "--dump-mir" => {
+                dump_mir = true;
+                index += 1;
+            }
+            "--format" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage("missing value for --format").emit();
+                };
+
+                let Some(parsed) = TestOutputFormat::parse(value) else {
+                    return CliDiagnostic::usage(format!(
+                        "unsupported format '{value}' (expected 'text' or 'json')"
+                    ))
+                    .emit();
+                };
+
+                token_dump_format = parsed;
+                token_dump_format_explicit = true;
+                index += 2;
+            }
             other => {
                 return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
             }
@@ -676,11 +707,22 @@ fn handle_check(args: Vec<String>) -> i32 {
         .emit();
     }
 
+    if token_dump_format_explicit && !dump_tokens {
+        return CliDiagnostic::usage("--format is only supported with --dump-tokens").emit();
+    }
+
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let mut observed_run = ObservabilityRun::from_env("check", &command_argv("check", &args), &cwd);
     if let Some(observed_run) = observed_run.as_mut() {
         if dump_tokens {
             observed_run.record_metadata("dump_mode", "tokens");
+            observed_run.record_metadata(
+                "format",
+                match token_dump_format {
+                    TestOutputFormat::Text => "text",
+                    TestOutputFormat::Json => "json",
+                },
+            );
         } else if dump_ast {
             observed_run.record_metadata("dump_mode", "ast");
         } else if dump_ir {
@@ -732,8 +774,33 @@ fn handle_check(args: Vec<String>) -> i32 {
         };
 
     if dump_tokens {
-        for token in tokens {
-            println!("{}", token.dump_label());
+        match token_dump_format {
+            TestOutputFormat::Text => {
+                for token in tokens {
+                    println!("{}", token.dump_label());
+                }
+            }
+            TestOutputFormat::Json => {
+                let records: Vec<_> = tokens.iter().map(|token| token.dump_record()).collect();
+                let json = match serde_json::to_string(&records) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        let message = "failed to serialize token dump".to_string();
+                        let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                        return finalize_observed_run(
+                            &mut observed_run,
+                            exit_code,
+                            Some(make_observability_error(
+                                "io_error",
+                                "check.dump_tokens",
+                                message,
+                                None,
+                            )),
+                        );
+                    }
+                };
+                println!("{json}");
+            }
         }
 
         return finalize_observed_run(&mut observed_run, EXIT_OK, None);
@@ -2111,7 +2178,9 @@ fn print_run_help() {
 }
 
 fn print_check_help() {
-    println!("Usage:\n  tonic check <path> [--dump-tokens|--dump-ast|--dump-ir|--dump-mir]\n");
+    println!(
+        "Usage:\n  tonic check <path> [--dump-tokens [--format <text|json>]|--dump-ast|--dump-ir|--dump-mir]\n"
+    );
 }
 
 fn print_test_help() {
@@ -2257,6 +2326,16 @@ mod tests {
     }
 
     #[test]
+    fn dump_tokens_serialization_failure_emits_deterministic_diagnostic() {
+        let diagnostic = crate::cli_diag::CliDiagnostic::failure("failed to serialize token dump");
+        assert_eq!(diagnostic.exit_code(), EXIT_FAILURE);
+        assert_eq!(
+            diagnostic.lines(),
+            ["error: failed to serialize token dump".to_string()]
+        );
+    }
+
+    #[test]
     fn dump_mode_exclusivity_error_uses_usage_exit_code() {
         let diagnostic = crate::cli_diag::CliDiagnostic::usage(
             "--dump-tokens, --dump-ast, --dump-ir, and --dump-mir cannot be used together",
@@ -2268,6 +2347,17 @@ mod tests {
                 "error: --dump-tokens, --dump-ast, --dump-ir, and --dump-mir cannot be used together"
                     .to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn dump_tokens_format_requires_dump_tokens_flag() {
+        let diagnostic =
+            crate::cli_diag::CliDiagnostic::usage("--format is only supported with --dump-tokens");
+        assert_eq!(diagnostic.exit_code(), EXIT_USAGE);
+        assert_eq!(
+            diagnostic.lines(),
+            ["error: --format is only supported with --dump-tokens".to_string()]
         );
     }
 }
