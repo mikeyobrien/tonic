@@ -1,6 +1,25 @@
 # System Standard Library
 
-The `System` module is an optional stdlib automatically injected when the resolver detects a reference to `System.*` in user code.  All functions are thin wrappers over Rust-backed host functions registered in the `HostRegistry`.
+The `System` module is an optional stdlib automatically injected when the resolver detects a reference to `System.*` in user code. All functions are thin wrappers over Rust-backed host functions registered in the `HostRegistry`.
+
+Read this together with [core-stdlib-profile.md](core-stdlib-profile.md). The current Tonic Core Stdlib treats the workload-backed `System` subset as **core-supported**, especially:
+
+- `System.path_exists/1`
+- `System.list_files_recursive/1`
+- `System.remove_tree/1`
+- `System.ensure_dir/1`
+- `System.read_text/1`
+- `System.write_text/2`
+- `System.read_stdin/0`
+- `System.run/1`
+- `System.argv/0`
+- `System.cwd/0`
+- `System.env/1`
+- `System.which/1`
+
+Other `System.*` entries documented here may still be useful and real, but this page should not be read as a claim that the broader optional stdlib is uniformly profile-ready.
+
+**Execution-mode caveat:** optional stdlib injection currently happens in project mode. `tonic run <project-dir>` and `tonic compile <project-dir>` can lazy-load `System`, but plain single-file execution like `tonic run file.tn` does not currently receive the same optional stdlib injection.
 
 ---
 

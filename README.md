@@ -50,7 +50,9 @@ Same output, different execution path.
 - **Scope:** language syntax/runtime parity work and native backend iteration
 - **Out of scope:** BEAM/OTP runtime model (processes, supervisors, distribution, hot upgrade lifecycle)
 
-For detailed parity coverage and planned gaps, see [PARITY.md](PARITY.md).
+For detailed syntax parity coverage and planned gaps, see [PARITY.md](PARITY.md).
+For the current supported stdlib boundary, see [docs/core-stdlib-profile.md](docs/core-stdlib-profile.md).
+The honest baseline today is a workload-backed `String` + `System` core profile, with `Path` available but secondary.
 
 ## What you get today
 
@@ -201,7 +203,10 @@ See [docs/observability.md](docs/observability.md) for bundle layout, task corre
 
 ## Documentation map
 
-- [PARITY.md](PARITY.md)
+- [PARITY.md](PARITY.md) — syntax parity, not stdlib breadth
+- [docs/core-stdlib-profile.md](docs/core-stdlib-profile.md) — current supported stdlib profile and parity policy
+- [docs/system-stdlib.md](docs/system-stdlib.md) — `System` module contract and host-backed APIs
+- [docs/app-authoring-gaps.md](docs/app-authoring-gaps.md) — workload-driven runtime and parser limitations
 - [docs/native-runtime.md](docs/native-runtime.md)
 - [docs/runtime-abi.md](docs/runtime-abi.md)
 - [docs/observability.md](docs/observability.md)

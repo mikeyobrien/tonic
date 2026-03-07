@@ -7,6 +7,8 @@
 
 Scope: language syntax, parser/AST shape, and syntax-facing CLI/tooling parity.
 
+This document does **not** define the supported stdlib surface. A checked syntax item here does not imply that a related stdlib module is profile-ready. For the current supported stdlib boundary and parity policy, see [docs/core-stdlib-profile.md](docs/core-stdlib-profile.md).
+
 Out of scope: BEAM/OTP runtime model (processes, mailboxes, supervisors, GenServer, distribution, hot code upgrade, OTP app lifecycle).
 
 Legend:
@@ -14,7 +16,7 @@ Legend:
 - [~] partial / syntax-compatible but semantically limited or syntax-divergent
 - [ ] missing
 
-_Last updated: 2026-02-25_
+_Last updated: 2026-03-07_
 
 ---
 

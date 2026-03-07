@@ -60,21 +60,25 @@ Primary external evidence referenced for this pass:
 
 ## Current capability status
 
+Read this matrix alongside [core-stdlib-profile.md](core-stdlib-profile.md).
+That profile defines the current support labels; this catalog records the audit
+trail behind them.
+
 This matrix reflects the current repo state after the confirmed fixes from this
 loop landed.
 
-| Surface | Advertised | Interpreter | Native compiled runtime | Verification evidence | Notes |
-|---|---|---|---|---|---|
-| `String.*` frontmatter helper set (`split`, `trim`, `trim_leading`, `trim_trailing`, `starts_with`, `ends_with`, `contains`, `slice`, `to_integer`) | Yes | Supported | Supported | `tests/run_lazy_stdlib_loading_smoke.rs::run_trace_lazy_loads_string_stdlib_module_when_referenced`; `tests/runtime_llvm_string_stdlib_smoke.rs` | Fixed by making injected `String` stdlib parseable, wiring `string_mod` into the interpreter host registry, and adding native `str_*` dispatch for the helper set app parsing currently needs. |
-| `Path.join/2` (`Path.*` lazy stdlib) | Yes | Supported | Supported | `tests/run_lazy_stdlib_loading_smoke.rs::run_trace_lazy_loads_path_stdlib_module_when_referenced`; `tests/runtime_llvm_system_stdlib_smoke.rs::compiled_runtime_supports_path_stdlib_join` | Fixed by wiring `path_mod` into the interpreter host registry and adding native `path_*` dispatch. |
-| `System.read_text/1` | Yes | Supported | Supported | `tests/system_stdlib_http_input_smoke.rs::run_system_read_text_reads_file_content`; `tests/runtime_llvm_system_stdlib_smoke.rs::compiled_runtime_supports_system_read_text`; native error-shape tests in the same file | Fixed by adding native `sys_read_text` support with interpreter-matching validation/error prefixes. |
-| `System.read_stdin/0` | Yes | Supported | Supported | `tests/system_stdlib_http_input_smoke.rs::run_system_read_stdin_reads_piped_input`; `tests/system_stdlib_http_input_smoke.rs::run_system_read_stdin_returns_empty_string_for_empty_input`; `tests/runtime_llvm_system_stdlib_smoke.rs::compiled_runtime_supports_system_read_stdin`; native arity-error test in the same file | Fixed by adding native `sys_read_stdin` support with interpreter-matching arity validation and full buffered reads. |
-| Repeated successful `System.run/1` calls retaining `output` in matched maps | Yes | Supported | Supported | `tests/runtime_llvm_system_run_repeat.rs::compiled_runtime_retains_output_across_repeated_system_run_calls`; targeted guardrails in `tests/runtime_llvm_closures_bindings_interop.rs` and `tests/differential_backends.rs` | Fixed by restoring native pattern-binding snapshots at compiled scope boundaries so a prior `%{output: ...}` match cannot leak into later `System.run/1` result handling. |
-| Stress-repo text ingestion probes (`System.read_text/1`, `System.read_stdin/0`, single captured `System.run/1`) | Yes through the underlying stdlib contract | Supported | Supported | `test/verify/text_ingestion_probe.sh`; tonic stdlib tests above | No longer an honest blocker after the landed `System.read_text/1`, `System.read_stdin/0`, and repeated `System.run/1` fixes. |
-| Stress-repo output emission / static copy probes | Yes through `System.ensure_dir/1`, `System.write_text/2`, and `System.run/1` | Supported | Supported | `test/verify/output_emission_probe.sh`; `test/verify/static_copy_probe.sh` | No longer an upstream blocker. Static copy still leans on a shell `find` workaround for discovery, but the write/copy pipeline now succeeds in both modes. |
-| Directory listing / tree walking | Yes — `System.list_files_recursive/1` and `System.remove_tree/1` | Supported | Supported | `tests/system_stdlib_http_input_smoke.rs`; `tests/runtime_llvm_system_stdlib_smoke.rs` | First-class stdlib contract now exists. Symlinks are skipped by both runtimes (lstat semantics). Shell workaround in the stress harness is superseded but left in place. |
-| Runtime text shape for parser-style list/bitstring matching | No stable parser-ready byte/list contract | Binary-only | Binary-only | `test/verify/text_shape_probe.sh`; `test/verify/bitstring_pattern_probe.sh` | Runtime text remains `is_binary: true` / `is_list: false`, so list-prefix and bitstring-byte-pattern parsers do not see parser-ready bytes today. |
-| Byte-oriented frontmatter parsing ergonomics | No stable contract | Research-grade | Research-grade | `test/verify/frontmatter_byte_probe.sh`; `tests/runtime_llvm_bindings_call_scope.rs` | Runtime text still does not enter the byte-list parser shape. The earlier compiled literal-byte abort was fixed repo-locally by isolating caller pattern bindings across named function calls, but that does not change the broader text-shape limitation. |
+| Surface | Profile label | Advertised | Interpreter | Native compiled runtime | Verification evidence | Notes |
+|---|---|---|---|---|---|---|
+| `String.*` frontmatter helper set (`split`, `trim`, `trim_leading`, `trim_trailing`, `starts_with`, `ends_with`, `contains`, `slice`, `to_integer`) | Core-supported | Yes | Supported | Supported | `tests/run_lazy_stdlib_loading_smoke.rs::run_trace_lazy_loads_string_stdlib_module_when_referenced`; `tests/runtime_llvm_string_stdlib_smoke.rs` | Fixed by making injected `String` stdlib parseable, wiring `string_mod` into the interpreter host registry, and adding native `str_*` dispatch for the helper set app parsing currently needs. |
+| `Path.join/2` (`Path.*` lazy stdlib) | Available but secondary | Yes | Supported | Supported | `tests/run_lazy_stdlib_loading_smoke.rs::run_trace_lazy_loads_path_stdlib_module_when_referenced`; `tests/runtime_llvm_system_stdlib_smoke.rs::compiled_runtime_supports_path_stdlib_join` | Fixed by wiring `path_mod` into the interpreter host registry and adding native `path_*` dispatch. |
+| `System.read_text/1` | Core-supported | Yes | Supported | Supported | `tests/system_stdlib_http_input_smoke.rs::run_system_read_text_reads_file_content`; `tests/runtime_llvm_system_stdlib_smoke.rs::compiled_runtime_supports_system_read_text`; native error-shape tests in the same file | Fixed by adding native `sys_read_text` support with interpreter-matching validation/error prefixes. |
+| `System.read_stdin/0` | Core-supported | Yes | Supported | Supported | `tests/system_stdlib_http_input_smoke.rs::run_system_read_stdin_reads_piped_input`; `tests/system_stdlib_http_input_smoke.rs::run_system_read_stdin_returns_empty_string_for_empty_input`; `tests/runtime_llvm_system_stdlib_smoke.rs::compiled_runtime_supports_system_read_stdin`; native arity-error test in the same file | Fixed by adding native `sys_read_stdin` support with interpreter-matching arity validation and full buffered reads. |
+| Repeated successful `System.run/1` calls retaining `output` in matched maps | Core-supported | Yes | Supported | Supported | `tests/runtime_llvm_system_run_repeat.rs::compiled_runtime_retains_output_across_repeated_system_run_calls`; targeted guardrails in `tests/runtime_llvm_closures_bindings_interop.rs` and `tests/differential_backends.rs` | Fixed by restoring native pattern-binding snapshots at compiled scope boundaries so a prior `%{output: ...}` match cannot leak into later `System.run/1` result handling. |
+| Stress-repo text ingestion probes (`System.read_text/1`, `System.read_stdin/0`, single captured `System.run/1`) | Confirms current core profile | Yes through the underlying stdlib contract | Supported | Supported | `test/verify/text_ingestion_probe.sh`; tonic stdlib tests above | No longer an honest blocker after the landed `System.read_text/1`, `System.read_stdin/0`, and repeated `System.run/1` fixes. |
+| Stress-repo output emission / static copy probes | Confirms current core profile | Yes through `System.ensure_dir/1`, `System.write_text/2`, and `System.run/1` | Supported | Supported | `test/verify/output_emission_probe.sh`; `test/verify/static_copy_probe.sh` | No longer an upstream blocker. Static copy still leans on a shell `find` workaround for discovery, but the write/copy pipeline now succeeds in both modes. |
+| Directory listing / tree walking | Core-supported | Yes — `System.list_files_recursive/1` and `System.remove_tree/1` | Supported | Supported | `tests/system_stdlib_http_input_smoke.rs`; `tests/runtime_llvm_system_stdlib_smoke.rs` | First-class stdlib contract now exists. Symlinks are skipped by both runtimes (lstat semantics). Shell workaround in the stress harness is superseded but left in place. |
+| Runtime text shape for parser-style list/bitstring matching | Documented divergence | No parser-ready byte/list contract for runtime text | Binary-only | Binary-only | `tests/runtime_text_parser_contract.rs`; `test/verify/text_shape_probe.sh`; `test/verify/bitstring_pattern_probe.sh` | The current contract is now explicit: runtime text remains `is_binary: true` / `is_list: false`, so list-prefix and bitstring-byte-pattern parsers do not see parser-ready bytes today. See [text-binary-parser-contract.md](text-binary-parser-contract.md). |
+| Byte-oriented frontmatter parsing ergonomics | Documented divergence | No polished runtime-text byte-parser contract | Research-grade | Research-grade | `tests/runtime_text_parser_contract.rs`; `test/verify/frontmatter_byte_probe.sh`; `tests/runtime_llvm_bindings_call_scope.rs` | Runtime text still does not enter the byte-list parser shape. The earlier compiled literal-byte abort was fixed repo-locally by isolating caller pattern bindings across named function calls, but that does not change the broader documented text/binary/parser contract gap. |
 
 ## Historical confirmed gaps fixed in this loop
 
@@ -394,7 +398,9 @@ Documentation was also inconsistent: `docs/system-stdlib.md` and `docs/runtime-a
 ## Remaining app-authoring limitations and reclassifications
 
 These are still worth tracking, but they are not the same class of issue as the
-confirmed runtime/stdlib mismatches above.
+confirmed runtime/stdlib mismatches above. They sit outside the currently
+core-supported profile and mostly reduce to one unresolved product question:
+the text/binary/parser contract described in [core-stdlib-profile.md](core-stdlib-profile.md).
 
 ### 7. Text ingestion probes are no longer honest blockers
 
@@ -505,7 +511,9 @@ native execution, but they succeed by reporting the same limitation:
 - **Interpreter:** binary text available, but not parser-ready byte/list shape
 - **Native compiled runtime:** binary text available, but not parser-ready
   byte/list shape
-- **Documented polished contract:** none today
+- **Documented current contract:** [text-binary-parser-contract.md](text-binary-parser-contract.md)
+- **Supported parser-ish path today:** workload-backed `String` helpers on
+  runtime text in project mode
 
 ### 11. Byte-oriented frontmatter parsing is still research-grade
 
@@ -547,9 +555,12 @@ rather than parser-ready byte lists.
 - **Native compiled runtime:** explicit literal byte-list experiments no longer
   abort from caller-binding leakage, but runtime text still does not arrive in
   that shape
-- **Documented polished contract:** none today
+- **Documented current contract:** [text-binary-parser-contract.md](text-binary-parser-contract.md)
+- **Polished runtime-text byte parser path:** none today
 
 ## Summary
+
+This pass leaves the profile boundary cleaner: workload-backed `String` and `System` behavior is now the honest core-supported story, `Path` is usable but secondary, and the remaining major limitation is the now-documented text/binary/parser contract rather than missing breadth.
 
 Confirmed, repo-local fixes landed in this loop:
 
