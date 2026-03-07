@@ -1,0 +1,32 @@
+defmodule Demo do
+  def run() do
+    case source_path(System.argv()) do
+      nil -> usage_payload()
+      source_path -> Compiler.Lexer.lex_path(source_path)
+    end
+  end
+
+  def source_path(argv) do
+    case argv do
+      [_, "run", _] -> nil
+      [_, "run", _, source_path | rest] -> last_arg(source_path, rest)
+      [_, source_path | rest] -> last_arg(source_path, rest)
+      _ -> nil
+    end
+  end
+
+  def last_arg(current, rest) do
+    case rest do
+      [next | tail] -> last_arg(next, tail)
+      [] -> current
+      _ -> current
+    end
+  end
+
+  def usage_payload() do
+    %{
+      error: :missing_source_path,
+      usage: "tonic run examples/apps/self_hosted_lexer <source-path>"
+    }
+  end
+end

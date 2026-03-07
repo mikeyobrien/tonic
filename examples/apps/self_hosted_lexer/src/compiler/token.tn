@@ -1,0 +1,10 @@
+defmodule Compiler.Token do
+  def stub() do
+    %{
+      kind: :stub,
+      lexeme: "",
+      span_start: 0,
+      span_end: 0
+    }
+  end
+end

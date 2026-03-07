@@ -1,0 +1,13 @@
+defmodule Compiler.Lexer do
+  def lex_path(source_path) do
+    placeholder_payload(source_path, System.read_text(source_path))
+  end
+
+  def placeholder_payload(source_path, source) do
+    %{
+      source_path: source_path,
+      source_length: String.length(source),
+      tokens: [Compiler.Token.stub()]
+    }
+  end
+end
