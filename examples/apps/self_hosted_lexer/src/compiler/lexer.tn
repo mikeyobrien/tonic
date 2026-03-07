@@ -4,7 +4,11 @@ defmodule Compiler.Lexer do
   end
 
   def lex_source(source_path, source) do
-    build_payload(source_path, source, scan(String.to_charlist(source), source, 0, []))
+    build_payload(
+      source_path,
+      source,
+      scan(String.to_charlist(source), source, 0, [], [[0]], 0)
+    )
   end
 
   def build_payload(source_path, source, result) do
@@ -34,92 +38,432 @@ defmodule Compiler.Lexer do
     end
   end
 
-  def scan(chars, source, index, acc) do
+  def scan(chars, source, index, acc, state_stack, brace_depth) do
     case chars do
-      [] -> {:ok, reverse([Compiler.Token.eof(index)] ++ acc)}
+      [] -> finish_scan(source, index, acc, state_stack)
+      _ -> dispatch_scan(chars, source, index, acc, state_stack, brace_depth)
+    end
+  end
+
+  def finish_scan(source, index, acc, state_stack) do
+    case find_unterminated_string_start(state_stack) do
+      nil -> {:ok, reverse([Compiler.Token.eof(index)] ++ acc)}
+      string_start -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+    end
+  end
+
+  def find_unterminated_string_start(state_stack) do
+    case state_stack do
+      [[1, _is_heredoc, _brace_depth, string_start] | _] -> string_start
+      [_ | rest] -> find_unterminated_string_start(rest)
+      [] -> nil
+      _ -> nil
+    end
+  end
+
+  def dispatch_scan(chars, source, index, acc, state_stack, brace_depth) do
+    case state_stack do
+      [[0] | _] -> scan_normal(chars, source, index, acc, state_stack, brace_depth)
+      [[1, is_heredoc, string_brace_depth, string_start] | _] ->
+        scan_string_state(
+          chars,
+          source,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          is_heredoc,
+          string_brace_depth,
+          string_start
+        )
+
+      _ -> {:error, Compiler.Token.error("invalid lexer state", index, index)}
+    end
+  end
+
+  def scan_normal(chars, source, index, acc, state_stack, brace_depth) do
+    case chars do
       [cp | rest] ->
         case is_whitespace(cp) do
-          true -> scan(rest, source, index + 1, acc)
-          false -> scan_token(chars, source, index, acc)
-          _ -> scan_token(chars, source, index, acc)
+          true -> scan(rest, source, index + 1, acc, state_stack, brace_depth)
+          false -> scan_normal_token(chars, source, index, acc, state_stack, brace_depth)
+          _ -> scan_normal_token(chars, source, index, acc, state_stack, brace_depth)
         end
 
       _ -> {:error, Compiler.Token.error("invalid lexer input", index, index)}
     end
   end
 
-  def scan_token(chars, source, index, acc) do
+  def scan_normal_token(chars, source, index, acc, state_stack, brace_depth) do
     case chars do
-      [35 | rest] -> scan_comment(rest, source, index + 1, acc)
-      [40 | rest] -> emit_simple("LPAREN", rest, source, index, 1, acc)
-      [41 | rest] -> emit_simple("RPAREN", rest, source, index, 1, acc)
-      [123 | rest] -> emit_simple("LBRACE", rest, source, index, 1, acc)
-      [125 | rest] -> emit_simple("RBRACE", rest, source, index, 1, acc)
-      [91 | rest] -> emit_simple("LBRACKET", rest, source, index, 1, acc)
-      [93 | rest] -> emit_simple("RBRACKET", rest, source, index, 1, acc)
-      [37 | rest] -> emit_simple("PERCENT", rest, source, index, 1, acc)
-      [64 | rest] -> emit_simple("AT", rest, source, index, 1, acc)
-      [44 | rest] -> emit_simple("COMMA", rest, source, index, 1, acc)
-      [59 | rest] -> emit_simple("SEMICOLON", rest, source, index, 1, acc)
-      [46, 46 | rest] -> emit_simple("DOT_DOT", rest, source, index, 2, acc)
-      [46 | rest] -> emit_simple("DOT", rest, source, index, 1, acc)
-      [94, 94, 94 | rest] -> emit_simple("CARET_CARET_CARET", rest, source, index, 3, acc)
-      [94 | rest] -> emit_simple("CARET", rest, source, index, 1, acc)
-      [43, 43 | rest] -> emit_simple("PLUS_PLUS", rest, source, index, 2, acc)
-      [43 | rest] -> emit_simple("PLUS", rest, source, index, 1, acc)
-      [45, 62 | rest] -> emit_simple("ARROW", rest, source, index, 2, acc)
-      [45, 45 | rest] -> emit_simple("MINUS_MINUS", rest, source, index, 2, acc)
-      [45 | rest] -> emit_simple("MINUS", rest, source, index, 1, acc)
-      [42 | rest] -> emit_simple("STAR", rest, source, index, 1, acc)
-      [47, 47 | rest] -> emit_simple("SLASH_SLASH", rest, source, index, 2, acc)
-      [47 | rest] -> emit_simple("SLASH", rest, source, index, 1, acc)
-      [92, 92 | rest] -> emit_simple("BACKSLASH_BACKSLASH", rest, source, index, 2, acc)
-      [61, 62 | rest] -> emit_simple("FAT_ARROW", rest, source, index, 2, acc)
-      [61, 61, 61 | rest] -> emit_simple("STRICT_EQ", rest, source, index, 3, acc)
-      [61, 61 | rest] -> emit_simple("EQ_EQ", rest, source, index, 2, acc)
-      [61 | rest] -> emit_simple("MATCH_EQ", rest, source, index, 1, acc)
-      [33, 61, 61 | rest] -> emit_simple("STRICT_BANG_EQ", rest, source, index, 3, acc)
-      [33, 61 | rest] -> emit_simple("BANG_EQ", rest, source, index, 2, acc)
-      [33 | rest] -> emit_simple("BANG", rest, source, index, 1, acc)
-      [60, 60, 60 | rest] -> emit_simple("LT_LT_LT", rest, source, index, 3, acc)
-      [60, 60 | rest] -> emit_simple("LT_LT", rest, source, index, 2, acc)
-      [60, 61 | rest] -> emit_simple("LT_EQ", rest, source, index, 2, acc)
-      [60, 45 | rest] -> emit_simple("LEFT_ARROW", rest, source, index, 2, acc)
-      [60, 62 | rest] -> emit_simple("LESS_GREATER", rest, source, index, 2, acc)
-      [60 | rest] -> emit_simple("LT", rest, source, index, 1, acc)
-      [62, 62, 62 | rest] -> emit_simple("GT_GT_GT", rest, source, index, 3, acc)
-      [62, 62 | rest] -> emit_simple("GT_GT", rest, source, index, 2, acc)
-      [62, 61 | rest] -> emit_simple("GT_EQ", rest, source, index, 2, acc)
-      [62 | rest] -> emit_simple("GT", rest, source, index, 1, acc)
-      [63 | rest] -> emit_simple("QUESTION", rest, source, index, 1, acc)
-      [124, 62 | rest] -> emit_simple("PIPE_GT", rest, source, index, 2, acc)
-      [124, 124, 124 | rest] -> emit_simple("PIPE_PIPE_PIPE", rest, source, index, 3, acc)
-      [124, 124 | rest] -> emit_simple("OR_OR", rest, source, index, 2, acc)
-      [124 | rest] -> emit_simple("PIPE", rest, source, index, 1, acc)
-      [38, 38, 38 | rest] -> emit_simple("AMP_AMP_AMP", rest, source, index, 3, acc)
-      [38, 38 | rest] -> emit_simple("AND_AND", rest, source, index, 2, acc)
-      [38 | rest] -> emit_simple("AMPERSAND", rest, source, index, 1, acc)
+      [35 | rest] -> scan_comment(rest, source, index + 1, acc, state_stack, brace_depth)
+      [34, 34, 34 | rest] -> scan_string_token(rest, source, index, acc, state_stack, brace_depth, true)
+      [34 | rest] -> scan_string_token(rest, source, index, acc, state_stack, brace_depth, false)
+      [40 | rest] -> emit_simple("LPAREN", rest, source, index, 1, acc, state_stack, brace_depth)
+      [41 | rest] -> emit_simple("RPAREN", rest, source, index, 1, acc, state_stack, brace_depth)
+      [123 | rest] -> emit_open_brace(rest, source, index, acc, state_stack, brace_depth)
+      [125 | rest] -> emit_close_brace(rest, source, index, acc, state_stack, brace_depth)
+      [91 | rest] -> emit_simple("LBRACKET", rest, source, index, 1, acc, state_stack, brace_depth)
+      [93 | rest] -> emit_simple("RBRACKET", rest, source, index, 1, acc, state_stack, brace_depth)
+      [37 | rest] -> emit_simple("PERCENT", rest, source, index, 1, acc, state_stack, brace_depth)
+      [64 | rest] -> emit_simple("AT", rest, source, index, 1, acc, state_stack, brace_depth)
+      [44 | rest] -> emit_simple("COMMA", rest, source, index, 1, acc, state_stack, brace_depth)
+      [59 | rest] -> emit_simple("SEMICOLON", rest, source, index, 1, acc, state_stack, brace_depth)
+      [46, 46 | rest] -> emit_simple("DOT_DOT", rest, source, index, 2, acc, state_stack, brace_depth)
+      [46 | rest] -> emit_simple("DOT", rest, source, index, 1, acc, state_stack, brace_depth)
+      [94, 94, 94 | rest] -> emit_simple("CARET_CARET_CARET", rest, source, index, 3, acc, state_stack, brace_depth)
+      [94 | rest] -> emit_simple("CARET", rest, source, index, 1, acc, state_stack, brace_depth)
+      [43, 43 | rest] -> emit_simple("PLUS_PLUS", rest, source, index, 2, acc, state_stack, brace_depth)
+      [43 | rest] -> emit_simple("PLUS", rest, source, index, 1, acc, state_stack, brace_depth)
+      [45, 62 | rest] -> emit_simple("ARROW", rest, source, index, 2, acc, state_stack, brace_depth)
+      [45, 45 | rest] -> emit_simple("MINUS_MINUS", rest, source, index, 2, acc, state_stack, brace_depth)
+      [45 | rest] -> emit_simple("MINUS", rest, source, index, 1, acc, state_stack, brace_depth)
+      [42 | rest] -> emit_simple("STAR", rest, source, index, 1, acc, state_stack, brace_depth)
+      [47, 47 | rest] -> emit_simple("SLASH_SLASH", rest, source, index, 2, acc, state_stack, brace_depth)
+      [47 | rest] -> emit_simple("SLASH", rest, source, index, 1, acc, state_stack, brace_depth)
+      [92, 92 | rest] -> emit_simple("BACKSLASH_BACKSLASH", rest, source, index, 2, acc, state_stack, brace_depth)
+      [61, 62 | rest] -> emit_simple("FAT_ARROW", rest, source, index, 2, acc, state_stack, brace_depth)
+      [61, 61, 61 | rest] -> emit_simple("STRICT_EQ", rest, source, index, 3, acc, state_stack, brace_depth)
+      [61, 61 | rest] -> emit_simple("EQ_EQ", rest, source, index, 2, acc, state_stack, brace_depth)
+      [61 | rest] -> emit_simple("MATCH_EQ", rest, source, index, 1, acc, state_stack, brace_depth)
+      [33, 61, 61 | rest] -> emit_simple("STRICT_BANG_EQ", rest, source, index, 3, acc, state_stack, brace_depth)
+      [33, 61 | rest] -> emit_simple("BANG_EQ", rest, source, index, 2, acc, state_stack, brace_depth)
+      [33 | rest] -> emit_simple("BANG", rest, source, index, 1, acc, state_stack, brace_depth)
+      [60, 60, 60 | rest] -> emit_simple("LT_LT_LT", rest, source, index, 3, acc, state_stack, brace_depth)
+      [60, 60 | rest] -> emit_simple("LT_LT", rest, source, index, 2, acc, state_stack, brace_depth)
+      [60, 61 | rest] -> emit_simple("LT_EQ", rest, source, index, 2, acc, state_stack, brace_depth)
+      [60, 45 | rest] -> emit_simple("LEFT_ARROW", rest, source, index, 2, acc, state_stack, brace_depth)
+      [60, 62 | rest] -> emit_simple("LESS_GREATER", rest, source, index, 2, acc, state_stack, brace_depth)
+      [60 | rest] -> emit_simple("LT", rest, source, index, 1, acc, state_stack, brace_depth)
+      [62, 62, 62 | rest] -> emit_simple("GT_GT_GT", rest, source, index, 3, acc, state_stack, brace_depth)
+      [62, 62 | rest] -> emit_simple("GT_GT", rest, source, index, 2, acc, state_stack, brace_depth)
+      [62, 61 | rest] -> emit_simple("GT_EQ", rest, source, index, 2, acc, state_stack, brace_depth)
+      [62 | rest] -> emit_simple("GT", rest, source, index, 1, acc, state_stack, brace_depth)
+      [63 | rest] -> emit_simple("QUESTION", rest, source, index, 1, acc, state_stack, brace_depth)
+      [124, 62 | rest] -> emit_simple("PIPE_GT", rest, source, index, 2, acc, state_stack, brace_depth)
+      [124, 124, 124 | rest] -> emit_simple("PIPE_PIPE_PIPE", rest, source, index, 3, acc, state_stack, brace_depth)
+      [124, 124 | rest] -> emit_simple("OR_OR", rest, source, index, 2, acc, state_stack, brace_depth)
+      [124 | rest] -> emit_simple("PIPE", rest, source, index, 1, acc, state_stack, brace_depth)
+      [38, 38, 38 | rest] -> emit_simple("AMP_AMP_AMP", rest, source, index, 3, acc, state_stack, brace_depth)
+      [38, 38 | rest] -> emit_simple("AND_AND", rest, source, index, 2, acc, state_stack, brace_depth)
+      [38 | rest] -> emit_simple("AMPERSAND", rest, source, index, 1, acc, state_stack, brace_depth)
+
       [58, next | rest] ->
         case is_ident_start(next) do
-          true -> scan_atom([next] ++ rest, source, index, index + 1, acc)
-          false -> emit_simple("COLON", [next] ++ rest, source, index, 1, acc)
-          _ -> emit_simple("COLON", [next] ++ rest, source, index, 1, acc)
+          true -> scan_atom([next] ++ rest, source, index, index + 1, acc, state_stack, brace_depth)
+          false -> emit_simple("COLON", [next] ++ rest, source, index, 1, acc, state_stack, brace_depth)
+          _ -> emit_simple("COLON", [next] ++ rest, source, index, 1, acc, state_stack, brace_depth)
         end
 
-      [58] -> emit_simple("COLON", [], source, index, 1, acc)
-      [126, 126, 126 | rest] -> emit_simple("TILDE_TILDE_TILDE", rest, source, index, 3, acc)
-      _ -> scan_dynamic_token(chars, source, index, acc)
+      [58] -> emit_simple("COLON", [], source, index, 1, acc, state_stack, brace_depth)
+      [126, 126, 126 | rest] -> emit_simple("TILDE_TILDE_TILDE", rest, source, index, 3, acc, state_stack, brace_depth)
+      _ -> scan_dynamic_token(chars, source, index, acc, state_stack, brace_depth)
     end
   end
 
-  def scan_dynamic_token(chars, source, index, acc) do
+  def scan_string_token(chars, source, index, acc, state_stack, brace_depth, is_heredoc) do
+    case string_has_interpolation(chars, is_heredoc) do
+      true ->
+        scan(
+          chars,
+          source,
+          index + string_open_width(is_heredoc),
+          [Compiler.Token.simple("STRING_START", index, index + string_open_width(is_heredoc))] ++ acc,
+          [[1, is_heredoc, brace_depth, index]] ++ state_stack,
+          brace_depth
+        )
+
+      false -> scan_plain_string(chars, source, index, index + string_open_width(is_heredoc), acc, state_stack, brace_depth, is_heredoc)
+      _ -> scan_plain_string(chars, source, index, index + string_open_width(is_heredoc), acc, state_stack, brace_depth, is_heredoc)
+    end
+  end
+
+  def string_open_width(true) do
+    3
+  end
+
+  def string_open_width(_is_heredoc) do
+    1
+  end
+
+  def string_has_interpolation(chars, true) do
+    case chars do
+      [34, 34, 34 | _] -> false
+      [35, 123 | _] -> true
+      [_ | rest] -> string_has_interpolation(rest, true)
+      [] -> false
+      _ -> false
+    end
+  end
+
+  def string_has_interpolation(chars, _is_heredoc) do
+    case chars do
+      [34 | _] -> false
+      [35, 123 | _] -> true
+      [_ | rest] -> string_has_interpolation(rest, false)
+      [] -> false
+      _ -> false
+    end
+  end
+
+  def scan_plain_string(chars, source, start, content_start, acc, state_stack, brace_depth, is_heredoc) do
+    scan_plain_string_tail(chars, source, start, content_start, content_start, acc, state_stack, brace_depth, is_heredoc)
+  end
+
+  def scan_plain_string_tail(chars, source, start, content_start, index, acc, state_stack, brace_depth, true) do
+    case chars do
+      [34, 34, 34 | rest] ->
+        emit_lexeme(
+          "STRING",
+          String.slice(source, content_start, index - content_start),
+          rest,
+          source,
+          start,
+          index + 3,
+          acc,
+          state_stack,
+          brace_depth
+        )
+
+      [_ | rest] -> scan_plain_string_tail(rest, source, start, content_start, index + 1, acc, state_stack, brace_depth, true)
+      [] -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+    end
+  end
+
+  def scan_plain_string_tail(chars, source, start, content_start, index, acc, state_stack, brace_depth, _is_heredoc) do
+    case chars do
+      [34 | rest] ->
+        emit_lexeme(
+          "STRING",
+          String.slice(source, content_start, index - content_start),
+          rest,
+          source,
+          start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth
+        )
+
+      [_ | rest] -> scan_plain_string_tail(rest, source, start, content_start, index + 1, acc, state_stack, brace_depth, false)
+      [] -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+    end
+  end
+
+  def scan_string_state(chars, source, index, acc, state_stack, brace_depth, is_heredoc, string_brace_depth, string_start) do
+    scan_string_segment(
+      chars,
+      source,
+      index,
+      index,
+      acc,
+      state_stack,
+      brace_depth,
+      is_heredoc,
+      string_brace_depth,
+      string_start
+    )
+  end
+
+  def scan_string_segment(chars, source, segment_start, index, acc, state_stack, brace_depth, true, string_brace_depth, string_start) do
+    case chars do
+      [34, 34, 34 | rest] ->
+        finish_string_termination(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          true,
+          string_brace_depth,
+          string_start
+        )
+
+      [35, 123 | rest] ->
+        finish_string_interpolation(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          true,
+          string_brace_depth,
+          string_start
+        )
+
+      [_ | rest] ->
+        scan_string_segment(
+          rest,
+          source,
+          segment_start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth,
+          true,
+          string_brace_depth,
+          string_start
+        )
+
+      [] -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+    end
+  end
+
+  def scan_string_segment(chars, source, segment_start, index, acc, state_stack, brace_depth, _is_heredoc, string_brace_depth, string_start) do
+    case chars do
+      [34 | rest] ->
+        finish_string_termination(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          false,
+          string_brace_depth,
+          string_start
+        )
+
+      [35, 123 | rest] ->
+        finish_string_interpolation(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          false,
+          string_brace_depth,
+          string_start
+        )
+
+      [_ | rest] ->
+        scan_string_segment(
+          rest,
+          source,
+          segment_start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth,
+          false,
+          string_brace_depth,
+          string_start
+        )
+
+      [] -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+    end
+  end
+
+  def finish_string_termination(rest, source, segment_start, index, acc, state_stack, brace_depth, is_heredoc, _string_brace_depth, _string_start) do
+    scan(
+      rest,
+      source,
+      index + string_open_width(is_heredoc),
+      [Compiler.Token.simple("STRING_END", index, index + string_open_width(is_heredoc))] ++ emit_string_part(acc, source, segment_start, index),
+      pop_state(state_stack),
+      brace_depth
+    )
+  end
+
+  def finish_string_interpolation(rest, source, segment_start, index, acc, state_stack, brace_depth, _is_heredoc, _string_brace_depth, _string_start) do
+    scan(
+      rest,
+      source,
+      index + 2,
+      [Compiler.Token.simple("INTERPOLATION_START", index, index + 2)] ++ emit_string_part(acc, source, segment_start, index),
+      [[0]] ++ state_stack,
+      brace_depth + 1
+    )
+  end
+
+  def emit_string_part(acc, source, start, finish) do
+    if finish > start do
+      [Compiler.Token.with_lexeme("STRING_PART", String.slice(source, start, finish - start), start, finish)] ++ acc
+    else
+      acc
+    end
+  end
+
+  def pop_state(state_stack) do
+    case state_stack do
+      [_ | rest] -> rest
+      [] -> []
+      _ -> []
+    end
+  end
+
+  def emit_open_brace(rest, source, index, acc, state_stack, brace_depth) do
+    scan(
+      rest,
+      source,
+      index + 1,
+      [Compiler.Token.simple("LBRACE", index, index + 1)] ++ acc,
+      state_stack,
+      brace_depth + 1
+    )
+  end
+
+  def emit_close_brace(rest, source, index, acc, state_stack, brace_depth) do
+    case state_stack do
+      [[0], [1, is_heredoc, string_brace_depth, string_start] | tail] ->
+        if decrement(brace_depth) == string_brace_depth do
+          scan(
+            rest,
+            source,
+            index + 1,
+            [Compiler.Token.simple("INTERPOLATION_END", index, index + 1)] ++ acc,
+            [[1, is_heredoc, string_brace_depth, string_start]] ++ tail,
+            decrement(brace_depth)
+          )
+        else
+          scan(
+            rest,
+            source,
+            index + 1,
+            [Compiler.Token.simple("RBRACE", index, index + 1)] ++ acc,
+            state_stack,
+            decrement(brace_depth)
+          )
+        end
+
+      _ ->
+        scan(
+          rest,
+          source,
+          index + 1,
+          [Compiler.Token.simple("RBRACE", index, index + 1)] ++ acc,
+          state_stack,
+          decrement(brace_depth)
+        )
+    end
+  end
+
+  def decrement(value) do
+    case value do
+      0 -> 0
+      _ -> value - 1
+    end
+  end
+
+  def scan_dynamic_token(chars, source, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | _] ->
         case is_digit(cp) do
-          true -> scan_number(chars, source, index, acc)
+          true -> scan_number(chars, source, index, acc, state_stack, brace_depth)
           false ->
             case is_ident_start(cp) do
-              true -> scan_identifier(chars, source, index, acc)
+              true -> scan_identifier(chars, source, index, acc, state_stack, brace_depth)
               false -> {:error, Compiler.Token.error("unsupported token", index, index + 1)}
               _ -> {:error, Compiler.Token.error("unsupported token", index, index + 1)}
             end
@@ -131,34 +475,34 @@ defmodule Compiler.Lexer do
     end
   end
 
-  def scan_comment(chars, source, index, acc) do
+  def scan_comment(chars, source, index, acc, state_stack, brace_depth) do
     case chars do
-      [] -> scan([], source, index, acc)
-      [10 | rest] -> scan(rest, source, index + 1, acc)
-      [_ | rest] -> scan_comment(rest, source, index + 1, acc)
-      _ -> scan([], source, index, acc)
+      [] -> scan([], source, index, acc, state_stack, brace_depth)
+      [10 | rest] -> scan(rest, source, index + 1, acc, state_stack, brace_depth)
+      [_ | rest] -> scan_comment(rest, source, index + 1, acc, state_stack, brace_depth)
+      _ -> scan([], source, index, acc, state_stack, brace_depth)
     end
   end
 
-  def scan_identifier(chars, source, start, acc) do
-    scan_identifier_tail(chars, source, start, start, acc)
+  def scan_identifier(chars, source, start, acc, state_stack, brace_depth) do
+    scan_identifier_tail(chars, source, start, start, acc, state_stack, brace_depth)
   end
 
-  def scan_identifier_tail(chars, source, start, index, acc) do
+  def scan_identifier_tail(chars, source, start, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
         case is_ident_continue(cp) do
-          true -> scan_identifier_tail(rest, source, start, index + 1, acc)
-          false -> finish_identifier(chars, source, start, index, acc)
-          _ -> finish_identifier(chars, source, start, index, acc)
+          true -> scan_identifier_tail(rest, source, start, index + 1, acc, state_stack, brace_depth)
+          false -> finish_identifier(chars, source, start, index, acc, state_stack, brace_depth)
+          _ -> finish_identifier(chars, source, start, index, acc, state_stack, brace_depth)
         end
 
-      [] -> finish_identifier([], source, start, index, acc)
-      _ -> finish_identifier([], source, start, index, acc)
+      [] -> finish_identifier([], source, start, index, acc, state_stack, brace_depth)
+      _ -> finish_identifier([], source, start, index, acc, state_stack, brace_depth)
     end
   end
 
-  def finish_identifier(rest, source, start, finish, acc) do
+  def finish_identifier(rest, source, start, finish, acc, state_stack, brace_depth) do
     emit_lexeme(
       keyword_kind(String.slice(source, start, finish - start)),
       String.slice(source, start, finish - start),
@@ -166,29 +510,31 @@ defmodule Compiler.Lexer do
       source,
       start,
       finish,
-      acc
+      acc,
+      state_stack,
+      brace_depth
     )
   end
 
-  def scan_atom(chars, source, span_start, lexeme_start, acc) do
-    scan_atom_tail(chars, source, span_start, lexeme_start, lexeme_start, acc)
+  def scan_atom(chars, source, span_start, lexeme_start, acc, state_stack, brace_depth) do
+    scan_atom_tail(chars, source, span_start, lexeme_start, lexeme_start, acc, state_stack, brace_depth)
   end
 
-  def scan_atom_tail(chars, source, span_start, lexeme_start, index, acc) do
+  def scan_atom_tail(chars, source, span_start, lexeme_start, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
         case is_ident_continue(cp) do
-          true -> scan_atom_tail(rest, source, span_start, lexeme_start, index + 1, acc)
-          false -> finish_atom(chars, source, span_start, lexeme_start, index, acc)
-          _ -> finish_atom(chars, source, span_start, lexeme_start, index, acc)
+          true -> scan_atom_tail(rest, source, span_start, lexeme_start, index + 1, acc, state_stack, brace_depth)
+          false -> finish_atom(chars, source, span_start, lexeme_start, index, acc, state_stack, brace_depth)
+          _ -> finish_atom(chars, source, span_start, lexeme_start, index, acc, state_stack, brace_depth)
         end
 
-      [] -> finish_atom([], source, span_start, lexeme_start, index, acc)
-      _ -> finish_atom([], source, span_start, lexeme_start, index, acc)
+      [] -> finish_atom([], source, span_start, lexeme_start, index, acc, state_stack, brace_depth)
+      _ -> finish_atom([], source, span_start, lexeme_start, index, acc, state_stack, brace_depth)
     end
   end
 
-  def finish_atom(rest, source, span_start, lexeme_start, finish, acc) do
+  def finish_atom(rest, source, span_start, lexeme_start, finish, acc, state_stack, brace_depth) do
     emit_lexeme(
       "ATOM",
       String.slice(source, lexeme_start, finish - lexeme_start),
@@ -196,94 +542,96 @@ defmodule Compiler.Lexer do
       source,
       span_start,
       finish,
-      acc
+      acc,
+      state_stack,
+      brace_depth
     )
   end
 
-  def scan_number(chars, source, start, acc) do
+  def scan_number(chars, source, start, acc, state_stack, brace_depth) do
     case chars do
-      [48, 120 | rest] -> scan_radix(rest, source, start, start + 2, 16, acc)
-      [48, 88 | rest] -> scan_radix(rest, source, start, start + 2, 16, acc)
-      [48, 111 | rest] -> scan_radix(rest, source, start, start + 2, 8, acc)
-      [48, 79 | rest] -> scan_radix(rest, source, start, start + 2, 8, acc)
-      [48, 98 | rest] -> scan_radix(rest, source, start, start + 2, 2, acc)
-      [48, 66 | rest] -> scan_radix(rest, source, start, start + 2, 2, acc)
-      _ -> scan_decimal(chars, source, start, acc)
+      [48, 120 | rest] -> scan_radix(rest, source, start, start + 2, 16, acc, state_stack, brace_depth)
+      [48, 88 | rest] -> scan_radix(rest, source, start, start + 2, 16, acc, state_stack, brace_depth)
+      [48, 111 | rest] -> scan_radix(rest, source, start, start + 2, 8, acc, state_stack, brace_depth)
+      [48, 79 | rest] -> scan_radix(rest, source, start, start + 2, 8, acc, state_stack, brace_depth)
+      [48, 98 | rest] -> scan_radix(rest, source, start, start + 2, 2, acc, state_stack, brace_depth)
+      [48, 66 | rest] -> scan_radix(rest, source, start, start + 2, 2, acc, state_stack, brace_depth)
+      _ -> scan_decimal(chars, source, start, acc, state_stack, brace_depth)
     end
   end
 
-  def scan_decimal(chars, source, start, acc) do
-    scan_decimal_integer(chars, source, start, start, acc)
+  def scan_decimal(chars, source, start, acc, state_stack, brace_depth) do
+    scan_decimal_integer(chars, source, start, start, acc, state_stack, brace_depth)
   end
 
-  def scan_decimal_integer(chars, source, start, index, acc) do
+  def scan_decimal_integer(chars, source, start, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
         case digit_or_separator(cp) do
-          true -> scan_decimal_integer(rest, source, start, index + 1, acc)
-          false -> finish_decimal(chars, source, start, index, acc)
-          _ -> finish_decimal(chars, source, start, index, acc)
+          true -> scan_decimal_integer(rest, source, start, index + 1, acc, state_stack, brace_depth)
+          false -> finish_decimal(chars, source, start, index, acc, state_stack, brace_depth)
+          _ -> finish_decimal(chars, source, start, index, acc, state_stack, brace_depth)
         end
 
-      [] -> finish_decimal([], source, start, index, acc)
-      _ -> finish_decimal([], source, start, index, acc)
+      [] -> finish_decimal([], source, start, index, acc, state_stack, brace_depth)
+      _ -> finish_decimal([], source, start, index, acc, state_stack, brace_depth)
     end
   end
 
-  def finish_decimal(rest, source, start, finish, acc) do
+  def finish_decimal(rest, source, start, finish, acc, state_stack, brace_depth) do
     if trailing_separator(source, start, finish) do
       {:error, Compiler.Token.error("invalid numeric literal", start, finish)}
     else
-      finish_decimal_or_float(rest, source, start, finish, acc)
+      finish_decimal_or_float(rest, source, start, finish, acc, state_stack, brace_depth)
     end
   end
 
-  def finish_decimal_or_float(rest, source, start, finish, acc) do
+  def finish_decimal_or_float(rest, source, start, finish, acc, state_stack, brace_depth) do
     case rest do
       [46, next | after_dot] ->
         case is_digit(next) do
-          true -> scan_fraction([next] ++ after_dot, source, start, finish + 1, acc)
-          false -> emit_clean_number("INT", rest, source, start, finish, acc)
-          _ -> emit_clean_number("INT", rest, source, start, finish, acc)
+          true -> scan_fraction([next] ++ after_dot, source, start, finish + 1, acc, state_stack, brace_depth)
+          false -> emit_clean_number("INT", rest, source, start, finish, acc, state_stack, brace_depth)
+          _ -> emit_clean_number("INT", rest, source, start, finish, acc, state_stack, brace_depth)
         end
 
-      _ -> emit_clean_number("INT", rest, source, start, finish, acc)
+      _ -> emit_clean_number("INT", rest, source, start, finish, acc, state_stack, brace_depth)
     end
   end
 
-  def scan_fraction(chars, source, start, dot_end, acc) do
-    scan_fraction_tail(chars, source, start, dot_end, dot_end, acc)
+  def scan_fraction(chars, source, start, dot_end, acc, state_stack, brace_depth) do
+    scan_fraction_tail(chars, source, start, dot_end, dot_end, acc, state_stack, brace_depth)
   end
 
-  def scan_fraction_tail(chars, source, start, dot_end, index, acc) do
+  def scan_fraction_tail(chars, source, start, dot_end, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
         case digit_or_separator(cp) do
-          true -> scan_fraction_tail(rest, source, start, dot_end, index + 1, acc)
-          false -> finish_fraction(chars, source, start, index, acc)
-          _ -> finish_fraction(chars, source, start, index, acc)
+          true -> scan_fraction_tail(rest, source, start, dot_end, index + 1, acc, state_stack, brace_depth)
+          false -> finish_fraction(chars, source, start, index, acc, state_stack, brace_depth)
+          _ -> finish_fraction(chars, source, start, index, acc, state_stack, brace_depth)
         end
 
-      [] -> finish_fraction([], source, start, index, acc)
-      _ -> finish_fraction([], source, start, index, acc)
+      [] -> finish_fraction([], source, start, index, acc, state_stack, brace_depth)
+      _ -> finish_fraction([], source, start, index, acc, state_stack, brace_depth)
     end
   end
 
-  def finish_fraction(rest, source, start, finish, acc) do
+  def finish_fraction(rest, source, start, finish, acc, state_stack, brace_depth) do
     if trailing_separator(source, start, finish) do
       {:error, Compiler.Token.error("invalid numeric literal", start, finish)}
     else
-      emit_clean_number("FLOAT", rest, source, start, finish, acc)
+      emit_clean_number("FLOAT", rest, source, start, finish, acc, state_stack, brace_depth)
     end
   end
 
-  def scan_radix(chars, source, start, digits_start, base, acc) do
+  def scan_radix(chars, source, start, digits_start, base, acc, state_stack, brace_depth) do
     case chars do
       [] -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start)}
       [95 | _] -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start + 1)}
       [cp | _] ->
         case valid_digit_for_base(cp, base) do
-          true -> scan_radix_tail(chars, source, start, digits_start, digits_start, base, acc)
+          true -> scan_radix_tail(chars, source, start, digits_start, digits_start, base, acc, state_stack, brace_depth)
           false -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start)}
           _ -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start)}
         end
@@ -292,27 +640,27 @@ defmodule Compiler.Lexer do
     end
   end
 
-  def scan_radix_tail(chars, source, start, digits_start, index, base, acc) do
+  def scan_radix_tail(chars, source, start, digits_start, index, base, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
         case radix_continue(cp, base) do
-          true -> scan_radix_tail(rest, source, start, digits_start, index + 1, base, acc)
+          true -> scan_radix_tail(rest, source, start, digits_start, index + 1, base, acc, state_stack, brace_depth)
           false ->
             case invalid_digit_for_base(cp, base) do
               true -> {:error, Compiler.Token.error("invalid numeric literal", start, index + 1)}
-              false -> finish_radix(chars, source, start, digits_start, index, base, acc)
-              _ -> finish_radix(chars, source, start, digits_start, index, base, acc)
+              false -> finish_radix(chars, source, start, digits_start, index, base, acc, state_stack, brace_depth)
+              _ -> finish_radix(chars, source, start, digits_start, index, base, acc, state_stack, brace_depth)
             end
 
-          _ -> finish_radix(chars, source, start, digits_start, index, base, acc)
+          _ -> finish_radix(chars, source, start, digits_start, index, base, acc, state_stack, brace_depth)
         end
 
-      [] -> finish_radix([], source, start, digits_start, index, base, acc)
-      _ -> finish_radix([], source, start, digits_start, index, base, acc)
+      [] -> finish_radix([], source, start, digits_start, index, base, acc, state_stack, brace_depth)
+      _ -> finish_radix([], source, start, digits_start, index, base, acc, state_stack, brace_depth)
     end
   end
 
-  def finish_radix(rest, source, start, digits_start, finish, base, acc) do
+  def finish_radix(rest, source, start, digits_start, finish, base, acc, state_stack, brace_depth) do
     if trailing_separator(source, digits_start, finish) do
       {:error, Compiler.Token.error("invalid numeric literal", start, finish)}
     else
@@ -323,30 +671,36 @@ defmodule Compiler.Lexer do
         source,
         start,
         finish,
-        acc
+        acc,
+        state_stack,
+        brace_depth
       )
     end
   end
 
-  def emit_simple(kind, rest, source, start, width, acc) do
+  def emit_simple(kind, rest, source, start, width, acc, state_stack, brace_depth) do
     scan(
       rest,
       source,
       start + width,
-      [Compiler.Token.simple(kind, start, start + width)] ++ acc
+      [Compiler.Token.simple(kind, start, start + width)] ++ acc,
+      state_stack,
+      brace_depth
     )
   end
 
-  def emit_lexeme(kind, lexeme, rest, source, start, finish, acc) do
+  def emit_lexeme(kind, lexeme, rest, source, start, finish, acc, state_stack, brace_depth) do
     scan(
       rest,
       source,
       finish,
-      [Compiler.Token.with_lexeme(kind, lexeme, start, finish)] ++ acc
+      [Compiler.Token.with_lexeme(kind, lexeme, start, finish)] ++ acc,
+      state_stack,
+      brace_depth
     )
   end
 
-  def emit_clean_number(kind, rest, source, start, finish, acc) do
+  def emit_clean_number(kind, rest, source, start, finish, acc, state_stack, brace_depth) do
     emit_lexeme(
       kind,
       String.replace(String.slice(source, start, finish - start), "_", ""),
@@ -354,7 +708,9 @@ defmodule Compiler.Lexer do
       source,
       start,
       finish,
-      acc
+      acc,
+      state_stack,
+      brace_depth
     )
   end
 
