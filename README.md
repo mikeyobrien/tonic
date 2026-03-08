@@ -48,9 +48,11 @@ Same output, different execution path.
 - **Version:** `0.1.0-alpha.1`
 - **Stability:** alpha (interfaces and behavior may still evolve)
 - **Scope:** language syntax/runtime parity work and native backend iteration
+- **Bootstrap/self-hosting:** partial self-hosting via a parity-verified self-hosted lexer milestone; the current hard gate is curated-corpus lexer parity, not full self-hosting or Rust-free bootstrap closure
 - **Out of scope:** BEAM/OTP runtime model (processes, supervisors, distribution, hot upgrade lifecycle)
 
 For detailed syntax parity coverage and planned gaps, see [PARITY.md](PARITY.md).
+For the current self-hosting milestone status, see [docs/self-hosting-status.md](docs/self-hosting-status.md).
 For the current supported stdlib boundary, see [docs/core-stdlib-profile.md](docs/core-stdlib-profile.md).
 The honest baseline today is a workload-backed `String` + `System` core profile, with `Path` available but secondary.
 
@@ -113,7 +115,7 @@ cargo run --bin tonic -- run path/to/file.tn
 | Command | Purpose | Example |
 |---|---|---|
 | `tonic run <path>` | Execute a file or project (`tonic.toml`) | `cargo run --bin tonic -- run examples/parity/07-modules/project_multifile_pipeline` |
-| `tonic check <path> [--dump-tokens\|--dump-ast\|--dump-ir\|--dump-mir]` | Parse/type-check and optionally dump internals | `cargo run --bin tonic -- check examples/parity/01-literals/atom_expression.tn --dump-ir` |
+| `tonic check <path> [--dump-tokens [--format <text\|json>]\|--dump-ast\|--dump-ir\|--dump-mir]` | Parse/type-check and optionally dump internals | `cargo run --bin tonic -- check examples/parity/01-literals/atom_expression.tn --dump-tokens --format json` |
 | `tonic test <path> [--format <text\|json>]` | Run discovered `.tn` tests | `cargo run --bin tonic -- test examples/parity --format json` |
 | `tonic fmt <path> [--check]` | Format source files or verify formatting | `cargo run --bin tonic -- fmt examples --check` |
 | `tonic compile <path> [--out <artifact-path>]` | Produce native executable + sidecars | `cargo run --bin tonic -- compile examples/parity/02-operators/arithmetic_basic.tn` |

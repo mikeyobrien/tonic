@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod differential;
+pub mod self_hosted_lexer_parity;
 
 use std::path::PathBuf;
 
