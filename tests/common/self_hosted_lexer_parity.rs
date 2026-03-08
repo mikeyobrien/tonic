@@ -6,7 +6,16 @@ use std::process::Command;
 use super::differential::CommandOutcome;
 
 const SELF_HOSTED_LEXER_APP: &str = "examples/apps/self_hosted_lexer";
-const CURATED_FIXTURES: &[&str] = &["tests/fixtures/self_hosted_lexer_parity/keywords_module.tn"];
+const CURATED_FIXTURES: &[&str] = &[
+    "tests/fixtures/self_hosted_lexer_parity/keywords_module.tn",
+    "tests/fixtures/self_hosted_lexer_parity/punctuation_call.tn",
+    "tests/fixtures/self_hosted_lexer_parity/punctuation_list.tn",
+    "tests/fixtures/self_hosted_lexer_parity/operators_arithmetic.tn",
+    "tests/fixtures/self_hosted_lexer_parity/operators_compare.tn",
+    "tests/fixtures/self_hosted_lexer_parity/numbers_comments_whitespace.tn",
+    "tests/fixtures/self_hosted_lexer_parity/strings_heredoc.tn",
+    "tests/fixtures/self_hosted_lexer_parity/interpolation.tn",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenDumpRecord {
