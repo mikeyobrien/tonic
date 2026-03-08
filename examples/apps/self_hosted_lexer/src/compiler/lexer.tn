@@ -4,74 +4,15 @@ defmodule Compiler.Lexer do
   end
 
   def lex_source(source_path, source) do
-    build_payload(
+    Compiler.Lexer.Output.build_payload(
       source_path,
       source,
-      emit_structured_output(
+      Compiler.Lexer.Output.emit_structured_output(
         source_path,
         source,
         scan(String.to_charlist(source), source, 0, [], [[0]], 0)
       )
     )
-  end
-
-  def emit_structured_output(source_path, source, result) do
-    maybe_emit_structured_output(
-      source_path,
-      String.length(source),
-      result,
-      System.env("TONIC_SYSTEM_LOG_PATH")
-    )
-  end
-
-  def maybe_emit_structured_output(_source_path, _source_length, result, nil) do
-    result
-  end
-
-  def maybe_emit_structured_output(source_path, source_length, result, _sink_path) do
-    case result do
-      {:ok, tokens} -> log_and_return(:info, source_path, source_length, nil, tokens, result)
-      {:error, error} -> log_and_return(:info, source_path, source_length, error, [], result)
-      _ -> log_and_return(:warn, source_path, source_length, Compiler.Token.error("unexpected lexer result", 0, 0), [], result)
-    end
-  end
-
-  def log_and_return(level, source_path, source_length, error, tokens, result) do
-    case System.log(level, "self_hosted_lexer.tokens", %{
-           source_path: source_path,
-           source_length: source_length,
-           error: error,
-           tokens: tokens
-         }) do
-      _ -> result
-    end
-  end
-
-  def build_payload(source_path, source, result) do
-    case result do
-      {:ok, tokens} ->
-        %{
-          source_path: source_path,
-          source_length: String.length(source),
-          tokens: tokens
-        }
-
-      {:error, error} ->
-        %{
-          source_path: source_path,
-          source_length: String.length(source),
-          error: error,
-          tokens: []
-        }
-
-      _ ->
-        %{
-          source_path: source_path,
-          source_length: String.length(source),
-          error: Compiler.Token.error("unexpected lexer result", 0, 0),
-          tokens: []
-        }
-    end
   end
 
   def scan(chars, source, index, acc, state_stack, brace_depth) do
@@ -82,26 +23,19 @@ defmodule Compiler.Lexer do
   end
 
   def finish_scan(source, index, acc, state_stack) do
-    case find_unterminated_string_start(state_stack) do
-      nil -> {:ok, reverse([Compiler.Token.eof(index)] ++ acc)}
-      string_start -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
-    end
-  end
-
-  def find_unterminated_string_start(state_stack) do
-    case state_stack do
-      [[1, _is_heredoc, _brace_depth, string_start] | _] -> string_start
-      [_ | rest] -> find_unterminated_string_start(rest)
-      [] -> nil
-      _ -> nil
+    case Compiler.Lexer.Strings.find_unterminated_string_start(state_stack) do
+      nil -> {:ok, Compiler.Lexer.Classify.reverse([Compiler.Token.eof(index)] ++ acc)}
+      string_start ->
+        {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
     end
   end
 
   def dispatch_scan(chars, source, index, acc, state_stack, brace_depth) do
     case state_stack do
       [[0] | _] -> scan_normal(chars, source, index, acc, state_stack, brace_depth)
+
       [[1, is_heredoc, string_brace_depth, string_start] | _] ->
-        scan_string_state(
+        Compiler.Lexer.Strings.scan_string_state(
           chars,
           source,
           index,
@@ -120,7 +54,7 @@ defmodule Compiler.Lexer do
   def scan_normal(chars, source, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
-        case is_whitespace(cp) do
+        case Compiler.Lexer.Classify.is_whitespace(cp) do
           true -> scan(rest, source, index + 1, acc, state_stack, brace_depth)
           false -> scan_normal_token(chars, source, index, acc, state_stack, brace_depth)
           _ -> scan_normal_token(chars, source, index, acc, state_stack, brace_depth)
@@ -133,8 +67,29 @@ defmodule Compiler.Lexer do
   def scan_normal_token(chars, source, index, acc, state_stack, brace_depth) do
     case chars do
       [35 | rest] -> scan_comment(rest, source, index + 1, acc, state_stack, brace_depth)
-      [34, 34, 34 | rest] -> scan_string_token(rest, source, index, acc, state_stack, brace_depth, true)
-      [34 | rest] -> scan_string_token(rest, source, index, acc, state_stack, brace_depth, false)
+
+      [34, 34, 34 | rest] ->
+        Compiler.Lexer.Strings.scan_string_token(
+          rest,
+          source,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          true
+        )
+
+      [34 | rest] ->
+        Compiler.Lexer.Strings.scan_string_token(
+          rest,
+          source,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          false
+        )
+
       [40 | rest] -> emit_simple("LPAREN", rest, source, index, 1, acc, state_stack, brace_depth)
       [41 | rest] -> emit_simple("RPAREN", rest, source, index, 1, acc, state_stack, brace_depth)
       [123 | rest] -> emit_open_brace(rest, source, index, acc, state_stack, brace_depth)
@@ -185,7 +140,7 @@ defmodule Compiler.Lexer do
       [38 | rest] -> emit_simple("AMPERSAND", rest, source, index, 1, acc, state_stack, brace_depth)
 
       [58, next | rest] ->
-        case is_ident_start(next) do
+        case Compiler.Lexer.Classify.is_ident_start(next) do
           true -> scan_atom([next] ++ rest, source, index, index + 1, acc, state_stack, brace_depth)
           false -> emit_simple("COLON", [next] ++ rest, source, index, 1, acc, state_stack, brace_depth)
           _ -> emit_simple("COLON", [next] ++ rest, source, index, 1, acc, state_stack, brace_depth)
@@ -194,248 +149,6 @@ defmodule Compiler.Lexer do
       [58] -> emit_simple("COLON", [], source, index, 1, acc, state_stack, brace_depth)
       [126, 126, 126 | rest] -> emit_simple("TILDE_TILDE_TILDE", rest, source, index, 3, acc, state_stack, brace_depth)
       _ -> scan_dynamic_token(chars, source, index, acc, state_stack, brace_depth)
-    end
-  end
-
-  def scan_string_token(chars, source, index, acc, state_stack, brace_depth, is_heredoc) do
-    case string_has_interpolation(chars, is_heredoc) do
-      true ->
-        scan(
-          chars,
-          source,
-          index + string_open_width(is_heredoc),
-          [Compiler.Token.simple("STRING_START", index, index + string_open_width(is_heredoc))] ++ acc,
-          [[1, is_heredoc, brace_depth, index]] ++ state_stack,
-          brace_depth
-        )
-
-      false -> scan_plain_string(chars, source, index, index + string_open_width(is_heredoc), acc, state_stack, brace_depth, is_heredoc)
-      _ -> scan_plain_string(chars, source, index, index + string_open_width(is_heredoc), acc, state_stack, brace_depth, is_heredoc)
-    end
-  end
-
-  def string_open_width(true) do
-    3
-  end
-
-  def string_open_width(_is_heredoc) do
-    1
-  end
-
-  def string_has_interpolation(chars, true) do
-    case chars do
-      [34, 34, 34 | _] -> false
-      [35, 123 | _] -> true
-      [_ | rest] -> string_has_interpolation(rest, true)
-      [] -> false
-      _ -> false
-    end
-  end
-
-  def string_has_interpolation(chars, _is_heredoc) do
-    case chars do
-      [34 | _] -> false
-      [35, 123 | _] -> true
-      [_ | rest] -> string_has_interpolation(rest, false)
-      [] -> false
-      _ -> false
-    end
-  end
-
-  def scan_plain_string(chars, source, start, content_start, acc, state_stack, brace_depth, is_heredoc) do
-    scan_plain_string_tail(chars, source, start, content_start, content_start, acc, state_stack, brace_depth, is_heredoc)
-  end
-
-  def scan_plain_string_tail(chars, source, start, content_start, index, acc, state_stack, brace_depth, true) do
-    case chars do
-      [34, 34, 34 | rest] ->
-        emit_lexeme(
-          "STRING",
-          String.slice(source, content_start, index - content_start),
-          rest,
-          source,
-          start,
-          index + 3,
-          acc,
-          state_stack,
-          brace_depth
-        )
-
-      [_ | rest] -> scan_plain_string_tail(rest, source, start, content_start, index + 1, acc, state_stack, brace_depth, true)
-      [] -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
-      _ -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
-    end
-  end
-
-  def scan_plain_string_tail(chars, source, start, content_start, index, acc, state_stack, brace_depth, _is_heredoc) do
-    case chars do
-      [34 | rest] ->
-        emit_lexeme(
-          "STRING",
-          String.slice(source, content_start, index - content_start),
-          rest,
-          source,
-          start,
-          index + 1,
-          acc,
-          state_stack,
-          brace_depth
-        )
-
-      [_ | rest] -> scan_plain_string_tail(rest, source, start, content_start, index + 1, acc, state_stack, brace_depth, false)
-      [] -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
-      _ -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
-    end
-  end
-
-  def scan_string_state(chars, source, index, acc, state_stack, brace_depth, is_heredoc, string_brace_depth, string_start) do
-    scan_string_segment(
-      chars,
-      source,
-      index,
-      index,
-      acc,
-      state_stack,
-      brace_depth,
-      is_heredoc,
-      string_brace_depth,
-      string_start
-    )
-  end
-
-  def scan_string_segment(chars, source, segment_start, index, acc, state_stack, brace_depth, true, string_brace_depth, string_start) do
-    case chars do
-      [34, 34, 34 | rest] ->
-        finish_string_termination(
-          rest,
-          source,
-          segment_start,
-          index,
-          acc,
-          state_stack,
-          brace_depth,
-          true,
-          string_brace_depth,
-          string_start
-        )
-
-      [35, 123 | rest] ->
-        finish_string_interpolation(
-          rest,
-          source,
-          segment_start,
-          index,
-          acc,
-          state_stack,
-          brace_depth,
-          true,
-          string_brace_depth,
-          string_start
-        )
-
-      [_ | rest] ->
-        scan_string_segment(
-          rest,
-          source,
-          segment_start,
-          index + 1,
-          acc,
-          state_stack,
-          brace_depth,
-          true,
-          string_brace_depth,
-          string_start
-        )
-
-      [] -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
-      _ -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
-    end
-  end
-
-  def scan_string_segment(chars, source, segment_start, index, acc, state_stack, brace_depth, _is_heredoc, string_brace_depth, string_start) do
-    case chars do
-      [34 | rest] ->
-        finish_string_termination(
-          rest,
-          source,
-          segment_start,
-          index,
-          acc,
-          state_stack,
-          brace_depth,
-          false,
-          string_brace_depth,
-          string_start
-        )
-
-      [35, 123 | rest] ->
-        finish_string_interpolation(
-          rest,
-          source,
-          segment_start,
-          index,
-          acc,
-          state_stack,
-          brace_depth,
-          false,
-          string_brace_depth,
-          string_start
-        )
-
-      [_ | rest] ->
-        scan_string_segment(
-          rest,
-          source,
-          segment_start,
-          index + 1,
-          acc,
-          state_stack,
-          brace_depth,
-          false,
-          string_brace_depth,
-          string_start
-        )
-
-      [] -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
-      _ -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
-    end
-  end
-
-  def finish_string_termination(rest, source, segment_start, index, acc, state_stack, brace_depth, is_heredoc, _string_brace_depth, _string_start) do
-    scan(
-      rest,
-      source,
-      index + string_open_width(is_heredoc),
-      [Compiler.Token.simple("STRING_END", index, index + string_open_width(is_heredoc))] ++ emit_string_part(acc, source, segment_start, index),
-      pop_state(state_stack),
-      brace_depth
-    )
-  end
-
-  def finish_string_interpolation(rest, source, segment_start, index, acc, state_stack, brace_depth, _is_heredoc, _string_brace_depth, _string_start) do
-    scan(
-      rest,
-      source,
-      index + 2,
-      [Compiler.Token.simple("INTERPOLATION_START", index, index + 2)] ++ emit_string_part(acc, source, segment_start, index),
-      [[0]] ++ state_stack,
-      brace_depth + 1
-    )
-  end
-
-  def emit_string_part(acc, source, start, finish) do
-    if finish > start do
-      [Compiler.Token.with_lexeme("STRING_PART", String.slice(source, start, finish - start), start, finish)] ++ acc
-    else
-      acc
-    end
-  end
-
-  def pop_state(state_stack) do
-    case state_stack do
-      [_ | rest] -> rest
-      [] -> []
-      _ -> []
     end
   end
 
@@ -495,10 +208,11 @@ defmodule Compiler.Lexer do
   def scan_dynamic_token(chars, source, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | _] ->
-        case is_digit(cp) do
+        case Compiler.Lexer.Classify.is_digit(cp) do
           true -> scan_number(chars, source, index, acc, state_stack, brace_depth)
+
           false ->
-            case is_ident_start(cp) do
+            case Compiler.Lexer.Classify.is_ident_start(cp) do
               true -> scan_identifier(chars, source, index, acc, state_stack, brace_depth)
               false -> {:error, Compiler.Token.error("unsupported token", index, index + 1)}
               _ -> {:error, Compiler.Token.error("unsupported token", index, index + 1)}
@@ -527,7 +241,7 @@ defmodule Compiler.Lexer do
   def scan_identifier_tail(chars, source, start, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
-        case is_ident_continue(cp) do
+        case Compiler.Lexer.Classify.is_ident_continue(cp) do
           true -> scan_identifier_tail(rest, source, start, index + 1, acc, state_stack, brace_depth)
           false -> finish_identifier(chars, source, start, index, acc, state_stack, brace_depth)
           _ -> finish_identifier(chars, source, start, index, acc, state_stack, brace_depth)
@@ -540,7 +254,7 @@ defmodule Compiler.Lexer do
 
   def finish_identifier(rest, source, start, finish, acc, state_stack, brace_depth) do
     emit_lexeme(
-      keyword_kind(String.slice(source, start, finish - start)),
+      Compiler.Lexer.Classify.keyword_kind(String.slice(source, start, finish - start)),
       String.slice(source, start, finish - start),
       rest,
       source,
@@ -559,7 +273,7 @@ defmodule Compiler.Lexer do
   def scan_atom_tail(chars, source, span_start, lexeme_start, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
-        case is_ident_continue(cp) do
+        case Compiler.Lexer.Classify.is_ident_continue(cp) do
           true -> scan_atom_tail(rest, source, span_start, lexeme_start, index + 1, acc, state_stack, brace_depth)
           false -> finish_atom(chars, source, span_start, lexeme_start, index, acc, state_stack, brace_depth)
           _ -> finish_atom(chars, source, span_start, lexeme_start, index, acc, state_stack, brace_depth)
@@ -603,7 +317,7 @@ defmodule Compiler.Lexer do
   def scan_decimal_integer(chars, source, start, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
-        case digit_or_separator(cp) do
+        case Compiler.Lexer.Classify.digit_or_separator(cp) do
           true -> scan_decimal_integer(rest, source, start, index + 1, acc, state_stack, brace_depth)
           false -> finish_decimal(chars, source, start, index, acc, state_stack, brace_depth)
           _ -> finish_decimal(chars, source, start, index, acc, state_stack, brace_depth)
@@ -615,7 +329,7 @@ defmodule Compiler.Lexer do
   end
 
   def finish_decimal(rest, source, start, finish, acc, state_stack, brace_depth) do
-    if trailing_separator(source, start, finish) do
+    if Compiler.Lexer.Classify.trailing_separator(source, start, finish) do
       {:error, Compiler.Token.error("invalid numeric literal", start, finish)}
     else
       finish_decimal_or_float(rest, source, start, finish, acc, state_stack, brace_depth)
@@ -625,7 +339,7 @@ defmodule Compiler.Lexer do
   def finish_decimal_or_float(rest, source, start, finish, acc, state_stack, brace_depth) do
     case rest do
       [46, next | after_dot] ->
-        case is_digit(next) do
+        case Compiler.Lexer.Classify.is_digit(next) do
           true -> scan_fraction([next] ++ after_dot, source, start, finish + 1, acc, state_stack, brace_depth)
           false -> emit_clean_number("INT", rest, source, start, finish, acc, state_stack, brace_depth)
           _ -> emit_clean_number("INT", rest, source, start, finish, acc, state_stack, brace_depth)
@@ -642,7 +356,7 @@ defmodule Compiler.Lexer do
   def scan_fraction_tail(chars, source, start, dot_end, index, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
-        case digit_or_separator(cp) do
+        case Compiler.Lexer.Classify.digit_or_separator(cp) do
           true -> scan_fraction_tail(rest, source, start, dot_end, index + 1, acc, state_stack, brace_depth)
           false -> finish_fraction(chars, source, start, index, acc, state_stack, brace_depth)
           _ -> finish_fraction(chars, source, start, index, acc, state_stack, brace_depth)
@@ -654,7 +368,7 @@ defmodule Compiler.Lexer do
   end
 
   def finish_fraction(rest, source, start, finish, acc, state_stack, brace_depth) do
-    if trailing_separator(source, start, finish) do
+    if Compiler.Lexer.Classify.trailing_separator(source, start, finish) do
       {:error, Compiler.Token.error("invalid numeric literal", start, finish)}
     else
       emit_clean_number("FLOAT", rest, source, start, finish, acc, state_stack, brace_depth)
@@ -665,8 +379,9 @@ defmodule Compiler.Lexer do
     case chars do
       [] -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start)}
       [95 | _] -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start + 1)}
+
       [cp | _] ->
-        case valid_digit_for_base(cp, base) do
+        case Compiler.Lexer.Classify.valid_digit_for_base(cp, base) do
           true -> scan_radix_tail(chars, source, start, digits_start, digits_start, base, acc, state_stack, brace_depth)
           false -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start)}
           _ -> {:error, Compiler.Token.error("invalid numeric literal", start, digits_start)}
@@ -679,10 +394,11 @@ defmodule Compiler.Lexer do
   def scan_radix_tail(chars, source, start, digits_start, index, base, acc, state_stack, brace_depth) do
     case chars do
       [cp | rest] ->
-        case radix_continue(cp, base) do
+        case Compiler.Lexer.Classify.radix_continue(cp, base) do
           true -> scan_radix_tail(rest, source, start, digits_start, index + 1, base, acc, state_stack, brace_depth)
+
           false ->
-            case invalid_digit_for_base(cp, base) do
+            case Compiler.Lexer.Classify.invalid_digit_for_base(cp, base) do
               true -> {:error, Compiler.Token.error("invalid numeric literal", start, index + 1)}
               false -> finish_radix(chars, source, start, digits_start, index, base, acc, state_stack, brace_depth)
               _ -> finish_radix(chars, source, start, digits_start, index, base, acc, state_stack, brace_depth)
@@ -697,12 +413,12 @@ defmodule Compiler.Lexer do
   end
 
   def finish_radix(rest, source, start, digits_start, finish, base, acc, state_stack, brace_depth) do
-    if trailing_separator(source, digits_start, finish) do
+    if Compiler.Lexer.Classify.trailing_separator(source, digits_start, finish) do
       {:error, Compiler.Token.error("invalid numeric literal", start, finish)}
     else
       emit_lexeme(
         "INT",
-        "#{parse_radix_value(String.to_charlist(String.replace(String.slice(source, digits_start, finish - digits_start), "_", "")), base, 0)}",
+        "#{Compiler.Lexer.Classify.parse_radix_value(String.to_charlist(String.replace(String.slice(source, digits_start, finish - digits_start), "_", "")), base, 0)}",
         rest,
         source,
         start,
@@ -748,404 +464,5 @@ defmodule Compiler.Lexer do
       state_stack,
       brace_depth
     )
-  end
-
-  def parse_radix_value(chars, base, acc) do
-    case chars do
-      [cp | rest] -> parse_radix_value(rest, base, (acc * base) + digit_value(cp))
-      [] -> acc
-      _ -> acc
-    end
-  end
-
-  def digit_value(cp) do
-    case cp do
-      48 -> 0
-      49 -> 1
-      50 -> 2
-      51 -> 3
-      52 -> 4
-      53 -> 5
-      54 -> 6
-      55 -> 7
-      56 -> 8
-      57 -> 9
-      65 -> 10
-      66 -> 11
-      67 -> 12
-      68 -> 13
-      69 -> 14
-      70 -> 15
-      97 -> 10
-      98 -> 11
-      99 -> 12
-      100 -> 13
-      101 -> 14
-      102 -> 15
-      _ -> 0
-    end
-  end
-
-  def reverse(list) do
-    reverse_into(list, [])
-  end
-
-  def reverse_into(list, acc) do
-    case list do
-      [head | tail] -> reverse_into(tail, [head] ++ acc)
-      [] -> acc
-      _ -> acc
-    end
-  end
-
-  def keyword_kind(lexeme) do
-    case lexeme do
-      "defmodule" -> "DEFMODULE"
-      "def" -> "DEF"
-      "defp" -> "DEFP"
-      "do" -> "DO"
-      "end" -> "END"
-      "if" -> "IF"
-      "unless" -> "UNLESS"
-      "case" -> "CASE"
-      "cond" -> "COND"
-      "with" -> "WITH"
-      "for" -> "FOR"
-      "fn" -> "FN"
-      "else" -> "ELSE"
-      "try" -> "TRY"
-      "rescue" -> "RESCUE"
-      "catch" -> "CATCH"
-      "after" -> "AFTER"
-      "raise" -> "RAISE"
-      "true" -> "TRUE"
-      "false" -> "FALSE"
-      "nil" -> "NIL"
-      "and" -> "AND"
-      "or" -> "OR"
-      "not" -> "NOT"
-      "in" -> "IN"
-      "when" -> "WHEN"
-      _ -> "IDENT"
-    end
-  end
-
-  def is_whitespace(cp) do
-    case cp do
-      9 -> true
-      10 -> true
-      13 -> true
-      32 -> true
-      _ -> false
-    end
-  end
-
-  def digit_or_separator(cp) do
-    case cp do
-      95 -> true
-      _ -> is_digit(cp)
-    end
-  end
-
-  def trailing_separator(source, start, finish) do
-    if finish > start do
-      case String.to_charlist(String.slice(source, finish - 1, 1)) do
-        [95] -> true
-        _ -> false
-      end
-    else
-      false
-    end
-  end
-
-  def is_digit(cp) do
-    case cp do
-      48 -> true
-      49 -> true
-      50 -> true
-      51 -> true
-      52 -> true
-      53 -> true
-      54 -> true
-      55 -> true
-      56 -> true
-      57 -> true
-      _ -> false
-    end
-  end
-
-  def is_ident_start(cp) do
-    case cp do
-      95 -> true
-      65 -> true
-      66 -> true
-      67 -> true
-      68 -> true
-      69 -> true
-      70 -> true
-      71 -> true
-      72 -> true
-      73 -> true
-      74 -> true
-      75 -> true
-      76 -> true
-      77 -> true
-      78 -> true
-      79 -> true
-      80 -> true
-      81 -> true
-      82 -> true
-      83 -> true
-      84 -> true
-      85 -> true
-      86 -> true
-      87 -> true
-      88 -> true
-      89 -> true
-      90 -> true
-      97 -> true
-      98 -> true
-      99 -> true
-      100 -> true
-      101 -> true
-      102 -> true
-      103 -> true
-      104 -> true
-      105 -> true
-      106 -> true
-      107 -> true
-      108 -> true
-      109 -> true
-      110 -> true
-      111 -> true
-      112 -> true
-      113 -> true
-      114 -> true
-      115 -> true
-      116 -> true
-      117 -> true
-      118 -> true
-      119 -> true
-      120 -> true
-      121 -> true
-      122 -> true
-      _ -> false
-    end
-  end
-
-  def is_ident_continue(cp) do
-    case cp do
-      48 -> true
-      49 -> true
-      50 -> true
-      51 -> true
-      52 -> true
-      53 -> true
-      54 -> true
-      55 -> true
-      56 -> true
-      57 -> true
-      _ -> is_ident_start(cp)
-    end
-  end
-
-  def is_ascii_lower(cp) do
-    case cp do
-      97 -> true
-      98 -> true
-      99 -> true
-      100 -> true
-      101 -> true
-      102 -> true
-      103 -> true
-      104 -> true
-      105 -> true
-      106 -> true
-      107 -> true
-      108 -> true
-      109 -> true
-      110 -> true
-      111 -> true
-      112 -> true
-      113 -> true
-      114 -> true
-      115 -> true
-      116 -> true
-      117 -> true
-      118 -> true
-      119 -> true
-      120 -> true
-      121 -> true
-      122 -> true
-      _ -> false
-    end
-  end
-
-  def is_ascii_upper(cp) do
-    case cp do
-      65 -> true
-      66 -> true
-      67 -> true
-      68 -> true
-      69 -> true
-      70 -> true
-      71 -> true
-      72 -> true
-      73 -> true
-      74 -> true
-      75 -> true
-      76 -> true
-      77 -> true
-      78 -> true
-      79 -> true
-      80 -> true
-      81 -> true
-      82 -> true
-      83 -> true
-      84 -> true
-      85 -> true
-      86 -> true
-      87 -> true
-      88 -> true
-      89 -> true
-      90 -> true
-      _ -> false
-    end
-  end
-
-  def valid_digit_for_base(cp, 16) do
-    is_hex_digit(cp)
-  end
-
-  def valid_digit_for_base(cp, 8) do
-    is_octal_digit(cp)
-  end
-
-  def valid_digit_for_base(cp, 2) do
-    is_binary_digit(cp)
-  end
-
-  def valid_digit_for_base(_cp, _base) do
-    false
-  end
-
-  def radix_continue(95, _base) do
-    true
-  end
-
-  def radix_continue(cp, base) do
-    valid_digit_for_base(cp, base)
-  end
-
-  def invalid_digit_for_base(_cp, 16) do
-    false
-  end
-
-  def invalid_digit_for_base(cp, 8) do
-    is_octal_invalid_digit(cp)
-  end
-
-  def invalid_digit_for_base(cp, 2) do
-    is_binary_invalid_digit(cp)
-  end
-
-  def invalid_digit_for_base(_cp, _base) do
-    false
-  end
-
-  def is_hex_digit(cp) do
-    case cp do
-      48 -> true
-      49 -> true
-      50 -> true
-      51 -> true
-      52 -> true
-      53 -> true
-      54 -> true
-      55 -> true
-      56 -> true
-      57 -> true
-      65 -> true
-      66 -> true
-      67 -> true
-      68 -> true
-      69 -> true
-      70 -> true
-      97 -> true
-      98 -> true
-      99 -> true
-      100 -> true
-      101 -> true
-      102 -> true
-      _ -> false
-    end
-  end
-
-  def is_hex_upper(cp) do
-    case cp do
-      65 -> true
-      66 -> true
-      67 -> true
-      68 -> true
-      69 -> true
-      70 -> true
-      _ -> false
-    end
-  end
-
-  def is_hex_lower(cp) do
-    case cp do
-      97 -> true
-      98 -> true
-      99 -> true
-      100 -> true
-      101 -> true
-      102 -> true
-      _ -> false
-    end
-  end
-
-  def is_octal_digit(cp) do
-    case cp do
-      48 -> true
-      49 -> true
-      50 -> true
-      51 -> true
-      52 -> true
-      53 -> true
-      54 -> true
-      55 -> true
-      _ -> false
-    end
-  end
-
-  def is_binary_digit(cp) do
-    case cp do
-      48 -> true
-      49 -> true
-      _ -> false
-    end
-  end
-
-  def is_octal_invalid_digit(cp) do
-    case cp do
-      56 -> true
-      57 -> true
-      _ -> false
-    end
-  end
-
-  def is_binary_invalid_digit(cp) do
-    case cp do
-      50 -> true
-      51 -> true
-      52 -> true
-      53 -> true
-      54 -> true
-      55 -> true
-      56 -> true
-      57 -> true
-      _ -> false
-    end
   end
 end

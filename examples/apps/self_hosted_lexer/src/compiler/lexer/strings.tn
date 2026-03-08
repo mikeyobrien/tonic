@@ -1,0 +1,307 @@
+defmodule Compiler.Lexer.Strings do
+  def find_unterminated_string_start(state_stack) do
+    case state_stack do
+      [[1, _is_heredoc, _brace_depth, string_start] | _] -> string_start
+      [_ | rest] -> find_unterminated_string_start(rest)
+      [] -> nil
+      _ -> nil
+    end
+  end
+
+  def scan_string_token(chars, source, index, acc, state_stack, brace_depth, is_heredoc) do
+    case string_has_interpolation(chars, is_heredoc) do
+      true ->
+        Compiler.Lexer.scan(
+          chars,
+          source,
+          index + string_open_width(is_heredoc),
+          [Compiler.Token.simple("STRING_START", index, index + string_open_width(is_heredoc))] ++ acc,
+          [[1, is_heredoc, brace_depth, index]] ++ state_stack,
+          brace_depth
+        )
+
+      false ->
+        scan_plain_string(
+          chars,
+          source,
+          index,
+          index + string_open_width(is_heredoc),
+          acc,
+          state_stack,
+          brace_depth,
+          is_heredoc
+        )
+
+      _ ->
+        scan_plain_string(
+          chars,
+          source,
+          index,
+          index + string_open_width(is_heredoc),
+          acc,
+          state_stack,
+          brace_depth,
+          is_heredoc
+        )
+    end
+  end
+
+  def string_open_width(true) do
+    3
+  end
+
+  def string_open_width(_is_heredoc) do
+    1
+  end
+
+  def string_has_interpolation(chars, true) do
+    case chars do
+      [34, 34, 34 | _] -> false
+      [35, 123 | _] -> true
+      [_ | rest] -> string_has_interpolation(rest, true)
+      [] -> false
+      _ -> false
+    end
+  end
+
+  def string_has_interpolation(chars, _is_heredoc) do
+    case chars do
+      [34 | _] -> false
+      [35, 123 | _] -> true
+      [_ | rest] -> string_has_interpolation(rest, false)
+      [] -> false
+      _ -> false
+    end
+  end
+
+  def scan_plain_string(chars, source, start, content_start, acc, state_stack, brace_depth, is_heredoc) do
+    scan_plain_string_tail(
+      chars,
+      source,
+      start,
+      content_start,
+      content_start,
+      acc,
+      state_stack,
+      brace_depth,
+      is_heredoc
+    )
+  end
+
+  def scan_plain_string_tail(chars, source, start, content_start, index, acc, state_stack, brace_depth, true) do
+    case chars do
+      [34, 34, 34 | rest] ->
+        Compiler.Lexer.emit_lexeme(
+          "STRING",
+          String.slice(source, content_start, index - content_start),
+          rest,
+          source,
+          start,
+          index + 3,
+          acc,
+          state_stack,
+          brace_depth
+        )
+
+      [_ | rest] ->
+        scan_plain_string_tail(
+          rest,
+          source,
+          start,
+          content_start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth,
+          true
+        )
+
+      [] -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+    end
+  end
+
+  def scan_plain_string_tail(chars, source, start, content_start, index, acc, state_stack, brace_depth, _is_heredoc) do
+    case chars do
+      [34 | rest] ->
+        Compiler.Lexer.emit_lexeme(
+          "STRING",
+          String.slice(source, content_start, index - content_start),
+          rest,
+          source,
+          start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth
+        )
+
+      [_ | rest] ->
+        scan_plain_string_tail(
+          rest,
+          source,
+          start,
+          content_start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth,
+          false
+        )
+
+      [] -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", start, String.length(source))}
+    end
+  end
+
+  def scan_string_state(chars, source, index, acc, state_stack, brace_depth, is_heredoc, string_brace_depth, string_start) do
+    scan_string_segment(
+      chars,
+      source,
+      index,
+      index,
+      acc,
+      state_stack,
+      brace_depth,
+      is_heredoc,
+      string_brace_depth,
+      string_start
+    )
+  end
+
+  def scan_string_segment(chars, source, segment_start, index, acc, state_stack, brace_depth, true, string_brace_depth, string_start) do
+    case chars do
+      [34, 34, 34 | rest] ->
+        finish_string_termination(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          true,
+          string_brace_depth,
+          string_start
+        )
+
+      [35, 123 | rest] ->
+        finish_string_interpolation(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          true,
+          string_brace_depth,
+          string_start
+        )
+
+      [_ | rest] ->
+        scan_string_segment(
+          rest,
+          source,
+          segment_start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth,
+          true,
+          string_brace_depth,
+          string_start
+        )
+
+      [] -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+    end
+  end
+
+  def scan_string_segment(chars, source, segment_start, index, acc, state_stack, brace_depth, _is_heredoc, string_brace_depth, string_start) do
+    case chars do
+      [34 | rest] ->
+        finish_string_termination(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          false,
+          string_brace_depth,
+          string_start
+        )
+
+      [35, 123 | rest] ->
+        finish_string_interpolation(
+          rest,
+          source,
+          segment_start,
+          index,
+          acc,
+          state_stack,
+          brace_depth,
+          false,
+          string_brace_depth,
+          string_start
+        )
+
+      [_ | rest] ->
+        scan_string_segment(
+          rest,
+          source,
+          segment_start,
+          index + 1,
+          acc,
+          state_stack,
+          brace_depth,
+          false,
+          string_brace_depth,
+          string_start
+        )
+
+      [] -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+      _ -> {:error, Compiler.Token.error("unterminated string literal", string_start, String.length(source))}
+    end
+  end
+
+  def finish_string_termination(rest, source, segment_start, index, acc, state_stack, brace_depth, is_heredoc, _string_brace_depth, _string_start) do
+    Compiler.Lexer.scan(
+      rest,
+      source,
+      index + string_open_width(is_heredoc),
+      [Compiler.Token.simple("STRING_END", index, index + string_open_width(is_heredoc))] ++ emit_string_part(acc, source, segment_start, index),
+      pop_state(state_stack),
+      brace_depth
+    )
+  end
+
+  def finish_string_interpolation(rest, source, segment_start, index, acc, state_stack, brace_depth, _is_heredoc, _string_brace_depth, _string_start) do
+    Compiler.Lexer.scan(
+      rest,
+      source,
+      index + 2,
+      [Compiler.Token.simple("INTERPOLATION_START", index, index + 2)] ++ emit_string_part(acc, source, segment_start, index),
+      [[0]] ++ state_stack,
+      brace_depth + 1
+    )
+  end
+
+  def emit_string_part(acc, source, start, finish) do
+    if finish > start do
+      [Compiler.Token.with_lexeme("STRING_PART", String.slice(source, start, finish - start), start, finish)] ++ acc
+    else
+      acc
+    end
+  end
+
+  def pop_state(state_stack) do
+    case state_stack do
+      [_ | rest] -> rest
+      [] -> []
+      _ -> []
+    end
+  end
+end

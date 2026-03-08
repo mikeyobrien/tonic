@@ -1,0 +1,68 @@
+defmodule Compiler.Lexer.Output do
+  def emit_structured_output(source_path, source, result) do
+    maybe_emit_structured_output(
+      source_path,
+      String.length(source),
+      result,
+      System.env("TONIC_SYSTEM_LOG_PATH")
+    )
+  end
+
+  def maybe_emit_structured_output(_source_path, _source_length, result, nil) do
+    result
+  end
+
+  def maybe_emit_structured_output(source_path, source_length, result, _sink_path) do
+    case result do
+      {:ok, tokens} -> log_and_return(:info, source_path, source_length, nil, tokens, result)
+      {:error, error} -> log_and_return(:info, source_path, source_length, error, [], result)
+      _ ->
+        log_and_return(
+          :warn,
+          source_path,
+          source_length,
+          Compiler.Token.error("unexpected lexer result", 0, 0),
+          [],
+          result
+        )
+    end
+  end
+
+  def log_and_return(level, source_path, source_length, error, tokens, result) do
+    case System.log(level, "self_hosted_lexer.tokens", %{
+           source_path: source_path,
+           source_length: source_length,
+           error: error,
+           tokens: tokens
+         }) do
+      _ -> result
+    end
+  end
+
+  def build_payload(source_path, source, result) do
+    case result do
+      {:ok, tokens} ->
+        %{
+          source_path: source_path,
+          source_length: String.length(source),
+          tokens: tokens
+        }
+
+      {:error, error} ->
+        %{
+          source_path: source_path,
+          source_length: String.length(source),
+          error: error,
+          tokens: []
+        }
+
+      _ ->
+        %{
+          source_path: source_path,
+          source_length: String.length(source),
+          error: Compiler.Token.error("unexpected lexer result", 0, 0),
+          tokens: []
+        }
+    end
+  end
+end

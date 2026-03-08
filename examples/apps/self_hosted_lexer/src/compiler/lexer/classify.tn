@@ -1,0 +1,312 @@
+defmodule Compiler.Lexer.Classify do
+  def reverse(list) do
+    reverse_into(list, [])
+  end
+
+  def reverse_into(list, acc) do
+    case list do
+      [head | tail] -> reverse_into(tail, [head] ++ acc)
+      [] -> acc
+      _ -> acc
+    end
+  end
+
+  def keyword_kind(lexeme) do
+    case lexeme do
+      "defmodule" -> "DEFMODULE"
+      "def" -> "DEF"
+      "defp" -> "DEFP"
+      "do" -> "DO"
+      "end" -> "END"
+      "if" -> "IF"
+      "unless" -> "UNLESS"
+      "case" -> "CASE"
+      "cond" -> "COND"
+      "with" -> "WITH"
+      "for" -> "FOR"
+      "fn" -> "FN"
+      "else" -> "ELSE"
+      "try" -> "TRY"
+      "rescue" -> "RESCUE"
+      "catch" -> "CATCH"
+      "after" -> "AFTER"
+      "raise" -> "RAISE"
+      "true" -> "TRUE"
+      "false" -> "FALSE"
+      "nil" -> "NIL"
+      "and" -> "AND"
+      "or" -> "OR"
+      "not" -> "NOT"
+      "in" -> "IN"
+      "when" -> "WHEN"
+      _ -> "IDENT"
+    end
+  end
+
+  def is_whitespace(cp) do
+    case cp do
+      9 -> true
+      10 -> true
+      13 -> true
+      32 -> true
+      _ -> false
+    end
+  end
+
+  def digit_or_separator(cp) do
+    case cp do
+      95 -> true
+      _ -> is_digit(cp)
+    end
+  end
+
+  def trailing_separator(source, start, finish) do
+    if finish > start do
+      case String.to_charlist(String.slice(source, finish - 1, 1)) do
+        [95] -> true
+        _ -> false
+      end
+    else
+      false
+    end
+  end
+
+  def is_digit(cp) do
+    case cp do
+      48 -> true
+      49 -> true
+      50 -> true
+      51 -> true
+      52 -> true
+      53 -> true
+      54 -> true
+      55 -> true
+      56 -> true
+      57 -> true
+      _ -> false
+    end
+  end
+
+  def is_ident_start(cp) do
+    case cp do
+      95 -> true
+      65 -> true
+      66 -> true
+      67 -> true
+      68 -> true
+      69 -> true
+      70 -> true
+      71 -> true
+      72 -> true
+      73 -> true
+      74 -> true
+      75 -> true
+      76 -> true
+      77 -> true
+      78 -> true
+      79 -> true
+      80 -> true
+      81 -> true
+      82 -> true
+      83 -> true
+      84 -> true
+      85 -> true
+      86 -> true
+      87 -> true
+      88 -> true
+      89 -> true
+      90 -> true
+      97 -> true
+      98 -> true
+      99 -> true
+      100 -> true
+      101 -> true
+      102 -> true
+      103 -> true
+      104 -> true
+      105 -> true
+      106 -> true
+      107 -> true
+      108 -> true
+      109 -> true
+      110 -> true
+      111 -> true
+      112 -> true
+      113 -> true
+      114 -> true
+      115 -> true
+      116 -> true
+      117 -> true
+      118 -> true
+      119 -> true
+      120 -> true
+      121 -> true
+      122 -> true
+      _ -> false
+    end
+  end
+
+  def is_ident_continue(cp) do
+    case cp do
+      48 -> true
+      49 -> true
+      50 -> true
+      51 -> true
+      52 -> true
+      53 -> true
+      54 -> true
+      55 -> true
+      56 -> true
+      57 -> true
+      _ -> is_ident_start(cp)
+    end
+  end
+
+  def valid_digit_for_base(cp, 16) do
+    is_hex_digit(cp)
+  end
+
+  def valid_digit_for_base(cp, 8) do
+    is_octal_digit(cp)
+  end
+
+  def valid_digit_for_base(cp, 2) do
+    is_binary_digit(cp)
+  end
+
+  def valid_digit_for_base(_cp, _base) do
+    false
+  end
+
+  def radix_continue(95, _base) do
+    true
+  end
+
+  def radix_continue(cp, base) do
+    valid_digit_for_base(cp, base)
+  end
+
+  def invalid_digit_for_base(_cp, 16) do
+    false
+  end
+
+  def invalid_digit_for_base(cp, 8) do
+    is_octal_invalid_digit(cp)
+  end
+
+  def invalid_digit_for_base(cp, 2) do
+    is_binary_invalid_digit(cp)
+  end
+
+  def invalid_digit_for_base(_cp, _base) do
+    false
+  end
+
+  def is_hex_digit(cp) do
+    case cp do
+      48 -> true
+      49 -> true
+      50 -> true
+      51 -> true
+      52 -> true
+      53 -> true
+      54 -> true
+      55 -> true
+      56 -> true
+      57 -> true
+      65 -> true
+      66 -> true
+      67 -> true
+      68 -> true
+      69 -> true
+      70 -> true
+      97 -> true
+      98 -> true
+      99 -> true
+      100 -> true
+      101 -> true
+      102 -> true
+      _ -> false
+    end
+  end
+
+  def is_octal_digit(cp) do
+    case cp do
+      48 -> true
+      49 -> true
+      50 -> true
+      51 -> true
+      52 -> true
+      53 -> true
+      54 -> true
+      55 -> true
+      _ -> false
+    end
+  end
+
+  def is_binary_digit(cp) do
+    case cp do
+      48 -> true
+      49 -> true
+      _ -> false
+    end
+  end
+
+  def is_octal_invalid_digit(cp) do
+    case cp do
+      56 -> true
+      57 -> true
+      _ -> false
+    end
+  end
+
+  def is_binary_invalid_digit(cp) do
+    case cp do
+      50 -> true
+      51 -> true
+      52 -> true
+      53 -> true
+      54 -> true
+      55 -> true
+      56 -> true
+      57 -> true
+      _ -> false
+    end
+  end
+
+  def parse_radix_value(chars, base, acc) do
+    case chars do
+      [cp | rest] -> parse_radix_value(rest, base, (acc * base) + digit_value(cp))
+      [] -> acc
+      _ -> acc
+    end
+  end
+
+  def digit_value(cp) do
+    case cp do
+      48 -> 0
+      49 -> 1
+      50 -> 2
+      51 -> 3
+      52 -> 4
+      53 -> 5
+      54 -> 6
+      55 -> 7
+      56 -> 8
+      57 -> 9
+      65 -> 10
+      66 -> 11
+      67 -> 12
+      68 -> 13
+      69 -> 14
+      70 -> 15
+      97 -> 10
+      98 -> 11
+      99 -> 12
+      100 -> 13
+      101 -> 14
+      102 -> 15
+      _ -> 0
+    end
+  end
+end
