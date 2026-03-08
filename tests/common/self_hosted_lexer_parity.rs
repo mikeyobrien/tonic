@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -70,12 +71,7 @@ pub fn collect_fixture_outputs(
         &["check", fixture, "--dump-tokens", "--format", "json"],
         "reference",
     );
-    let self_hosted = run_command(
-        tonic_bin,
-        cwd,
-        &["run", SELF_HOSTED_LEXER_APP, fixture],
-        "self_hosted",
-    );
+    let (self_hosted, self_hosted_log_path) = run_self_hosted_command(tonic_bin, cwd, fixture);
 
     let reference_tokens = parse_reference_tokens(&reference).map_err(|reason| {
         Box::new(mismatch(
@@ -88,17 +84,18 @@ pub fn collect_fixture_outputs(
             Vec::new(),
         ))
     })?;
-    let self_hosted_tokens = parse_self_hosted_tokens(&self_hosted).map_err(|reason| {
-        Box::new(mismatch(
-            fixture,
-            &source_path,
-            reason,
-            reference.clone(),
-            self_hosted.clone(),
-            reference_tokens.clone(),
-            Vec::new(),
-        ))
-    })?;
+    let self_hosted_tokens = parse_self_hosted_tokens(&self_hosted, &self_hosted_log_path)
+        .map_err(|reason| {
+            Box::new(mismatch(
+                fixture,
+                &source_path,
+                reason,
+                reference.clone(),
+                self_hosted.clone(),
+                reference_tokens.clone(),
+                Vec::new(),
+            ))
+        })?;
 
     Ok(FixtureOutputs {
         fixture: fixture.to_string(),
@@ -261,30 +258,97 @@ fn parse_reference_tokens(command: &CommandOutcome) -> Result<Vec<TokenDumpRecor
         .map_err(|error| format!("failed to parse reference token dump JSON from stdout: {error}"))
 }
 
-fn parse_self_hosted_tokens(command: &CommandOutcome) -> Result<Vec<TokenDumpRecord>, String> {
+fn parse_self_hosted_tokens(
+    command: &CommandOutcome,
+    structured_log_path: &Path,
+) -> Result<Vec<TokenDumpRecord>, String> {
     if command.exit_code != 0 {
         return Ok(Vec::new());
     }
 
-    let marker = ":tokens => ";
-    let start = command
-        .stdout
-        .find(marker)
-        .ok_or_else(|| "self-hosted lexer output missing ':tokens => ' marker".to_string())?
-        + marker.len();
+    let log = fs::read_to_string(structured_log_path).map_err(|error| {
+        format!(
+            "failed to read self-hosted lexer structured log {}: {}",
+            structured_log_path.display(),
+            error
+        )
+    })?;
 
-    let mut parser = TokenListParser::new(&command.stdout[start..]);
-    let tokens = parser.parse_token_list()?;
-    parser.skip_ws();
-    Ok(tokens)
+    let entry = log
+        .lines()
+        .find_map(|line| {
+            let value: Value = serde_json::from_str(line).ok()?;
+            if value.get("event") == Some(&Value::String("self_hosted_lexer.tokens".to_string())) {
+                Some(value)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            format!(
+                "self-hosted lexer structured log {} missing self_hosted_lexer.tokens event",
+                structured_log_path.display()
+            )
+        })?;
+
+    serde_json::from_value(entry["fields"]["tokens"].clone()).map_err(|error| {
+        format!(
+            "failed to parse self-hosted token dump JSON from {}: {}",
+            structured_log_path.display(),
+            error
+        )
+    })
+}
+
+fn run_self_hosted_command(
+    tonic_bin: &Path,
+    cwd: &Path,
+    fixture: &str,
+) -> (CommandOutcome, PathBuf) {
+    let log_path = std::env::temp_dir().join(format!(
+        "tonic-self-hosted-lexer-parity-{}-{}-{}.jsonl",
+        sanitize_label(fixture),
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+
+    let args = ["run", SELF_HOSTED_LEXER_APP, fixture];
+    (
+        run_command_with_env(
+            tonic_bin,
+            cwd,
+            &args,
+            "self_hosted",
+            &[("TONIC_SYSTEM_LOG_PATH", log_path.display().to_string())],
+        ),
+        log_path,
+    )
 }
 
 fn run_command(tonic_bin: &Path, cwd: &Path, args: &[&str], phase: &str) -> CommandOutcome {
+    run_command_with_env(tonic_bin, cwd, args, phase, &[])
+}
+
+fn run_command_with_env(
+    tonic_bin: &Path,
+    cwd: &Path,
+    args: &[&str],
+    phase: &str,
+    envs: &[(&str, String)],
+) -> CommandOutcome {
     let command: Vec<String> = std::iter::once(tonic_bin.display().to_string())
         .chain(args.iter().map(|value| value.to_string()))
         .collect();
+    let mut process = Command::new(tonic_bin);
+    process.current_dir(cwd).args(args);
+    for (key, value) in envs {
+        process.env(key, value);
+    }
 
-    match Command::new(tonic_bin).current_dir(cwd).args(args).output() {
+    match process.output() {
         Ok(output) => CommandOutcome {
             phase: phase.to_string(),
             exit_code: output.status.code().unwrap_or(-1),
@@ -316,235 +380,5 @@ fn sanitize_label(label: &str) -> String {
         "mismatch".to_string()
     } else {
         sanitized
-    }
-}
-
-struct TokenListParser<'a> {
-    input: &'a str,
-    index: usize,
-}
-
-impl<'a> TokenListParser<'a> {
-    fn new(input: &'a str) -> Self {
-        Self { input, index: 0 }
-    }
-
-    fn parse_token_list(&mut self) -> Result<Vec<TokenDumpRecord>, String> {
-        self.skip_ws();
-        self.expect_byte(b'[')?;
-        self.skip_ws();
-
-        let mut tokens = Vec::new();
-        if self.peek_byte() == Some(b']') {
-            self.index += 1;
-            return Ok(tokens);
-        }
-
-        loop {
-            tokens.push(self.parse_token_map()?);
-            self.skip_ws();
-            match self.peek_byte() {
-                Some(b',') => {
-                    self.index += 1;
-                    self.skip_ws();
-                }
-                Some(b']') => {
-                    self.index += 1;
-                    break;
-                }
-                other => {
-                    return Err(format!(
-                        "expected ',' or ']' while parsing token list, found {:?}",
-                        other.map(char::from)
-                    ));
-                }
-            }
-        }
-
-        Ok(tokens)
-    }
-
-    fn parse_token_map(&mut self) -> Result<TokenDumpRecord, String> {
-        self.skip_ws();
-        self.expect_byte(b'%')?;
-        self.expect_byte(b'{')?;
-
-        let mut kind = None;
-        let mut lexeme = None;
-        let mut span_start = None;
-        let mut span_end = None;
-
-        loop {
-            self.skip_ws();
-            if self.peek_byte() == Some(b'}') {
-                self.index += 1;
-                break;
-            }
-
-            let key = self.parse_atom_key()?;
-            self.skip_ws();
-            self.expect_byte(b'=')?;
-            self.expect_byte(b'>')?;
-            self.skip_ws();
-
-            match key.as_str() {
-                "kind" => kind = Some(self.parse_string()?),
-                "lexeme" => lexeme = Some(self.parse_string()?),
-                "span_start" => span_start = Some(self.parse_usize()?),
-                "span_end" => span_end = Some(self.parse_usize()?),
-                _ => self.skip_value()?,
-            }
-
-            self.skip_ws();
-            match self.peek_byte() {
-                Some(b',') => {
-                    self.index += 1;
-                }
-                Some(b'}') => {
-                    self.index += 1;
-                    break;
-                }
-                other => {
-                    return Err(format!(
-                        "expected ',' or '}}' while parsing token map, found {:?}",
-                        other.map(char::from)
-                    ));
-                }
-            }
-        }
-
-        Ok(TokenDumpRecord {
-            kind: kind.ok_or_else(|| "token map missing :kind".to_string())?,
-            lexeme: lexeme.ok_or_else(|| "token map missing :lexeme".to_string())?,
-            span_start: span_start.ok_or_else(|| "token map missing :span_start".to_string())?,
-            span_end: span_end.ok_or_else(|| "token map missing :span_end".to_string())?,
-        })
-    }
-
-    fn parse_atom_key(&mut self) -> Result<String, String> {
-        self.expect_byte(b':')?;
-        let start = self.index;
-        while let Some(byte) = self.peek_byte() {
-            if byte.is_ascii_alphanumeric() || byte == b'_' {
-                self.index += 1;
-            } else {
-                break;
-            }
-        }
-
-        if self.index == start {
-            return Err("expected atom key after ':'".to_string());
-        }
-
-        Ok(self.input[start..self.index].to_string())
-    }
-
-    fn parse_string(&mut self) -> Result<String, String> {
-        self.expect_byte(b'"')?;
-        let mut value = Vec::new();
-
-        loop {
-            let byte = self.next_byte().ok_or_else(|| {
-                "unterminated string while parsing self-hosted lexer output".to_string()
-            })?;
-            match byte {
-                b'"' => break,
-                b'\\' => {
-                    let escaped = self.next_byte().ok_or_else(|| {
-                        "unterminated escape while parsing self-hosted lexer output".to_string()
-                    })?;
-                    match escaped {
-                        b'n' => value.push(b'\n'),
-                        b'r' => value.push(b'\r'),
-                        b't' => value.push(b'\t'),
-                        b'"' => value.push(b'"'),
-                        b'\\' => value.push(b'\\'),
-                        other => value.push(other),
-                    }
-                }
-                other => value.push(other),
-            }
-        }
-
-        String::from_utf8(value).map_err(|error| {
-            format!("failed to decode UTF-8 string from self-hosted lexer output: {error}")
-        })
-    }
-
-    fn parse_usize(&mut self) -> Result<usize, String> {
-        let start = self.index;
-        while let Some(byte) = self.peek_byte() {
-            if byte.is_ascii_digit() {
-                self.index += 1;
-            } else {
-                break;
-            }
-        }
-
-        if self.index == start {
-            return Err(
-                "expected integer value while parsing self-hosted lexer output".to_string(),
-            );
-        }
-
-        self.input[start..self.index]
-            .parse::<usize>()
-            .map_err(|error| format!("failed to parse integer token field: {error}"))
-    }
-
-    fn skip_value(&mut self) -> Result<(), String> {
-        match self.peek_byte() {
-            Some(b'"') => {
-                self.parse_string()?;
-                Ok(())
-            }
-            Some(byte) if byte.is_ascii_digit() => {
-                self.parse_usize()?;
-                Ok(())
-            }
-            Some(b':') => {
-                self.parse_atom_key()?;
-                Ok(())
-            }
-            other => Err(format!(
-                "unsupported self-hosted lexer value while parsing token map: {:?}",
-                other.map(char::from)
-            )),
-        }
-    }
-
-    fn expect_byte(&mut self, expected: u8) -> Result<(), String> {
-        match self.next_byte() {
-            Some(actual) if actual == expected => Ok(()),
-            Some(actual) => Err(format!(
-                "expected '{}', found '{}' while parsing self-hosted lexer output",
-                char::from(expected),
-                char::from(actual)
-            )),
-            None => Err(format!(
-                "expected '{}', found end of input while parsing self-hosted lexer output",
-                char::from(expected)
-            )),
-        }
-    }
-
-    fn skip_ws(&mut self) {
-        while let Some(byte) = self.peek_byte() {
-            if byte.is_ascii_whitespace() {
-                self.index += 1;
-            } else {
-                break;
-            }
-        }
-    }
-
-    fn peek_byte(&self) -> Option<u8> {
-        self.input.as_bytes().get(self.index).copied()
-    }
-
-    fn next_byte(&mut self) -> Option<u8> {
-        let byte = self.peek_byte()?;
-        self.index += 1;
-        Some(byte)
     }
 }

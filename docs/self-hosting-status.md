@@ -13,9 +13,10 @@ That claim is intentionally narrow:
 - source text still enters through the host-backed `System.read_text/1` boundary
 - the only new kernel support added for this milestone is the narrow traversal primitive `String.to_charlist/1`
 - the Rust reference lexer now emits a structured token dump via `tonic check <path> --dump-tokens --format json`
+- the self-hosted lexer emits one structured `self_hosted_lexer.tokens` JSON event via `TONIC_SYSTEM_LOG_PATH`, so the harness compares structured token arrays on both sides
 - the parity harness compares exact `kind`, `lexeme`, `span_start`, and `span_end`
 - mismatch triage artifacts are written by `tests/self_hosted_lexer_parity.rs`
-- the current hard gate is the curated lexer corpus under `tests/fixtures/self_hosted_lexer_parity/`
+- the current hard gate is the curated eight-fixture lexer corpus under `tests/fixtures/self_hosted_lexer_parity/`, covering keywords/modules, punctuation/operators, numbers/comments/whitespace, strings/heredocs, and interpolation
 - this milestone is currently project-mode only
 
 ## What is not being claimed
@@ -46,6 +47,7 @@ The honest milestone gate is still the curated lexer corpus, not the full active
 That is deliberate for now:
 
 - the parity harness is currently wired to the curated fixture set in `tests/common/self_hosted_lexer_parity.rs`
+- that curated set is now broad enough to justify the narrow lexer milestone claim, but it is still not the same thing as catalog-wide parity coverage
 - broadening the gate to the active parity catalog should happen only after an evidence-backed sweep is added and kept green
 - until that broader sweep exists, calling the milestone curated-only is more accurate than implying catalog-wide self-hosted parity
 
