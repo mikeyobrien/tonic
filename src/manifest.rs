@@ -119,8 +119,24 @@ const OPTIONAL_STDLIB_ENUM_SOURCE: &str = r#"defmodule Enum do
     reverse_list(unique_list(to_list(enumerable), []), [])
   end
 
+  def into([], collectable) when is_list(collectable) do
+    collectable
+  end
+
+  def into([head | tail], collectable) when is_list(collectable) do
+    collectable ++ [head] ++ tail
+  end
+
   def into(enumerable, collectable) when is_list(collectable) do
     collectable ++ to_list(enumerable)
+  end
+
+  def into([], collectable) when is_map(collectable) do
+    collectable
+  end
+
+  def into([head | tail], collectable) when is_map(collectable) do
+    into_map([head] ++ tail, collectable, 1)
   end
 
   def into(enumerable, collectable) when is_map(collectable) do

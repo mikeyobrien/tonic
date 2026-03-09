@@ -1080,6 +1080,178 @@ static TnVal tn_runtime_map_access(TnVal base, TnVal key) {
   return value;
 }
 
+static TnObj *tn_expect_host_map_arg(const char *function, TnVal value, size_t index) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_MAP) {
+    tn_runtime_failf(
+        "host error: %s expects map argument %zu; found %s",
+        function,
+        index,
+        tn_runtime_value_kind(value));
+  }
+
+  return obj;
+}
+
+static TnObj *tn_expect_host_list_arg(const char *function, TnVal value, size_t index) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_LIST) {
+    tn_runtime_failf(
+        "host error: %s expects list argument %zu; found %s",
+        function,
+        index,
+        tn_runtime_value_kind(value));
+  }
+
+  return obj;
+}
+
+static int tn_host_list_contains(const TnObj *list, TnVal value) {
+  for (size_t i = 0; i < list->as.list.len; i += 1) {
+    if (tn_runtime_value_equal(list->as.list.items[i], value)) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+static TnVal tn_host_map_keys(TnVal map_value) {
+  TnObj *map = tn_expect_host_map_arg("Map.keys", map_value, 1);
+  TnObj *list = tn_new_obj(TN_OBJ_LIST);
+  list->as.list.len = map->as.map_like.len;
+  list->as.list.items =
+      map->as.map_like.len == 0 ? NULL : (TnVal *)calloc(map->as.map_like.len, sizeof(TnVal));
+  if (map->as.map_like.len > 0 && list->as.list.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < map->as.map_like.len; i += 1) {
+    list->as.list.items[i] = map->as.map_like.items[i].key;
+    tn_runtime_retain(list->as.list.items[i]);
+  }
+
+  return tn_heap_store(list);
+}
+
+static TnVal tn_host_map_values(TnVal map_value) {
+  TnObj *map = tn_expect_host_map_arg("Map.values", map_value, 1);
+  TnObj *list = tn_new_obj(TN_OBJ_LIST);
+  list->as.list.len = map->as.map_like.len;
+  list->as.list.items =
+      map->as.map_like.len == 0 ? NULL : (TnVal *)calloc(map->as.map_like.len, sizeof(TnVal));
+  if (map->as.map_like.len > 0 && list->as.list.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < map->as.map_like.len; i += 1) {
+    list->as.list.items[i] = map->as.map_like.items[i].value;
+    tn_runtime_retain(list->as.list.items[i]);
+  }
+
+  return tn_heap_store(list);
+}
+
+static TnVal tn_host_map_merge(TnVal left_value, TnVal right_value) {
+  TnObj *left = tn_expect_host_map_arg("Map.merge", left_value, 1);
+  TnObj *right = tn_expect_host_map_arg("Map.merge", right_value, 2);
+  TnVal cloned = tn_clone_map_like_with_capacity(left, TN_OBJ_MAP, right->as.map_like.len);
+  TnObj *result = tn_get_obj(cloned);
+
+  for (size_t i = 0; i < right->as.map_like.len; i += 1) {
+    TnVal key = right->as.map_like.items[i].key;
+    TnVal value = right->as.map_like.items[i].value;
+    long existing_index = tn_map_like_find_index(result, key);
+
+    if (existing_index >= 0) {
+      tn_runtime_retain(value);
+      tn_runtime_release(result->as.map_like.items[existing_index].value);
+      result->as.map_like.items[existing_index].value = value;
+    } else {
+      size_t write_index = result->as.map_like.len;
+      result->as.map_like.items[write_index].key = key;
+      result->as.map_like.items[write_index].value = value;
+      tn_runtime_retain(key);
+      tn_runtime_retain(value);
+      result->as.map_like.len += 1;
+    }
+  }
+
+  return cloned;
+}
+
+static TnVal tn_host_map_filter_keys(TnVal map_value, TnVal keys_value, int keep_matches) {
+  TnObj *map = tn_expect_host_map_arg(
+      keep_matches ? "Map.take" : "Map.drop", map_value, 1);
+  TnObj *keys = tn_expect_host_list_arg(
+      keep_matches ? "Map.take" : "Map.drop", keys_value, 2);
+  TnObj *result = tn_new_obj(TN_OBJ_MAP);
+  result->as.map_like.len = 0;
+  result->as.map_like.items =
+      map->as.map_like.len == 0 ? NULL : (TnPair *)calloc(map->as.map_like.len, sizeof(TnPair));
+  if (map->as.map_like.len > 0 && result->as.map_like.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < map->as.map_like.len; i += 1) {
+    TnVal key = map->as.map_like.items[i].key;
+    int matches = tn_host_list_contains(keys, key);
+    if ((keep_matches && !matches) || (!keep_matches && matches)) {
+      continue;
+    }
+
+    result->as.map_like.items[result->as.map_like.len].key = key;
+    result->as.map_like.items[result->as.map_like.len].value =
+        map->as.map_like.items[i].value;
+    tn_runtime_retain(result->as.map_like.items[result->as.map_like.len].key);
+    tn_runtime_retain(result->as.map_like.items[result->as.map_like.len].value);
+    result->as.map_like.len += 1;
+  }
+
+  return tn_heap_store(result);
+}
+
+static TnVal tn_host_map_get(TnVal map_value, TnVal key, TnVal default_value) {
+  TnObj *map = tn_expect_host_map_arg("Map.get", map_value, 1);
+  long existing_index = tn_map_like_find_index(map, key);
+  if (existing_index >= 0) {
+    TnVal value = map->as.map_like.items[existing_index].value;
+    tn_runtime_retain(value);
+    return value;
+  }
+
+  tn_runtime_retain(default_value);
+  return default_value;
+}
+
+static TnVal tn_host_map_delete(TnVal map_value, TnVal key) {
+  TnObj *map = tn_expect_host_map_arg("Map.delete", map_value, 1);
+  TnObj *result = tn_new_obj(TN_OBJ_MAP);
+  result->as.map_like.len = 0;
+  result->as.map_like.items =
+      map->as.map_like.len == 0 ? NULL : (TnPair *)calloc(map->as.map_like.len, sizeof(TnPair));
+  if (map->as.map_like.len > 0 && result->as.map_like.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < map->as.map_like.len; i += 1) {
+    if (tn_runtime_value_equal(map->as.map_like.items[i].key, key)) {
+      continue;
+    }
+
+    result->as.map_like.items[result->as.map_like.len] = map->as.map_like.items[i];
+    tn_runtime_retain(result->as.map_like.items[result->as.map_like.len].key);
+    tn_runtime_retain(result->as.map_like.items[result->as.map_like.len].value);
+    result->as.map_like.len += 1;
+  }
+
+  return tn_heap_store(result);
+}
+
 static TnVal tn_runtime_make_keyword(TnVal key, TnVal value) {
   TnObj *obj = tn_new_obj(TN_OBJ_KEYWORD);
   obj->as.map_like.len = 1;
@@ -1966,6 +2138,79 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     }
     free(args);
     return tn_runtime_const_string((TnVal)(intptr_t)path);
+  }
+
+  if (strcmp(key, "map_keys") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Map.keys expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_keys(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "map_values") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Map.values expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_values(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "map_merge") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.merge expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_merge(args[1], args[2]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "map_drop") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.drop expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_filter_keys(args[1], args[2], 0);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "map_take") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.take expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_filter_keys(args[1], args[2], 1);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "map_get") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: Map.get expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_get(args[1], args[2], args[3]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "map_put") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: Map.put expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    tn_expect_host_map_arg("Map.put", args[1], 1);
+    TnVal result = tn_runtime_map_put(args[1], args[2], args[3]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "map_delete") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.delete expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_delete(args[1], args[2]);
+    free(args);
+    return result;
   }
 
   if (strcmp(key, "sys_path_exists") == 0) {
