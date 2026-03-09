@@ -433,11 +433,16 @@ end
     }
 
     #[test]
-    fn collect_stdlib_modules_returns_system_and_enum() {
+    fn collect_stdlib_modules_returns_supported_modules() {
         let modules = collect_stdlib_modules();
         let names: Vec<&str> = modules.iter().map(|m| m.name.as_str()).collect();
         assert!(names.contains(&"System"), "expected System in {names:?}");
-        assert!(names.contains(&"Enum"), "expected Enum in {names:?}");
+        assert!(names.contains(&"String"), "expected String in {names:?}");
+        assert!(names.contains(&"Path"), "expected Path in {names:?}");
+        assert!(
+            !names.contains(&"Enum"),
+            "Enum is de-advertised; should not appear in {names:?}"
+        );
     }
 
     #[test]
