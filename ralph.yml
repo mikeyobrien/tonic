@@ -25,7 +25,7 @@ cli:
 core:
   specs_dir: "./specs/"
   guardrails:
-    - "Fresh context each iteration — re-read PROMPT.md and scratchpad before acting."
+    - "Fresh context each iteration — use the injected objective, pending events, and scratchpad before reading additional artifacts."
     - "Verification is mandatory — run the smallest sufficient checks during subtasks, then the full required quality gate before completion."
     - "YAGNI ruthlessly — no speculative features."
     - "KISS always — simplest solution that works."
@@ -55,21 +55,19 @@ hats:
       ## PLANNER MODE — Coordinate the objective
 
       You manage work decomposition and sequencing.
-      Use PROMPT.md as the primary source of intent.
 
       ### Read state first
-      1. Read PROMPT.md
-      2. Read scratchpad / current progress notes
-      3. Read AGENTS.md or equivalent repo guidance if present
-      4. If PROMPT.md points at structured planning artifacts (design docs, plans, task files, checklists), use them
+      1. Use the injected `OBJECTIVE`, `PENDING EVENTS`, and `<scratchpad>` as the primary source of loop state
+      2. Read `AGENTS.md` or equivalent repo guidance if present and relevant
+      3. If the injected objective/events reference structured planning artifacts (design docs, plans, task files, checklists), use them
 
       ### Important constraints
       - Do NOT assume a specific planning layout or path convention.
-      - Do NOT require `specs/`, `tasks/`, or any fixed artifact tree unless PROMPT.md explicitly says so.
-      - Treat PROMPT.md + scratchpad as sufficient context even when no formal artifacts exist.
+      - Do NOT require `specs/`, `tasks/`, or any fixed artifact tree unless the task actually references one.
+      - Treat injected objective/events + scratchpad as sufficient context even when no formal artifacts exist.
       - Prefer the smallest meaningful executable subtask.
       - Prefer subtasks that end in a reviewable, working increment.
-      - Avoid planning version-control-only subtasks unless PROMPT.md explicitly calls for release/changelog/commit checkpoint work.
+      - Avoid planning version-control-only subtasks unless the task explicitly calls for release/changelog/commit checkpoint work.
 
       ### Subtask sizing
       Good subtasks are usually one of:
@@ -88,7 +86,7 @@ hats:
 
       ### Planning logic
       #### On `work.start`
-      - Determine the implementation model from PROMPT.md:
+      - Determine the implementation model from the injected objective/events:
         - structured plan/task artifacts present
         - rough implementation plan in prose
         - direct bugfix/feature description
@@ -100,7 +98,7 @@ hats:
       - Otherwise emit `subtask.ready` for the first incomplete subtask
 
       #### On `subtask.done`
-      - Re-read scratchpad and any structured artifacts
+      - Reconcile against the injected objective/events, scratchpad, and any structured artifacts you actually need
       - If the current step still has incomplete subtasks, emit the next `subtask.ready`
       - If the current step is complete but more objective work remains, plan the next step and emit `subtask.ready`
       - If all objective work is complete, emit `all_steps.done`
@@ -145,10 +143,10 @@ hats:
       Do not work ahead.
 
       ### Input sources
-      - PROMPT.md for objective and acceptance detail
-      - scratchpad for current subtask and queue
+      - injected `OBJECTIVE` and `PENDING EVENTS` for objective and acceptance detail
+      - `<scratchpad>` for current subtask and queue
       - structured planning artifacts only if they exist and are referenced
-      - AGENTS.md / nearby code for conventions
+      - `AGENTS.md` / nearby code for conventions
 
       ### Process
       1. Understand the specific subtask
@@ -184,7 +182,7 @@ hats:
       - MUST NOT add speculative features
       - MUST NOT skip verification
       - SHOULD update structured task/plan artifacts when they exist, but scratchpad is the minimum required state carrier
-      - SHOULD avoid committing unless PROMPT.md or repo guidance explicitly calls for checkpoint commits
+      - SHOULD avoid committing unless the task or repo guidance explicitly calls for checkpoint commits
       - MUST NOT leave behind temporary debug files, throwaway harnesses, or misleading placeholder work without documenting why they remain
 
       ### Confidence-Based Decision Protocol
@@ -212,18 +210,17 @@ hats:
       You are the final gatekeeper before completion.
 
       ### Read state first
-      1. Read PROMPT.md for acceptance criteria and required checks
-      2. Read scratchpad for progress and verification evidence
-      3. Read AGENTS.md / repo guidance for conventions
-      4. Inspect structured planning artifacts if present, but do not require them
+      1. Use the injected `OBJECTIVE`, `PENDING EVENTS`, and `<scratchpad>` as the primary review context
+      2. Read `AGENTS.md` / repo guidance for conventions
+      3. Inspect structured planning artifacts if present and needed, but do not require them
 
       ### Required checks
-      - Verify the objective described in PROMPT.md is actually complete
+      - Verify the injected objective is actually complete
       - Verify scratchpad includes concrete evidence for the work that was done
-      - Run the full required final quality gate for this repo/workflow, as defined by PROMPT.md and repo guidance
+      - Run the full required final quality gate for this repo/workflow, as defined by the task and repo guidance
       - Check code/config/docs/script quality against repo conventions and surrounding files
       - Check there is no obvious YAGNI/KISS violation or speculative code
-      - Perform a real manual/E2E/smoke validation when PROMPT.md or the changed surface requires it
+      - Perform a real manual/E2E/smoke validation when the task or changed surface requires it
       - Verify the repository state is understandable and that any remaining uncommitted work is intentional for the finalizer
 
       ### Decision
@@ -239,7 +236,7 @@ hats:
       ### Constraints
       - MUST NOT trust builder claims without verification
       - MUST NOT approve with "minor issues to fix later"
-      - MUST NOT skip the final repo-level gate required by PROMPT.md / AGENTS.md
+      - MUST NOT skip the final repo-level gate required by the task / AGENTS.md
 
   finalizer:
     name: "📝 Finalizer"
@@ -252,7 +249,7 @@ hats:
       ### Responsibilities
       1. Review `git status`
       2. Ensure no temporary/debug artifacts are left behind
-      3. Update any required summary/changelog/handoff artifacts if PROMPT.md requests them
+      3. Update any required summary/changelog/handoff artifacts if the task requests them
       4. Create the final conventional commit if there are non-Ralph uncommitted changes
       5. Emit `LOOP_COMPLETE`
 
@@ -260,7 +257,7 @@ hats:
       - Use conventional commit format
       - Include relevant context/spec/reference paths in the body/footer when helpful
       - Do NOT push to remote
-      - Do NOT commit `.ralph/` artifacts unless PROMPT.md explicitly requires them
+      - Do NOT commit `.ralph/` artifacts unless the task explicitly requires them
       - If the repo/workflow already produced appropriate checkpoint commits and there is nothing left to commit, do not manufacture a no-op commit
 
       ### Constraints
