@@ -1106,6 +1106,19 @@ static TnObj *tn_expect_host_list_arg(const char *function, TnVal value, size_t 
   return obj;
 }
 
+static const char *tn_expect_host_string_arg(const char *function, TnVal value, size_t index) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_STRING) {
+    tn_runtime_failf(
+        "host error: %s expects string argument %zu; found %s",
+        function,
+        index,
+        tn_runtime_value_kind(value));
+  }
+
+  return obj->as.text.text;
+}
+
 static int tn_host_list_contains(const TnObj *list, TnVal value) {
   for (size_t i = 0; i < list->as.list.len; i += 1) {
     if (tn_runtime_value_equal(list->as.list.items[i], value)) {
@@ -1250,6 +1263,121 @@ static TnVal tn_host_map_delete(TnVal map_value, TnVal key) {
   }
 
   return tn_heap_store(result);
+}
+
+static TnVal tn_host_io_puts(TnVal value) {
+  const char *text = tn_expect_host_string_arg("IO.puts", value, 1);
+  fputs(text, stdout);
+  fputc('\n', stdout);
+  return tn_runtime_const_nil();
+}
+
+static TnVal tn_host_io_inspect(TnVal value) {
+  tn_render_value(stderr, value);
+  fputc('\n', stderr);
+  tn_runtime_retain(value);
+  return value;
+}
+
+static TnVal tn_host_io_gets(TnVal prompt_value) {
+  const char *prompt = tn_expect_host_string_arg("IO.gets", prompt_value, 1);
+  fputs(prompt, stdout);
+  if (fflush(stdout) != 0) {
+    int io_errno = errno != 0 ? errno : EIO;
+    tn_runtime_failf("host error: IO.gets failed to flush stdout: %s", strerror(io_errno));
+  }
+
+  size_t buffer_cap = 128;
+  size_t buffer_len = 0;
+  char *buffer = (char *)malloc(buffer_cap + 1);
+  if (buffer == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (;;) {
+    int ch = fgetc(stdin);
+    if (ch == EOF) {
+      if (ferror(stdin)) {
+        int io_errno = errno != 0 ? errno : EIO;
+        free(buffer);
+        tn_runtime_failf("host error: IO.gets failed to read line: %s", strerror(io_errno));
+      }
+      break;
+    }
+
+    if ((char)ch == '\n') {
+      break;
+    }
+
+    if (buffer_len == buffer_cap) {
+      size_t next_cap = buffer_cap > SIZE_MAX / 2 ? buffer_cap + 1 : buffer_cap * 2;
+      if (next_cap <= buffer_cap) {
+        next_cap = buffer_cap + 1;
+      }
+      char *next_buffer = (char *)realloc(buffer, next_cap + 1);
+      if (next_buffer == NULL) {
+        free(buffer);
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      buffer = next_buffer;
+      buffer_cap = next_cap;
+    }
+
+    buffer[buffer_len] = (char)ch;
+    buffer_len += 1;
+  }
+
+  if (buffer_len > 0 && buffer[buffer_len - 1] == '\r') {
+    buffer_len -= 1;
+  }
+  buffer[buffer_len] = '\0';
+
+  TnVal result = tn_runtime_const_string((TnVal)(intptr_t)buffer);
+  free(buffer);
+  return result;
+}
+
+static TnVal tn_host_io_wrap_ansi(const char *function, TnVal value, const char *prefix) {
+  const char *text = tn_expect_host_string_arg(function, value, 1);
+  static const char *suffix = "\x1b[0m";
+  size_t prefix_len = strlen(prefix);
+  size_t text_len = strlen(text);
+  size_t suffix_len = strlen(suffix);
+  char *buffer = (char *)malloc(prefix_len + text_len + suffix_len + 1);
+  if (buffer == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  memcpy(buffer, prefix, prefix_len);
+  memcpy(buffer + prefix_len, text, text_len);
+  memcpy(buffer + prefix_len + text_len, suffix, suffix_len + 1);
+
+  TnVal result = tn_runtime_const_string((TnVal)(intptr_t)buffer);
+  free(buffer);
+  return result;
+}
+
+static TnVal tn_host_io_ansi_red(TnVal value) {
+  return tn_host_io_wrap_ansi("IO.ansi_red", value, "\x1b[31m");
+}
+
+static TnVal tn_host_io_ansi_green(TnVal value) {
+  return tn_host_io_wrap_ansi("IO.ansi_green", value, "\x1b[32m");
+}
+
+static TnVal tn_host_io_ansi_yellow(TnVal value) {
+  return tn_host_io_wrap_ansi("IO.ansi_yellow", value, "\x1b[33m");
+}
+
+static TnVal tn_host_io_ansi_blue(TnVal value) {
+  return tn_host_io_wrap_ansi("IO.ansi_blue", value, "\x1b[34m");
+}
+
+static TnVal tn_host_io_ansi_reset(void) {
+  return tn_runtime_const_string((TnVal)(intptr_t)"\x1b[0m");
 }
 
 static TnVal tn_runtime_make_keyword(TnVal key, TnVal value) {
@@ -2138,6 +2266,78 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     }
     free(args);
     return tn_runtime_const_string((TnVal)(intptr_t)path);
+  }
+
+  if (strcmp(key, "io_puts") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: IO.puts expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_puts(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "io_inspect") == 0) {
+    if (argc < 2) {
+      return tn_runtime_failf("host error: IO.inspect expects at least 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_inspect(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "io_gets") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: IO.gets expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_gets(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "io_ansi_red") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: IO.ansi_red expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_ansi_red(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "io_ansi_green") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: IO.ansi_green expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_ansi_green(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "io_ansi_yellow") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: IO.ansi_yellow expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_ansi_yellow(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "io_ansi_blue") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: IO.ansi_blue expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_ansi_blue(args[1]);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "io_ansi_reset") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: IO.ansi_reset expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_io_ansi_reset();
+    free(args);
+    return result;
   }
 
   if (strcmp(key, "map_keys") == 0) {
