@@ -211,19 +211,30 @@ fn docs_generates_stdlib_subdirectory() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // stdlib subdir should exist with the currently supported injected modules.
+    // stdlib subdir should exist with the currently exposed modules.
     let stdlib_dir = out_dir.join("stdlib");
     assert!(
         stdlib_dir.exists(),
         "stdlib/ subdirectory should be created"
     );
 
-    let system_file = stdlib_dir.join("system.md");
-    assert!(
-        system_file.exists(),
-        "system.md should exist in stdlib/, dir contents: {:?}",
-        std::fs::read_dir(&stdlib_dir)
-            .map(|d| d.map(|e| e.map(|e| e.file_name())).collect::<Vec<_>>())
-            .unwrap_or_default()
-    );
+    for filename in [
+        "system.md",
+        "string.md",
+        "path.md",
+        "io.md",
+        "list.md",
+        "map.md",
+        "enum.md",
+    ] {
+        let module_file = stdlib_dir.join(filename);
+        assert!(
+            module_file.exists(),
+            "{} should exist in stdlib/, dir contents: {:?}",
+            filename,
+            std::fs::read_dir(&stdlib_dir)
+                .map(|d| d.map(|e| e.map(|e| e.file_name())).collect::<Vec<_>>())
+                .unwrap_or_default()
+        );
+    }
 }

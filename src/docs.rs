@@ -439,10 +439,10 @@ end
         assert!(names.contains(&"System"), "expected System in {names:?}");
         assert!(names.contains(&"String"), "expected String in {names:?}");
         assert!(names.contains(&"Path"), "expected Path in {names:?}");
-        assert!(
-            !names.contains(&"Enum"),
-            "Enum is de-advertised; should not appear in {names:?}"
-        );
+        assert!(names.contains(&"IO"), "expected IO in {names:?}");
+        assert!(names.contains(&"List"), "expected List in {names:?}");
+        assert!(names.contains(&"Map"), "expected Map in {names:?}");
+        assert!(names.contains(&"Enum"), "expected Enum in {names:?}");
     }
 
     #[test]

@@ -7,7 +7,10 @@ use crate::runtime::RuntimeValue;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
+mod enum_mod;
 mod http_server;
+mod io_mod;
+mod map_mod;
 mod path_mod;
 mod string_mod;
 mod system;
@@ -139,6 +142,15 @@ impl HostRegistry {
 
         // Path stdlib interop primitives for interpreter-backed Path.* calls.
         path_mod::register_path_host_functions(self);
+
+        // IO stdlib interop primitives for interpreter-backed IO.* calls.
+        io_mod::register_io_host_functions(self);
+
+        // Map stdlib interop primitives for interpreter-backed Map.* calls.
+        map_mod::register_map_host_functions(self);
+
+        // Enum stdlib interop primitives for the remaining host-backed Enum.* calls.
+        enum_mod::register_enum_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
