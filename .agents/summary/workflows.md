@@ -19,7 +19,8 @@ Key notes:
 
 - Project directories are supported (`tonic.toml` entry + sibling module aggregation).
 - Dependency sources are pulled from lockfile/cached deps.
-- Optional stdlib modules (`Enum`, `System`) are lazily injected based on source references.
+- Optional stdlib modules (`System`, `String`, `Path`, `IO`, `List`, `Map`, `Enum`) are lazily injected in project mode based on source references.
+- Plain single-file execution (`tonic run file.tn`) does not currently receive that optional stdlib injection.
 
 ## `tonic compile <path>`
 
@@ -36,6 +37,11 @@ flowchart TD
 ```
 
 Outputs are written under `.tonic/build/` unless `--out` is provided.
+
+Key notes:
+
+- Project-mode compile uses the same optional stdlib lazy-loading contract as `tonic run <project-dir>`.
+- Single-file compile does not currently get that optional stdlib injection.
 
 ## `tonic check <path>`
 

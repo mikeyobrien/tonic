@@ -1,7 +1,7 @@
 # Tonic Core Stdlib Gap List
 
-Status: prioritized follow-up list after `docs/core-stdlib-profile.md` and `docs/text-binary-parser-contract.md`  
-Last updated: 2026-03-07
+Status: prioritized follow-up list after the stdlib usability push  
+Last updated: 2026-03-09
 
 This document records the main remaining gaps between Tonic's current stdlib reality and the more coherent, Elixir-shaped core profile Tonic wants for real app authoring.
 
@@ -10,32 +10,37 @@ Read this alongside:
 - [core-stdlib-profile.md](core-stdlib-profile.md)
 - [text-binary-parser-contract.md](text-binary-parser-contract.md)
 - [app-authoring-gaps.md](app-authoring-gaps.md)
-- `.agents/planning/2026-03-07-elixir-core-stdlib/sitegen-stdlib-audit.md`
 
 The rule for this list is simple:
 
-- prefer **honest support** over broad advertising,
-- prioritize **workload-backed surfaces**,
-- treat **interpreter/native parity + docs + tests** as the support bar.
+- prefer **honest support** over broad advertising
+- prioritize **parity-backed surfaces** over wishlist APIs
+- treat **docs + examples + interpreter + native tests** as the support bar
 
 ---
 
 ## Closure update
 
-The previous P0 honesty gap is now closed for the worst offenders:
+The previous usability milestone is now materially closed for the collection/IO surface.
 
-- `Enum`
-- `List`
-- `IO`
-- `Map`
-
-They were removed from lazy project-mode stdlib injection in `src/manifest.rs`, and the optional injected surface is now honestly limited to:
+The current optional project-mode stdlib surface exposed by `src/manifest.rs` is now:
 
 - `System`
 - `String`
 - `Path`
+- `IO`
+- `List`
+- `Map`
+- `Enum`
 
-That does **not** mean the four removed modules are implemented. It means they are no longer advertised by default before parity exists.
+That exposed surface now matches the implemented split:
+
+- `IO`, `System`, `Path`, and `String` stay host-backed
+- `List` lives in injected Tonic source
+- `Enum` is mostly pure Tonic with bounded host-backed helpers for `join/2` and `sort/1`
+- `Map` is exposed as the bounded host-backed surface Tonic can honestly support today
+
+This is no longer the old de-advertise-everything phase. The remaining gaps are the next-order gaps after parity and exposure landed.
 
 ---
 
@@ -43,52 +48,54 @@ That does **not** mean the four removed modules are implemented. It means they a
 
 | Priority | Gap | Why it matters | Recommended next move |
 |---|---|---|---|
-| P1 | Optional stdlib injection is still project-mode-only | `tonic run file.tn` and project mode do not see the same stdlib surface, which makes examples and mental models inconsistent | Decide whether to unify single-file + project-mode stdlib behavior or document the split as an intentional product tier |
-| P1 | Runtime text is binary-shaped, not parser-ready byte/list input | Real app authoring still lacks a polished parser-oriented text contract beyond `String.*` helpers | Either keep the current contract and add explicit parser-friendly helpers, or deliberately improve runtime text decomposition semantics |
-| P2 | Deferred stdlib modules still have dormant in-tree implementations without parity | `Enum`, `List`, `IO`, and `Map` now avoid misleading injection, but the repo still contains partial interpreter-side work that could be mistaken for support | Keep them de-advertised until end-to-end registration, native dispatch, tests, and docs are all real |
-| P2 | Filesystem ownership is still System-heavy rather than Elixir-shaped | Tonic now has useful filesystem primitives, but their module placement is still more pragmatic than elegant | Keep under `System` for now, but document whether a future `File` split is intended |
-| P2 | Several Elixir-shaped modules are still absent or deferred (`URI`, `Keyword`, `Integer`, `Float`, `Tuple`, `OptionParser`, `Regex`, `Stream`) | The profile is still intentionally narrow | Add only when workload evidence exists and the runtime contract is clear |
+| P1 | Optional stdlib injection is still project-mode-only | `tonic run file.tn` and project mode still do not see the same stdlib surface, which weakens examples and mental models | Decide whether to unify single-file + project-mode stdlib behavior or document the split as an intentional product tier |
+| P1 | Runtime text is still binary-shaped, not parser-ready byte/list input | Real parser-heavy programs still need a clearer non-wishful text story beyond `String.*` helpers | Either keep the current contract and add explicit parser helpers, or deliberately improve runtime text decomposition semantics |
+| P2 | Public collection surface is intentionally bounded | Tonic now has a believable `List`/`Enum`/`Map` story, but some obvious Elixir-shaped helpers still remain deferred for honest reasons | Expand only one bounded helper at a time, with native parity and docs in the same slice |
+| P2 | Filesystem ownership is still `System`-heavy rather than Elixir-shaped | The filesystem surface is usable, but the module shape is still pragmatic rather than elegant | Keep it under `System` for now; revisit a future `File` split only if workload pressure justifies it |
+| P3 | Several Elixir-shaped modules are still absent or deferred (`URI`, `Keyword`, `Integer`, `Float`, `Tuple`, `OptionParser`, `Regex`, `Stream`) | The profile is still intentionally narrow | Add only when workload evidence exists and the runtime contract is clear |
 
 ---
 
-## Closed gap — injected broken modules were de-advertised
+## Closed gap — exposed surface now matches real support
 
-### What changed
+### What landed
 
-`src/manifest.rs` no longer lazy-loads:
+The stdlib usability push now leaves Tonic in a much cleaner state:
 
-- `Enum`
-- `List`
-- `IO`
-- `Map`
+- `IO`, `List`, `Map`, and `Enum` are public again in project mode
+- pure collection transforms moved into injected Tonic source where that was the honest design
+- public host-backed `Map.*` and `IO.*` helpers now have native/C-backend parity
+- lazy-load smoke coverage proves the exposed modules actually load when referenced
+- focused native smokes prove the public host boundary no longer silently lags the interpreter
+- docs and examples can now describe the real project-mode surface instead of a narrower placeholder profile
 
-Repo-local smoke coverage now locks the new behavior:
+### Why this closure matters
 
-- supported injected modules (`System`, `String`, `Path`) still lazy-load in project mode
-- deferred modules no longer lazy-load implicitly
-- references to deferred modules now fail honestly as undefined symbols instead of reaching misleading unknown-host or parse-hostile injected-module failures
+Before this work, Tonic had the worst combination:
 
-### Why this was the right closure slice
+- useful capabilities existed in-tree
+- users could not rely on them end to end
+- and the implementation boundary was muddy
 
-Fresh evidence still showed:
+Now the boundary is much clearer:
 
-- no workload pressure from `tonic-sitegen-stress`
-- no end-to-end host registration in `src/interop.rs`
-- no `enum_*`, `list_*`, `io_*`, or `map_*` native dispatch in `src/c_backend/stubs.rs`
-- `Map` injected source was still parse-hostile because of `has_key?`
+- pure transforms live in Tonic where they should
+- runtime-sensitive features stay host-backed
+- `Map` is exposed honestly as a bounded surface
+- native parity exists for the shipped public host-backed helpers
 
-So the smallest honest move was not “implement a thin slice badly.” It was “stop auto-advertising unsupported modules.”
+### What is still intentionally missing
 
-### Remaining follow-up for those modules
+The current closure does **not** mean “Tonic now has Elixir stdlib parity”.
 
-If any of these return to the injected stdlib surface later, the bar should be:
+The still-deferred edges include:
 
-1. interpreter registration exists
-2. native compiled dispatch exists
-3. regression coverage exists
-4. docs/profile are updated at the same time
+- `Map.has_key?/2` — parser/public-surface issue around `?`-suffixed names
+- `Map.filter/2` and `Map.reject/2` — not yet a strong enough public traversal/closure story to advertise honestly
+- `Enum.map/2`, `Enum.filter/2`, `Enum.reduce/3` — valuable candidates, but not part of the current public contract yet
+- broad module expansion beyond the current seven-module surface
 
-Until then, they should stay deferred.
+Those are now feature decisions, not honesty repairs.
 
 ---
 
@@ -96,29 +103,30 @@ Until then, they should stay deferred.
 
 ### Current state
 
-Optional stdlib injection currently happens in **project mode** but not in plain single-file execution.
+Optional stdlib injection still happens in **project mode** but not in plain single-file execution.
 
 That means:
+
 - `tonic run <project-dir>` can lazy-load optional stdlib modules
 - `tonic compile <project-dir>` can do the same
 - `tonic run file.tn` does **not** receive that optional stdlib surface
 
 ### Why it matters
 
-This creates a product-model gap:
-- examples may behave differently depending on how they are invoked
-- users cannot assume `String`, `System`, `Path`, etc. exist in single-file mode
-- it weakens the “small coherent core stdlib” story
+This is now the sharpest remaining product-model gap:
+
+- examples must keep spelling out the project-mode caveat
+- users cannot assume the same stdlib surface across `run` entry modes
+- the current core profile is real, but only within the project-mode contract
 
 ### Recommended outcome
 
-The next stdlib loops should explicitly decide one of:
+The next stdlib loop should explicitly decide one of:
 
 1. **Unify behavior** — optional stdlib works in both project and single-file modes
 2. **Document the split as intentional** — project mode gets the optional stdlib, single-file mode does not
 
-What should not remain indefinitely:
-- accidental split behavior without a product-level explanation
+What should not remain indefinitely is accidental split behavior without a product-level explanation.
 
 ---
 
@@ -126,7 +134,8 @@ What should not remain indefinitely:
 
 ### Current state
 
-The text/binary parser contract is now documented honestly:
+The text/binary parser contract is documented honestly:
+
 - runtime text is `is_binary: true`
 - runtime text is `is_list: false`
 - list-prefix and `<<...>>` byte parsing are not a supported runtime-text path
@@ -134,47 +143,49 @@ The text/binary parser contract is now documented honestly:
 
 ### Why it still counts as a gap
 
-The contract is honest now, but still not ideal for parser-heavy workloads.
+The contract is honest now, but parser-heavy workloads still need a stronger story than “use `String.*` and be careful”.
 
-A more Elixir-shaped app-authoring story would eventually need one of:
-- explicit parser-friendly byte/char iteration helpers
+A more polished app-authoring story would eventually need one of:
+
+- explicit parser-friendly byte or char iteration helpers
 - explicit string-to-byte decomposition helpers
-- stronger, intentionally supported runtime-text matching semantics
+- intentionally supported runtime-text matching semantics
 
 ### Recommended outcome
 
-Treat this as a separate design/implementation loop after the injected broken-module problem is closed.
+Treat this as a separate design loop. Do not blur it together with collection-surface work.
 
 ---
 
-## P2 — Deferred modules with dormant partial implementations
+## P2 — Bounded collection surface still leaves obvious follow-ups
 
 ### Current state
 
-The repo still contains interpreter-side host modules for:
+The current public collection surface is intentionally modest:
 
-- `Enum`
-- `List`
-- `IO`
-- `Map`
+- `List`: `first`, `last`, `wrap`, `flatten`, `zip`, `unzip`
+- `Enum`: `count`, `sum`, `join`, `sort`, `reverse`, `take`, `drop`, `chunk_every`, `unique`, `into`
+- `Map`: `keys`, `values`, `merge`, `drop`, `take`, `get`, `put`, `delete`
 
-But these modules are not currently part of the honest optional stdlib surface.
+### Why this is still a gap
 
-### Why this is only P2 now
+Users will reasonably look for helpers like:
 
-This is no longer a user-facing honesty failure because the modules are not injected by default anymore.
+- `Map.has_key?/2`
+- `Enum.map/2`
+- `Enum.filter/2`
+- `Enum.reduce/3`
 
-It is still worth tracking because dormant code can create false confidence during future implementation work.
+Those are not blocked because the current surface is broken. They are deferred because the next step should stay honest and bounded.
 
 ### Recommended outcome
 
-Do not re-advertise these modules piecemeal.
+Only expand this surface when each added helper ships with:
 
-Only bring one back when:
-- workload demand exists
-- interpreter wiring is complete
-- native parity is complete
-- regression tests land in the same slice
+1. a clear implementation boundary
+2. interpreter coverage
+3. native parity where required
+4. docs and examples updated in the same slice
 
 ---
 
@@ -182,7 +193,8 @@ Only bring one back when:
 
 ### Current state
 
-Useful filesystem primitives now exist under `System`, including:
+Useful filesystem primitives still live under `System`, including:
+
 - `System.list_files_recursive/1`
 - `System.remove_tree/1`
 - `System.path_exists/1`
@@ -192,20 +204,21 @@ Useful filesystem primitives now exist under `System`, including:
 
 ### Why this is still a gap
 
-For an Elixir-shaped stdlib, these functions might eventually fit better under a `File` module, with `System` focused more on process/environment/runtime interactions.
+For a more Elixir-shaped stdlib, these functions might eventually fit better under a `File` module, with `System` focused on process/environment/runtime interactions.
 
 ### Recommended outcome
 
 Do not rename for aesthetics yet.
 
 Instead:
+
 - keep the current `System` surface usable
-- document the likely long-term direction
-- revisit only when workload pressure justifies it
+- keep docs honest about where filesystem lives today
+- revisit a future `File` split only if workload pressure justifies it
 
 ---
 
-## P2 — Deferred Elixir-shaped modules
+## P3 — Deferred Elixir-shaped modules
 
 These are reasonable future candidates, but they are not currently part of the supported core stdlib profile:
 
@@ -222,12 +235,22 @@ Do not broaden into these until the higher-priority gaps above are closed.
 
 ---
 
+## Example reference
+
+For the small project-mode showcase that now matches the documented surface, see:
+
+- `examples/apps/stdlib_showcase`
+
+It is intentionally a project example, not a single-file example, because the current stdlib contract still depends on project-mode lazy loading.
+
+---
+
 ## Recommended next loop focus
 
-The next Ralph loop should focus on one of these, in order:
+The next stdlib loop should focus on one of these, in order:
 
 1. resolve the execution-mode split for optional stdlib injection
 2. improve parser-oriented text ergonomics without pretending text is already a parser-ready byte/list type
-3. reintroduce any deferred stdlib module only when parity work is real
+3. expand the bounded collection surface one helper at a time, only when parity and docs land together
 
-The point is the same as before: keep the stdlib story smaller than users might want, but truer than it was before.
+The current stdlib story is finally believable. The next work should keep it that way.

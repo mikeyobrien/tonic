@@ -1,0 +1,24 @@
+defmodule Demo do
+  def run() do
+    IO.inspect(%{
+      list: %{
+        first: List.first([1, 2, 3]),
+        last: List.last([1, 2, 3]),
+        flatten: List.flatten([1, [2, [3]], 4]),
+        zipped: List.zip([1, 2], [:a, :b, :c])
+      },
+      enum: %{
+        count: Enum.count(1..4),
+        unique: Enum.unique([1, 2, 1, 3, 2]),
+        into_list: Enum.into(1..3, [0]),
+        into_map: Enum.into([{:lang, "tonic"}, {:year, 2026}], %{seed: 0})
+      },
+      map: %{
+        keys: Map.keys(%{lang: "tonic", year: 2026}),
+        values: Map.values(%{lang: "tonic", year: 2026}),
+        merged: Map.merge(%{lang: "tonic"}, %{year: 2026}),
+        selected: Map.take(%{lang: "tonic", year: 2026, status: :alpha}, [:lang, :status])
+      }
+    })
+  end
+end
