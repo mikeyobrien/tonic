@@ -1,3 +1,4 @@
 {"type":"config","name":"Tonic Production Readiness - Find and Fix Issues","metricName":"readiness_gaps","metricUnit":"","bestDirection":"lower"}
 {"run":1,"commit":"0e1c198","metric":20,"metrics":{},"status":"discard","description":"Baseline: 20 readiness gaps (18 oversized files, 2 partial parity items)","timestamp":1773618046804,"segment":0}
 {"run":2,"commit":"0bb0222","metric":19,"metrics":{"oversized":17},"status":"keep","description":"Split typing.rs (782→294 lines): extract infer_expression_type + call helpers to typing_infer.rs (495 lines)","timestamp":1773618467117,"segment":0}
+{"run":3,"commit":"93f3d40","metric":18,"metrics":{"oversized":16},"status":"keep","description":"Split resolver.rs (1086→401 lines): extract ModuleGraph to resolver_graph.rs (488), tests to resolver_tests.rs (210)","timestamp":1773618857550,"segment":0}

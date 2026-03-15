@@ -1,6 +1,8 @@
 mod codegen;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_codegen;
 
 use crate::ir::IrOp;
 use crate::mir::{MirInstruction, MirProgram};
