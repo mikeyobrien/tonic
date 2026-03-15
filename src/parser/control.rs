@@ -7,9 +7,9 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression()?;
         self.expect(TokenKind::Do, "do")?;
 
-        let then_body = self.parse_expression()?;
+        let then_body = self.parse_block_body()?;
         let else_body = if self.match_kind(TokenKind::Else) {
-            self.parse_expression()?
+            self.parse_block_body()?
         } else {
             Expr::nil(self.node_ids.next_expr(), offset)
         };
@@ -27,9 +27,9 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression()?;
         self.expect(TokenKind::Do, "do")?;
 
-        let then_body = self.parse_expression()?;
+        let then_body = self.parse_block_body()?;
         let else_body = if self.match_kind(TokenKind::Else) {
-            self.parse_expression()?
+            self.parse_block_body()?
         } else {
             Expr::nil(self.node_ids.next_expr(), offset)
         };
@@ -84,7 +84,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(TokenKind::Do, "do")?;
-        let body = self.parse_expression()?;
+        let body = self.parse_block_body()?;
 
         let else_branches = if self.match_kind(TokenKind::Else) {
             let mut branches = Vec::new();
@@ -192,7 +192,7 @@ impl<'a> Parser<'a> {
         let body = if reduce_expr.is_some() {
             self.parse_for_reduce_body(offset)?
         } else {
-            self.parse_expression()?
+            self.parse_block_body()?
         };
         self.expect(TokenKind::End, "end")?;
 

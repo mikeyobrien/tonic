@@ -5,7 +5,7 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_try_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::Try, "try")?.span().start();
         self.expect(TokenKind::Do, "do")?;
-        let body = self.parse_expression()?;
+        let body = self.parse_block_body()?;
 
         let mut rescue = Vec::new();
         if self.match_kind(TokenKind::Rescue) {
@@ -31,7 +31,7 @@ impl<'a> Parser<'a> {
         }
 
         let after = if self.match_kind(TokenKind::After) {
-            Some(self.parse_expression()?)
+            Some(self.parse_block_body()?)
         } else {
             None
         };
