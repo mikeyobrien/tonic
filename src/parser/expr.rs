@@ -455,13 +455,8 @@ impl<'a> Parser<'a> {
             TokenKind::MinusMinus => Some((80, 80, BinaryOp::MinusMinus)),
             TokenKind::DotDot => Some((80, 80, BinaryOp::Range)),
             TokenKind::In => Some((70, 71, BinaryOp::In)),
-            TokenKind::Not => {
-                // `not in` is a binary operator
-                if self.peek(1).map(|t| t.kind()) == Some(TokenKind::In) {
-                    Some((70, 71, BinaryOp::NotIn))
-                } else {
-                    None
-                }
+            TokenKind::Not if self.peek(1).map(|t| t.kind()) == Some(TokenKind::In) => {
+                Some((70, 71, BinaryOp::NotIn))
             }
             TokenKind::StrictEq => Some((60, 61, BinaryOp::StrictEq)),
             TokenKind::StrictBangEq => Some((60, 61, BinaryOp::StrictBangEq)),
