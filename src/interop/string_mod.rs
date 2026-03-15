@@ -212,36 +212,42 @@ fn host_string_to_float(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError
     }
 }
 
-fn host_string_pad_leading(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
-    expect_exact_args("String.pad_leading", args, 3)?;
-    let s = expect_string_arg("String.pad_leading", args, 0)?;
-    let count = expect_int_arg("String.pad_leading", args, 1)?;
-    let padding = expect_string_arg("String.pad_leading", args, 2)?;
-
+fn pad_string(
+    name: &str,
+    s: String,
+    count: i64,
+    padding: &str,
+    leading: bool,
+) -> Result<RuntimeValue, HostError> {
     if count < 0 {
-        return Err(HostError::new(
-            "String.pad_leading count must be non-negative",
-        ));
+        return Err(HostError::new(format!("{name} count must be non-negative")));
     }
     if padding.is_empty() {
-        return Err(HostError::new(
-            "String.pad_leading padding must not be empty",
-        ));
+        return Err(HostError::new(format!("{name} padding must not be empty")));
     }
-
     let target = count as usize;
     let current_len = s.chars().count();
     if current_len >= target {
         return Ok(RuntimeValue::String(s));
     }
-
     let needed = target - current_len;
     let pad_chars: Vec<char> = padding.chars().collect();
     let pad: String = (0..needed)
         .map(|i| pad_chars[i % pad_chars.len()])
         .collect();
+    if leading {
+        Ok(RuntimeValue::String(format!("{pad}{s}")))
+    } else {
+        Ok(RuntimeValue::String(format!("{s}{pad}")))
+    }
+}
 
-    Ok(RuntimeValue::String(format!("{pad}{s}")))
+fn host_string_pad_leading(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("String.pad_leading", args, 3)?;
+    let s = expect_string_arg("String.pad_leading", args, 0)?;
+    let count = expect_int_arg("String.pad_leading", args, 1)?;
+    let padding = expect_string_arg("String.pad_leading", args, 2)?;
+    pad_string("String.pad_leading", s, count, &padding, true)
 }
 
 fn host_string_pad_trailing(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
@@ -249,31 +255,7 @@ fn host_string_pad_trailing(args: &[RuntimeValue]) -> Result<RuntimeValue, HostE
     let s = expect_string_arg("String.pad_trailing", args, 0)?;
     let count = expect_int_arg("String.pad_trailing", args, 1)?;
     let padding = expect_string_arg("String.pad_trailing", args, 2)?;
-
-    if count < 0 {
-        return Err(HostError::new(
-            "String.pad_trailing count must be non-negative",
-        ));
-    }
-    if padding.is_empty() {
-        return Err(HostError::new(
-            "String.pad_trailing padding must not be empty",
-        ));
-    }
-
-    let target = count as usize;
-    let current_len = s.chars().count();
-    if current_len >= target {
-        return Ok(RuntimeValue::String(s));
-    }
-
-    let needed = target - current_len;
-    let pad_chars: Vec<char> = padding.chars().collect();
-    let pad: String = (0..needed)
-        .map(|i| pad_chars[i % pad_chars.len()])
-        .collect();
-
-    Ok(RuntimeValue::String(format!("{s}{pad}")))
+    pad_string("String.pad_trailing", s, count, &padding, false)
 }
 
 fn host_string_reverse(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
