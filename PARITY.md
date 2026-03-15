@@ -16,7 +16,7 @@ Legend:
 - [~] partial / syntax-compatible but semantically limited or syntax-divergent
 - [ ] missing
 
-_Last updated: 2026-03-07_
+_Last updated: 2026-03-15_
 
 ---
 
@@ -28,6 +28,7 @@ _Last updated: 2026-03-07_
 - [x] module-qualified calls (`Module.func(...)`) (`examples/parity/07-modules/module_qualified_calls.tn`)
 - [x] pipe operator `|>` (`tests/check_dump_ast_pipe_chain.rs`)
 - [x] `case ... do ... end` baseline (`tests/check_dump_ast_case_patterns.rs`)
+- [x] sequential expressions in `do...end` blocks (`tests/run_block_expression_smoke.rs`)
 
 ## 2) Literals, expressions, operators
 
