@@ -48,8 +48,8 @@ pub(crate) struct RegistryDep {
     pub(crate) registry: Option<String>,
 }
 
-// TODO: Add Registries struct when registry support is implemented.
-// Registry URL will be configurable via [registries.default] in tonic.toml.
+// Registry URL will be configurable via [registries.default] in tonic.toml
+// when registry support is implemented.
 
 pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("System", OPTIONAL_STDLIB_SYSTEM_SOURCE),

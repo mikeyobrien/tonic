@@ -7,6 +7,7 @@ use super::hash::{
     closure_capture_names, hash_closure_descriptor_i64, hash_ir_op_i64, hash_pattern_i64,
     hash_text_i64,
 };
+use super::stubs::c_string_literal;
 
 pub(super) fn emit_c_instructions(
     function: &MirFunction,
@@ -484,20 +485,4 @@ fn emit_c_builtin_call(
         }
     }
     Ok(())
-}
-
-fn c_string_literal(value: &str) -> String {
-    let mut out = String::from("\"");
-    for ch in value.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            _ => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
 }

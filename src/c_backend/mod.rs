@@ -7,6 +7,9 @@ mod hash;
 mod ops;
 mod runtime_patterns;
 mod stubs;
+mod stubs_closures;
+mod stubs_for;
+mod stubs_try;
 mod terminator;
 
 pub(crate) use error::CBackendError;

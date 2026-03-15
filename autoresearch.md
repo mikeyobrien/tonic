@@ -37,11 +37,11 @@ cargo fmt --all -- --check 2>&1 | grep -c '^Diff'
 # Test failures
 cargo test 2>&1 | grep '^test result:' | awk '{sum += $6} END {print sum}'
 
-# Parity unchecked
-grep -c '^\- \[ \]' PARITY.md 2>/dev/null || echo 0
+# Parity unchecked (exclude legend section)
+awk '/^---$/{past_legend=1} past_legend && /^\- \[ \]/' PARITY.md | wc -l
 
-# Parity partial
-grep -c '^\- \[~\]' PARITY.md 2>/dev/null || echo 0
+# Parity partial (exclude legend section)
+awk '/^---$/{past_legend=1} past_legend && /^\- \[~\]/' PARITY.md | wc -l
 
 # Stdlib P1 gaps
 grep -c '| P1 |' docs/core-stdlib-gap-list.md 2>/dev/null || echo 0
