@@ -195,6 +195,8 @@ pub(crate) enum IrOp {
         pattern: IrPattern,
         offset: usize,
     },
+    /// Discard the top stack value (used between sequential expressions in a block).
+    Drop,
     Return {
         offset: usize,
     },
@@ -1704,6 +1706,16 @@ fn lower_expr(
                 value: value.clone(),
                 offset: *offset,
             });
+            Ok(())
+        }
+        Expr::Block { exprs, .. } => {
+            for (i, sub_expr) in exprs.iter().enumerate() {
+                lower_expr(sub_expr, current_module, struct_definitions, ops)?;
+                // Drop intermediate values (all but the last)
+                if i < exprs.len() - 1 {
+                    ops.push(IrOp::Drop);
+                }
+            }
             Ok(())
         }
     }

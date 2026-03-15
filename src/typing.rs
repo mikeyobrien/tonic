@@ -559,6 +559,13 @@ fn infer_expression_type(
             infer_expression_type(error, current_module, signatures, solver)?;
             Ok(Type::Dynamic)
         }
+        Expr::Block { exprs, .. } => {
+            let mut last_type = Type::Nil;
+            for sub_expr in exprs {
+                last_type = infer_expression_type(sub_expr, current_module, signatures, solver)?;
+            }
+            Ok(last_type)
+        }
     }
 }
 

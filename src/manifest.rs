@@ -295,8 +295,12 @@ pub(crate) fn load_run_source(requested_path: &str) -> Result<String, String> {
         return load_run_source_from_project_root(path);
     }
 
-    std::fs::read_to_string(path)
-        .map_err(|error| format!("failed to read source file {requested_path}: {error}"))
+    let mut source = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read source file {requested_path}: {error}"))?;
+
+    inject_optional_stdlib(&mut source)?;
+
+    Ok(source)
 }
 
 fn load_run_source_from_project_root(project_root: &Path) -> Result<String, String> {
@@ -327,27 +331,15 @@ fn load_run_source_from_project_root(project_root: &Path) -> Result<String, Stri
     project_sources.extend(dependency_sources);
 
     let mut source = project_sources.join("\n\n");
-    let analysis = analyze_project_source(&source)?;
 
     if should_trace_module_loads() {
+        let analysis = analyze_project_source(&source)?;
         for module_name in &analysis.module_names {
             trace_module_load("project", module_name);
         }
     }
 
-    for (module_name, module_source) in STDLIB_SOURCES {
-        if should_lazy_load_optional_stdlib(&analysis, module_name) {
-            if !source.is_empty() {
-                source.push_str("\n\n");
-            }
-
-            source.push_str(module_source);
-
-            if should_trace_module_loads() {
-                trace_module_load("stdlib", module_name);
-            }
-        }
-    }
+    inject_optional_stdlib(&mut source)?;
 
     Ok(source)
 }
@@ -598,8 +590,30 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
                 })
         }
         Expr::Raise { error, .. } => expr_references_module(error, module_name),
+        Expr::Block { exprs, .. } => exprs.iter().any(|e| expr_references_module(e, module_name)),
         Expr::Variable { .. } | Expr::Atom { .. } => false,
     }
+}
+
+/// Analyze source for stdlib module references and inject any needed stdlib modules.
+fn inject_optional_stdlib(source: &mut String) -> Result<(), String> {
+    let analysis = analyze_project_source(source)?;
+
+    for (module_name, module_source) in STDLIB_SOURCES {
+        if should_lazy_load_optional_stdlib(&analysis, module_name) {
+            if !source.is_empty() {
+                source.push_str("\n\n");
+            }
+
+            source.push_str(module_source);
+
+            if should_trace_module_loads() {
+                trace_module_load("stdlib", module_name);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn should_lazy_load_optional_stdlib(analysis: &ProjectSourceAnalysis, module_name: &str) -> bool {

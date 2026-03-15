@@ -495,6 +495,13 @@ pub enum Expr {
         reduce: Option<Box<Expr>>,
         body: Box<Expr>,
     },
+    Block {
+        #[serde(skip_serializing)]
+        id: NodeId,
+        #[serde(skip_serializing)]
+        offset: usize,
+        exprs: Vec<Expr>,
+    },
     Variable {
         #[serde(skip_serializing)]
         id: NodeId,
@@ -1021,6 +1028,7 @@ impl Expr {
             | Self::Try { offset, .. }
             | Self::Raise { offset, .. }
             | Self::For { offset, .. }
+            | Self::Block { offset, .. }
             | Self::Bitstring { offset, .. } => *offset,
         }
     }

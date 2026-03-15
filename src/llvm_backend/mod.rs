@@ -147,6 +147,7 @@ fn ir_op_name(op: &IrOp) -> &'static str {
         IrOp::SteppedRange { .. } => "stepped_range",
         IrOp::Bitstring { .. } => "bitstring",
         IrOp::Match { .. } => "match",
+        IrOp::Drop => "drop",
         IrOp::Return { .. } => "return",
     }
 }

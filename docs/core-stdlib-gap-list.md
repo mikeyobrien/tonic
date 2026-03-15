@@ -48,7 +48,7 @@ This is no longer the old de-advertise-everything phase. The remaining gaps are 
 
 | Priority | Gap | Why it matters | Recommended next move |
 |---|---|---|---|
-| P1 | Optional stdlib injection is still project-mode-only | `tonic run file.tn` and project mode still do not see the same stdlib surface, which weakens examples and mental models | Decide whether to unify single-file + project-mode stdlib behavior or document the split as an intentional product tier |
+| ~~P1~~ | ~~Optional stdlib injection is still project-mode-only~~ | Resolved: single-file and project mode now share the same stdlib injection surface | Unified in `load_run_source` — both paths call `inject_optional_stdlib` |
 | P1 | Runtime text is still binary-shaped, not parser-ready byte/list input | Real parser-heavy programs still need a clearer non-wishful text story beyond `String.*` helpers | Either keep the current contract and add explicit parser helpers, or deliberately improve runtime text decomposition semantics |
 | P2 | Public collection surface is intentionally bounded | Tonic now has a believable `List`/`Enum`/`Map` story, but some obvious Elixir-shaped helpers still remain deferred for honest reasons | Expand only one bounded helper at a time, with native parity and docs in the same slice |
 | P2 | Filesystem ownership is still `System`-heavy rather than Elixir-shaped | The filesystem surface is usable, but the module shape is still pragmatic rather than elegant | Keep it under `System` for now; revisit a future `File` split only if workload pressure justifies it |

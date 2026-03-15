@@ -96,7 +96,7 @@ impl<'a> Parser<'a> {
         };
 
         self.expect(TokenKind::Do, "do")?;
-        let body = self.parse_expression()?;
+        let body = self.parse_block_body()?;
         self.expect(TokenKind::End, "end")?;
 
         Ok(Function::with_id(id, name, visibility, params, guard, body))

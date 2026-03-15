@@ -797,6 +797,12 @@ fn resolve_expr_with_guard_context(
             resolve_expr_with_guard_context(error, context, in_guard_context)
         }
         Expr::Variable { .. } | Expr::Atom { .. } => Ok(()),
+        Expr::Block { exprs, .. } => {
+            for sub_expr in exprs {
+                resolve_expr_with_guard_context(sub_expr, context, in_guard_context)?;
+            }
+            Ok(())
+        }
     }
 }
 

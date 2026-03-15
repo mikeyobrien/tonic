@@ -22,16 +22,16 @@ That means Tonic should:
 - prefer explicit divergence over implied parity
 - advertise only surfaces that are actually supported end to end
 
-## Execution-mode caveat
+## Execution-mode note
 
-Important current limitation: optional stdlib injection still happens in **project mode**, not in plain single-file execution.
+Optional stdlib injection now works in both **project mode** and **single-file mode**.
 
-Today this means:
+Both paths share the same `inject_optional_stdlib` logic in `src/manifest.rs`:
 
-- `tonic run <project-dir>` and `tonic compile <project-dir>` can lazy-load optional stdlib modules from `src/manifest.rs`
-- `tonic run file.tn` does **not** currently receive that optional stdlib injection
+- `tonic run <project-dir>` lazy-loads optional stdlib modules via project manifest loading
+- `tonic run file.tn` now also analyzes the source for stdlib references and injects needed modules
 
-So the current stdlib contract is both **module-dependent** and **execution-mode-dependent**. That caveat remains real until single-file and project-mode behavior are intentionally unified.
+The stdlib contract is **module-dependent** but no longer **execution-mode-dependent**.
 
 ## Evidence base for this profile
 

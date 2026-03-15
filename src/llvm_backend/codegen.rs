@@ -1417,6 +1417,7 @@ fn collect_capture_names_from_ops(
             | IrOp::SteppedRange { .. }
             | IrOp::Bitstring { .. }
             | IrOp::Match { .. }
+            | IrOp::Drop
             | IrOp::Return { .. } => {}
         }
     }

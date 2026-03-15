@@ -552,6 +552,9 @@ fn evaluate_ops(
 
                 stack.push(value);
             }
+            IrOp::Drop => {
+                stack.pop();
+            }
             IrOp::Return { offset } => {
                 return Ok(Some(pop_value(stack, *offset, "return")?));
             }
@@ -1203,6 +1206,7 @@ fn ir_op_offset(op: &IrOp) -> usize {
         IrOp::Raise { offset } => *offset,
         IrOp::For { offset, .. } => *offset,
         IrOp::Bitstring { offset, .. } => *offset,
+        IrOp::Drop => 0,
     }
 }
 

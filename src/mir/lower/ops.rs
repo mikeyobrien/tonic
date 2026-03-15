@@ -351,6 +351,10 @@ impl FunctionLowerer {
                 stack.push(value);
                 Ok(())
             }
+            IrOp::Drop => {
+                stack.pop();
+                Ok(())
+            }
             IrOp::Return { .. }
             | IrOp::Case { .. }
             | IrOp::AndAnd { .. }

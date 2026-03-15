@@ -1203,5 +1203,11 @@ fn collect_expr_ids(expr: &Expr, ids: &mut Vec<String>) {
         Expr::Variable { id, .. } | Expr::Atom { id, .. } => {
             ids.push(id.0.clone());
         }
+        Expr::Block { id, exprs, .. } => {
+            ids.push(id.0.clone());
+            for sub_expr in exprs {
+                collect_expr_ids(sub_expr, ids);
+            }
+        }
     }
 }

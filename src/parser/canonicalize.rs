@@ -330,6 +330,11 @@ fn canonicalize_expr(expr: &mut Expr, ctx: &CanonCtx<'_>) {
                 }
             }
         }
+        Expr::Block { exprs, .. } => {
+            for sub_expr in exprs {
+                canonicalize_expr(sub_expr, ctx);
+            }
+        }
     }
 }
 

@@ -6,6 +6,27 @@ impl<'a> Parser<'a> {
         self.parse_match_expression()
     }
 
+    /// Parse a sequence of expressions (a block body between `do` and `end`).
+    /// Returns a single `Expr` if there's only one expression, or an
+    /// `Expr::Block` if there are multiple.
+    pub(super) fn parse_block_body(&mut self) -> Result<Expr, ParserError> {
+        let offset = self.current().map(|t| t.span().start()).unwrap_or(0);
+        let first = self.parse_expression()?;
+
+        if self.check(TokenKind::End) {
+            return Ok(first);
+        }
+
+        let id = self.node_ids.next_expr();
+        let mut exprs = vec![first];
+
+        while !self.check(TokenKind::End) && self.current().is_some() {
+            exprs.push(self.parse_expression()?);
+        }
+
+        Ok(Expr::Block { id, offset, exprs })
+    }
+
     fn parse_match_expression(&mut self) -> Result<Expr, ParserError> {
         let left = self.parse_pipe_expression()?;
 
