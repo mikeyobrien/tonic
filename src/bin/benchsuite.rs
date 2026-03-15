@@ -9,6 +9,8 @@ mod competitive_slo;
 mod competitive_tests;
 #[path = "benchsuite/model.rs"]
 mod model;
+#[path = "benchsuite/report.rs"]
+mod report;
 #[path = "benchsuite/runtime.rs"]
 mod runtime;
 #[path = "benchsuite/utils.rs"]
@@ -17,10 +19,10 @@ mod utils;
 use cli::{help_text, parse_cli_args};
 use competitive::evaluate_contract;
 use model::{SuiteManifest, SuiteReport, WorkloadReport};
-use runtime::{
-    calculate_calibrated_threshold, collect_host_metadata, evaluate_thresholds, run_workload,
-    workload_report_from_error, write_json_report, write_markdown_report,
+use report::{
+    collect_host_metadata, workload_report_from_error, write_json_report, write_markdown_report,
 };
+use runtime::{calculate_calibrated_threshold, evaluate_thresholds, run_workload};
 use std::env;
 use std::fs;
 
