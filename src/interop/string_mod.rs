@@ -1,67 +1,6 @@
-use super::{host_value_kind, HostError, HostRegistry};
+use super::system::{expect_exact_args, expect_int_arg, expect_string_arg};
+use super::{HostError, HostRegistry};
 use crate::runtime::RuntimeValue;
-
-fn expect_string_arg(
-    function: &str,
-    args: &[RuntimeValue],
-    index: usize,
-) -> Result<String, HostError> {
-    let Some(value) = args.get(index) else {
-        return Err(HostError::new(format!(
-            "{} missing required argument {}",
-            function,
-            index + 1
-        )));
-    };
-
-    match value {
-        RuntimeValue::String(text) => Ok(text.clone()),
-        other => Err(HostError::new(format!(
-            "{} expects string argument {}; found {}",
-            function,
-            index + 1,
-            host_value_kind(other)
-        ))),
-    }
-}
-
-fn expect_int_arg(function: &str, args: &[RuntimeValue], index: usize) -> Result<i64, HostError> {
-    let Some(value) = args.get(index) else {
-        return Err(HostError::new(format!(
-            "{} missing required argument {}",
-            function,
-            index + 1
-        )));
-    };
-
-    match value {
-        RuntimeValue::Int(n) => Ok(*n),
-        other => Err(HostError::new(format!(
-            "{} expects int argument {}; found {}",
-            function,
-            index + 1,
-            host_value_kind(other)
-        ))),
-    }
-}
-
-fn expect_exact_args(
-    function: &str,
-    args: &[RuntimeValue],
-    expected: usize,
-) -> Result<(), HostError> {
-    if args.len() == expected {
-        Ok(())
-    } else {
-        Err(HostError::new(format!(
-            "{} expects exactly {} argument{}, found {}",
-            function,
-            expected,
-            if expected == 1 { "" } else { "s" },
-            args.len()
-        )))
-    }
-}
 
 fn host_string_split(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("String.split", args, 2)?;
