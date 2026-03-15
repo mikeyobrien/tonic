@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use super::error::CBackendError;
 use super::hash::{hash_pattern_i64, hash_text_i64};
+use super::stubs::c_string_literal;
 
 #[derive(Debug, Clone)]
 struct PatternCase {
@@ -570,20 +571,4 @@ fn emit_pattern_case(pattern_case: &PatternCase, out: &mut String) -> Result<(),
 
     out.push_str("}\n\n");
     Ok(())
-}
-
-fn c_string_literal(value: &str) -> String {
-    let mut out = String::from("\"");
-    for ch in value.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            _ => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
 }
