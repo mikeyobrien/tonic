@@ -5,6 +5,7 @@ mod canonicalize;
 mod control;
 mod expr;
 mod fn_expr;
+mod imports;
 mod literal;
 mod module;
 mod pattern;
