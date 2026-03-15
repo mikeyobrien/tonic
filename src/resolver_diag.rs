@@ -49,38 +49,40 @@ pub struct ResolverError {
 }
 
 impl ResolverError {
-    pub fn undefined_symbol(symbol: &str, module: &str, function: &str) -> Self {
+    fn new(code: ResolverDiagnosticCode, message: String) -> Self {
         Self {
-            code: ResolverDiagnosticCode::UndefinedSymbol,
-            message: format!("undefined symbol '{symbol}' in {module}.{function}"),
+            code,
+            message,
             offset: None,
         }
+    }
+
+    pub fn undefined_symbol(symbol: &str, module: &str, function: &str) -> Self {
+        Self::new(
+            ResolverDiagnosticCode::UndefinedSymbol,
+            format!("undefined symbol '{symbol}' in {module}.{function}"),
+        )
     }
 
     pub fn private_function(symbol: &str, module: &str, function: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::PrivateFunction,
-            message: format!(
-                "private function '{symbol}' cannot be called from {module}.{function}"
-            ),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::PrivateFunction,
+            format!("private function '{symbol}' cannot be called from {module}.{function}"),
+        )
     }
 
     pub fn duplicate_module(module: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::DuplicateModule,
-            message: format!("duplicate module definition '{module}'"),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::DuplicateModule,
+            format!("duplicate module definition '{module}'"),
+        )
     }
 
     pub fn undefined_struct_module(struct_module: &str, module: &str, function: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::UndefinedStructModule,
-            message: format!("undefined struct module '{struct_module}' in {module}.{function}"),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::UndefinedStructModule,
+            format!("undefined struct module '{struct_module}' in {module}.{function}"),
+        )
     }
 
     pub fn unknown_struct_field(
@@ -89,47 +91,38 @@ impl ResolverError {
         module: &str,
         function: &str,
     ) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::UnknownStructField,
-            message: format!(
-                "unknown struct field '{field}' for {struct_module} in {module}.{function}"
-            ),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::UnknownStructField,
+            format!("unknown struct field '{field}' for {struct_module} in {module}.{function}"),
+        )
     }
 
     pub fn duplicate_protocol(protocol: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::DuplicateProtocol,
-            message: format!("duplicate protocol definition '{protocol}'"),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::DuplicateProtocol,
+            format!("duplicate protocol definition '{protocol}'"),
+        )
     }
 
     pub fn duplicate_protocol_function(protocol: &str, function: &str, arity: usize) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::DuplicateProtocolFunction,
-            message: format!(
-                "duplicate protocol function '{function}/{arity}' in protocol '{protocol}'"
-            ),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::DuplicateProtocolFunction,
+            format!("duplicate protocol function '{function}/{arity}' in protocol '{protocol}'"),
+        )
     }
 
     pub fn unknown_protocol(protocol: &str, target: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::UnknownProtocol,
-            message: format!("unknown protocol '{protocol}' for defimpl target '{target}'"),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::UnknownProtocol,
+            format!("unknown protocol '{protocol}' for defimpl target '{target}'"),
+        )
     }
 
     pub fn duplicate_protocol_impl(protocol: &str, target: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::DuplicateProtocolImpl,
-            message: format!("duplicate defimpl for protocol '{protocol}' and target '{target}'"),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::DuplicateProtocolImpl,
+            format!("duplicate defimpl for protocol '{protocol}' and target '{target}'"),
+        )
     }
 
     pub fn invalid_protocol_impl(
@@ -139,33 +132,18 @@ impl ResolverError {
         arity: usize,
         reason: &str,
     ) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::InvalidProtocolImpl,
-            message: format!(
-                "invalid defimpl for protocol '{protocol}' target '{target}': {function}/{arity} {reason}"
-            ),
-            offset: None,
-        }
+        Self::new(ResolverDiagnosticCode::InvalidProtocolImpl,
+            format!("invalid defimpl for protocol '{protocol}' target '{target}': {function}/{arity} {reason}"))
     }
 
     pub fn undefined_required_module(required_module: &str, module: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::UndefinedRequiredModule,
-            message: format!(
-                "required module '{required_module}' is not defined for {module}; add the module or remove require"
-            ),
-            offset: None,
-        }
+        Self::new(ResolverDiagnosticCode::UndefinedRequiredModule,
+            format!("required module '{required_module}' is not defined for {module}; add the module or remove require"))
     }
 
     pub fn undefined_use_module(used_module: &str, module: &str) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::UndefinedUseModule,
-            message: format!(
-                "used module '{used_module}' is not defined for {module}; add the module or remove use"
-            ),
-            offset: None,
-        }
+        Self::new(ResolverDiagnosticCode::UndefinedUseModule,
+            format!("used module '{used_module}' is not defined for {module}; add the module or remove use"))
     }
 
     pub fn import_filter_excludes_call(
@@ -175,13 +153,8 @@ impl ResolverError {
         import_modules: &[String],
     ) -> Self {
         let imports = import_modules.join(", ");
-        Self {
-            code: ResolverDiagnosticCode::ImportFilterExcludesCall,
-            message: format!(
-                "import filters exclude call '{function}/{arity}' in {module}; imported modules with this symbol: {imports}"
-            ),
-            offset: None,
-        }
+        Self::new(ResolverDiagnosticCode::ImportFilterExcludesCall,
+            format!("import filters exclude call '{function}/{arity}' in {module}; imported modules with this symbol: {imports}"))
     }
 
     pub fn ambiguous_import_call(
@@ -191,13 +164,10 @@ impl ResolverError {
         candidates: &[String],
     ) -> Self {
         let joined = candidates.join(", ");
-        Self {
-            code: ResolverDiagnosticCode::AmbiguousImportCall,
-            message: format!(
-                "ambiguous imported call '{function}/{arity}' in {module}; matches: {joined}"
-            ),
-            offset: None,
-        }
+        Self::new(
+            ResolverDiagnosticCode::AmbiguousImportCall,
+            format!("ambiguous imported call '{function}/{arity}' in {module}; matches: {joined}"),
+        )
     }
 
     pub fn guard_builtin_outside_guard(
@@ -206,13 +176,8 @@ impl ResolverError {
         module: &str,
         function: &str,
     ) -> Self {
-        Self {
-            code: ResolverDiagnosticCode::GuardBuiltinOutsideGuard,
-            message: format!(
-                "guard builtin '{builtin}/{arity}' is only allowed in guard expressions (when) in {module}.{function}"
-            ),
-            offset: None,
-        }
+        Self::new(ResolverDiagnosticCode::GuardBuiltinOutsideGuard,
+            format!("guard builtin '{builtin}/{arity}' is only allowed in guard expressions (when) in {module}.{function}"))
     }
 
     pub fn with_offset(mut self, offset: usize) -> Self {
