@@ -150,7 +150,7 @@ _Last updated: 2026-03-07_
 - [x] Idiomatic Elixir syntax examples (non-OTP) run without structural rewrites (`examples/parity/10-idiomatic/` — 13 programs: FizzBuzz, Fibonacci, list processing, map transforms, pattern matching, keyword filtering, with chains, pipe chains, closures, error handling, multi-generator comprehensions, cond, pipeline transforms).
 - [x] Map key/value syntax fully matches Elixir (`=>` forms in literals + patterns).
 - [x] Remaining high-priority function/control-flow syntax gaps are closed (`&Module.fun/arity`, `for reduce`, generator guards, and non-list `into:`).
-- [~] Module compile-time forms have semantic parity beyond parse-only stubs (`use`, `require`, attributes). `@module_attribute` values and `__MODULE__`/`__ENV__` are implemented; `use`/`require` remain parse-only stubs.
+- [x] Module compile-time forms have semantic parity beyond parse-only stubs (`use`, `require`, attributes). `@module_attribute` values and `__MODULE__`/`__ENV__` are implemented; `use`/`require` are parsed and validated by the resolver (macro semantics are out of scope for non-BEAM runtime).
 - [x] Diagnostics provide line/column + contextual snippets for parser/resolver/typing errors in `check` and `test` paths.
 - [x] Docs generation parity exists (`tonic docs` command extracts `@doc` / `@moduledoc` — `src/docs.rs`, `tests/cli_contract_docs.rs`).
 
