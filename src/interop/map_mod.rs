@@ -208,6 +208,20 @@ fn host_map_reject(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     ))
 }
 
+pub fn register_map_host_functions(registry: &HostRegistry) {
+    registry.register("map_keys", host_map_keys);
+    registry.register("map_values", host_map_values);
+    registry.register("map_merge", host_map_merge);
+    registry.register("map_drop", host_map_drop);
+    registry.register("map_take", host_map_take);
+    registry.register("map_has_key", host_map_has_key);
+    registry.register("map_get", host_map_get);
+    registry.register("map_put", host_map_put);
+    registry.register("map_delete", host_map_delete);
+    registry.register("map_filter", host_map_filter);
+    registry.register("map_reject", host_map_reject);
+}
+
 #[cfg(test)]
 mod tests {
     use crate::interop::HOST_REGISTRY;
@@ -340,18 +354,4 @@ mod tests {
             .expect("map_delete should succeed");
         assert_eq!(result, RuntimeValue::Map(vec![(atom("b"), i(2))]));
     }
-}
-
-pub fn register_map_host_functions(registry: &HostRegistry) {
-    registry.register("map_keys", host_map_keys);
-    registry.register("map_values", host_map_values);
-    registry.register("map_merge", host_map_merge);
-    registry.register("map_drop", host_map_drop);
-    registry.register("map_take", host_map_take);
-    registry.register("map_has_key", host_map_has_key);
-    registry.register("map_get", host_map_get);
-    registry.register("map_put", host_map_put);
-    registry.register("map_delete", host_map_delete);
-    registry.register("map_filter", host_map_filter);
-    registry.register("map_reject", host_map_reject);
 }

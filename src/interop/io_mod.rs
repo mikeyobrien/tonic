@@ -117,6 +117,17 @@ fn host_io_ansi_reset(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> 
     Ok(RuntimeValue::String("\x1b[0m".to_string()))
 }
 
+pub fn register_io_host_functions(registry: &HostRegistry) {
+    registry.register("io_puts", host_io_puts);
+    registry.register("io_inspect", host_io_inspect);
+    registry.register("io_gets", host_io_gets);
+    registry.register("io_ansi_red", host_io_ansi_red);
+    registry.register("io_ansi_green", host_io_ansi_green);
+    registry.register("io_ansi_yellow", host_io_ansi_yellow);
+    registry.register("io_ansi_blue", host_io_ansi_blue);
+    registry.register("io_ansi_reset", host_io_ansi_reset);
+}
+
 #[cfg(test)]
 mod tests {
     use crate::interop::HOST_REGISTRY;
@@ -182,26 +193,17 @@ mod tests {
         let error = HOST_REGISTRY
             .call("io_puts", &[RuntimeValue::Int(42)])
             .expect_err("io_puts should reject non-string");
-        assert!(error.to_string().contains("IO.puts expects string argument"));
+        assert!(error
+            .to_string()
+            .contains("IO.puts expects string argument"));
     }
 
     #[test]
     fn io_inspect_returns_value_unchanged() {
         let value = RuntimeValue::Int(42);
         let result = HOST_REGISTRY
-            .call("io_inspect", &[value.clone()])
+            .call("io_inspect", std::slice::from_ref(&value))
             .expect("io_inspect should succeed");
         assert_eq!(result, value);
     }
-}
-
-pub fn register_io_host_functions(registry: &HostRegistry) {
-    registry.register("io_puts", host_io_puts);
-    registry.register("io_inspect", host_io_inspect);
-    registry.register("io_gets", host_io_gets);
-    registry.register("io_ansi_red", host_io_ansi_red);
-    registry.register("io_ansi_green", host_io_ansi_green);
-    registry.register("io_ansi_yellow", host_io_ansi_yellow);
-    registry.register("io_ansi_blue", host_io_ansi_blue);
-    registry.register("io_ansi_reset", host_io_ansi_reset);
 }
