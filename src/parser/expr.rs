@@ -6,8 +6,7 @@ impl<'a> Parser<'a> {
         self.parse_match_expression()
     }
 
-    /// Parse a sequence of expressions (a block body between `do`/`end`).
-    /// Returns a single `Expr` or `Expr::Block` for multiple expressions.
+    /// Parse sequential expressions in a block body (between `do`/`end`).
     pub(super) fn parse_block_body(&mut self) -> Result<Expr, ParserError> {
         let offset = self.current().map(|t| t.span().start()).unwrap_or(0);
         let at_end = |s: &Self| {
