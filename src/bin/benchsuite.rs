@@ -1,3 +1,5 @@
+#[path = "benchsuite/cli.rs"]
+mod cli;
 #[path = "benchsuite/competitive.rs"]
 mod competitive;
 #[path = "benchsuite/competitive_slo.rs"]
@@ -12,8 +14,9 @@ mod runtime;
 #[path = "benchsuite/utils.rs"]
 mod utils;
 
+use cli::{help_text, parse_cli_args};
 use competitive::evaluate_contract;
-use model::{help_text, parse_cli_args, SuiteManifest, SuiteReport, WorkloadReport};
+use model::{SuiteManifest, SuiteReport, WorkloadReport};
 use runtime::{
     calculate_calibrated_threshold, collect_host_metadata, evaluate_thresholds, run_workload,
     workload_report_from_error, write_json_report, write_markdown_report,
