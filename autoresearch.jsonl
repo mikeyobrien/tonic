@@ -7,3 +7,4 @@
 {"run":6,"commit":"5a4c353","metric":15,"metrics":{"oversized":13},"status":"keep","description":"Split manifest.rs (1239→414 lines): extract stdlib constants (239), parsing (310), tests (291)","timestamp":1773619746480,"segment":0}
 {"run":7,"commit":"8d63210","metric":14,"metrics":{"oversized":12},"status":"keep","description":"Split stubs_for.rs (778→406 lines): extract static for eval engine to stubs_for_ops.rs (379 lines)","timestamp":1773619981971,"segment":0}
 {"run":8,"commit":"f68978d","metric":13,"metrics":{"oversized":11},"status":"keep","description":"Split interop.rs (1580→199 lines): extract 1410 lines of inline tests to 4 test files","timestamp":1773620382053,"segment":0}
+{"run":9,"commit":"d8c38e6","metric":12,"metrics":{"oversized":10},"status":"keep","description":"Split stubs_try.rs (562→293 lines): extract emit_try_ops to stubs_try_ops.rs (276 lines)","timestamp":1773620642737,"segment":0}
