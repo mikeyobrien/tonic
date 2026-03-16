@@ -4,3 +4,4 @@
 {"run":3,"commit":"93f3d40","metric":18,"metrics":{"oversized":16},"status":"keep","description":"Split resolver.rs (1086→401 lines): extract ModuleGraph to resolver_graph.rs (488), tests to resolver_tests.rs (210)","timestamp":1773618857550,"segment":0}
 {"run":4,"commit":"801f271","metric":17,"metrics":{"oversized":15},"status":"keep","description":"Split llvm_backend/tests.rs (739→395 lines): extract codegen tests to tests_codegen.rs (349 lines)","timestamp":1773619099472,"segment":0}
 {"run":5,"commit":"cbc078c","metric":16,"metrics":{"oversized":14},"status":"keep","description":"Split parser/tests.rs (1213→490 lines): extract to tests_forms.rs (335) and tests_modules.rs (393)","timestamp":1773619352298,"segment":0}
+{"run":6,"commit":"5a4c353","metric":15,"metrics":{"oversized":13},"status":"keep","description":"Split manifest.rs (1239→414 lines): extract stdlib constants (239), parsing (310), tests (291)","timestamp":1773619746480,"segment":0}
