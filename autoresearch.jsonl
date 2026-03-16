@@ -9,3 +9,4 @@
 {"run":8,"commit":"f68978d","metric":13,"metrics":{"oversized":11},"status":"keep","description":"Split interop.rs (1580→199 lines): extract 1410 lines of inline tests to 4 test files","timestamp":1773620382053,"segment":0}
 {"run":9,"commit":"d8c38e6","metric":12,"metrics":{"oversized":10},"status":"keep","description":"Split stubs_try.rs (562→293 lines): extract emit_try_ops to stubs_try_ops.rs (276 lines)","timestamp":1773620642737,"segment":0}
 {"run":10,"commit":"08e0ffd","metric":11,"metrics":{"oversized":9},"status":"keep","description":"Split runtime_patterns.rs (574→345 lines): extract emit_pattern_case to runtime_patterns_emit.rs (238 lines)","timestamp":1773620862689,"segment":0}
+{"run":11,"commit":"c93bd5c","metric":10,"metrics":{"oversized":8},"status":"keep","description":"Split interop/http_server.rs (1407→484 lines): extract tests to 2 files, status_reason to utility file","timestamp":1773621201675,"segment":0}
