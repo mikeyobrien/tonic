@@ -11,3 +11,4 @@
 {"run":10,"commit":"08e0ffd","metric":11,"metrics":{"oversized":9},"status":"keep","description":"Split runtime_patterns.rs (574→345 lines): extract emit_pattern_case to runtime_patterns_emit.rs (238 lines)","timestamp":1773620862689,"segment":0}
 {"run":11,"commit":"c93bd5c","metric":10,"metrics":{"oversized":8},"status":"keep","description":"Split interop/http_server.rs (1407→484 lines): extract tests to 2 files, status_reason to utility file","timestamp":1773621201675,"segment":0}
 {"run":12,"commit":"85a1246","metric":9,"metrics":{"oversized":7},"status":"keep","description":"Split interop/system.rs (1445→481 lines): extract net helpers (480) and IO host functions (500)","timestamp":1773621711719,"segment":0}
+{"run":13,"commit":"6ddbd48","metric":8,"metrics":{"oversized":6},"status":"keep","description":"Split parser/ast.rs (1112→473 lines): convert to directory module, extract Expr enum (347) and impl Expr (302)","timestamp":1773622294082,"segment":0}
