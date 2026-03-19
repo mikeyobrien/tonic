@@ -1,0 +1,27 @@
+Unit Converter
+==============
+
+Temperature:
+  100 C = 212 F
+  212 F = 100 C
+  0 C = 273 K
+  373 K = 100 C
+  98 F = 309 K
+  300 K = 80 F
+
+Length:
+  1 m = 3 ft
+  10 ft = 3 m
+  1 m = 100 cm
+  100 cm = 1 m
+  6 ft = 72 in
+  10 in = 25 cm
+
+Weight:
+  1 kg = 2 lb
+  150 lb = 68 kg
+  1 kg = 35 oz
+  16 oz = 1 lb
+  10 lb = 160 oz
+  500 oz = 14 kg
+:ok

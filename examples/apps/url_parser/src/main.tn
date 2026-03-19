@@ -1,0 +1,161 @@
+defmodule UrlParser do
+  def parse(url) do
+    scheme_rest = extract_scheme(url)
+    scheme = first(scheme_rest)
+    after_scheme = second(scheme_rest)
+    host_path = split_host_path(after_scheme)
+    host_port_str = first(host_path)
+    path_query_str = second(host_path)
+    hp = split_host_port(host_port_str)
+    host = first(hp)
+    port = second(hp)
+    pq = split_path_query(path_query_str)
+    path = first(pq)
+    query = second(pq)
+    %{"scheme" => scheme, "host" => host, "port" => port, "path" => path, "query" => query}
+  end
+
+  defp first({a, _b}) do
+    a
+  end
+
+  defp second({_a, b}) do
+    b
+  end
+
+  defp extract_scheme(url) do
+    case String.contains(url, "://") do
+      true -> split_at_delim(url, "://")
+      _ -> {"", url}
+    end
+  end
+
+  defp split_host_path(str) do
+    case str do
+      "" -> {"", "/"}
+      _ -> find_slash(str, 0, String.length(str))
+    end
+  end
+
+  defp find_slash(str, index, len) do
+    case index do
+      i when i == len -> {str, "/"}
+      _ -> check_slash(str, index, len)
+    end
+  end
+
+  defp check_slash(str, index, len) do
+    ch = String.slice(str, index, 1)
+    case ch do
+      "/" -> {String.slice(str, 0, index), String.slice(str, index, len - index)}
+      _ -> find_slash(str, index + 1, len)
+    end
+  end
+
+  defp split_host_port(host_str) do
+    case String.contains(host_str, ":") do
+      true -> split_at_delim(host_str, ":")
+      _ -> {host_str, ""}
+    end
+  end
+
+  defp split_path_query(path_str) do
+    case String.contains(path_str, "?") do
+      true -> split_at_delim(path_str, "?")
+      _ -> {path_str, ""}
+    end
+  end
+
+  defp split_at_delim(str, delim) do
+    parts = String.split(str, delim)
+    case parts do
+      [a] -> {a, ""}
+      [a | rest] -> {a, rejoin(rest, delim)}
+      _ -> {str, ""}
+    end
+  end
+
+  defp rejoin([], _sep) do
+    ""
+  end
+
+  defp rejoin([only], _sep) do
+    only
+  end
+
+  defp rejoin([head | tail], sep) do
+    head <> sep <> rejoin(tail, sep)
+  end
+
+  def format_field("") do
+    "(none)"
+  end
+
+  def format_field(val) do
+    val
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("URL Parser"), "==========", ""]) do
+      _ -> show_urls(test_urls())
+    end
+  end
+
+  defp test_urls() do
+    [
+      "https://example.com/path/to/page?key=value&foo=bar",
+      "http://localhost:8080/api/v1/users",
+      "ftp://files.example.org/pub/docs/readme.txt",
+      "https://search.example.com/q?term=tonic+lang&page=1",
+      "http://192.168.1.1:3000/"
+    ]
+  end
+
+  defp show_urls([]) do
+    :ok
+  end
+
+  defp show_urls([url | rest]) do
+    parsed = UrlParser.parse(url)
+    scheme = Map.get(parsed, "scheme", "")
+    host = Map.get(parsed, "host", "")
+    port = Map.get(parsed, "port", "")
+    path = Map.get(parsed, "path", "")
+    query = Map.get(parsed, "query", "")
+    case IO.puts("  " <> url) do
+      _ -> case IO.puts("    scheme: " <> UrlParser.format_field(scheme)) do
+        _ -> case IO.puts("    host:   " <> UrlParser.format_field(host)) do
+          _ -> case IO.puts("    port:   " <> UrlParser.format_field(port)) do
+            _ -> case IO.puts("    path:   " <> UrlParser.format_field(path)) do
+              _ -> case IO.puts("    query:  " <> UrlParser.format_field(query)) do
+                _ -> case print_separator(rest) do
+                  _ -> show_urls(rest)
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp print_separator([]) do
+    :ok
+  end
+
+  defp print_separator(_rest) do
+    IO.puts("")
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

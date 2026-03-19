@@ -1,0 +1,3 @@
+[project]
+name = "unit_converter"
+entry = "src/main.tn"

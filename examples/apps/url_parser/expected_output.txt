@@ -1,0 +1,38 @@
+URL Parser
+==========
+
+  https://example.com/path/to/page?key=value&foo=bar
+    scheme: https
+    host:   example.com
+    port:   (none)
+    path:   /path/to/page
+    query:  key=value&foo=bar
+
+  http://localhost:8080/api/v1/users
+    scheme: http
+    host:   localhost
+    port:   8080
+    path:   /api/v1/users
+    query:  (none)
+
+  ftp://files.example.org/pub/docs/readme.txt
+    scheme: ftp
+    host:   files.example.org
+    port:   (none)
+    path:   /pub/docs/readme.txt
+    query:  (none)
+
+  https://search.example.com/q?term=tonic+lang&page=1
+    scheme: https
+    host:   search.example.com
+    port:   (none)
+    path:   /q
+    query:  term=tonic+lang&page=1
+
+  http://192.168.1.1:3000/
+    scheme: http
+    host:   192.168.1.1
+    port:   3000
+    path:   /
+    query:  (none)
+:ok

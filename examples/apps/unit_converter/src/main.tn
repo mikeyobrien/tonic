@@ -1,0 +1,119 @@
+defmodule UnitConverter do
+  def convert(value, from, to) do
+    case {from, to} do
+      {"c", "f"} -> value * 9 / 5 + 32
+      {"f", "c"} -> (value - 32) * 5 / 9
+      {"c", "k"} -> value + 273
+      {"k", "c"} -> value - 273
+      {"f", "k"} -> (value - 32) * 5 / 9 + 273
+      {"k", "f"} -> (value - 273) * 9 / 5 + 32
+      {"m", "ft"} -> value * 328 / 100
+      {"ft", "m"} -> value * 100 / 328
+      {"m", "cm"} -> value * 100
+      {"cm", "m"} -> value / 100
+      {"ft", "in"} -> value * 12
+      {"in", "ft"} -> value / 12
+      {"in", "cm"} -> value * 254 / 100
+      {"cm", "in"} -> value * 100 / 254
+      {"kg", "lb"} -> value * 220 / 100
+      {"lb", "kg"} -> value * 100 / 220
+      {"kg", "oz"} -> value * 3527 / 100
+      {"oz", "kg"} -> value * 100 / 3527
+      {"lb", "oz"} -> value * 16
+      {"oz", "lb"} -> value / 16
+      _ -> value
+    end
+  end
+
+  def unit_label(unit) do
+    case unit do
+      "c" -> "C"
+      "f" -> "F"
+      "k" -> "K"
+      "m" -> "m"
+      "ft" -> "ft"
+      "in" -> "in"
+      "cm" -> "cm"
+      "kg" -> "kg"
+      "lb" -> "lb"
+      "oz" -> "oz"
+      other -> other
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Unit Converter"), "==============", ""]) do
+      _ -> case print_lines(["Temperature:"]) do
+        _ -> case show_conversions(temp_values(), temp_from(), temp_to()) do
+          _ -> case print_lines(["", "Length:"]) do
+            _ -> case show_conversions(length_values(), length_from(), length_to()) do
+              _ -> case print_lines(["", "Weight:"]) do
+                _ -> show_conversions(weight_values(), weight_from(), weight_to())
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp temp_values() do
+    [100, 212, 0, 373, 98, 300]
+  end
+
+  defp temp_from() do
+    ["c", "f", "c", "k", "f", "k"]
+  end
+
+  defp temp_to() do
+    ["f", "c", "k", "c", "k", "f"]
+  end
+
+  defp length_values() do
+    [1, 10, 1, 100, 6, 10]
+  end
+
+  defp length_from() do
+    ["m", "ft", "m", "cm", "ft", "in"]
+  end
+
+  defp length_to() do
+    ["ft", "m", "cm", "m", "in", "cm"]
+  end
+
+  defp weight_values() do
+    [1, 150, 1, 16, 10, 500]
+  end
+
+  defp weight_from() do
+    ["kg", "lb", "kg", "oz", "lb", "oz"]
+  end
+
+  defp weight_to() do
+    ["lb", "kg", "oz", "lb", "oz", "kg"]
+  end
+
+  defp show_conversions([], _froms, _tos) do
+    :ok
+  end
+
+  defp show_conversions([value | vrest], [from | frest], [to | trest]) do
+    result = UnitConverter.convert(value, from, to)
+    line = "  #{value} " <> UnitConverter.unit_label(from) <> " = #{result} " <> UnitConverter.unit_label(to)
+    case IO.puts(line) do
+      _ -> show_conversions(vrest, frest, trest)
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
