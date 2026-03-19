@@ -57,6 +57,30 @@ The experiment passes if:
 2. `cargo clippy --all-targets --all-features -- -D warnings` exits 0
 3. `cargo test` exits 0
 
+## Current Best
+
+**readiness_gaps = 4** (Run 17) — down from baseline of 20
+
+## What's Been Tried
+
+- **Run 1 (DISCARD, metric=20)**: Baseline measurement — 18 oversized files, 2 partial parity items.
+- **Run 2 (KEEP, metric=19)**: Split typing.rs (782→294 lines). Hypothesis: splitting oversized files reduces gap count — confirmed.
+- **Run 3 (KEEP, metric=18)**: Split resolver.rs (1086→401 lines). Hypothesis: continued file splitting — confirmed.
+- **Run 4 (KEEP, metric=17)**: Split llvm_backend/tests.rs (739→395 lines). Hypothesis: continued — confirmed.
+- **Run 5 (KEEP, metric=16)**: Split parser/tests.rs (1213→490 lines). Hypothesis: continued — confirmed.
+- **Run 6 (KEEP, metric=15)**: Split manifest.rs (1239→414 lines). Hypothesis: continued — confirmed.
+- **Run 7 (KEEP, metric=14)**: Split stubs_for.rs (778→406 lines). Hypothesis: continued — confirmed.
+- **Run 8 (KEEP, metric=13)**: Split interop.rs (1580→199 lines). Hypothesis: continued — confirmed.
+- **Run 9 (KEEP, metric=12)**: Split stubs_try.rs (562→293 lines). Hypothesis: continued — confirmed.
+- **Run 10 (KEEP, metric=11)**: Split runtime_patterns.rs (574→345 lines). Hypothesis: continued — confirmed.
+- **Run 11 (KEEP, metric=10)**: Split interop/http_server.rs (1407→484 lines). Hypothesis: continued — confirmed.
+- **Run 12 (KEEP, metric=9)**: Split interop/system.rs (1445→481 lines). Hypothesis: continued — confirmed.
+- **Run 13 (KEEP, metric=8)**: Split parser/ast.rs (1112→473 lines). Hypothesis: continued — confirmed.
+- **Run 14 (KEEP, metric=7)**: Split runtime.rs (1673→289 lines). Hypothesis: continued — confirmed.
+- **Run 15 (KEEP, metric=6)**: Split llvm_backend/codegen.rs (1716→349 lines). Hypothesis: continued — confirmed.
+- **Run 16 (KEEP, metric=5)**: Split ir.rs (2243→413 lines). Hypothesis: continued — confirmed.
+- **Run 17 (KEEP, metric=4)**: Split main.rs into cmd_*.rs handlers + split lexer.rs (2083 lines) into directory module with 5 files. Hypothesis: continued — confirmed.
+
 ## Rules
 
 - Do not overfit to benchmarks or cheat on benchmarks.
