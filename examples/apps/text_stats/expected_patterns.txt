@@ -1,0 +1,7 @@
+Text Statistics
+Lines:
+Words:
+Characters:
+Unique words:
+Avg words/line:
+Top 5 most frequent words:

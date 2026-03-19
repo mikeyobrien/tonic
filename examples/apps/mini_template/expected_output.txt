@@ -1,0 +1,9 @@
+Hello, Alice!
+
+Welcome to Tonic. You are running version 0.1.0.
+
+Your role is: developer.
+
+Thank you for using Tonic, Alice.
+
+:ok

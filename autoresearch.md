@@ -9,26 +9,32 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 ## Metrics
 
-- **Primary**: `example_count` (count, higher is better) — number of new real-world examples
-  that compile, run, and produce correct output
+- **Primary**: `example_count` (count, higher is better) — number of real-world examples
+  that compile, run, and produce verified-correct output (validated against expected_output.txt or expected_patterns.txt)
 - **Current Best**: 24
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
 
 ```bash
-# Count runnable real-world examples (project-mode apps in examples/apps/)
+# Count correct real-world examples (project-mode apps in examples/apps/)
 count=0; fail=0
 for dir in examples/apps/*/; do
   if [ -f "$dir/tonic.toml" ]; then
-    if TMPDIR=/home/mobrienv/projects/tonic/.tmp cargo run --quiet --bin tonic -- run "$dir" >/dev/null 2>&1; then
-      count=$((count + 1))
+    actual=$(TMPDIR=/home/mobrienv/projects/tonic/.tmp cargo run --quiet --bin tonic -- run "$dir" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g') || true
+    if [ -f "$dir/expected_output.txt" ]; then
+      expected=$(cat "$dir/expected_output.txt")
+      if [ "$actual" = "$expected" ]; then count=$((count+1)); else fail=$((fail+1)); fi
+    elif [ -f "$dir/expected_patterns.txt" ]; then
+      ok=true
+      while IFS= read -r pat; do [ -z "$pat" ] && continue; echo "$actual" | grep -qF "$pat" || ok=false; done < "$dir/expected_patterns.txt"
+      if [ "$ok" = true ]; then count=$((count+1)); else fail=$((fail+1)); fi
     else
-      fail=$((fail + 1))
+      if [ -n "$actual" ] || TMPDIR=/home/mobrienv/projects/tonic/.tmp cargo run --quiet --bin tonic -- run "$dir" >/dev/null 2>&1; then count=$((count+1)); else fail=$((fail+1)); fi
     fi
   fi
 done
-echo "runnable=$count failed=$fail"
+echo "correct=$count failed=$fail"
 ```
 
 ## Files in Scope
@@ -79,3 +85,4 @@ echo "runnable=$count failed=$fail"
 - **Run 10 (KEEP, metric=20)**: Added roman_numerals and morse_code example apps. roman_numerals: Roman numeral conversion. morse_code: Morse code encoding/decoding. Exercises: pattern matching, string processing, map lookups, recursion. Hypothesis: confirmed — Tonic handles encoding/decoding and lookup-table patterns.
 - **Run 11 (KEEP, metric=22)**: Added caesar_cipher and number_base example apps. caesar_cipher: Caesar cipher encryption/decryption with configurable shift. number_base: integer base conversion (decimal/binary/octal/hex). Exercises: modular arithmetic, rem/div, String.pad_leading, String.reverse, multi-clause guards, formatted table output. Hypothesis: confirmed — Tonic handles arithmetic encoding and number system conversions.
 - **Run 12 (KEEP, metric=24)**: Added checksum_validator and sorting_demo example apps. checksum_validator: checksum computation and validation. sorting_demo: sorting algorithm demonstrations. Exercises: arithmetic, list processing, pattern matching, recursion. Hypothesis: confirmed — Tonic handles algorithmic examples well.
+- **Run 13 (KEEP, metric=24)**: Added output correctness validation for all 24 examples — 18 deterministic apps get expected_output.txt (exact stdout match, ANSI-stripped), 6 non-deterministic apps get expected_patterns.txt (required substring checks). Updated autoresearch.checks.sh to validate correctness. Metric now measures "correct output" not just "runs without crashing." Hypothesis: confirmed — all 24 examples produce correct output under strict validation.

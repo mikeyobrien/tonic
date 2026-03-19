@@ -1,0 +1,27 @@
+Checksum Validator
+==================
+
+  4539 1488 0343 6467  PASS valid
+  4539 1488 0343 6468  PASS invalid
+  7992 7398 713  PASS valid
+  1234 5678 9012 3456  PASS invalid
+  0000 0000 0000 0000  PASS valid
+
+ISBN-10 Validation
+==================
+
+  0-306-40615-2  PASS valid
+  0-306-40615-3  PASS invalid
+  0-201-53082-1  PASS valid
+  007-046-2107-X  PASS invalid
+  0-13-110362-8  PASS valid
+
+ISBN-13 Validation
+==================
+
+  978-0-306-40615-7  PASS valid
+  978-0-306-40615-8  PASS invalid
+  978-3-16-148410-0  PASS valid
+  978-1-56619-909-4  PASS valid
+  978-1-56619-909-5  PASS invalid
+:ok

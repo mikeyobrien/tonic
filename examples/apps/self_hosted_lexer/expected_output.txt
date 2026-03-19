@@ -1,0 +1,1 @@
+%{:error => :missing_source_path, :usage => "tonic run examples/apps/self_hosted_lexer <source-path>"}

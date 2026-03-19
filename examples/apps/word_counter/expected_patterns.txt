@@ -1,0 +1,3 @@
+Word Frequency Report
+Total words:
+Unique words:

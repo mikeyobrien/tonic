@@ -1,0 +1,2 @@
+{"name": "Tonic", "version": 1, "features": ["pattern matching", "pipe chains", "recursion"], "metadata": {"stable": false, "stars": 42}, "license": null}
+nil

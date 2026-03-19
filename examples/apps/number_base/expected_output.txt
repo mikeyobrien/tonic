@@ -1,0 +1,19 @@
+Number Base Converter
+=====================
+
+Decimal to other bases:
+      0  bin: 0000000000000000  oct:      0  hex:    0
+      7  bin: 0000000000000111  oct:      7  hex:    7
+     42  bin: 0000000000101010  oct:     52  hex:   2A
+    100  bin: 0000000001100100  oct:    144  hex:   64
+    255  bin: 0000000011111111  oct:    377  hex:   FF
+   1024  bin: 0000010000000000  oct:   2000  hex:  400
+  65535  bin: 1111111111111111  oct: 177777  hex: FFFF
+
+Other bases to decimal:
+  bin:          101010 -> 42
+  hex:              FF -> 255
+  oct:             377 -> 255
+  hex:              1A -> 26
+  bin:     10000000000 -> 1024
+:ok

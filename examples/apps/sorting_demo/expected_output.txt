@@ -1,0 +1,46 @@
+Sorting Algorithms
+==================
+
+Bubble Sort
+Input: [64, 34, 25, 12, 22, 11, 90]
+  Step 1: [34, 25, 12, 22, 11, 64, 90]
+  Step 2: [25, 12, 22, 11, 34, 64, 90]
+  Step 3: [12, 22, 11, 25, 34, 64, 90]
+  Step 4: [12, 11, 22, 25, 34, 64, 90]
+  Step 5: [11, 12, 22, 25, 34, 64, 90]
+  Step 6: [11, 12, 22, 25, 34, 64, 90]
+Result: [11, 12, 22, 25, 34, 64, 90]
+
+Insertion Sort
+Input: [64, 34, 25, 12, 22, 11, 90]
+  Step 1: [64]
+  Step 2: [34, 64]
+  Step 3: [25, 34, 64]
+  Step 4: [12, 25, 34, 64]
+  Step 5: [12, 22, 25, 34, 64]
+  Step 6: [11, 12, 22, 25, 34, 64]
+  Step 7: [11, 12, 22, 25, 34, 64, 90]
+Result: [11, 12, 22, 25, 34, 64, 90]
+
+Comparison with Enum.sort
+  Input:     [5, 3, 1, 4, 2]
+  Bubble:    [1, 2, 3, 4, 5]  match
+  Insertion: [1, 2, 3, 4, 5]  match
+  Enum.sort: [1, 2, 3, 4, 5]
+
+  Input:     [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+  Bubble:    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]  match
+  Insertion: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]  match
+  Enum.sort: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+  Input:     [1, 2, 3, 4, 5]
+  Bubble:    [1, 2, 3, 4, 5]  match
+  Insertion: [1, 2, 3, 4, 5]  match
+  Enum.sort: [1, 2, 3, 4, 5]
+
+  Input:     [42]
+  Bubble:    [42]  match
+  Insertion: [42]  match
+  Enum.sort: [42]
+
+:ok

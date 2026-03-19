@@ -1,0 +1,7 @@
+System Environment Report
+Directories
+Working Dir
+Home
+Environment Variables
+USER
+Tool Availability

@@ -1,0 +1,26 @@
+--- old.txt
++++ new.txt
+  defmodule Greeter do
+    def hello(name) do
++     IO.puts("Hi, " <> name <> "!")
+-     IO.puts("Hello, " <> name)
+    end
+  
+    def goodbye(name) do
+      IO.puts("Goodbye, " <> name)
+    end
++ 
+- end
++   def welcome(name) do
+- 
++     IO.puts("Welcome, " <> name)
++   end
++ end
++ 
+
+Diff Statistics
+===============
+  Added:     7
+  Removed:   3
+  Unchanged: 7
+:ok

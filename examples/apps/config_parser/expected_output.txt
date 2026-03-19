@@ -1,0 +1,13 @@
+Config Parser
+=============
+Loaded 8 settings:
+
+  db_host = localhost
+  db_name = myapp
+  db_port = 5432
+  debug = true
+  host = 0.0.0.0
+  log_file = /var/log/app.log
+  log_level = info
+  port = 8080
+:ok

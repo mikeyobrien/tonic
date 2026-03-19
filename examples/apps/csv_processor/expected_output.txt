@@ -1,0 +1,12 @@
+CSV Processor — People aged 30+
+================================
+
+name       | age   | city      
+-----------+-------+-----------
+Bob        | 35    | Seattle   
+Carol      | 42    | Denver    
+Eve        | 31    | Chicago   
+Frank      | 55    | Boston    
+
+Total matching: 4 of 7 rows
+:ok

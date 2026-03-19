@@ -1,0 +1,26 @@
+INI Configuration
+==================
+
+[server]
+  host = 0.0.0.0
+  port = 8080
+  workers = 4
+
+[database]
+  engine = postgres
+  host = localhost
+  port = 5432
+  name = myapp
+  pool_size = 10
+
+[logging]
+  level = info
+  file = /var/log/app.log
+  format = json
+
+[cache]
+  enabled = true
+  ttl = 3600
+  backend = redis
+
+:ok

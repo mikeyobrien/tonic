@@ -1,0 +1,7 @@
+Extension Frequency
+===================
+
+  .txt: 1
+  .tn: 1
+  .toml: 1
+:ok
