@@ -1,0 +1,259 @@
+defmodule Tape do
+  def new() do
+    %{}
+  end
+
+  def get(tape, index) do
+    Map.get(tape, index, 0)
+  end
+
+  def set(tape, index, value) do
+    Map.put(tape, index, value)
+  end
+end
+
+defmodule BF do
+  def run(program) do
+    execute(program, 0, String.length(program), Tape.new(), 0, [])
+  end
+
+  defp execute(prog, ip, len, tape, dp, output) do
+    case ip do
+      i when i >= len -> {tape, {dp, Enum.reverse(output)}}
+      _ -> step(prog, ip, len, tape, dp, output)
+    end
+  end
+
+  defp step(prog, ip, len, tape, dp, output) do
+    instr = String.slice(prog, ip, 1)
+    run_instr(instr, prog, ip, len, tape, dp, output)
+  end
+
+  defp run_instr("+", prog, ip, len, tape, dp, output) do
+    count = count_run(prog, ip, len, "+", 0)
+    val = Tape.get(tape, dp)
+    execute(prog, ip + count, len, Tape.set(tape, dp, val + count), dp, output)
+  end
+
+  defp run_instr("-", prog, ip, len, tape, dp, output) do
+    count = count_run(prog, ip, len, "-", 0)
+    val = Tape.get(tape, dp)
+    execute(prog, ip + count, len, Tape.set(tape, dp, val - count), dp, output)
+  end
+
+  defp run_instr(">", prog, ip, len, tape, dp, output) do
+    count = count_run(prog, ip, len, ">", 0)
+    execute(prog, ip + count, len, tape, dp + count, output)
+  end
+
+  defp run_instr("<", prog, ip, len, tape, dp, output) do
+    count = count_run(prog, ip, len, "<", 0)
+    execute(prog, ip + count, len, tape, dp - count, output)
+  end
+
+  defp run_instr(".", prog, ip, len, tape, dp, output) do
+    val = Tape.get(tape, dp)
+    execute(prog, ip + 1, len, tape, dp, [val] ++ output)
+  end
+
+  defp run_instr("[", prog, ip, len, tape, dp, output) do
+    val = Tape.get(tape, dp)
+    case val do
+      0 -> execute(prog, find_close(prog, ip + 1, 1, len), len, tape, dp, output)
+      _ -> execute(prog, ip + 1, len, tape, dp, output)
+    end
+  end
+
+  defp run_instr("]", prog, ip, len, tape, dp, output) do
+    val = Tape.get(tape, dp)
+    case val do
+      0 -> execute(prog, ip + 1, len, tape, dp, output)
+      _ -> execute(prog, find_open(prog, ip - 1, 1), len, tape, dp, output)
+    end
+  end
+
+  defp run_instr(_other, prog, ip, len, tape, dp, output) do
+    execute(prog, ip + 1, len, tape, dp, output)
+  end
+
+  defp count_run(prog, ip, len, ch, acc) do
+    case ip do
+      i when i >= len -> acc
+      _ -> try_count(prog, ip, len, ch, acc)
+    end
+  end
+
+  defp try_count(prog, ip, len, ch, acc) do
+    c = String.slice(prog, ip, 1)
+    case String.starts_with(c, ch) do
+      true -> count_run(prog, ip + 1, len, ch, acc + 1)
+      _ -> acc
+    end
+  end
+
+  defp find_close(prog, ip, depth, len) do
+    ch = String.slice(prog, ip, 1)
+    new_depth = adjust_close(ch, depth)
+    case new_depth do
+      0 -> ip + 1
+      _ -> find_close(prog, ip + 1, new_depth, len)
+    end
+  end
+
+  defp adjust_close("[", depth) do
+    depth + 1
+  end
+
+  defp adjust_close("]", depth) do
+    depth - 1
+  end
+
+  defp adjust_close(_ch, depth) do
+    depth
+  end
+
+  defp find_open(prog, ip, depth) do
+    ch = String.slice(prog, ip, 1)
+    new_depth = adjust_open(ch, depth)
+    case new_depth do
+      0 -> ip + 1
+      _ -> find_open(prog, ip - 1, new_depth)
+    end
+  end
+
+  defp adjust_open("]", depth) do
+    depth + 1
+  end
+
+  defp adjust_open("[", depth) do
+    depth - 1
+  end
+
+  defp adjust_open(_ch, depth) do
+    depth
+  end
+end
+
+defmodule ASCII do
+  def codes_to_text(codes) do
+    build(codes, "")
+  end
+
+  defp build([], acc) do
+    acc
+  end
+
+  defp build([code | rest], acc) do
+    build(rest, acc <> char_for(code))
+  end
+
+  defp char_for(33) do "!" end
+  defp char_for(72) do "H" end
+  defp char_for(_) do "?" end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Brainfuck Interpreter"), "=====================", ""]) do
+      _ -> run_all(test_programs())
+    end
+  end
+
+  defp test_programs() do
+    [{"Increment cell to 5", "+++++"},
+     {"Set multiple cells", "++>+++++>+++++++"},
+     {"Multiply 3 x 4 = 12", "+++[>++++<-]"},
+     {"Add 5 + 3 = 8", "+++++>+++<[->+<]"},
+     {"Output ! (33 = 3x11)", "+++[>+++++++++++<-]>."},
+     {"Output H (72 = 3x24)", "+++[>++++++++++++++++++++++++<-]>."}]
+  end
+
+  defp run_all([]) do
+    :ok
+  end
+
+  defp run_all([{name, program} | rest]) do
+    case show_program(name, program) do
+      _ -> case IO.puts("") do
+        _ -> run_all(rest)
+      end
+    end
+  end
+
+  defp show_program(name, program) do
+    case IO.puts(IO.ansi_blue(name)) do
+      _ -> case IO.puts("  Program: " <> program) do
+        _ -> show_result(BF.run(program))
+      end
+    end
+  end
+
+  defp show_result({tape, {dp, output}}) do
+    case show_output(output) do
+      _ -> show_tape(tape, dp)
+    end
+  end
+
+  defp show_output([]) do
+    IO.puts("  Output:  (none)")
+  end
+
+  defp show_output(output) do
+    text = ASCII.codes_to_text(output)
+    IO.puts("  Output:  " <> text <> "  (codes: " <> format_list(output) <> ")")
+  end
+
+  defp show_tape(tape, dp) do
+    cells = collect_cells(tape, 0, find_max_cell(tape, dp))
+    IO.puts("  Tape:    " <> format_list(cells) <> "  (ptr=#{dp})")
+  end
+
+  defp find_max_cell(tape, dp) do
+    keys = Map.keys(tape)
+    find_max_in(keys, dp)
+  end
+
+  defp find_max_in([], current) do
+    current
+  end
+
+  defp find_max_in([k | rest], current) do
+    case k do
+      x when x > current -> find_max_in(rest, k)
+      _ -> find_max_in(rest, current)
+    end
+  end
+
+  defp collect_cells(tape, index, max) do
+    case index do
+      i when i > max -> []
+      _ -> [Tape.get(tape, index)] ++ collect_cells(tape, index + 1, max)
+    end
+  end
+
+  defp format_list(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

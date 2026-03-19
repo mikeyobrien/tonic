@@ -34,3 +34,5 @@ Project-mode examples in `apps/`. Run with `tonic run examples/apps/<name>`.
 | [url_parser](apps/url_parser/) | Decompose URLs into scheme/host/port/path/query components | String.split, String.contains, String.slice, Map construction, tuple unpacking, recursive string search |
 | [matrix_math](apps/matrix_math/) | Matrix operations: add, scale, transpose, multiply, determinant (2x2/3x3) | Nested list processing, recursive accumulation, dot product, cofactor expansion, formatted tabular output |
 | [hex_dump](apps/hex_dump/) | Hex dump of text with offset/hex/ASCII columns | String.to_charlist, character-to-integer conversion, fixed-width hex formatting, chunked list processing |
+| [rpn_calculator](apps/rpn_calculator/) | Reverse Polish Notation calculator with step-by-step trace | List-as-stack pattern, String.to_integer, multi-clause operator dispatch, tuple-based traced evaluation |
+| [brainfuck_interpreter](apps/brainfuck_interpreter/) | Brainfuck interpreter with tape, bracket matching, and instruction batching | Map-based tape memory, character-level string iteration, bracket matching, multi-clause instruction dispatch, recursive state threading |

@@ -1,0 +1,153 @@
+defmodule RPN do
+  def eval(expr) do
+    tokens = String.split(expr, " ")
+    process(tokens, [])
+  end
+
+  def eval_traced(expr) do
+    tokens = String.split(expr, " ")
+    process_traced(tokens, [], [])
+  end
+
+  defp process([], [result | _rest]) do
+    result
+  end
+
+  defp process([token | rest], stack) do
+    case is_op(token) do
+      true -> apply_op(token, rest, stack)
+      _ -> process(rest, [String.to_integer(token)] ++ stack)
+    end
+  end
+
+  defp process_traced([], [result | _rest], steps) do
+    {result, Enum.reverse(steps)}
+  end
+
+  defp process_traced([token | rest], stack, steps) do
+    case is_op(token) do
+      true -> apply_op_traced(token, rest, stack, steps)
+      _ -> push_traced(token, rest, stack, steps)
+    end
+  end
+
+  defp push_traced(token, rest, stack, steps) do
+    val = String.to_integer(token)
+    new_stack = [val] ++ stack
+    process_traced(rest, new_stack, [{"push " <> token, new_stack}] ++ steps)
+  end
+
+  defp apply_op_traced(op, rest, [b, a | stack_rest], steps) do
+    result = compute(op, a, b)
+    new_stack = [result] ++ stack_rest
+    label = "#{a} " <> op <> " #{b} = #{result}"
+    process_traced(rest, new_stack, [{label, new_stack}] ++ steps)
+  end
+
+  defp apply_op(op, rest, [b, a | stack_rest]) do
+    result = compute(op, a, b)
+    process(rest, [result] ++ stack_rest)
+  end
+
+  defp is_op("+") do true end
+  defp is_op("-") do true end
+  defp is_op("*") do true end
+  defp is_op("/") do true end
+  defp is_op(_) do false end
+
+  defp compute("+", a, b) do a + b end
+  defp compute("-", a, b) do a - b end
+  defp compute("*", a, b) do a * b end
+  defp compute("/", a, b) do div(a, b) end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("RPN Calculator"), "==============", ""]) do
+      _ -> case show_quick_evals() do
+        _ -> case IO.puts("") do
+          _ -> show_traced()
+        end
+      end
+    end
+  end
+
+  defp show_quick_evals() do
+    case IO.puts(IO.ansi_blue("Evaluating expressions:")) do
+      _ -> eval_all(test_expressions())
+    end
+  end
+
+  defp test_expressions() do
+    ["3 4 +",
+     "10 2 -",
+     "6 7 *",
+     "100 4 /",
+     "5 1 2 + 4 * + 3 -",
+     "2 3 * 4 +",
+     "15 7 1 1 + - / 3 * 2 1 1 + + -",
+     "4 2 + 3 *"]
+  end
+
+  defp eval_all([]) do
+    :ok
+  end
+
+  defp eval_all([expr | rest]) do
+    result = RPN.eval(expr)
+    case IO.puts("  " <> expr <> " = #{result}") do
+      _ -> eval_all(rest)
+    end
+  end
+
+  defp show_traced() do
+    expr = "5 1 2 + 4 * + 3 -"
+    case IO.puts(IO.ansi_blue("Step-by-step trace:")) do
+      _ -> case IO.puts("  Expression: " <> expr) do
+        _ -> print_traced(RPN.eval_traced(expr))
+      end
+    end
+  end
+
+  defp print_traced({result, steps}) do
+    case print_steps(steps) do
+      _ -> IO.puts("  Result: #{result}")
+    end
+  end
+
+  defp print_steps([]) do
+    :ok
+  end
+
+  defp print_steps([{label, stack} | rest]) do
+    case IO.puts("    " <> label <> "  stack: " <> format_list(stack)) do
+      _ -> print_steps(rest)
+    end
+  end
+
+  defp format_list(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
