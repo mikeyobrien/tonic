@@ -24,7 +24,11 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
             "--out" => {
                 idx += 1;
                 if idx >= args.len() {
-                    return CliDiagnostic::usage("--out requires a value").emit();
+                    return CliDiagnostic::usage_with_hint(
+                        "--out requires a value",
+                        "usage: tonic compile <path> --out <artifact-path>",
+                    )
+                    .emit();
                 }
                 out_path = Some(args[idx].clone());
                 idx += 1;
@@ -32,17 +36,31 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
             "--target" => {
                 idx += 1;
                 if idx >= args.len() {
-                    return CliDiagnostic::usage("--target requires a value").emit();
+                    return CliDiagnostic::usage_with_hint(
+                        "--target requires a value",
+                        "usage: tonic compile <path> --target <triple>",
+                    )
+                    .emit();
                 }
                 let raw = &args[idx];
                 match target::TargetTriple::parse(raw) {
                     Ok(t) => target_triple = Some(t),
-                    Err(err) => return CliDiagnostic::usage(err.message).emit(),
+                    Err(err) => {
+                        return CliDiagnostic::usage_with_hint(
+                            err.message,
+                            "run `tonic compile --help` to see supported targets",
+                        )
+                        .emit()
+                    }
                 }
                 idx += 1;
             }
             other => {
-                return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
+                return CliDiagnostic::usage_with_hint(
+                    format!("unexpected argument '{other}'"),
+                    "run `tonic compile --help` for usage",
+                )
+                .emit();
             }
         }
     }
@@ -133,7 +151,9 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
 
     if exe_path.is_dir() {
         let message = format!("--out path '{}' is a directory", exe_path.display());
-        let exit_code = CliDiagnostic::usage(message.clone()).emit();
+        let exit_code =
+            CliDiagnostic::usage_with_hint(message.clone(), "provide a file path, not a directory")
+                .emit();
         return finalize_observed_run(
             &mut observed_run,
             exit_code,

@@ -140,7 +140,7 @@ _Last updated: 2026-03-15_
 - [x] parity fixture sweep (`examples/parity/catalog.toml`, `tests/run_parity_examples.rs`)
 - [x] translated fixture smoke coverage (`tests/run_translated_fixtures_smoke.rs`)
 - [x] stable diagnostic code families (`E1xxx`, `E2xxx`, `E3xxx`) (`src/resolver_diag.rs`, `src/typing_diag.rs`)
-- [~] actionable hints exist but are not universal (`src/cli_diag.rs`)
+- [x] actionable hints are universal — all CLI usage diagnostics include contextual suggestions (`src/cli_diag.rs`)
 - [x] line/column + snippet diagnostics parity for parser/resolver/typing failures in `check`/`test` (`src/cli_diag.rs`, `src/main.rs`, `src/resolver_diag.rs`, `src/typing_diag.rs`, `tests/test_runner_rich_diagnostics.rs`)
 - [x] docs generation command (`tonic docs`) / ExDoc-like output (`src/main.rs`)
 

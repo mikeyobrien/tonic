@@ -41,19 +41,31 @@ pub(super) fn handle_verify_run(args: Vec<String>) -> i32 {
                 idx += 1;
 
                 if idx >= args.len() {
-                    return CliDiagnostic::usage("--mode requires a value").emit();
+                    return CliDiagnostic::usage_with_hint(
+                        "--mode requires a value",
+                        "valid modes: auto, mixed, manual",
+                    )
+                    .emit();
                 }
 
                 let candidate = &args[idx];
                 let Some(parsed_mode) = VerifyMode::parse(candidate) else {
-                    return CliDiagnostic::usage(format!("unsupported mode '{candidate}'")).emit();
+                    return CliDiagnostic::usage_with_hint(
+                        format!("unsupported mode '{candidate}'"),
+                        "valid modes: auto, mixed, manual",
+                    )
+                    .emit();
                 };
 
                 mode = parsed_mode;
                 idx += 1;
             }
             other => {
-                return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
+                return CliDiagnostic::usage_with_hint(
+                    format!("unexpected argument '{other}'"),
+                    "run `tonic verify run --help` for usage",
+                )
+                .emit();
             }
         }
     }

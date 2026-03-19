@@ -206,13 +206,21 @@ pub fn handle_docs(args: Vec<String>) -> i32 {
             "--output" => {
                 idx += 1;
                 if idx >= args.len() {
-                    return CliDiagnostic::usage("--output requires a value").emit();
+                    return CliDiagnostic::usage_with_hint(
+                        "--output requires a value",
+                        "usage: tonic docs <path> --output <dir>",
+                    )
+                    .emit();
                 }
                 output_dir = Some(args[idx].clone());
                 idx += 1;
             }
             other => {
-                return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
+                return CliDiagnostic::usage_with_hint(
+                    format!("unexpected argument '{other}'"),
+                    "run `tonic docs --help` for usage",
+                )
+                .emit();
             }
         }
     }

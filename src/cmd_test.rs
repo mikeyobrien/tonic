@@ -22,13 +22,18 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
         match args[index].as_str() {
             "--format" => {
                 let Some(value) = args.get(index + 1) else {
-                    return CliDiagnostic::usage("missing value for --format").emit();
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --format",
+                        "usage: tonic test <path> --format <text|json>",
+                    )
+                    .emit();
                 };
 
                 let Some(parsed) = TestOutputFormat::parse(value) else {
-                    return CliDiagnostic::usage(format!(
-                        "unsupported format '{value}' (expected 'text' or 'json')"
-                    ))
+                    return CliDiagnostic::usage_with_hint(
+                        format!("unsupported format '{value}' (expected 'text' or 'json')"),
+                        "valid formats: text, json",
+                    )
                     .emit();
                 };
 
@@ -36,7 +41,11 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
                 index += 2;
             }
             other => {
-                return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
+                return CliDiagnostic::usage_with_hint(
+                    format!("unexpected argument '{other}'"),
+                    "run `tonic test --help` for usage",
+                )
+                .emit();
             }
         }
     }
@@ -151,7 +160,13 @@ pub(super) fn handle_fmt(args: Vec<String>) -> i32 {
     for argument in args.iter().skip(1) {
         match argument.as_str() {
             "--check" => mode = FormatMode::Check,
-            other => return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit(),
+            other => {
+                return CliDiagnostic::usage_with_hint(
+                    format!("unexpected argument '{other}'"),
+                    "run `tonic fmt --help` for usage",
+                )
+                .emit()
+            }
         }
     }
 

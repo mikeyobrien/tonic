@@ -44,13 +44,18 @@ pub(super) fn handle_check(args: Vec<String>) -> i32 {
             }
             "--format" => {
                 let Some(value) = args.get(index + 1) else {
-                    return CliDiagnostic::usage("missing value for --format").emit();
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --format",
+                        "usage: tonic check <path> --format <text|json>",
+                    )
+                    .emit();
                 };
 
                 let Some(parsed) = TestOutputFormat::parse(value) else {
-                    return CliDiagnostic::usage(format!(
-                        "unsupported format '{value}' (expected 'text' or 'json')"
-                    ))
+                    return CliDiagnostic::usage_with_hint(
+                        format!("unsupported format '{value}' (expected 'text' or 'json')"),
+                        "valid formats: text, json",
+                    )
                     .emit();
                 };
 
@@ -59,7 +64,11 @@ pub(super) fn handle_check(args: Vec<String>) -> i32 {
                 index += 2;
             }
             other => {
-                return CliDiagnostic::usage(format!("unexpected argument '{other}'")).emit();
+                return CliDiagnostic::usage_with_hint(
+                    format!("unexpected argument '{other}'"),
+                    "run `tonic check --help` for usage",
+                )
+                .emit();
             }
         }
     }
@@ -70,14 +79,19 @@ pub(super) fn handle_check(args: Vec<String>) -> i32 {
         .count();
 
     if dump_mode_count > 1 {
-        return CliDiagnostic::usage(
+        return CliDiagnostic::usage_with_hint(
             "--dump-tokens, --dump-ast, --dump-ir, and --dump-mir cannot be used together",
+            "use only one dump flag at a time",
         )
         .emit();
     }
 
     if token_dump_format_explicit && !dump_tokens {
-        return CliDiagnostic::usage("--format is only supported with --dump-tokens").emit();
+        return CliDiagnostic::usage_with_hint(
+            "--format is only supported with --dump-tokens",
+            "add `--dump-tokens` to use `--format`",
+        )
+        .emit();
     }
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
