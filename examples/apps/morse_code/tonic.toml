@@ -1,0 +1,3 @@
+[project]
+name = "morse_code"
+entry = "src/main.tn"

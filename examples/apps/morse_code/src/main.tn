@@ -1,0 +1,186 @@
+defmodule MorseCode do
+  def encode(text) do
+    encode_chars(String.upcase(text), 0, String.length(String.upcase(text)), [])
+  end
+
+  defp encode_chars(text, index, len, acc) do
+    case index do
+      i when i == len -> join_parts(Enum.reverse(acc), " ", "")
+      _ ->
+        encode_chars(
+          text, index + 1, len,
+          [char_to_morse(String.slice(text, index, 1))] ++ acc
+        )
+    end
+  end
+
+  def decode(morse) do
+    decode_words(String.split(morse, "   "), [])
+  end
+
+  defp decode_words([], acc) do
+    join_parts(Enum.reverse(acc), " ", "")
+  end
+
+  defp decode_words([word | rest], acc) do
+    decode_words(rest, [decode_word(String.split(word, " "), "")] ++ acc)
+  end
+
+  defp decode_word([], acc) do
+    acc
+  end
+
+  defp decode_word(["" | rest], acc) do
+    decode_word(rest, acc)
+  end
+
+  defp decode_word([code | rest], acc) do
+    decode_word(rest, acc <> morse_to_char(code))
+  end
+
+  defp join_parts([], _sep, acc) do
+    acc
+  end
+
+  defp join_parts([part], _sep, "") do
+    part
+  end
+
+  defp join_parts([part | rest], sep, "") do
+    join_parts(rest, sep, part)
+  end
+
+  defp join_parts([part | rest], sep, acc) do
+    join_parts(rest, sep, acc <> sep <> part)
+  end
+
+  defp char_to_morse("A") do ".-" end
+  defp char_to_morse("B") do "-..." end
+  defp char_to_morse("C") do "-.-." end
+  defp char_to_morse("D") do "-.." end
+  defp char_to_morse("E") do "." end
+  defp char_to_morse("F") do "..-." end
+  defp char_to_morse("G") do "--." end
+  defp char_to_morse("H") do "...." end
+  defp char_to_morse("I") do ".." end
+  defp char_to_morse("J") do ".---" end
+  defp char_to_morse("K") do "-.-" end
+  defp char_to_morse("L") do ".-.." end
+  defp char_to_morse("M") do "--" end
+  defp char_to_morse("N") do "-." end
+  defp char_to_morse("O") do "---" end
+  defp char_to_morse("P") do ".--." end
+  defp char_to_morse("Q") do "--.-" end
+  defp char_to_morse("R") do ".-." end
+  defp char_to_morse("S") do "..." end
+  defp char_to_morse("T") do "-" end
+  defp char_to_morse("U") do "..-" end
+  defp char_to_morse("V") do "...-" end
+  defp char_to_morse("W") do ".--" end
+  defp char_to_morse("X") do "-..-" end
+  defp char_to_morse("Y") do "-.--" end
+  defp char_to_morse("Z") do "--.." end
+  defp char_to_morse("0") do "-----" end
+  defp char_to_morse("1") do ".----" end
+  defp char_to_morse("2") do "..---" end
+  defp char_to_morse("3") do "...--" end
+  defp char_to_morse("4") do "....-" end
+  defp char_to_morse("5") do "....." end
+  defp char_to_morse("6") do "-...." end
+  defp char_to_morse("7") do "--..." end
+  defp char_to_morse("8") do "---.." end
+  defp char_to_morse("9") do "----." end
+  defp char_to_morse(" ") do "/" end
+  defp char_to_morse(_) do "" end
+
+  defp morse_to_char(".-") do "A" end
+  defp morse_to_char("-...") do "B" end
+  defp morse_to_char("-.-.") do "C" end
+  defp morse_to_char("-..") do "D" end
+  defp morse_to_char(".") do "E" end
+  defp morse_to_char("..-.") do "F" end
+  defp morse_to_char("--.") do "G" end
+  defp morse_to_char("....") do "H" end
+  defp morse_to_char("..") do "I" end
+  defp morse_to_char(".---") do "J" end
+  defp morse_to_char("-.-") do "K" end
+  defp morse_to_char(".-..") do "L" end
+  defp morse_to_char("--") do "M" end
+  defp morse_to_char("-.") do "N" end
+  defp morse_to_char("---") do "O" end
+  defp morse_to_char(".--.") do "P" end
+  defp morse_to_char("--.-") do "Q" end
+  defp morse_to_char(".-.") do "R" end
+  defp morse_to_char("...") do "S" end
+  defp morse_to_char("-") do "T" end
+  defp morse_to_char("..-") do "U" end
+  defp morse_to_char("...-") do "V" end
+  defp morse_to_char(".--") do "W" end
+  defp morse_to_char("-..-") do "X" end
+  defp morse_to_char("-.--") do "Y" end
+  defp morse_to_char("--..") do "Z" end
+  defp morse_to_char("-----") do "0" end
+  defp morse_to_char(".----") do "1" end
+  defp morse_to_char("..---") do "2" end
+  defp morse_to_char("...--") do "3" end
+  defp morse_to_char("....-") do "4" end
+  defp morse_to_char(".....") do "5" end
+  defp morse_to_char("-....") do "6" end
+  defp morse_to_char("--...") do "7" end
+  defp morse_to_char("--.." ) do "8" end
+  defp morse_to_char("----.") do "9" end
+  defp morse_to_char("/") do " " end
+  defp morse_to_char(_) do "?" end
+end
+
+defmodule Demo do
+  def run() do
+    case IO.puts(IO.ansi_green("Morse Code")) do
+      _ -> case IO.puts("==========") do
+        _ -> case IO.puts("") do
+          _ -> case IO.puts("Encoding:") do
+            _ -> case show_encode(test_phrases()) do
+              _ -> case IO.puts("") do
+                _ -> case IO.puts("Decoding:") do
+                  _ -> show_decode(test_morse())
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp test_phrases() do
+    ["HELLO", "SOS", "TONIC", "HI WORLD", "42"]
+  end
+
+  defp test_morse() do
+    [".... . .-.. .-.. ---",
+     "... --- ...",
+     "- --- -. .. -.-.",
+     ".... ..   .-- --- .-. .-.. -..",
+     "....- ..---"]
+  end
+
+  defp show_encode([]) do
+    :ok
+  end
+
+  defp show_encode([phrase | rest]) do
+    case IO.puts("  " <> phrase <> " -> " <> MorseCode.encode(phrase)) do
+      _ -> show_encode(rest)
+    end
+  end
+
+  defp show_decode([]) do
+    :ok
+  end
+
+  defp show_decode([morse | rest]) do
+    case IO.puts("  " <> morse <> " -> " <> MorseCode.decode(morse)) do
+      _ -> show_decode(rest)
+    end
+  end
+end

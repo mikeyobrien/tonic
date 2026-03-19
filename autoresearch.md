@@ -11,7 +11,7 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 - **Primary**: `example_count` (count, higher is better) — number of new real-world examples
   that compile, run, and produce correct output
-- **Current Best**: 18
+- **Current Best**: 20
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
@@ -76,3 +76,4 @@ echo "runnable=$count failed=$fail"
 - **Run 7 (KEEP, metric=14)**: Added todo_manager and env_report example apps. todo_manager: task management with file persistence. env_report: system environment inspection and reporting. Exercises: file I/O, Map operations, list processing, string formatting. Hypothesis: confirmed — Tonic handles stateful file-backed apps and environment introspection.
 - **Run 8 (KEEP, metric=16)**: Added grep_lite and ini_parser example apps. grep_lite: pattern matching in text files with line-number display. ini_parser: INI-format config file parsing with section support. Exercises: String operations, file I/O, list processing, map building. Hypothesis: confirmed — Tonic handles text search and structured config parsing patterns.
 - **Run 9 (KEEP, metric=18)**: Added log_analyzer and diff_viewer example apps. log_analyzer: log file analysis with pattern extraction. diff_viewer: text diff comparison. Exercises: file I/O, string processing, list operations. Hypothesis: confirmed — Tonic handles log analysis and text comparison patterns.
+- **Run 10 (KEEP, metric=20)**: Added roman_numerals and morse_code example apps. roman_numerals: Roman numeral conversion. morse_code: Morse code encoding/decoding. Exercises: pattern matching, string processing, map lookups, recursion. Hypothesis: confirmed — Tonic handles encoding/decoding and lookup-table patterns.

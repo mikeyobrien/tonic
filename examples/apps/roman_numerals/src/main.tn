@@ -1,0 +1,97 @@
+defmodule RomanNumerals do
+  def to_roman(n) do
+    convert(n, values(), "")
+  end
+
+  def from_roman(str) do
+    parse(str, values(), 0)
+  end
+
+  defp values() do
+    [{1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+     {100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"},
+     {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}]
+  end
+
+  defp convert(0, _pairs, acc) do
+    acc
+  end
+
+  defp convert(_n, [], acc) do
+    acc
+  end
+
+  defp convert(n, [{value, symbol} | rest], acc) do
+    case n do
+      x when x >= value -> convert(n - value, [{value, symbol}] ++ rest, acc <> symbol)
+      _ -> convert(n, rest, acc)
+    end
+  end
+
+  defp parse("", _pairs, acc) do
+    acc
+  end
+
+  defp parse(_str, [], acc) do
+    acc
+  end
+
+  defp parse(str, [{value, symbol} | rest], acc) do
+    case String.starts_with(str, symbol) do
+      true -> parse(
+        String.slice(str, String.length(symbol), String.length(str)),
+        [{value, symbol}] ++ rest,
+        acc + value
+      )
+      _ -> parse(str, rest, acc)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case IO.puts(IO.ansi_green("Roman Numerals")) do
+      _ -> case IO.puts("===============") do
+        _ -> case IO.puts("") do
+          _ -> case IO.puts("Integer -> Roman:") do
+            _ -> case show_to_roman(test_numbers()) do
+              _ -> case IO.puts("") do
+                _ -> case IO.puts("Roman -> Integer:") do
+                  _ -> show_from_roman(test_romans())
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp test_numbers() do
+    [1, 4, 9, 14, 42, 99, 399, 444, 1776, 1999, 2024, 3999]
+  end
+
+  defp test_romans() do
+    ["I", "IV", "IX", "XIV", "XLII", "XCIX", "CCCXCIX", "CDXLIV", "MDCCLXXVI", "MCMXCIX", "MMXXIV", "MMMCMXCIX"]
+  end
+
+  defp show_to_roman([]) do
+    :ok
+  end
+
+  defp show_to_roman([n | rest]) do
+    case IO.puts("  #{n} -> " <> RomanNumerals.to_roman(n)) do
+      _ -> show_to_roman(rest)
+    end
+  end
+
+  defp show_from_roman([]) do
+    :ok
+  end
+
+  defp show_from_roman([r | rest]) do
+    case IO.puts("  " <> r <> " -> #{RomanNumerals.from_roman(r)}") do
+      _ -> show_from_roman(rest)
+    end
+  end
+end
