@@ -59,7 +59,7 @@ The experiment passes if:
 
 ## Current Best
 
-**readiness_gaps = 4** (Run 17) — down from baseline of 20
+**readiness_gaps = 3** (Run 18) — down from baseline of 20
 
 ## What's Been Tried
 
@@ -80,6 +80,7 @@ The experiment passes if:
 - **Run 15 (KEEP, metric=6)**: Split llvm_backend/codegen.rs (1716→349 lines). Hypothesis: continued — confirmed.
 - **Run 16 (KEEP, metric=5)**: Split ir.rs (2243→413 lines). Hypothesis: continued — confirmed.
 - **Run 17 (KEEP, metric=4)**: Split main.rs into cmd_*.rs handlers + split lexer.rs (2083 lines) into directory module with 5 files. Hypothesis: continued — confirmed.
+- **Run 18 (KEEP, metric=3)**: Split lexer/tests.rs (730→464+273 lines) into tests.rs and tests_extended.rs. Hypothesis: continued file splitting — confirmed.
 
 ## Rules
 

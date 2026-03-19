@@ -6,6 +6,8 @@ pub use types::{LexerError, Span, Token, TokenKind};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_extended;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LexerState {
