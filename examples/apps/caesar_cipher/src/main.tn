@@ -1,0 +1,98 @@
+defmodule CaesarCipher do
+  def encrypt(text, shift) do
+    upper = String.upcase(text)
+    process(upper, rem(shift, 26), 0, String.length(upper), "")
+  end
+
+  def decrypt(text, shift) do
+    encrypt(text, 26 - rem(shift, 26))
+  end
+
+  defp process(text, shift, index, len, acc) do
+    case index do
+      i when i == len -> acc
+      _ -> process_one(text, shift, index, len, acc)
+    end
+  end
+
+  defp process_one(text, shift, index, len, acc) do
+    ch = "#{String.slice(text, index, 1)}"
+    shifted = shift_char(ch, shift)
+    process(text, shift, index + 1, len, acc <> shifted)
+  end
+
+  defp shift_char(ch, shift) do
+    pos = find_pos(ch, 0)
+    apply_shift(ch, pos, shift)
+  end
+
+  defp apply_shift(ch, pos, _shift) when pos < 0 do
+    ch
+  end
+
+  defp apply_shift(_ch, pos, shift) do
+    "#{String.slice("ABCDEFGHIJKLMNOPQRSTUVWXYZ", rem(pos + shift, 26), 1)}"
+  end
+
+  defp find_pos(_ch, 26) do
+    -1
+  end
+
+  defp find_pos(ch, index) do
+    c = "#{String.slice("ABCDEFGHIJKLMNOPQRSTUVWXYZ", index, 1)}"
+    case String.starts_with(c, ch) do
+      true -> index
+      _ -> find_pos(ch, index + 1)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Caesar Cipher"), "=============", "", "Encrypt (shift 3):"]) do
+      _ -> case show_encrypt(messages(), 3) do
+        _ -> case print_lines(["", "Round-trip verification:"]) do
+          _ -> show_roundtrip(messages(), 3)
+        end
+      end
+    end
+  end
+
+  defp messages() do
+    ["HELLO WORLD", "THE QUICK BROWN FOX", "ATTACK AT DAWN", "TONIC LANG"]
+  end
+
+  defp show_encrypt([], _shift) do
+    :ok
+  end
+
+  defp show_encrypt([msg | rest], shift) do
+    line = "  " <> msg <> " -> " <> CaesarCipher.encrypt(msg, shift)
+    case IO.puts(line) do
+      _ -> show_encrypt(rest, shift)
+    end
+  end
+
+  defp show_roundtrip([], _shift) do
+    :ok
+  end
+
+  defp show_roundtrip([msg | rest], shift) do
+    encrypted = CaesarCipher.encrypt(msg, shift)
+    decrypted = CaesarCipher.decrypt(encrypted, shift)
+    line = "  " <> msg <> " -> " <> encrypted <> " -> " <> decrypted
+    case IO.puts(line) do
+      _ -> show_roundtrip(rest, shift)
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

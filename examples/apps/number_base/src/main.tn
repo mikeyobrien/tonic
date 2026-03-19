@@ -1,0 +1,134 @@
+defmodule NumberBase do
+  def to_base(0, _base) do
+    "0"
+  end
+
+  def to_base(n, base) do
+    collect_digits(n, base, "")
+  end
+
+  def format(n, base, width) do
+    String.pad_leading(to_base(n, base), width, "0")
+  end
+
+  def from_base(str, base) do
+    reversed = String.reverse(String.upcase(str))
+    parse_reversed(reversed, base, 0, String.length(reversed), 0, 1)
+  end
+
+  defp collect_digits(0, _base, acc) do
+    acc
+  end
+
+  defp collect_digits(n, base, acc) do
+    ch = "#{String.slice("0123456789ABCDEF", rem(n, base), 1)}"
+    collect_digits(div(n, base), base, ch <> acc)
+  end
+
+  defp parse_reversed(str, base, index, len, acc, mult) do
+    case index do
+      i when i == len -> acc
+      _ -> parse_one(str, base, index, len, acc, mult)
+    end
+  end
+
+  defp parse_one(str, base, index, len, acc, mult) do
+    ch = "#{String.slice(str, index, 1)}"
+    val = char_value(ch)
+    parse_reversed(str, base, index + 1, len, acc + val * mult, mult * base)
+  end
+
+  defp char_value(ch) do
+    find_in("0123456789ABCDEF", ch, 0, 16)
+  end
+
+  defp find_in(_chars, _ch, index, limit) do
+    case index do
+      i when i == limit -> 0
+      _ -> check_match(_chars, _ch, index, limit)
+    end
+  end
+
+  defp check_match(chars, ch, index, limit) do
+    c = "#{String.slice(chars, index, 1)}"
+    case String.starts_with(c, ch) do
+      true -> index
+      _ -> find_in(chars, ch, index + 1, limit)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Number Base Converter"), "=====================", "", "Decimal to other bases:"]) do
+      _ -> case show_conversions(test_numbers()) do
+        _ -> case print_lines(["", "Other bases to decimal:"]) do
+          _ -> show_from_base(test_encoded())
+        end
+      end
+    end
+  end
+
+  defp test_numbers() do
+    [0, 7, 42, 100, 255, 1024, 65535]
+  end
+
+  defp test_encoded() do
+    [{"101010", 2}, {"FF", 16}, {"377", 8}, {"1A", 16}, {"10000000000", 2}]
+  end
+
+  defp show_conversions([]) do
+    :ok
+  end
+
+  defp show_conversions([n | rest]) do
+    dec = String.pad_leading("#{n}", 5, " ")
+    bin = NumberBase.format(n, 2, 16)
+    oct = String.pad_leading(NumberBase.to_base(n, 8), 6, " ")
+    hex_val = String.pad_leading(NumberBase.to_base(n, 16), 4, " ")
+    line = "  " <> dec <> "  bin: " <> bin <> "  oct: " <> oct <> "  hex: " <> hex_val
+    case IO.puts(line) do
+      _ -> show_conversions(rest)
+    end
+  end
+
+  defp show_from_base([]) do
+    :ok
+  end
+
+  defp show_from_base([{str, base} | rest]) do
+    label = base_label(base)
+    padded = String.pad_leading(str, 16, " ")
+    result = NumberBase.from_base(str, base)
+    line = "  " <> label <> padded <> " -> #{result}"
+    case IO.puts(line) do
+      _ -> show_from_base(rest)
+    end
+  end
+
+  defp base_label(2) do
+    "bin:"
+  end
+
+  defp base_label(8) do
+    "oct:"
+  end
+
+  defp base_label(16) do
+    "hex:"
+  end
+
+  defp base_label(n) do
+    "base #{n}:"
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
