@@ -1,0 +1,45 @@
+defmodule WordCounter do
+  def count(text) do
+    build_freq(clean_words(text), %{})
+  end
+
+  defp clean_words(text) do
+    filter_empty(for word <- List.flatten(raw_words(text)) do
+      String.downcase(word)
+    end)
+  end
+
+  defp raw_words(text) do
+    for line <- String.split(text, line_sep()) do
+      String.split(String.trim(line), " ")
+    end
+  end
+
+  defp filter_empty([]) do
+    []
+  end
+
+  defp filter_empty(["" | rest]) do
+    filter_empty(rest)
+  end
+
+  defp filter_empty([word | rest]) do
+    [word] ++ filter_empty(rest)
+  end
+
+  defp build_freq([], freq) do
+    freq
+  end
+
+  defp build_freq([word | rest], freq) do
+    case Map.get(freq, word, nil) do
+      nil -> build_freq(rest, Map.put(freq, word, 1))
+      count -> build_freq(rest, Map.put(freq, word, count + 1))
+    end
+  end
+
+  defp line_sep() do
+    """
+"""
+  end
+end

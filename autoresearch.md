@@ -11,7 +11,7 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 - **Primary**: `example_count` (count, higher is better) — number of new real-world examples
   that compile, run, and produce correct output
-- **Current Best**: 4
+- **Current Best**: 5
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
@@ -68,3 +68,4 @@ echo "runnable=$count failed=$fail"
 ## What's Been Tried
 
 - **Run 1 (KEEP, metric=4)**: Created json_encoder example app with multi-clause guard-based type dispatch, recursive list/map encoding, and examples/README.md catalog. All 4 apps in examples/apps/ run successfully. Hypothesis: confirmed — idiomatic Tonic can express real JSON encoding.
+- **Run 2 (KEEP, metric=5)**: Added word_counter example app — reads a text file, splits into words, builds frequency map with recursive accumulator, sorts by count, displays formatted results. Exercises: System.read_text, String.split, Map.get/put, Enum.sort/reverse, for comprehensions. Hypothesis: confirmed — Tonic handles file I/O + string processing + map accumulation cleanly.

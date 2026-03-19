@@ -1,0 +1,8 @@
+Functions are the building blocks of every program
+A pure function always returns the same result for the same input
+Pattern matching makes code clear and easy to read
+The best programs are built from small functions that do one thing well
+Recursion is a powerful pattern for processing lists and trees
+Every function tells a story about what the program does
+Good code reads like a well written story from start to finish
+The art of programming is the art of clear thinking

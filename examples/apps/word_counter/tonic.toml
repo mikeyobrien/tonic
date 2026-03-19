@@ -1,0 +1,3 @@
+[project]
+name = "word_counter"
+entry = "src/main.tn"

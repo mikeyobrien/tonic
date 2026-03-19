@@ -1,0 +1,47 @@
+defmodule Demo do
+  def run() do
+    display(WordCounter.count(
+      System.read_text(data_path(System.argv()))
+    ))
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/sample.txt"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/sample.txt"
+  end
+
+  defp data_path(_) do
+    "data/sample.txt"
+  end
+
+  defp display(freq) do
+    print_lines(
+      ["Word Frequency Report",
+       "=====================",
+       "Total words: #{Enum.sum(Map.values(freq))}",
+       "Unique words: #{Enum.count(Map.keys(freq))}",
+       ""] ++ format_words(Enum.sort(Map.keys(freq)), freq)
+    )
+  end
+
+  defp format_words([], _freq) do
+    []
+  end
+
+  defp format_words([word | rest], freq) do
+    [word <> ": " <> "#{Map.get(freq, word, nil)}"] ++ format_words(rest, freq)
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
