@@ -8,8 +8,18 @@ mod ops;
 mod runtime_patterns;
 mod stubs;
 mod stubs_closures;
+mod stubs_constructors;
 mod stubs_for;
+mod stubs_host_dispatch;
+mod stubs_host_http;
+mod stubs_host_path;
+mod stubs_host_sys;
+mod stubs_io;
+mod stubs_map;
+mod stubs_memory;
+mod stubs_results;
 mod stubs_try;
+mod stubs_types;
 mod terminator;
 
 pub(crate) use error::CBackendError;
