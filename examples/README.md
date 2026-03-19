@@ -16,3 +16,5 @@ Project-mode examples in `apps/`. Run with `tonic run examples/apps/<name>`.
 | [file_tree](apps/file_tree/) | Print a directory tree with connectors | System.list_dir, System.is_dir, Path.join, recursion, string formatting |
 | [markdown_headings](apps/markdown_headings/) | Extract headings from a markdown file and display an indented TOC | String.starts_with, String.slice, String.trim, tuple construction, recursive list building, file I/O |
 | [mini_template](apps/mini_template/) | Replace `{{key}}` placeholders in a template with values from a map | String.contains, String.replace, Map.get, Map.keys, recursion over key lists |
+| [text_stats](apps/text_stats/) | Read a text file and compute line/word/char counts, unique words, and top-5 frequencies | String.downcase, String.length, Map.values, Enum.count, Enum.sort, for comprehensions, List.flatten |
+| [path_analyzer](apps/path_analyzer/) | Walk a directory tree and display file extension frequency | System.list_files_recursive, Path.extname, Map.keys, Map.delete, guard expressions, recursive accumulation |

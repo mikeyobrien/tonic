@@ -1,0 +1,173 @@
+defmodule TextStats do
+  def analyze(text) do
+    %{
+      line_count: Enum.count(lines(text)),
+      word_count: Enum.count(words(text)),
+      char_count: String.length(text),
+      unique_count: Enum.count(unique_words(text)),
+      freq: word_freq(words(text)),
+      top_five: top_n(word_freq(words(text)), 5),
+      avg_words_per_line: avg_words(lines(text))
+    }
+  end
+
+  defp lines(text) do
+    String.split(text, line_sep())
+  end
+
+  defp words(text) do
+    filter_empty(List.flatten(for line <- lines(text) do
+      for word <- String.split(String.trim(line), " ") do
+        String.downcase(word)
+      end
+    end))
+  end
+
+  defp unique_words(text) do
+    Map.keys(word_freq(words(text)))
+  end
+
+  defp word_freq(word_list) do
+    build_freq(word_list, %{})
+  end
+
+  defp build_freq([], freq) do
+    freq
+  end
+
+  defp build_freq([word | rest], freq) do
+    case Map.get(freq, word, nil) do
+      nil -> build_freq(rest, Map.put(freq, word, 1))
+      count -> build_freq(rest, Map.put(freq, word, count + 1))
+    end
+  end
+
+  defp top_n(freq, n) do
+    pick_top(freq, Map.keys(freq), n, [])
+  end
+
+  defp pick_top(_freq, _keys, 0, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp pick_top(_freq, [], _n, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp pick_top(freq, _keys, n, acc) do
+    best_word = find_max_word(Map.keys(freq), freq)
+    pick_top(
+      Map.delete(freq, best_word),
+      Map.keys(Map.delete(freq, best_word)),
+      n - 1,
+      [{best_word, Map.get(freq, best_word, 0)}] ++ acc
+    )
+  end
+
+  defp find_max_word([only], _freq) do
+    only
+  end
+
+  defp find_max_word([first | rest], freq) do
+    find_max_helper(rest, freq, first, Map.get(freq, first, 0))
+  end
+
+  defp find_max_helper([], _freq, best, _best_count) do
+    best
+  end
+
+  defp find_max_helper([word | rest], freq, best, best_count) do
+    case Map.get(freq, word, 0) do
+      count when count > best_count ->
+        find_max_helper(rest, freq, word, count)
+      _ ->
+        find_max_helper(rest, freq, best, best_count)
+    end
+  end
+
+  defp avg_words(line_list) do
+    count_words_in_lines(filter_empty(line_list), 0, 0)
+  end
+
+  defp count_words_in_lines([], _total, 0) do
+    0
+  end
+
+  defp count_words_in_lines([], total, n) do
+    div(total, n)
+  end
+
+  defp count_words_in_lines([line | rest], total, n) do
+    count_words_in_lines(rest, total + Enum.count(String.split(String.trim(line), " ")), n + 1)
+  end
+
+  defp filter_empty([]) do
+    []
+  end
+
+  defp filter_empty(["" | rest]) do
+    filter_empty(rest)
+  end
+
+  defp filter_empty([item | rest]) do
+    [item] ++ filter_empty(rest)
+  end
+
+  defp line_sep() do
+    """
+"""
+  end
+end
+
+defmodule Demo do
+  def run() do
+    display(TextStats.analyze(
+      System.read_text(data_path(System.argv()))
+    ))
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/sample.txt"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/sample.txt"
+  end
+
+  defp data_path(_) do
+    "data/sample.txt"
+  end
+
+  defp display(stats) do
+    print_lines([
+      "Text Statistics",
+      "===============",
+      "Lines:            #{Map.get(stats, :line_count, 0)}",
+      "Words:            #{Map.get(stats, :word_count, 0)}",
+      "Characters:       #{Map.get(stats, :char_count, 0)}",
+      "Unique words:     #{Map.get(stats, :unique_count, 0)}",
+      "Avg words/line:   #{Map.get(stats, :avg_words_per_line, 0)}",
+      "",
+      "Top 5 most frequent words:"
+    ] ++ format_top(Map.get(stats, :top_five, []))
+    )
+  end
+
+  defp format_top([]) do
+    []
+  end
+
+  defp format_top([{word, count} | rest]) do
+    ["  " <> word <> ": " <> "#{count}"] ++ format_top(rest)
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

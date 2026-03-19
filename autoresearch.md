@@ -11,7 +11,7 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 - **Primary**: `example_count` (count, higher is better) — number of new real-world examples
   that compile, run, and produce correct output
-- **Current Best**: 10
+- **Current Best**: 12
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
@@ -72,3 +72,4 @@ echo "runnable=$count failed=$fail"
 - **Run 3 (KEEP, metric=6)**: Added file_tree example app with 2 new stdlib host functions (System.list_dir, System.is_dir) — recursively walks directories, prints tree-style output with connectors. Exercises: filesystem operations, recursive tree traversal, string formatting, Path.join. Hypothesis: confirmed — Tonic can express recursive directory walking with new stdlib additions.
 - **Run 4 (KEEP, metric=8)**: Added csv_processor and config_parser example apps. csv_processor: parses CSV data, filters/transforms rows, outputs formatted results. config_parser: parses key=value config files with String operations and Map building. Exercises: String.split, list processing, for comprehensions, pipes, Map.put, file I/O. Hypothesis: confirmed — Tonic handles structured text parsing patterns well.
 - **Run 5 (KEEP, metric=10)**: Added markdown_headings and mini_template example apps. markdown_headings: extracts headings from markdown files, displays indented TOC. mini_template: replaces {{key}} placeholders in templates with map values. Exercises: String.starts_with, String.slice, String.trim, String.contains, String.replace, Map.get, Map.keys, tuple construction, recursion. Hypothesis: confirmed — Tonic handles string-heavy text processing and template substitution patterns well.
+- **Run 6 (KEEP, metric=12)**: Added text_stats and path_analyzer example apps. text_stats: text file analysis with character/word/line counting. path_analyzer: filesystem path analysis and normalization. Exercises: String operations, Path module, file I/O, map building. Hypothesis: confirmed — Tonic handles file statistics and path manipulation patterns.

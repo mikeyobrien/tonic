@@ -1,0 +1,106 @@
+defmodule PathAnalyzer do
+  def analyze(dir) do
+    group_by_ext(System.list_files_recursive(dir), %{})
+  end
+
+  defp group_by_ext([], groups) do
+    groups
+  end
+
+  defp group_by_ext([file | rest], groups) do
+    group_by_ext(rest, add_to_group(ext_label(file), groups))
+  end
+
+  defp ext_label(file) do
+    normalize_ext(Path.extname(file))
+  end
+
+  defp normalize_ext("") do
+    "(no ext)"
+  end
+
+  defp normalize_ext(ext) do
+    ext
+  end
+
+  defp add_to_group(ext, groups) do
+    case Map.get(groups, ext, nil) do
+      nil -> Map.put(groups, ext, 1)
+      count -> Map.put(groups, ext, count + 1)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    display(PathAnalyzer.analyze(
+      target_dir(System.argv())
+    ))
+  end
+
+  defp target_dir([_, "run", dir]) do
+    dir
+  end
+
+  defp target_dir([_, "run", dir | _rest]) do
+    dir
+  end
+
+  defp target_dir(_) do
+    "."
+  end
+
+  defp display(groups) do
+    print_lines([
+      "Extension Frequency",
+      "===================",
+      ""
+    ] ++ format_sorted(groups, Map.keys(groups), Enum.count(Map.keys(groups))))
+  end
+
+  defp format_sorted(_groups, _keys, 0) do
+    []
+  end
+
+  defp format_sorted(groups, keys, remaining) do
+    best = find_max_key(keys, groups)
+    count = Map.get(groups, best, 0)
+    ["  " <> best <> ": " <> "#{count}"] ++ format_sorted(
+      Map.delete(groups, best),
+      Map.keys(Map.delete(groups, best)),
+      remaining - 1
+    )
+  end
+
+  defp find_max_key([only], _groups) do
+    only
+  end
+
+  defp find_max_key([first | rest], groups) do
+    find_max_helper(rest, groups, first, Map.get(groups, first, 0))
+  end
+
+  defp find_max_helper([], _groups, best, _best_count) do
+    best
+  end
+
+  defp find_max_helper([key | rest], groups, best, best_count) do
+    case Map.get(groups, key, 0) do
+      count when count > best_count ->
+        find_max_helper(rest, groups, key, count)
+      _ ->
+        find_max_helper(rest, groups, best, best_count)
+    end
+  end
+
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
