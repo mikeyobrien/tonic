@@ -1,0 +1,140 @@
+defmodule IniParser do
+  def parse(text) do
+    lines = String.split(text, line_sep())
+    parse_lines(lines, "", %{})
+  end
+
+  defp parse_lines([], _section, result) do
+    result
+  end
+
+  defp parse_lines(["" | rest], section, result) do
+    parse_lines(rest, section, result)
+  end
+
+  defp parse_lines([line | rest], section, result) do
+    parse_trimmed(String.trim(line), rest, section, result)
+  end
+
+  defp parse_trimmed("", rest, section, result) do
+    parse_lines(rest, section, result)
+  end
+
+  defp parse_trimmed(line, rest, section, result) do
+    case String.starts_with(line, "#") do
+      true -> parse_lines(rest, section, result)
+      _ -> parse_non_comment(line, rest, section, result)
+    end
+  end
+
+  defp parse_non_comment(line, rest, section, result) do
+    case String.starts_with(line, ";") do
+      true -> parse_lines(rest, section, result)
+      _ -> parse_meaningful(line, rest, section, result)
+    end
+  end
+
+  defp parse_meaningful(line, rest, section, result) do
+    case String.starts_with(line, "[") do
+      true -> enter_section(line, rest, result)
+      _ -> parse_kv(line, rest, section, result)
+    end
+  end
+
+  defp enter_section(line, rest, result) do
+    section_name(String.trim(String.replace(String.replace(line, "[", ""), "]", "")), rest, result)
+  end
+
+  defp section_name(name, rest, result) do
+    parse_lines(rest, name, ensure_section(result, name))
+  end
+
+  defp ensure_section(result, name) do
+    case Map.get(result, name, nil) do
+      nil -> Map.put(result, name, %{})
+      _ -> result
+    end
+  end
+
+  defp parse_kv(line, rest, "", result) do
+    parse_lines(rest, "", result)
+  end
+
+  defp parse_kv(line, rest, section, result) do
+    add_entry(String.split(line, "="), rest, section, result)
+  end
+
+  defp add_entry([key, value], rest, section, result) do
+    sec = get_section(result, section)
+    parse_lines(rest, section, Map.put(result, section, Map.put(sec, String.trim(key), String.trim(value))))
+  end
+
+  defp add_entry(_, rest, section, result) do
+    parse_lines(rest, section, result)
+  end
+
+  defp get_section(result, section) do
+    case Map.get(result, section, nil) do
+      nil -> %{}
+      existing -> existing
+    end
+  end
+
+  defp line_sep() do
+    """
+"""
+  end
+end
+
+defmodule Demo do
+  def run() do
+    config = IniParser.parse(System.read_text(data_path(System.argv())))
+    display(config)
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/config.ini"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/config.ini"
+  end
+
+  defp data_path(_) do
+    "data/config.ini"
+  end
+
+  defp display(config) do
+    case IO.puts(IO.ansi_green("INI Configuration")) do
+      _ -> case IO.puts("==================") do
+        _ -> case IO.puts("") do
+          _ -> print_sections(Map.keys(config), config)
+        end
+      end
+    end
+  end
+
+  defp print_sections([], _config) do
+    :ok
+  end
+
+  defp print_sections([section | rest], config) do
+    case IO.puts(IO.ansi_yellow("[" <> section <> "]")) do
+      _ -> case print_entries(Map.keys(Map.get(config, section, %{})), Map.get(config, section, %{})) do
+        _ -> case IO.puts("") do
+          _ -> print_sections(rest, config)
+        end
+      end
+    end
+  end
+
+  defp print_entries([], _entries) do
+    :ok
+  end
+
+  defp print_entries([key | rest], entries) do
+    case IO.puts("  " <> "#{key}" <> " = " <> "#{Map.get(entries, key, "")}") do
+      _ -> print_entries(rest, entries)
+    end
+  end
+end

@@ -1,0 +1,81 @@
+defmodule GrepLite do
+  def search(dir, query) do
+    files = System.list_files_recursive(dir)
+    search_files(dir, files, query, 0)
+  end
+
+  defp search_files(_dir, [], _query, count) do
+    count
+  end
+
+  defp search_files(dir, [file | rest], query, count) do
+    full_path = dir <> "/" <> file
+    text = System.read_text(full_path)
+    lines = String.split(text, line_sep())
+    hits = print_matches(file, lines, query, 1, 0)
+    search_files(dir, rest, query, count + hits)
+  end
+
+  defp print_matches(_file, [], _query, _num, hits) do
+    hits
+  end
+
+  defp print_matches(file, [line | rest], query, num, hits) do
+    case String.contains(line, query) do
+      true ->
+        case print_hit(file, num, line, query) do
+          _ -> print_matches(file, rest, query, num + 1, hits + 1)
+        end
+      _ ->
+        print_matches(file, rest, query, num + 1, hits)
+    end
+  end
+
+  defp print_hit(file, num, line, query) do
+    highlighted = String.replace(line, query, IO.ansi_green(query))
+    case IO.puts("#{file}:#{num}: " <> highlighted) do
+      _ -> :ok
+    end
+  end
+
+  defp line_sep() do
+    """
+"""
+  end
+end
+
+defmodule Demo do
+  def run() do
+    args = parse_args(System.argv())
+    query = Map.get(args, :query, "")
+    dir = Map.get(args, :dir, ".")
+    count = GrepLite.search(dir, query)
+    print_summary(count)
+  end
+
+  defp parse_args([_, "run", project_dir]) do
+    %{query: "the", dir: project_dir <> "/data"}
+  end
+
+  defp parse_args([_, "run", project_dir | _rest]) do
+    %{query: "the", dir: project_dir <> "/data"}
+  end
+
+  defp parse_args(_) do
+    %{query: "the", dir: "data"}
+  end
+
+  defp print_summary(0) do
+    case IO.puts(IO.ansi_yellow("No matches found.")) do
+      _ -> :ok
+    end
+  end
+
+  defp print_summary(count) do
+    case IO.puts("") do
+      _ -> case IO.puts(IO.ansi_green("#{count} match(es) found.")) do
+        _ -> :ok
+      end
+    end
+  end
+end

@@ -20,3 +20,5 @@ Project-mode examples in `apps/`. Run with `tonic run examples/apps/<name>`.
 | [path_analyzer](apps/path_analyzer/) | Walk a directory tree and display file extension frequency | System.list_files_recursive, Path.extname, Map.keys, Map.delete, guard expressions, recursive accumulation |
 | [todo_manager](apps/todo_manager/) | CLI todo list with file persistence and colored status display | System.write_text, String.to_integer, IO.ansi_green, IO.ansi_red, IO.ansi_yellow, file I/O, map construction |
 | [env_report](apps/env_report/) | System environment reporter with aligned key-value display | System.env, System.cwd, System.which, String.pad_trailing, IO.ansi_blue, IO.ansi_yellow, IO.ansi_green, IO.ansi_red |
+| [grep_lite](apps/grep_lite/) | Recursively search files for lines matching a query string | System.list_files_recursive, System.read_text, String.contains, String.replace, IO.ansi_green, recursive file walking |
+| [ini_parser](apps/ini_parser/) | Parse INI-format config files with sections into nested maps | String.starts_with, String.replace, String.trim, String.split, Map.put, Map.get, Map.keys, stateful recursive parsing |
