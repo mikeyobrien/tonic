@@ -1,0 +1,17 @@
+Hex Dump
+========
+
+Short ASCII string (13 bytes):
+00000000  48 65 6C 6C 6F 2C 20 57  6F 72 6C 64 21           |Hello, World!|
+
+Multi-line dump (44 bytes):
+00000000  54 68 65 20 71 75 69 63  6B 20 62 72 6F 77 6E 20  |The quick brown |
+00000010  66 6F 78 20 6A 75 6D 70  73 20 6F 76 65 72 20 74  |fox jumps over t|
+00000020  68 65 20 6C 61 7A 79 20  64 6F 67 2E              |he lazy dog.|
+
+Exactly 16 bytes (16 bytes):
+00000000  30 31 32 33 34 35 36 37  38 39 41 42 43 44 45 46  |0123456789ABCDEF|
+
+Special characters (16 bytes):
+00000000  21 40 23 24 25 5E 26 2A  28 29 7B 7D 5B 5D 3C 3E  |!@#$%^&*(){}[]<>|
+:ok

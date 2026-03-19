@@ -1,0 +1,3 @@
+[project]
+name = "matrix_math"
+entry = "src/main.tn"

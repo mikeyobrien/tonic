@@ -1,0 +1,324 @@
+defmodule Matrix do
+  def at(list, index) do
+    find_at(list, index)
+  end
+
+  defp find_at([h | _], 0) do
+    h
+  end
+
+  defp find_at([_ | rest], n) do
+    find_at(rest, n - 1)
+  end
+
+  def add(a, b) do
+    add_rows(a, b, [])
+  end
+
+  defp add_rows([], [], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp add_rows([ra | rrest], [rb | brest], acc) do
+    add_rows(rrest, brest, [add_elems(ra, rb, [])] ++ acc)
+  end
+
+  defp add_elems([], [], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp add_elems([a | ar], [b | br], acc) do
+    add_elems(ar, br, [a + b] ++ acc)
+  end
+
+  def scale(matrix, s) do
+    scale_rows(matrix, s, [])
+  end
+
+  defp scale_rows([], _s, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp scale_rows([row | rest], s, acc) do
+    scale_rows(rest, s, [scale_elems(row, s, [])] ++ acc)
+  end
+
+  defp scale_elems([], _s, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp scale_elems([x | rest], s, acc) do
+    scale_elems(rest, s, [x * s] ++ acc)
+  end
+
+  def transpose(matrix) do
+    width = Enum.count(at(matrix, 0))
+    build_cols(matrix, 0, width)
+  end
+
+  defp build_cols(matrix, col, cols) do
+    case col do
+      c when c == cols -> []
+      _ -> [extract_col(matrix, col, [])] ++ build_cols(matrix, col + 1, cols)
+    end
+  end
+
+  defp extract_col([], _col, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp extract_col([row | rest], col, acc) do
+    extract_col(rest, col, [at(row, col)] ++ acc)
+  end
+
+  def multiply(a, b) do
+    bt = transpose(b)
+    mul_rows(a, bt, [])
+  end
+
+  defp mul_rows([], _bt, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp mul_rows([row | rest], bt, acc) do
+    mul_rows(rest, bt, [mul_one_row(row, bt, [])] ++ acc)
+  end
+
+  defp mul_one_row(_row, [], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp mul_one_row(row, [col | rest], acc) do
+    mul_one_row(row, rest, [dot(row, col, 0)] ++ acc)
+  end
+
+  defp dot([], [], acc) do
+    acc
+  end
+
+  defp dot([a | ar], [b | br], acc) do
+    dot(ar, br, acc + a * b)
+  end
+
+  def det2(m) do
+    r0 = at(m, 0)
+    r1 = at(m, 1)
+    at(r0, 0) * at(r1, 1) - at(r0, 1) * at(r1, 0)
+  end
+
+  def det3(m) do
+    r0 = at(m, 0)
+    r1 = at(m, 1)
+    r2 = at(m, 2)
+    a = at(r0, 0)
+    b = at(r0, 1)
+    c = at(r0, 2)
+    d = at(r1, 0)
+    e = at(r1, 1)
+    f = at(r1, 2)
+    g = at(r2, 0)
+    h = at(r2, 1)
+    i = at(r2, 2)
+    a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+  end
+end
+
+defmodule Format do
+  def print_matrix(m) do
+    print_rows(m)
+  end
+
+  defp print_rows([]) do
+    :ok
+  end
+
+  defp print_rows([row | rest]) do
+    items = join_items(row)
+    line = "  [" <> items <> "]"
+    case IO.puts(line) do
+      _ -> print_rows(rest)
+    end
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    pad_num(x)
+  end
+
+  defp join_items([x | rest]) do
+    s = pad_num(x)
+    tail = join_items(rest)
+    s <> ", " <> tail
+  end
+
+  defp pad_num(n) do
+    pad_left("#{n}", 4, " ")
+  end
+
+  defp pad_left(s, width, ch) do
+    len = String.length(s)
+    case len do
+      l when l >= width -> s
+      _ -> pad_left(ch <> s, width, ch)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_header() do
+      _ -> case show_matrices() do
+        _ -> case IO.puts("") do
+          _ -> case show_addition() do
+            _ -> case IO.puts("") do
+              _ -> case show_scalar() do
+                _ -> case IO.puts("") do
+                  _ -> case show_transpose() do
+                    _ -> case IO.puts("") do
+                      _ -> case show_multiply() do
+                        _ -> case IO.puts("") do
+                          _ -> show_determinants()
+                        end
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp print_header() do
+    title = IO.ansi_green("Matrix Math")
+    case IO.puts(title) do
+      _ -> IO.puts("===========")
+    end
+  end
+
+  defp mat_a() do
+    [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+  end
+
+  defp mat_b() do
+    [[9, 8, 7], [6, 5, 4], [3, 2, 1]]
+  end
+
+  defp mat_c() do
+    [[1, 2], [3, 4]]
+  end
+
+  defp mat_d() do
+    [[5, 6], [7, 8]]
+  end
+
+  defp section(title) do
+    IO.ansi_blue(title)
+  end
+
+  defp show_matrices() do
+    header = section("Input Matrices")
+    case IO.puts(header) do
+      _ -> case IO.puts("Matrix A (3x3):") do
+        _ -> case Format.print_matrix(mat_a()) do
+          _ -> case IO.puts("Matrix B (3x3):") do
+            _ -> case Format.print_matrix(mat_b()) do
+              _ -> case IO.puts("Matrix C (2x2):") do
+                _ -> case Format.print_matrix(mat_c()) do
+                  _ -> case IO.puts("Matrix D (2x2):") do
+                    _ -> Format.print_matrix(mat_d())
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_addition() do
+    sum_ab = Matrix.add(mat_a(), mat_b())
+    sum_cd = Matrix.add(mat_c(), mat_d())
+    header = section("Addition")
+    case IO.puts(header) do
+      _ -> case IO.puts("A + B =") do
+        _ -> case Format.print_matrix(sum_ab) do
+          _ -> case IO.puts("C + D =") do
+            _ -> Format.print_matrix(sum_cd)
+          end
+        end
+      end
+    end
+  end
+
+  defp show_scalar() do
+    scaled = Matrix.scale(mat_c(), 3)
+    header = section("Scalar Multiplication")
+    case IO.puts(header) do
+      _ -> case IO.puts("C * 3 =") do
+        _ -> Format.print_matrix(scaled)
+      end
+    end
+  end
+
+  defp show_transpose() do
+    ta = Matrix.transpose(mat_a())
+    rect = [[1, 2, 3], [4, 5, 6]]
+    tr = Matrix.transpose(rect)
+    header = section("Transpose")
+    case IO.puts(header) do
+      _ -> case IO.puts("A^T =") do
+        _ -> case Format.print_matrix(ta) do
+          _ -> case IO.puts("[[1,2,3],[4,5,6]]^T =") do
+            _ -> Format.print_matrix(tr)
+          end
+        end
+      end
+    end
+  end
+
+  defp show_multiply() do
+    prod_cd = Matrix.multiply(mat_c(), mat_d())
+    prod_dc = Matrix.multiply(mat_d(), mat_c())
+    identity = [[1, 0], [0, 1]]
+    prod_ci = Matrix.multiply(mat_c(), identity)
+    header = section("Multiplication")
+    case IO.puts(header) do
+      _ -> case IO.puts("C * D =") do
+        _ -> case Format.print_matrix(prod_cd) do
+          _ -> case IO.puts("D * C =") do
+            _ -> case Format.print_matrix(prod_dc) do
+              _ -> case IO.puts("C * I =") do
+                _ -> Format.print_matrix(prod_ci)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_determinants() do
+    det_c = Matrix.det2(mat_c())
+    det_d = Matrix.det2(mat_d())
+    det_a = Matrix.det3(mat_a())
+    m3 = [[2, 1, 3], [0, 4, 1], [5, 2, 6]]
+    det_m3 = Matrix.det3(m3)
+    header = section("Determinants")
+    case IO.puts(header) do
+      _ -> case IO.puts("det(C) = #{det_c}") do
+        _ -> case IO.puts("det(D) = #{det_d}") do
+          _ -> case IO.puts("det(A) = #{det_a}") do
+            _ -> IO.puts("det([[2,1,3],[0,4,1],[5,2,6]]) = #{det_m3}")
+          end
+        end
+      end
+    end
+  end
+end

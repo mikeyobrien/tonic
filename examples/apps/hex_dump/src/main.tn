@@ -1,0 +1,160 @@
+defmodule Hex do
+  def to_hex(n, width) do
+    String.pad_leading(raw_hex(n), width, "0")
+  end
+
+  defp raw_hex(0) do
+    "0"
+  end
+
+  defp raw_hex(n) do
+    collect(n, "")
+  end
+
+  defp collect(0, acc) do
+    acc
+  end
+
+  defp collect(n, acc) do
+    digit = String.slice("0123456789ABCDEF", rem(n, 16), 1)
+    collect(div(n, 16), digit <> acc)
+  end
+end
+
+defmodule HexDump do
+  def dump(text) do
+    dump_lines(text, 0, String.length(text))
+  end
+
+  defp dump_lines(text, offset, len) do
+    case offset do
+      o when o >= len -> :ok
+      _ -> emit_line(text, offset, len)
+    end
+  end
+
+  defp emit_line(text, offset, len) do
+    chunk_len = min_val(16, len - offset)
+    line = format_line(text, offset, chunk_len)
+    case IO.puts(line) do
+      _ -> dump_lines(text, offset + 16, len)
+    end
+  end
+
+  defp min_val(a, b) do
+    case a do
+      x when x <= b -> a
+      _ -> b
+    end
+  end
+
+  defp format_line(text, offset, chunk_len) do
+    offset_str = Hex.to_hex(offset, 8)
+    hex_part = format_hex(text, offset, 0, chunk_len, "")
+    hex_padded = String.pad_trailing(hex_part, 49, " ")
+    ascii_part = format_ascii(text, offset, 0, chunk_len, "")
+    offset_str <> "  " <> hex_padded <> " |" <> ascii_part <> "|"
+  end
+
+  defp format_hex(text, base, pos, count, acc) do
+    case pos do
+      p when p == count -> acc
+      _ -> format_hex_one(text, base, pos, count, acc)
+    end
+  end
+
+  defp format_hex_one(text, base, pos, count, acc) do
+    ch = String.slice(text, base + pos, 1)
+    code = get_code(String.to_charlist(ch))
+    hex_str = Hex.to_hex(code, 2)
+    sep = get_hex_sep(pos)
+    format_hex(text, base, pos + 1, count, acc <> sep <> hex_str)
+  end
+
+  defp get_code([h | _]) do
+    h
+  end
+
+  defp get_hex_sep(0) do
+    ""
+  end
+
+  defp get_hex_sep(8) do
+    "  "
+  end
+
+  defp get_hex_sep(_pos) do
+    " "
+  end
+
+  defp format_ascii(text, base, pos, count, acc) do
+    case pos do
+      p when p == count -> acc
+      _ -> format_ascii_one(text, base, pos, count, acc)
+    end
+  end
+
+  defp format_ascii_one(text, base, pos, count, acc) do
+    ch = String.slice(text, base + pos, 1)
+    code = get_code(String.to_charlist(ch))
+    display = printable(code, ch)
+    format_ascii(text, base, pos + 1, count, acc <> display)
+  end
+
+  defp printable(code, ch) do
+    case code do
+      c when c >= 32 -> check_high(c, ch)
+      _ -> "."
+    end
+  end
+
+  defp check_high(code, ch) do
+    case code do
+      c when c <= 126 -> ch
+      _ -> "."
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Hex Dump"), "========", ""]) do
+      _ -> case show_dump("Hello, World!", "Short ASCII string") do
+        _ -> case IO.puts("") do
+          _ -> case show_dump("The quick brown fox jumps over the lazy dog.", "Multi-line dump") do
+            _ -> case IO.puts("") do
+              _ -> case show_dump("0123456789ABCDEF", "Exactly 16 bytes") do
+                _ -> case IO.puts("") do
+                  _ -> show_dump("!@#$%^&*(){}[]<>", "Special characters")
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_dump(text, label) do
+    byte_count = count_bytes(text)
+    colored = IO.ansi_blue(label)
+    header = colored <> " (" <> "#{byte_count}" <> " bytes):"
+    case IO.puts(header) do
+      _ -> HexDump.dump(text)
+    end
+  end
+
+  defp count_bytes(text) do
+    Enum.count(String.to_charlist(text))
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
