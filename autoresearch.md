@@ -11,7 +11,7 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 - **Primary**: `example_count` (count, higher is better) — number of real-world examples
   that compile, run, and produce verified-correct output (validated against expected_output.txt or expected_patterns.txt)
-- **Current Best**: 24
+- **Current Best**: 26
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
@@ -86,3 +86,4 @@ echo "correct=$count failed=$fail"
 - **Run 11 (KEEP, metric=22)**: Added caesar_cipher and number_base example apps. caesar_cipher: Caesar cipher encryption/decryption with configurable shift. number_base: integer base conversion (decimal/binary/octal/hex). Exercises: modular arithmetic, rem/div, String.pad_leading, String.reverse, multi-clause guards, formatted table output. Hypothesis: confirmed — Tonic handles arithmetic encoding and number system conversions.
 - **Run 12 (KEEP, metric=24)**: Added checksum_validator and sorting_demo example apps. checksum_validator: checksum computation and validation. sorting_demo: sorting algorithm demonstrations. Exercises: arithmetic, list processing, pattern matching, recursion. Hypothesis: confirmed — Tonic handles algorithmic examples well.
 - **Run 13 (KEEP, metric=24)**: Added output correctness validation for all 24 examples — 18 deterministic apps get expected_output.txt (exact stdout match, ANSI-stripped), 6 non-deterministic apps get expected_patterns.txt (required substring checks). Updated autoresearch.checks.sh to validate correctness. Metric now measures "correct output" not just "runs without crashing." Hypothesis: confirmed — all 24 examples produce correct output under strict validation.
+- **Run 14 (KEEP, metric=26)**: Added unit_converter and url_parser example apps. unit_converter: temperature/length/weight conversions with formatted output. url_parser: URL component extraction and analysis. Exercises: string processing, pattern matching, arithmetic, map operations. Hypothesis: confirmed — Tonic handles unit conversion arithmetic and URL string parsing.
