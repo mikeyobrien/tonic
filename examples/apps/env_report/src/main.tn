@@ -1,0 +1,80 @@
+defmodule EnvReport do
+  def report() do
+    case IO.puts(IO.ansi_blue("System Environment Report")) do
+      _ -> case IO.puts("==========================") do
+        _ -> case print_section(IO.ansi_yellow("Directories"), dir_info()) do
+          _ -> case IO.puts("") do
+            _ -> case print_section(IO.ansi_yellow("Environment Variables"), env_info()) do
+              _ -> case IO.puts("") do
+                _ -> print_section(IO.ansi_yellow("Tool Availability"), tool_info())
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp dir_info() do
+    [
+      {String.pad_trailing("Working Dir", 20, " "), System.cwd()},
+      {String.pad_trailing("Home", 20, " "), env_or_default("HOME", "unknown")},
+      {String.pad_trailing("Temp Dir", 20, " "), env_or_default("TMPDIR", "/tmp")}
+    ]
+  end
+
+  defp env_info() do
+    [
+      {String.pad_trailing("SHELL", 20, " "), env_or_default("SHELL", "not set")},
+      {String.pad_trailing("USER", 20, " "), env_or_default("USER", "not set")},
+      {String.pad_trailing("TERM", 20, " "), env_or_default("TERM", "not set")},
+      {String.pad_trailing("LANG", 20, " "), env_or_default("LANG", "not set")},
+      {String.pad_trailing("PATH", 20, " "), env_or_default("PATH", "not set")}
+    ]
+  end
+
+  defp tool_info() do
+    [
+      {String.pad_trailing("git", 20, " "), which_status("git")},
+      {String.pad_trailing("cargo", 20, " "), which_status("cargo")},
+      {String.pad_trailing("nix", 20, " "), which_status("nix")},
+      {String.pad_trailing("python", 20, " "), which_status("python")}
+    ]
+  end
+
+  defp env_or_default(key, fallback) do
+    case System.env(key) do
+      nil -> fallback
+      value -> value
+    end
+  end
+
+  defp which_status(cmd) do
+    case System.which(cmd) do
+      nil -> IO.ansi_red("not found")
+      path -> IO.ansi_green(path)
+    end
+  end
+
+  defp print_section(header, rows) do
+    case IO.puts(header) do
+      _ -> print_rows(rows)
+    end
+  end
+
+  defp print_rows([]) do
+    :ok
+  end
+
+  defp print_rows([{label, value} | rest]) do
+    case IO.puts("  " <> label <> value) do
+      _ -> print_rows(rest)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    EnvReport.report()
+  end
+end

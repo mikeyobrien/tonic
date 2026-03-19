@@ -1,0 +1,3 @@
+1|buy groceries|pending
+2|write tests|done
+3|clean kitchen|pending

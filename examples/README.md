@@ -18,3 +18,5 @@ Project-mode examples in `apps/`. Run with `tonic run examples/apps/<name>`.
 | [mini_template](apps/mini_template/) | Replace `{{key}}` placeholders in a template with values from a map | String.contains, String.replace, Map.get, Map.keys, recursion over key lists |
 | [text_stats](apps/text_stats/) | Read a text file and compute line/word/char counts, unique words, and top-5 frequencies | String.downcase, String.length, Map.values, Enum.count, Enum.sort, for comprehensions, List.flatten |
 | [path_analyzer](apps/path_analyzer/) | Walk a directory tree and display file extension frequency | System.list_files_recursive, Path.extname, Map.keys, Map.delete, guard expressions, recursive accumulation |
+| [todo_manager](apps/todo_manager/) | CLI todo list with file persistence and colored status display | System.write_text, String.to_integer, IO.ansi_green, IO.ansi_red, IO.ansi_yellow, file I/O, map construction |
+| [env_report](apps/env_report/) | System environment reporter with aligned key-value display | System.env, System.cwd, System.which, String.pad_trailing, IO.ansi_blue, IO.ansi_yellow, IO.ansi_green, IO.ansi_red |

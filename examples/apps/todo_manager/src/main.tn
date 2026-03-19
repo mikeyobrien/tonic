@@ -1,0 +1,129 @@
+defmodule TodoManager do
+  def load(path) do
+    parse_lines(String.split(System.read_text(path), line_sep()), [])
+  end
+
+  defp parse_lines([], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp parse_lines(["" | rest], acc) do
+    parse_lines(rest, acc)
+  end
+
+  defp parse_lines([line | rest], acc) do
+    parse_lines(rest, [parse_todo(String.split(line, "|"))] ++ acc)
+  end
+
+  defp parse_todo([id_str, title, status]) do
+    %{id: String.to_integer(id_str), title: title, status: status}
+  end
+
+  defp parse_todo(_) do
+    %{id: 0, title: "unknown", status: "pending"}
+  end
+
+  def save(todos, path) do
+    System.write_text(path, format_all(todos, ""))
+  end
+
+  defp format_all([], acc) do
+    acc
+  end
+
+  defp format_all([todo | rest], acc) do
+    format_all(rest, acc <> format_one(todo))
+  end
+
+  defp format_one(todo) do
+    "#{Map.get(todo, :id, 0)}|#{Map.get(todo, :title, "")}|#{Map.get(todo, :status, "pending")}" <> line_sep()
+  end
+
+  def list(todos) do
+    print_todos(todos)
+  end
+
+  defp print_todos([]) do
+    :ok
+  end
+
+  defp print_todos([todo | rest]) do
+    case IO.puts(format_display(todo)) do
+      _ -> print_todos(rest)
+    end
+  end
+
+  defp format_display(todo) do
+    case Map.get(todo, :status, "pending") do
+      "done" -> IO.ansi_green("[x] ##{Map.get(todo, :id, 0)} #{Map.get(todo, :title, "")}")
+      _ -> IO.ansi_red("[ ] ##{Map.get(todo, :id, 0)} #{Map.get(todo, :title, "")}")
+    end
+  end
+
+  def add(todos, title) do
+    [%{id: next_id(todos), title: title, status: "pending"}] ++ todos
+  end
+
+  defp next_id(todos) do
+    max_id(todos, 0) + 1
+  end
+
+  defp max_id([], current) do
+    current
+  end
+
+  defp max_id([todo | rest], current) do
+    case Map.get(todo, :id, 0) do
+      id when id > current -> max_id(rest, id)
+      _ -> max_id(rest, current)
+    end
+  end
+
+  def mark_done(todos, target_id) do
+    mark_each(todos, target_id, [])
+  end
+
+  defp mark_each([], _target_id, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp mark_each([todo | rest], target_id, acc) do
+    case Map.get(todo, :id, 0) do
+      id when id == target_id ->
+        mark_each(rest, target_id, [Map.put(todo, :status, "done")] ++ acc)
+      _ ->
+        mark_each(rest, target_id, [todo] ++ acc)
+    end
+  end
+
+  defp line_sep() do
+    """
+"""
+  end
+end
+
+defmodule Demo do
+  def run() do
+    dispatch(System.argv())
+  end
+
+  defp dispatch([_, "run", dir]) do
+    show_all(dir)
+  end
+
+  defp dispatch([_, "run", dir | _rest]) do
+    show_all(dir)
+  end
+
+  defp dispatch(_) do
+    show_all(".")
+  end
+
+  defp show_all(dir) do
+    case IO.puts(IO.ansi_yellow("Todo Manager")) do
+      _ -> case IO.puts("================") do
+        _ -> TodoManager.list(TodoManager.load(dir <> "/data/todos.txt"))
+      end
+    end
+  end
+end
