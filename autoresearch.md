@@ -1,98 +1,70 @@
-# Autoresearch: Production Readiness of the Tonic Language
+# Autoresearch: Real-World Examples for Tonic
 
-## Goal
+## Objective
 
-Improve Tonic's production readiness through an autonomous experiment loop.
-Each iteration should close a concrete gap: code quality, test coverage,
-stdlib completeness, parity, documentation accuracy, or structural health.
+Create a catalog of real-world, runnable examples in `examples/` that showcase Tonic's
+capabilities as a practical programming language. Each example should demonstrate idiomatic
+Tonic patterns and exercise the stdlib surface honestly. Fix any language gaps that prevent
+implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
-## Primary Metric
+## Metrics
 
-`readiness_gaps` — count of measurable production-readiness deficits.
-Direction: lower is better. Zero means all tracked gaps are closed.
+- **Primary**: `example_count` (count, higher is better) — number of new real-world examples
+  that compile, run, and produce correct output
+- **Current Best**: 4
+- **Secondary**: language gaps fixed, stdlib coverage exercised
 
-### Gap categories tracked
-
-1. **Oversized files** — source files in `src/` exceeding 500 lines (project policy)
-2. **Clippy/fmt violations** — any warnings or format drift
-3. **Test failures** — any failing tests in `cargo test`
-4. **Differential correctness failures** — interpreter vs compiled backend mismatches
-5. **PARITY.md unchecked items** — `[ ]` items in the syntax parity checklist
-6. **PARITY.md partial items** — `[~]` items that need completion
-7. **Stdlib gap P1 items** — P1 gaps from `docs/core-stdlib-gap-list.md`
-8. **Single TODO/FIXME/HACK/XXX markers** — unresolved code debt
-
-### How gaps are counted
+## Benchmark Command
 
 ```bash
-# Oversized files (>500 lines in src/)
-find src -name '*.rs' | xargs wc -l | awk '$1 > 500 && !/total/ {count++} END {print count}'
-
-# Clippy (0 or 1)
-cargo clippy --all-targets --all-features -- -D warnings 2>&1 | grep -c '^error'
-
-# Fmt (0 or 1)
-cargo fmt --all -- --check 2>&1 | grep -c '^Diff'
-
-# Test failures
-cargo test 2>&1 | grep '^test result:' | awk '{sum += $6} END {print sum}'
-
-# Parity unchecked (exclude legend section)
-awk '/^---$/{past_legend=1} past_legend && /^\- \[ \]/' PARITY.md | wc -l
-
-# Parity partial (exclude legend section)
-awk '/^---$/{past_legend=1} past_legend && /^\- \[~\]/' PARITY.md | wc -l
-
-# Stdlib P1 gaps
-grep -c '| P1 |' docs/core-stdlib-gap-list.md 2>/dev/null || echo 0
-
-# TODO/FIXME/HACK/XXX
-grep -r 'TODO\|FIXME\|HACK\|XXX' src/ --include='*.rs' | wc -l
+# Count runnable real-world examples (project-mode apps in examples/apps/)
+count=0; fail=0
+for dir in examples/apps/*/; do
+  if [ -f "$dir/tonic.toml" ]; then
+    if TMPDIR=/home/mobrienv/projects/tonic/.tmp cargo run --quiet --bin tonic -- run "$dir" >/dev/null 2>&1; then
+      count=$((count + 1))
+    else
+      fail=$((fail + 1))
+    fi
+  fi
+done
+echo "runnable=$count failed=$fail"
 ```
 
-## Checks
+## Files in Scope
 
-The experiment passes if:
-1. `cargo fmt --all -- --check` exits 0
-2. `cargo clippy --all-targets --all-features -- -D warnings` exits 0
-3. `cargo test` exits 0
+- `examples/apps/*/` — project-mode examples (create new subdirectories here)
+- `examples/README.md` — catalog of all examples (create this)
+- `src/interop/*.rs` — stdlib host functions (may need fixes/additions)
+- `src/runtime/*.rs` — interpreter (may need fixes)
+- `src/manifest.rs` — stdlib injection (may need fixes)
+- `stdlib/*.tn` — pure-Tonic stdlib modules (may need fixes)
 
-## Current Best
+## Off Limits
 
-**readiness_gaps = 0** (Run 22) — down from baseline of 20
+- `src/parser/` — no parser changes unless blocking an example
+- `src/lexer/` — no lexer changes unless blocking an example
+- `PARITY.md` — not updating parity tracking
+- `examples/parity/` — existing parity fixtures must not change
+
+## Constraints
+
+- All examples must compile and run: `tonic run examples/apps/<name>` exits 0
+- Existing tests must still pass: `cargo test` exits 0
+- No clippy warnings: `cargo clippy --all-targets -- -D warnings` exits 0
+- Examples should use only the Core-supported stdlib surface (System, String, Path, IO, List, Map, Enum)
+- Each example should be a project-mode app with `tonic.toml` + `src/main.tn`
+- Examples should be practical programs a user might actually want to write
+
+## Example Ideas (prioritized)
+
+1. **json_encoder** — encode Tonic data structures (maps, lists, strings, numbers, bools, nil) to JSON strings. Demonstrates: recursion, pattern matching, string building, type dispatch.
+2. **word_counter** — read a text file, count word frequencies, display sorted results. Demonstrates: System.read_text, String.split, Map, Enum.sort, IO.puts.
+3. **file_tree** — recursively list directory contents with tree-style formatting. Demonstrates: System, Path, recursion, string formatting.
+4. **csv_processor** — parse CSV data, filter/transform rows, output results. Demonstrates: String.split, List, Enum, for comprehensions, pipes.
+5. **config_parser** — parse a simple key=value config file. Demonstrates: String operations, Map.put, file I/O, error handling with `with`.
+6. **markdown_headings** — extract and display heading hierarchy from a markdown file. Demonstrates: String.starts_with, pattern matching, list building.
 
 ## What's Been Tried
 
-- **Run 1 (DISCARD, metric=20)**: Baseline measurement — 18 oversized files, 2 partial parity items.
-- **Run 2 (KEEP, metric=19)**: Split typing.rs (782→294 lines). Hypothesis: splitting oversized files reduces gap count — confirmed.
-- **Run 3 (KEEP, metric=18)**: Split resolver.rs (1086→401 lines). Hypothesis: continued file splitting — confirmed.
-- **Run 4 (KEEP, metric=17)**: Split llvm_backend/tests.rs (739→395 lines). Hypothesis: continued — confirmed.
-- **Run 5 (KEEP, metric=16)**: Split parser/tests.rs (1213→490 lines). Hypothesis: continued — confirmed.
-- **Run 6 (KEEP, metric=15)**: Split manifest.rs (1239→414 lines). Hypothesis: continued — confirmed.
-- **Run 7 (KEEP, metric=14)**: Split stubs_for.rs (778→406 lines). Hypothesis: continued — confirmed.
-- **Run 8 (KEEP, metric=13)**: Split interop.rs (1580→199 lines). Hypothesis: continued — confirmed.
-- **Run 9 (KEEP, metric=12)**: Split stubs_try.rs (562→293 lines). Hypothesis: continued — confirmed.
-- **Run 10 (KEEP, metric=11)**: Split runtime_patterns.rs (574→345 lines). Hypothesis: continued — confirmed.
-- **Run 11 (KEEP, metric=10)**: Split interop/http_server.rs (1407→484 lines). Hypothesis: continued — confirmed.
-- **Run 12 (KEEP, metric=9)**: Split interop/system.rs (1445→481 lines). Hypothesis: continued — confirmed.
-- **Run 13 (KEEP, metric=8)**: Split parser/ast.rs (1112→473 lines). Hypothesis: continued — confirmed.
-- **Run 14 (KEEP, metric=7)**: Split runtime.rs (1673→289 lines). Hypothesis: continued — confirmed.
-- **Run 15 (KEEP, metric=6)**: Split llvm_backend/codegen.rs (1716→349 lines). Hypothesis: continued — confirmed.
-- **Run 16 (KEEP, metric=5)**: Split ir.rs (2243→413 lines). Hypothesis: continued — confirmed.
-- **Run 17 (KEEP, metric=4)**: Split main.rs into cmd_*.rs handlers + split lexer.rs (2083 lines) into directory module with 5 files. Hypothesis: continued — confirmed.
-- **Run 18 (KEEP, metric=3)**: Split lexer/tests.rs (730→464+273 lines) into tests.rs and tests_extended.rs. Hypothesis: continued file splitting — confirmed.
-- **Run 19 (DISCARD, metric=5)**: Split stubs.rs (3484 lines) into 5 helper files + thin orchestrator. Hypothesis: splitting into 5 files would reduce oversized count — refuted. Helper files themselves exceeded 500 lines, increasing oversized count from 1 to 3.
-- **Run 20 (KEEP, metric=2)**: Split stubs.rs (3484 lines) into 10 content files + thin orchestrator — all under 500 lines. Hypothesis: finer-grained 10-file split at C function boundaries keeps all files under 500 lines — confirmed. Zero oversized files remaining.
-- **Run 21 (KEEP, metric=1)**: Added universal diagnostic hints — converted 19 bare `CliDiagnostic::usage()` calls to `usage_with_hint()` with contextual suggestions across all CLI commands. Hypothesis: making hints universal closes 1 partial parity gap — confirmed.
-- **Run 22 (KEEP, metric=0)**: Added proper `Binary` value type for bitstring literals — `RuntimeValue::Binary` variant in interpreter, `TN_OBJ_BINARY` kind in C backend, updated guards/pattern matching/IO rendering/GC. Hypothesis: making bitstrings semantically distinct from lists closes the last partial parity gap — confirmed.
-
-## Rules
-
-- Do not overfit to benchmarks or cheat on benchmarks.
-- Each iteration should close exactly one gap or a small coherent group.
-- Commit when tests pass.
-- Keep implementation files at 500 lines or less.
-- Treat dead code and clippy warnings as hard blockers.
-- Do not break existing tests to reduce gap count.
-- Prefer structural improvements over cosmetic changes.
-- When splitting oversized files, preserve all existing functionality and tests.
+- **Run 1 (KEEP, metric=4)**: Created json_encoder example app with multi-clause guard-based type dispatch, recursive list/map encoding, and examples/README.md catalog. All 4 apps in examples/apps/ run successfully. Hypothesis: confirmed — idiomatic Tonic can express real JSON encoding.

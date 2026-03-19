@@ -1,0 +1,69 @@
+defmodule JsonEncoder do
+  def encode(value) when is_nil(value) do
+    "null"
+  end
+
+  def encode(true) do
+    "true"
+  end
+
+  def encode(false) do
+    "false"
+  end
+
+  def encode(value) when is_integer(value) do
+    "#{value}"
+  end
+
+  def encode(value) when is_float(value) do
+    "#{value}"
+  end
+
+  def encode(value) when is_binary(value) do
+    ~s(") <> value <> ~s(")
+  end
+
+  def encode(value) when is_atom(value) do
+    ~s(") <> "#{value}" <> ~s(")
+  end
+
+  def encode(value) when is_list(value) do
+    "[" <> encode_items(value) <> "]"
+  end
+
+  def encode(value) when is_map(value) do
+    "{" <> encode_entries(Map.keys(value), value) <> "}"
+  end
+
+  defp encode_items([]) do
+    ""
+  end
+
+  defp encode_items([item]) do
+    encode(item)
+  end
+
+  defp encode_items([head | tail]) do
+    encode(head) <> ", " <> encode_items(tail)
+  end
+
+  defp encode_entries([], _map) do
+    ""
+  end
+
+  defp encode_entries([key], map) do
+    encode_key(key) <> ": " <> encode(Map.get(map, key, nil))
+  end
+
+  defp encode_entries([key | rest], map) do
+    encode_key(key) <> ": " <> encode(Map.get(map, key, nil)) <> ", " <> encode_entries(rest, map)
+  end
+
+  defp encode_key(key) when is_atom(key) do
+    ~s(") <> "#{key}" <> ~s(")
+  end
+
+  defp encode_key(key) do
+    ~s(") <> "#{key}" <> ~s(")
+  end
+end
