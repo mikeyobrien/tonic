@@ -564,7 +564,7 @@ status = "active"
 path = "examples/parity/99-stretch/bitstring_binary.tn"
 check_exit = 0
 run_exit = 0
-stdout = '''[1, 2, 3]
+stdout = '''<<1, 2, 3>>
 '''
 status = "active"
 

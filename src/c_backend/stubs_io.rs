@@ -250,6 +250,16 @@ static void tn_render_value(FILE *out, TnVal value) {
       }
       fputc(']', out);
       return;
+    case TN_OBJ_BINARY:
+      fputs("<<", out);
+      for (size_t i = 0; i < obj->as.list.len; i += 1) {
+        if (i > 0) {
+          fputs(", ", out);
+        }
+        tn_render_value(out, obj->as.list.items[i]);
+      }
+      fputs(">>", out);
+      return;
     case TN_OBJ_MAP:
       fputs("%{", out);
       for (size_t i = 0; i < obj->as.map_like.len; i += 1) {

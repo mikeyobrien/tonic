@@ -148,11 +148,11 @@ pub(crate) fn evaluate_builtin_call(
         "byte_size" => {
             let arg = expect_single_builtin_arg(name, args, offset)?;
             match arg {
-                RuntimeValue::List(ref items) => Ok(RuntimeValue::Int(items.len() as i64)),
+                RuntimeValue::Binary(ref items) => Ok(RuntimeValue::Int(items.len() as i64)),
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::UnsupportedBuiltin,
                     format!(
-                        "byte_size expects a bitstring (list), found {}",
+                        "byte_size expects a binary, found {}",
                         runtime_value_kind(&arg)
                     ),
                     offset,
@@ -162,11 +162,11 @@ pub(crate) fn evaluate_builtin_call(
         "bit_size" => {
             let arg = expect_single_builtin_arg(name, args, offset)?;
             match arg {
-                RuntimeValue::List(ref items) => Ok(RuntimeValue::Int((items.len() * 8) as i64)),
+                RuntimeValue::Binary(ref items) => Ok(RuntimeValue::Int((items.len() * 8) as i64)),
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::UnsupportedBuiltin,
                     format!(
-                        "bit_size expects a bitstring (list), found {}",
+                        "bit_size expects a binary, found {}",
                         runtime_value_kind(&arg)
                     ),
                     offset,
@@ -194,6 +194,7 @@ pub(crate) fn runtime_value_kind(value: &RuntimeValue) -> &'static str {
         RuntimeValue::Map(_) => "map",
         RuntimeValue::Keyword(_) => "keyword",
         RuntimeValue::List(_) => "list",
+        RuntimeValue::Binary(_) => "binary",
         RuntimeValue::Range(_, _) => "range",
         RuntimeValue::SteppedRange(_, _, _) => "stepped_range",
         RuntimeValue::Closure(_) => "function",

@@ -27,6 +27,7 @@ pub enum RuntimeValue {
     Map(Vec<(RuntimeValue, RuntimeValue)>),
     Keyword(Vec<(RuntimeValue, RuntimeValue)>),
     List(Vec<RuntimeValue>),
+    Binary(Vec<RuntimeValue>),
     Range(i64, i64),
     SteppedRange(i64, i64, i64),
     Closure(Box<RuntimeClosure>),
@@ -70,6 +71,10 @@ impl RuntimeValue {
                 let items: Vec<String> = items.iter().map(|item| item.render()).collect();
                 format!("[{}]", items.join(", "))
             }
+            Self::Binary(bytes) => {
+                let items: Vec<String> = bytes.iter().map(|b| b.render()).collect();
+                format!("<<{}>>", items.join(", "))
+            }
             Self::Range(start, end) => format!("{}..{}", start, end),
             Self::SteppedRange(start, end, step) => format!("{}..{}//{}", start, end, step),
             Self::Closure(closure) => format!("#Function<{}>", closure.params.len()),
@@ -89,6 +94,7 @@ impl RuntimeValue {
             Self::Map(_) => "map",
             Self::Keyword(_) => "keyword",
             Self::List(_) => "list",
+            Self::Binary(_) => "binary",
             Self::Range(_, _) => "range",
             Self::SteppedRange(_, _, _) => "stepped_range",
             Self::Closure(_) => "function",

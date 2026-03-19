@@ -111,7 +111,7 @@ fn fixture_contracts() -> Vec<(&'static str, &'static str)> {
         ),
         (
             "examples/parity/99-stretch/bitstring_binary.tn",
-            "[1, 2, 3]\n",
+            "<<1, 2, 3>>\n",
         ),
         (
             "examples/parity/99-stretch/multi_entry_map_literal.tn",

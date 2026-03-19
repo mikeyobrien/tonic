@@ -228,16 +228,16 @@ static TnVal tn_runtime_list_subtract(TnVal left, TnVal right) {
 
 static TnVal tn_runtime_byte_size(TnVal value) {
   TnObj *obj = tn_get_obj(value);
-  if (obj == NULL || (obj->kind != TN_OBJ_LIST && obj->kind != TN_OBJ_KEYWORD)) {
-    return tn_runtime_failf("byte_size expects a bitstring (list), found %s", tn_runtime_value_kind(value));
+  if (obj == NULL || obj->kind != TN_OBJ_BINARY) {
+    return tn_runtime_failf("byte_size expects a binary, found %s", tn_runtime_value_kind(value));
   }
   return (TnVal)obj->as.list.len;
 }
 
 static TnVal tn_runtime_bit_size(TnVal value) {
   TnObj *obj = tn_get_obj(value);
-  if (obj == NULL || (obj->kind != TN_OBJ_LIST && obj->kind != TN_OBJ_KEYWORD)) {
-    return tn_runtime_failf("bit_size expects a bitstring (list), found %s", tn_runtime_value_kind(value));
+  if (obj == NULL || obj->kind != TN_OBJ_BINARY) {
+    return tn_runtime_failf("bit_size expects a binary, found %s", tn_runtime_value_kind(value));
   }
   return (TnVal)(obj->as.list.len * 8);
 }

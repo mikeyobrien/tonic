@@ -284,7 +284,7 @@ fn runtime_value_to_json(
         RuntimeValue::Map(entries) | RuntimeValue::Keyword(entries) => Ok(JsonValue::Object(
             runtime_entries_to_json_object(function, path, entries)?,
         )),
-        RuntimeValue::List(items) => {
+        RuntimeValue::List(items) | RuntimeValue::Binary(items) => {
             let mut json_items = Vec::with_capacity(items.len());
             for (index, item) in items.iter().enumerate() {
                 json_items.push(runtime_value_to_json(

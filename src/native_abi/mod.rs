@@ -419,6 +419,7 @@ fn runtime_tag(value: &RuntimeValue) -> TValueTag {
         RuntimeValue::Map(_) => TValueTag::Map,
         RuntimeValue::Keyword(_) => TValueTag::Keyword,
         RuntimeValue::List(_) => TValueTag::List,
+        RuntimeValue::Binary(_) => TValueTag::List, // binary reuses list tag in native ABI
         RuntimeValue::Range(_, _) => TValueTag::Range,
         RuntimeValue::SteppedRange(_, _, _) => TValueTag::Range, // fallback to range tag
         RuntimeValue::Closure(_) => TValueTag::Closure,

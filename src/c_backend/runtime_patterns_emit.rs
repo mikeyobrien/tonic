@@ -187,7 +187,7 @@ pub(super) fn emit_pattern_case(
         }
         IrPattern::Bitstring { segments } => {
             out.push_str("  TnObj *list_obj = tn_get_obj(value);\n");
-            out.push_str("  if (list_obj == NULL || list_obj->kind != TN_OBJ_LIST) {\n");
+            out.push_str("  if (list_obj == NULL || list_obj->kind != TN_OBJ_BINARY) {\n");
             out.push_str("    return 0;\n");
             out.push_str("  }\n");
             out.push_str(&format!(

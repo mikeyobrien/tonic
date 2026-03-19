@@ -40,7 +40,7 @@ pub(crate) fn evaluate_guard_builtin(name: &str, value: &RuntimeValue) -> Option
         "is_float" => matches!(value, RuntimeValue::Float(_)),
         "is_number" => matches!(value, RuntimeValue::Int(_) | RuntimeValue::Float(_)),
         "is_atom" => matches!(value, RuntimeValue::Atom(_)),
-        "is_binary" => matches!(value, RuntimeValue::String(_)),
+        "is_binary" => matches!(value, RuntimeValue::String(_) | RuntimeValue::Binary(_)),
         "is_list" => matches!(value, RuntimeValue::List(_) | RuntimeValue::Keyword(_)),
         "is_tuple" => matches!(value, RuntimeValue::Tuple(_, _)),
         "is_map" => matches!(value, RuntimeValue::Map(_)),

@@ -18,7 +18,8 @@ typedef enum {
   TN_OBJ_KEYWORD,
   TN_OBJ_RANGE,
   TN_OBJ_RESULT,
-  TN_OBJ_CLOSURE
+  TN_OBJ_CLOSURE,
+  TN_OBJ_BINARY
 } TnObjKind;
 
 typedef struct {

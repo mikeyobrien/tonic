@@ -91,7 +91,7 @@ static TnVal tn_runtime_make_bitstring_varargs(TnVal count, ...) {
   }
 
   size_t len = (size_t)count;
-  TnObj *obj = tn_new_obj(TN_OBJ_LIST);
+  TnObj *obj = tn_new_obj(TN_OBJ_BINARY);
   obj->as.list.len = len;
   obj->as.list.items = len == 0 ? NULL : (TnVal *)calloc(len, sizeof(TnVal));
   if (len > 0 && obj->as.list.items == NULL) {
@@ -160,6 +160,7 @@ static int tn_runtime_value_equal(TnVal left, TnVal right) {
       return tn_runtime_value_equal(left_obj->as.tuple.left, right_obj->as.tuple.left) &&
              tn_runtime_value_equal(left_obj->as.tuple.right, right_obj->as.tuple.right);
     case TN_OBJ_LIST:
+    case TN_OBJ_BINARY:
       if (left_obj->as.list.len != right_obj->as.list.len) {
         return 0;
       }
@@ -219,6 +220,8 @@ static const char *tn_runtime_value_kind(TnVal value) {
       return "tuple";
     case TN_OBJ_LIST:
       return "list";
+    case TN_OBJ_BINARY:
+      return "binary";
     case TN_OBJ_MAP:
       return "map";
     case TN_OBJ_KEYWORD:
@@ -259,7 +262,7 @@ static TnVal tn_runtime_guard_is_atom(TnVal value) {
 
 static TnVal tn_runtime_guard_is_binary(TnVal value) {
   TnObj *obj = tn_get_obj(value);
-  return (obj != NULL && obj->kind == TN_OBJ_STRING) ? 1 : 0;
+  return (obj != NULL && (obj->kind == TN_OBJ_STRING || obj->kind == TN_OBJ_BINARY)) ? 1 : 0;
 }
 
 static TnVal tn_runtime_guard_is_list(TnVal value) {

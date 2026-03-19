@@ -415,7 +415,7 @@ pub(crate) fn evaluate_ops(
                     bytes.push(pop_value(stack, *offset, "bitstring byte")?);
                 }
                 bytes.reverse();
-                stack.push(RuntimeValue::List(bytes));
+                stack.push(RuntimeValue::Binary(bytes));
             }
         }
     }

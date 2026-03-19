@@ -59,7 +59,7 @@ The experiment passes if:
 
 ## Current Best
 
-**readiness_gaps = 1** (Run 21) — down from baseline of 20
+**readiness_gaps = 0** (Run 22) — down from baseline of 20
 
 ## What's Been Tried
 
@@ -84,6 +84,7 @@ The experiment passes if:
 - **Run 19 (DISCARD, metric=5)**: Split stubs.rs (3484 lines) into 5 helper files + thin orchestrator. Hypothesis: splitting into 5 files would reduce oversized count — refuted. Helper files themselves exceeded 500 lines, increasing oversized count from 1 to 3.
 - **Run 20 (KEEP, metric=2)**: Split stubs.rs (3484 lines) into 10 content files + thin orchestrator — all under 500 lines. Hypothesis: finer-grained 10-file split at C function boundaries keeps all files under 500 lines — confirmed. Zero oversized files remaining.
 - **Run 21 (KEEP, metric=1)**: Added universal diagnostic hints — converted 19 bare `CliDiagnostic::usage()` calls to `usage_with_hint()` with contextual suggestions across all CLI commands. Hypothesis: making hints universal closes 1 partial parity gap — confirmed.
+- **Run 22 (KEEP, metric=0)**: Added proper `Binary` value type for bitstring literals — `RuntimeValue::Binary` variant in interpreter, `TN_OBJ_BINARY` kind in C backend, updated guards/pattern matching/IO rendering/GC. Hypothesis: making bitstrings semantically distinct from lists closes the last partial parity gap — confirmed.
 
 ## Rules
 

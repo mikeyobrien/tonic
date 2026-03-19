@@ -53,6 +53,7 @@ pub(super) fn host_value_kind(value: &RuntimeValue) -> &'static str {
         RuntimeValue::Map(_) => "map",
         RuntimeValue::Keyword(_) => "keyword",
         RuntimeValue::List(_) => "list",
+        RuntimeValue::Binary(_) => "binary",
         RuntimeValue::Range(_, _) => "range",
         RuntimeValue::SteppedRange(_, _, _) => "stepped_range",
         RuntimeValue::Closure(_) => "function",

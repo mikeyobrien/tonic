@@ -22,6 +22,7 @@ static void tn_runtime_gc_free_payload(TnObj *obj) {
       free(obj->as.text.text);
       return;
     case TN_OBJ_LIST:
+    case TN_OBJ_BINARY:
       free(obj->as.list.items);
       return;
     case TN_OBJ_MAP:
@@ -52,6 +53,7 @@ static void tn_runtime_gc_mark_value(TnVal value) {
       tn_runtime_gc_mark_value(obj->as.tuple.right);
       return;
     case TN_OBJ_LIST:
+    case TN_OBJ_BINARY:
       for (size_t i = 0; i < obj->as.list.len; i += 1) {
         tn_runtime_gc_mark_value(obj->as.list.items[i]);
       }
@@ -206,6 +208,7 @@ static void tn_runtime_release(TnVal value) {
       }
       break;
     case TN_OBJ_LIST:
+    case TN_OBJ_BINARY:
       for (size_t i = 0; i < obj->as.list.len; i += 1) {
         if (obj->as.list.items[i] != self_value) {
           tn_runtime_release(obj->as.list.items[i]);

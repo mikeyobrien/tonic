@@ -39,7 +39,7 @@ _Last updated: 2026-03-15_
 - [x] string interpolation (`"#{expr}"`) (`tests/check_dump_ast_string_interpolation.rs`)
 - [x] heredocs (`"""..."""`) (`examples/parity/01-literals/heredoc_multiline.tn`)
 - [x] sigils: `~s`/`~r`/`~w` (`examples/parity/99-stretch/sigils.tn`, `examples/parity/99-stretch/sigils_extended.tn`, `src/lexer.rs`)
-- [~] bitstring literal parse support (`<<...>>`) but runtime lowered as list (`examples/parity/99-stretch/bitstring_binary.tn`)
+- [x] bitstring literal support (`<<...>>`) with proper Binary value type (`examples/parity/99-stretch/bitstring_binary.tn`)
 - [x] hex/octal/binary integer literals (`examples/parity/01-literals/hex_octal_binary.tn`, `src/lexer.rs`)
 - [x] numeric separators (`1_000`) (`examples/parity/01-literals/numeric_separators.tn`, `src/lexer.rs`)
 - [x] char literals (`?a`) (`examples/parity/01-literals/char_literals.tn`, `src/lexer.rs`)

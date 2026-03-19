@@ -122,7 +122,7 @@ pub(crate) fn match_pattern(
             _ => false,
         },
         IrPattern::Bitstring { segments } => match value {
-            RuntimeValue::List(bytes) => {
+            RuntimeValue::Binary(bytes) => {
                 if bytes.len() != segments.len() {
                     return false;
                 }
