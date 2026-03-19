@@ -1,0 +1,69 @@
+defmodule FileTree do
+  def print_tree(path) do
+    case IO.puts(Path.basename(path)) do
+      _ -> print_children(path, "")
+    end
+  end
+
+  defp print_children(path, prefix) do
+    print_entries(System.list_dir(path), path, prefix)
+  end
+
+  defp print_entries([], _parent, _prefix) do
+    :ok
+  end
+
+  defp print_entries([name], parent, prefix) do
+    print_entry(name, parent, prefix, true)
+  end
+
+  defp print_entries([name | rest], parent, prefix) do
+    case print_entry(name, parent, prefix, false) do
+      _ -> print_entries(rest, parent, prefix)
+    end
+  end
+
+  defp print_entry(name, parent, prefix, is_last) do
+    case is_last do
+      true -> print_last_entry(name, parent, prefix)
+      _ -> print_middle_entry(name, parent, prefix)
+    end
+  end
+
+  defp print_last_entry(name, parent, prefix) do
+    case IO.puts(prefix <> "└── " <> name) do
+      _ -> maybe_recurse(Path.join(parent, name), prefix <> "    ")
+    end
+  end
+
+  defp print_middle_entry(name, parent, prefix) do
+    case IO.puts(prefix <> "├── " <> name) do
+      _ -> maybe_recurse(Path.join(parent, name), prefix <> "│   ")
+    end
+  end
+
+  defp maybe_recurse(full_path, child_prefix) do
+    case System.is_dir(full_path) do
+      true -> print_children(full_path, child_prefix)
+      _ -> :ok
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    FileTree.print_tree(target_path(System.argv()))
+  end
+
+  defp target_path([_, "run", dir]) do
+    dir
+  end
+
+  defp target_path([_, "run", dir | _rest]) do
+    dir
+  end
+
+  defp target_path(_) do
+    "."
+  end
+end

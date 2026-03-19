@@ -456,6 +456,8 @@ pub(super) fn register_system_host_functions(registry: &HostRegistry) {
     registry.register("sys_retry_plan", host_sys_retry_plan);
     registry.register("sys_log", host_sys_log);
     registry.register("sys_path_exists", host_sys_path_exists);
+    registry.register("sys_list_dir", host_sys_list_dir);
+    registry.register("sys_is_dir", host_sys_is_dir);
     registry.register("sys_list_files_recursive", host_sys_list_files_recursive);
     registry.register("sys_ensure_dir", host_sys_ensure_dir);
     registry.register("sys_remove_tree", host_sys_remove_tree);

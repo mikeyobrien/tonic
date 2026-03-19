@@ -1,0 +1,3 @@
+[project]
+name = "file_tree"
+entry = "src/main.tn"

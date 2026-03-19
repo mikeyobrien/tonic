@@ -424,6 +424,39 @@ pub(super) fn host_sys_path_exists(args: &[RuntimeValue]) -> Result<RuntimeValue
     Ok(RuntimeValue::Bool(Path::new(&path).exists()))
 }
 
+pub(super) fn host_sys_list_dir(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("sys_list_dir", args, 1)?;
+    let path = expect_string_arg("sys_list_dir", args, 0)?;
+
+    if path.is_empty() {
+        return Err(HostError::new("sys_list_dir path must not be empty"));
+    }
+
+    let mut entries = std::fs::read_dir(&path)
+        .map_err(|error| HostError::new(format!("sys_list_dir failed for '{}': {error}", path)))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| HostError::new(format!("sys_list_dir failed for '{}': {error}", path)))?;
+
+    entries.sort_by(|left, right| {
+        left.file_name()
+            .to_string_lossy()
+            .cmp(&right.file_name().to_string_lossy())
+    });
+
+    let names: Vec<RuntimeValue> = entries
+        .into_iter()
+        .map(|entry| RuntimeValue::String(entry.file_name().to_string_lossy().into_owned()))
+        .collect();
+
+    Ok(RuntimeValue::List(names))
+}
+
+pub(super) fn host_sys_is_dir(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("sys_is_dir", args, 1)?;
+    let path = expect_string_arg("sys_is_dir", args, 0)?;
+    Ok(RuntimeValue::Bool(Path::new(&path).is_dir()))
+}
+
 pub(super) fn collect_relative_files_recursive(
     root_path: &Path,
     current_path: &Path,

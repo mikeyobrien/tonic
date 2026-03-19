@@ -13,6 +13,97 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
     return tn_runtime_const_bool((TnVal)(exists != 0));
   }
 
+  if (strcmp(key, "sys_list_dir") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_list_dir expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_list_dir expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *dir_path = path_obj->as.text.text;
+    if (dir_path[0] == '\0') {
+      return tn_runtime_fail("host error: sys_list_dir path must not be empty");
+    }
+    DIR *dir = opendir(dir_path);
+    if (dir == NULL) {
+      return tn_runtime_failf("host error: sys_list_dir failed for '%s': %s", dir_path, strerror(errno));
+    }
+    size_t names_cap = 16;
+    size_t names_len = 0;
+    char **names = (char **)calloc(names_cap, sizeof(char *));
+    if (names == NULL) {
+      closedir(dir);
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+        continue;
+      }
+      if (names_len >= names_cap) {
+        names_cap *= 2;
+        char **next = (char **)realloc(names, names_cap * sizeof(char *));
+        if (next == NULL) {
+          for (size_t i = 0; i < names_len; i++) free(names[i]);
+          free(names);
+          closedir(dir);
+          fprintf(stderr, "error: native runtime allocation failure\n");
+          exit(1);
+        }
+        names = next;
+      }
+      names[names_len] = strdup(entry->d_name);
+      if (names[names_len] == NULL) {
+        for (size_t i = 0; i < names_len; i++) free(names[i]);
+        free(names);
+        closedir(dir);
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      names_len += 1;
+    }
+    closedir(dir);
+    /* sort names lexicographically */
+    for (size_t i = 1; i < names_len; i++) {
+      for (size_t j = i; j > 0 && strcmp(names[j - 1], names[j]) > 0; j--) {
+        char *tmp = names[j - 1]; names[j - 1] = names[j]; names[j] = tmp;
+      }
+    }
+    TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+    list_obj->as.list.len = names_len;
+    list_obj->as.list.items = names_len == 0 ? NULL : (TnVal *)calloc(names_len, sizeof(TnVal));
+    if (names_len > 0 && list_obj->as.list.items == NULL) {
+      for (size_t i = 0; i < names_len; i++) free(names[i]);
+      free(names);
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    for (size_t i = 0; i < names_len; i++) {
+      list_obj->as.list.items[i] = tn_runtime_const_string((TnVal)(intptr_t)names[i]);
+      tn_runtime_retain(list_obj->as.list.items[i]);
+      free(names[i]);
+    }
+    free(names);
+    free(args);
+    return tn_heap_store(list_obj);
+  }
+
+  if (strcmp(key, "sys_is_dir") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_is_dir expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_is_dir expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    struct stat st;
+    int is_directory = (stat(path_obj->as.text.text, &st) == 0 && S_ISDIR(st.st_mode)) ? 1 : 0;
+    free(args);
+    return tn_runtime_const_bool((TnVal)(is_directory != 0));
+  }
+
   if (strcmp(key, "sys_list_files_recursive") == 0) {
     if (argc != 2) {
       return tn_runtime_failf("host error: sys_list_files_recursive expects exactly 1 argument, found %zu", argc - 1);
