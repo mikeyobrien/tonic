@@ -11,7 +11,7 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 - **Primary**: `example_count` (count, higher is better) — number of real-world examples
   that compile, run, and produce verified-correct output (validated against expected_output.txt or expected_patterns.txt)
-- **Current Best**: 28
+- **Current Best**: 30
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
@@ -88,3 +88,4 @@ echo "correct=$count failed=$fail"
 - **Run 13 (KEEP, metric=24)**: Added output correctness validation for all 24 examples — 18 deterministic apps get expected_output.txt (exact stdout match, ANSI-stripped), 6 non-deterministic apps get expected_patterns.txt (required substring checks). Updated autoresearch.checks.sh to validate correctness. Metric now measures "correct output" not just "runs without crashing." Hypothesis: confirmed — all 24 examples produce correct output under strict validation.
 - **Run 14 (KEEP, metric=26)**: Added unit_converter and url_parser example apps. unit_converter: temperature/length/weight conversions with formatted output. url_parser: URL component extraction and analysis. Exercises: string processing, pattern matching, arithmetic, map operations. Hypothesis: confirmed — Tonic handles unit conversion arithmetic and URL string parsing.
 - **Run 15 (KEEP, metric=28)**: Added matrix_math and hex_dump example apps. matrix_math: matrix operations (add, multiply, transpose, determinant) on nested lists. hex_dump: hex dump of text with offset/hex/ASCII columns. Exercises: nested list processing, arithmetic, number formatting, fixed-width alignment, chunked list processing. Hypothesis: confirmed — Tonic handles mathematical computation on nested data and byte-level formatting.
+- **Run 16 (KEEP, metric=30)**: Added brainfuck_interpreter and rpn_calculator example apps. brainfuck_interpreter: classic language interpreter with tape/memory, bracket matching, character-level dispatch. rpn_calculator: postfix arithmetic evaluator using list-as-stack pattern. Exercises: interpreter/evaluator patterns, list-as-stack, bracket matching, multi-clause pattern matching, mutable state threading. Hypothesis: confirmed — Tonic handles interpreter and stack-based evaluator patterns.
