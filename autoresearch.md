@@ -11,7 +11,7 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 - **Primary**: `example_count` (count, higher is better) — number of new real-world examples
   that compile, run, and produce correct output
-- **Current Best**: 22
+- **Current Best**: 24
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
@@ -78,3 +78,4 @@ echo "runnable=$count failed=$fail"
 - **Run 9 (KEEP, metric=18)**: Added log_analyzer and diff_viewer example apps. log_analyzer: log file analysis with pattern extraction. diff_viewer: text diff comparison. Exercises: file I/O, string processing, list operations. Hypothesis: confirmed — Tonic handles log analysis and text comparison patterns.
 - **Run 10 (KEEP, metric=20)**: Added roman_numerals and morse_code example apps. roman_numerals: Roman numeral conversion. morse_code: Morse code encoding/decoding. Exercises: pattern matching, string processing, map lookups, recursion. Hypothesis: confirmed — Tonic handles encoding/decoding and lookup-table patterns.
 - **Run 11 (KEEP, metric=22)**: Added caesar_cipher and number_base example apps. caesar_cipher: Caesar cipher encryption/decryption with configurable shift. number_base: integer base conversion (decimal/binary/octal/hex). Exercises: modular arithmetic, rem/div, String.pad_leading, String.reverse, multi-clause guards, formatted table output. Hypothesis: confirmed — Tonic handles arithmetic encoding and number system conversions.
+- **Run 12 (KEEP, metric=24)**: Added checksum_validator and sorting_demo example apps. checksum_validator: checksum computation and validation. sorting_demo: sorting algorithm demonstrations. Exercises: arithmetic, list processing, pattern matching, recursion. Hypothesis: confirmed — Tonic handles algorithmic examples well.
