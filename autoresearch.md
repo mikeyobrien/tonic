@@ -81,6 +81,7 @@ The experiment passes if:
 - **Run 16 (KEEP, metric=5)**: Split ir.rs (2243→413 lines). Hypothesis: continued — confirmed.
 - **Run 17 (KEEP, metric=4)**: Split main.rs into cmd_*.rs handlers + split lexer.rs (2083 lines) into directory module with 5 files. Hypothesis: continued — confirmed.
 - **Run 18 (KEEP, metric=3)**: Split lexer/tests.rs (730→464+273 lines) into tests.rs and tests_extended.rs. Hypothesis: continued file splitting — confirmed.
+- **Run 19 (DISCARD, metric=5)**: Split stubs.rs (3484 lines) into 5 helper files + thin orchestrator. Hypothesis: splitting into 5 files would reduce oversized count — refuted. Helper files themselves exceeded 500 lines, increasing oversized count from 1 to 3.
 
 ## Rules
 
