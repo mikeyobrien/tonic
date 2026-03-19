@@ -1,0 +1,47 @@
+defmodule Headings do
+  def extract(text) do
+    collect(String.split(text, newline()), [])
+  end
+
+  defp collect([], acc) do
+    acc
+  end
+
+  defp collect([line | rest], acc) do
+    case String.starts_with(String.trim(line), "#") do
+      true -> collect(rest, acc ++ [parse_heading(String.trim(line))])
+      _ -> collect(rest, acc)
+    end
+  end
+
+  defp parse_heading(line) do
+    level = count_hashes(line, 0)
+    title = String.trim(String.slice(line, level, 9999))
+    {level, title}
+  end
+
+  defp count_hashes(line, n) do
+    case String.starts_with(String.slice(line, n, 1), "#") do
+      true -> count_hashes(line, n + 1)
+      _ -> n
+    end
+  end
+
+  def format_toc(headings) do
+    format_entries(headings, [])
+  end
+
+  defp format_entries([], acc) do
+    acc
+  end
+
+  defp format_entries([{level, title} | rest], acc) do
+    indent = String.slice("            ", 0, (level - 1) * 2)
+    format_entries(rest, acc ++ [indent <> "- " <> title])
+  end
+
+  defp newline() do
+    """
+"""
+  end
+end

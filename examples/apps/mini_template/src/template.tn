@@ -1,0 +1,23 @@
+defmodule Template do
+  def render(text, vars) do
+    keys = Map.keys(vars)
+    apply_vars(text, keys, vars)
+  end
+
+  defp apply_vars(text, [], _vars) do
+    text
+  end
+
+  defp apply_vars(text, [key | rest], vars) do
+    placeholder = "{{" <> key <> "}}"
+    value = Map.get(vars, key, "")
+    apply_vars(replace_all(text, placeholder, value), rest, vars)
+  end
+
+  defp replace_all(text, pattern, replacement) do
+    case String.contains(text, pattern) do
+      true -> replace_all(String.replace(text, pattern, replacement), pattern, replacement)
+      _ -> text
+    end
+  end
+end

@@ -1,0 +1,7 @@
+Hello, {{name}}!
+
+Welcome to {{project}}. You are running version {{version}}.
+
+Your role is: {{role}}.
+
+Thank you for using {{project}}, {{name}}.

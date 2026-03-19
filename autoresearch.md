@@ -11,7 +11,7 @@ implementing real-world programs. Maintain the catalog at `examples/README.md`.
 
 - **Primary**: `example_count` (count, higher is better) — number of new real-world examples
   that compile, run, and produce correct output
-- **Current Best**: 8
+- **Current Best**: 10
 - **Secondary**: language gaps fixed, stdlib coverage exercised
 
 ## Benchmark Command
@@ -71,3 +71,4 @@ echo "runnable=$count failed=$fail"
 - **Run 2 (KEEP, metric=5)**: Added word_counter example app — reads a text file, splits into words, builds frequency map with recursive accumulator, sorts by count, displays formatted results. Exercises: System.read_text, String.split, Map.get/put, Enum.sort/reverse, for comprehensions. Hypothesis: confirmed — Tonic handles file I/O + string processing + map accumulation cleanly.
 - **Run 3 (KEEP, metric=6)**: Added file_tree example app with 2 new stdlib host functions (System.list_dir, System.is_dir) — recursively walks directories, prints tree-style output with connectors. Exercises: filesystem operations, recursive tree traversal, string formatting, Path.join. Hypothesis: confirmed — Tonic can express recursive directory walking with new stdlib additions.
 - **Run 4 (KEEP, metric=8)**: Added csv_processor and config_parser example apps. csv_processor: parses CSV data, filters/transforms rows, outputs formatted results. config_parser: parses key=value config files with String operations and Map building. Exercises: String.split, list processing, for comprehensions, pipes, Map.put, file I/O. Hypothesis: confirmed — Tonic handles structured text parsing patterns well.
+- **Run 5 (KEEP, metric=10)**: Added markdown_headings and mini_template example apps. markdown_headings: extracts headings from markdown files, displays indented TOC. mini_template: replaces {{key}} placeholders in templates with map values. Exercises: String.starts_with, String.slice, String.trim, String.contains, String.replace, Map.get, Map.keys, tuple construction, recursion. Hypothesis: confirmed — Tonic handles string-heavy text processing and template substitution patterns well.

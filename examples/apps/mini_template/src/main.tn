@@ -1,0 +1,27 @@
+defmodule Demo do
+  def run() do
+    template = System.read_text(data_path(System.argv()))
+    vars = %{
+      "name" => "Alice",
+      "project" => "Tonic",
+      "version" => "0.1.0",
+      "role" => "developer"
+    }
+    result = Template.render(template, vars)
+    case IO.puts(result) do
+      _ -> :ok
+    end
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/template.txt"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/template.txt"
+  end
+
+  defp data_path(_) do
+    "data/template.txt"
+  end
+end

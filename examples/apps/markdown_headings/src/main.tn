@@ -1,0 +1,38 @@
+defmodule Demo do
+  def run() do
+    text = System.read_text(data_path(System.argv()))
+    headings = Headings.extract(text)
+    display(headings)
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/sample.md"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/sample.md"
+  end
+
+  defp data_path(_) do
+    "data/sample.md"
+  end
+
+  defp display(headings) do
+    toc = Headings.format_toc(headings)
+    print_lines(
+      ["Table of Contents",
+       "=================",
+       ""] ++ toc
+    )
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
