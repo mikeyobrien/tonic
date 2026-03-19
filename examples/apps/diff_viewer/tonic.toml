@@ -1,0 +1,3 @@
+[project]
+name = "diff_viewer"
+entry = "src/main.tn"

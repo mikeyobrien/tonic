@@ -1,0 +1,152 @@
+defmodule DiffViewer do
+  def diff(old_text, new_text) do
+    old_lines = String.split(old_text, line_sep())
+    new_lines = String.split(new_text, line_sep())
+    compare(old_lines, new_lines, 1, [])
+  end
+
+  defp compare([], [], _num, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp compare([], [new_line | rest], num, acc) do
+    compare([], rest, num + 1, [%{type: "added", line: "#{new_line}", num: num}] ++ acc)
+  end
+
+  defp compare([old_line | rest], [], num, acc) do
+    compare(rest, [], num + 1, [%{type: "removed", line: "#{old_line}", num: num}] ++ acc)
+  end
+
+  defp compare([old_line | old_rest], [new_line | new_rest], num, acc) do
+    old_str = "#{old_line}"
+    new_str = "#{new_line}"
+    case String.contains(old_str, new_str) do
+      true ->
+        case String.contains(new_str, old_str) do
+          true ->
+            compare(old_rest, new_rest, num + 1, [%{type: "unchanged", line: old_str, num: num}] ++ acc)
+          _ ->
+            compare(old_rest, new_rest, num + 1, [%{type: "removed", line: old_str, num: num}, %{type: "added", line: new_str, num: num}] ++ acc)
+        end
+      _ ->
+        compare(old_rest, new_rest, num + 1, [%{type: "removed", line: old_str, num: num}, %{type: "added", line: new_str, num: num}] ++ acc)
+    end
+  end
+
+  defp line_sep() do
+    """
+"""
+  end
+end
+
+defmodule Display do
+  def show_diff(hunks) do
+    show_hunks(hunks)
+  end
+
+  defp show_hunks([]) do
+    :ok
+  end
+
+  defp show_hunks([hunk | rest]) do
+    type = "#{Map.get(hunk, :type, "unchanged")}"
+    line_text = "#{Map.get(hunk, :line, "")}"
+    formatted = format_line(type, line_text)
+    case IO.puts(formatted) do
+      _ -> show_hunks(rest)
+    end
+  end
+
+  defp format_line(type, line_text) do
+    case type do
+      "added" -> IO.ansi_green("+ " <> line_text)
+      "removed" -> IO.ansi_red("- " <> line_text)
+      _ -> IO.ansi_blue("  " <> line_text)
+    end
+  end
+
+  def show_stats(hunks) do
+    stats = count_types(hunks, 0, 0, 0)
+    added = Map.get(stats, :added, 0)
+    removed = Map.get(stats, :removed, 0)
+    unchanged = Map.get(stats, :unchanged, 0)
+    header = IO.ansi_blue("Diff Statistics")
+    divider = IO.ansi_blue("===============")
+    added_line = IO.ansi_green("  Added:     #{added}")
+    removed_line = IO.ansi_red("  Removed:   #{removed}")
+    unchanged_line = IO.ansi_blue("  Unchanged: #{unchanged}")
+    print_lines([
+      "",
+      header,
+      divider,
+      added_line,
+      removed_line,
+      unchanged_line
+    ])
+  end
+
+  defp count_types([], a, r, u) do
+    %{added: a, removed: r, unchanged: u}
+  end
+
+  defp count_types([hunk | rest], a, r, u) do
+    type = "#{Map.get(hunk, :type, "unchanged")}"
+    case type do
+      "added" -> count_types(rest, a + 1, r, u)
+      "removed" -> count_types(rest, a, r + 1, u)
+      _ -> count_types(rest, a, r, u + 1)
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    args = System.argv()
+    old_text = System.read_text(old_path(args))
+    new_text = System.read_text(new_path(args))
+    hunks = DiffViewer.diff(old_text, new_text)
+    old_header = IO.ansi_blue("--- old.txt")
+    new_header = IO.ansi_blue("+++ new.txt")
+    case IO.puts(old_header) do
+      _ -> case IO.puts(new_header) do
+        _ -> case Display.show_diff(hunks) do
+          _ -> Display.show_stats(hunks)
+        end
+      end
+    end
+  end
+
+  defp old_path([_, "run", dir]) do
+    dir <> "/data/old.txt"
+  end
+
+  defp old_path([_, "run", dir | _rest]) do
+    dir <> "/data/old.txt"
+  end
+
+  defp old_path(_) do
+    "data/old.txt"
+  end
+
+  defp new_path([_, "run", dir]) do
+    dir <> "/data/new.txt"
+  end
+
+  defp new_path([_, "run", dir | _rest]) do
+    dir <> "/data/new.txt"
+  end
+
+  defp new_path(_) do
+    "data/new.txt"
+  end
+end

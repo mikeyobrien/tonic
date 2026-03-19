@@ -1,0 +1,205 @@
+defmodule LogAnalyzer do
+  def analyze(text) do
+    lines = filter_empty(String.split(text, line_sep()))
+    entries = parse_entries(lines, [])
+    counts = count_levels(entries, %{})
+    %{entries: entries, counts: counts, total: Enum.count(entries)}
+  end
+
+  defp parse_entries([], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp parse_entries([line | rest], acc) do
+    parts = String.split(line, " ")
+    entry = parse_parts(parts)
+    parse_entries(rest, [entry] ++ acc)
+  end
+
+  defp parse_parts([timestamp, level | msg_parts]) do
+    %{timestamp: timestamp, level: level, message: join_words(msg_parts, "")}
+  end
+
+  defp parse_parts(_) do
+    %{timestamp: "unknown", level: "UNKNOWN", message: ""}
+  end
+
+  defp join_words([], acc) do
+    acc
+  end
+
+  defp join_words([word], acc) do
+    acc <> word
+  end
+
+  defp join_words([word | rest], acc) do
+    join_words(rest, acc <> word <> " ")
+  end
+
+  defp count_levels([], counts) do
+    counts
+  end
+
+  defp count_levels([entry | rest], counts) do
+    level = Map.get(entry, :level, "UNKNOWN")
+    current = Map.get(counts, level, 0)
+    count_levels(rest, Map.put(counts, level, current + 1))
+  end
+
+  def filter_by_level(entries, level) do
+    filter_level_helper(entries, level, [])
+  end
+
+  defp filter_level_helper([], _level, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp filter_level_helper([entry | rest], level, acc) do
+    entry_level = Map.get(entry, :level, "")
+    case String.contains("#{entry_level}", level) do
+      true ->
+        filter_level_helper(rest, level, [entry] ++ acc)
+      _ ->
+        filter_level_helper(rest, level, acc)
+    end
+  end
+
+  defp filter_empty([]) do
+    []
+  end
+
+  defp filter_empty(["" | rest]) do
+    filter_empty(rest)
+  end
+
+  defp filter_empty([item | rest]) do
+    [item] ++ filter_empty(rest)
+  end
+
+  defp line_sep() do
+    """
+"""
+  end
+end
+
+defmodule Display do
+  def show_summary(counts, total) do
+    header = IO.ansi_blue("Log Analysis Summary")
+    divider = IO.ansi_blue("====================")
+    err_label = IO.ansi_red("ERROR")
+    warn_label = IO.ansi_yellow("WARN")
+    info_label = IO.ansi_green("INFO")
+    dbg_label = IO.ansi_blue("DEBUG")
+    err_n = Map.get(counts, "ERROR", 0)
+    warn_n = Map.get(counts, "WARN", 0)
+    info_n = Map.get(counts, "INFO", 0)
+    dbg_n = Map.get(counts, "DEBUG", 0)
+    print_lines([
+      header,
+      divider,
+      "Total entries: #{total}",
+      "",
+      "By level:",
+      "  " <> err_label <> ": #{err_n}",
+      "  " <> warn_label <> ": #{warn_n}",
+      "  " <> info_label <> ": #{info_n}",
+      "  " <> dbg_label <> ": #{dbg_n}"
+    ])
+  end
+
+  def show_entries(entries) do
+    print_entries(entries)
+  end
+
+  defp print_entries([]) do
+    :ok
+  end
+
+  defp print_entries([entry | rest]) do
+    level = Map.get(entry, :level, "UNKNOWN")
+    ts = Map.get(entry, :timestamp, "")
+    msg = Map.get(entry, :message, "")
+    colored = colorize(level)
+    line = colored <> " " <> "#{ts}" <> " " <> "#{msg}"
+    case IO.puts(line) do
+      _ -> print_entries(rest)
+    end
+  end
+
+  defp colorize(level) do
+    case level do
+      "ERROR" -> IO.ansi_red("ERROR")
+      "WARN" -> IO.ansi_yellow("WARN")
+      "INFO" -> IO.ansi_green("INFO")
+      "DEBUG" -> IO.ansi_blue("DEBUG")
+      other -> IO.ansi_yellow(other)
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    text = System.read_text(data_path(System.argv()))
+    result = LogAnalyzer.analyze(text)
+    counts = Map.get(result, :counts, %{})
+    total = Map.get(result, :total, 0)
+    entries = Map.get(result, :entries, [])
+    case Display.show_summary(counts, total) do
+      _ -> case IO.puts("") do
+        _ -> case show_errors(entries) do
+          _ -> show_warns(entries)
+        end
+      end
+    end
+  end
+
+  defp show_errors(entries) do
+    filtered = LogAnalyzer.filter_by_level(entries, "ERROR")
+    show_filtered("ERROR", filtered)
+  end
+
+  defp show_warns(entries) do
+    filtered = LogAnalyzer.filter_by_level(entries, "WARN")
+    show_filtered("WARN", filtered)
+  end
+
+  defp show_filtered(level, []) do
+    msg = IO.ansi_green("No " <> level <> " entries.")
+    case IO.puts(msg) do
+      _ -> :ok
+    end
+  end
+
+  defp show_filtered(level, entries) do
+    header = IO.ansi_yellow(level <> " entries:")
+    case IO.puts(header) do
+      _ -> case Display.show_entries(entries) do
+        _ -> case IO.puts("") do
+          _ -> :ok
+        end
+      end
+    end
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/app.log"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/app.log"
+  end
+
+  defp data_path(_) do
+    "data/app.log"
+  end
+end

@@ -1,0 +1,13 @@
+defmodule Greeter do
+  def hello(name) do
+    IO.puts("Hi, " <> name <> "!")
+  end
+
+  def goodbye(name) do
+    IO.puts("Goodbye, " <> name)
+  end
+
+  def welcome(name) do
+    IO.puts("Welcome, " <> name)
+  end
+end
