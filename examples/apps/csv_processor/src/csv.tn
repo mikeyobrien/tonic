@@ -1,0 +1,66 @@
+defmodule Csv do
+  def parse(text) do
+    parse_lines(String.split(text, newline()))
+  end
+
+  defp parse_lines([]) do
+    {[], []}
+  end
+
+  defp parse_lines([header_line | data_lines]) do
+    build_rows(
+      split_fields(header_line),
+      filter_empty(data_lines)
+    )
+  end
+
+  defp build_rows(headers, lines) do
+    {headers, rows_from_lines(headers, lines)}
+  end
+
+  defp rows_from_lines(_headers, []) do
+    []
+  end
+
+  defp rows_from_lines(headers, [line | rest]) do
+    [zip_to_map(headers, split_fields(line))] ++ rows_from_lines(headers, rest)
+  end
+
+  defp zip_to_map(headers, values) do
+    pairs_to_map(List.zip(headers, values), %{})
+  end
+
+  defp pairs_to_map([], acc) do
+    acc
+  end
+
+  defp pairs_to_map([{key, value} | rest], acc) do
+    pairs_to_map(rest, Map.put(acc, key, value))
+  end
+
+  defp split_fields(line) do
+    for field <- String.split(String.trim(line), ",") do
+      String.trim(field)
+    end
+  end
+
+  defp filter_empty([]) do
+    []
+  end
+
+  defp filter_empty(["" | rest]) do
+    filter_empty(rest)
+  end
+
+  defp filter_empty([line | rest]) do
+    case String.trim(line) do
+      "" -> filter_empty(rest)
+      _ -> [line] ++ filter_empty(rest)
+    end
+  end
+
+  defp newline() do
+    """
+"""
+  end
+end

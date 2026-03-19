@@ -1,0 +1,3 @@
+[project]
+name = "csv_processor"
+entry = "src/main.tn"

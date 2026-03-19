@@ -1,0 +1,143 @@
+defmodule Demo do
+  def run() do
+    process(
+      Csv.parse(System.read_text(data_path(System.argv())))
+    )
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/people.csv"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/people.csv"
+  end
+
+  defp data_path(_) do
+    "data/people.csv"
+  end
+
+  defp process({headers, rows}) do
+    filtered = filter_by_age(rows, 30)
+    print_lines([
+      "CSV Processor — People aged 30+",
+      "================================",
+      ""
+    ])
+    print_table(headers, filtered)
+    print_lines([
+      "",
+      "Total matching: #{Enum.count(filtered)} of #{Enum.count(rows)} rows"
+    ])
+  end
+
+  defp filter_by_age([], _min_age) do
+    []
+  end
+
+  defp filter_by_age([row | rest], min_age) do
+    case age_at_least(Map.get(row, "age", "0"), min_age) do
+      true -> [row] ++ filter_by_age(rest, min_age)
+      _ -> filter_by_age(rest, min_age)
+    end
+  end
+
+  defp age_at_least(age_str, min_age) do
+    age = String.to_integer(age_str)
+    age >= min_age
+  end
+
+  defp print_table(headers, rows) do
+    print_header_row(headers)
+    print_separator(headers)
+    print_data_rows(headers, rows)
+  end
+
+  defp print_header_row(headers) do
+    print_line(Enum.join(pad_fields(headers, headers), " | "))
+  end
+
+  defp print_separator(headers) do
+    print_line(Enum.join(dashes(headers), "-+-"))
+  end
+
+  defp dashes([]) do
+    []
+  end
+
+  defp dashes([header | rest]) do
+    [repeat_dash(String.length(col_width_str(header)))] ++ dashes(rest)
+  end
+
+  defp repeat_dash(0) do
+    ""
+  end
+
+  defp repeat_dash(n) do
+    "-" <> repeat_dash(n - 1)
+  end
+
+  defp col_width_str(header) do
+    String.pad_trailing(header, col_width(header), " ")
+  end
+
+  defp col_width("name") do
+    10
+  end
+
+  defp col_width("age") do
+    5
+  end
+
+  defp col_width("city") do
+    10
+  end
+
+  defp col_width(_) do
+    12
+  end
+
+  defp print_data_rows(_headers, []) do
+    :ok
+  end
+
+  defp print_data_rows(headers, [row | rest]) do
+    print_row(headers, row)
+    print_data_rows(headers, rest)
+  end
+
+  defp print_row(headers, row) do
+    print_line(Enum.join(pad_values(headers, row), " | "))
+  end
+
+  defp pad_fields([], _headers) do
+    []
+  end
+
+  defp pad_fields([header | rest], headers) do
+    [String.pad_trailing(header, col_width(header), " ")] ++ pad_fields(rest, headers)
+  end
+
+  defp pad_values([], _row) do
+    []
+  end
+
+  defp pad_values([header | rest], row) do
+    [String.pad_trailing(Map.get(row, header, ""), col_width(header), " ")] ++ pad_values(rest, row)
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    print_line(line)
+    print_lines(rest)
+  end
+
+  defp print_line(text) do
+    case IO.puts(text) do
+      _ -> :ok
+    end
+  end
+end

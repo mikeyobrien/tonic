@@ -1,0 +1,53 @@
+defmodule Config do
+  def parse(text) do
+    parse_lines(String.split(text, newline()), %{})
+  end
+
+  defp parse_lines([], acc) do
+    acc
+  end
+
+  defp parse_lines([line | rest], acc) do
+    parse_lines(rest, process_line(String.trim(line), acc))
+  end
+
+  defp process_line("", acc) do
+    acc
+  end
+
+  defp process_line(line, acc) do
+    case String.starts_with(line, "#") do
+      true -> acc
+      _ -> parse_pair(line, acc)
+    end
+  end
+
+  defp parse_pair(line, acc) do
+    case String.contains(line, "=") do
+      true -> split_and_store(line, acc)
+      _ -> acc
+    end
+  end
+
+  defp split_and_store(line, acc) do
+    parts = String.split(line, "=")
+    store_pair(parts, acc)
+  end
+
+  defp store_pair([key, value], acc) do
+    Map.put(acc, String.trim(key), String.trim(value))
+  end
+
+  defp store_pair([key | rest], acc) do
+    Map.put(acc, String.trim(key), String.trim(Enum.join(rest, "=")))
+  end
+
+  defp store_pair(_, acc) do
+    acc
+  end
+
+  defp newline() do
+    """
+"""
+  end
+end

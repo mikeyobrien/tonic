@@ -1,0 +1,54 @@
+defmodule Demo do
+  def run() do
+    display(
+      Config.parse(System.read_text(data_path(System.argv())))
+    )
+  end
+
+  defp data_path([_, "run", dir]) do
+    dir <> "/data/app.conf"
+  end
+
+  defp data_path([_, "run", dir | _rest]) do
+    dir <> "/data/app.conf"
+  end
+
+  defp data_path(_) do
+    "data/app.conf"
+  end
+
+  defp display(config) do
+    keys = Enum.sort(Map.keys(config))
+    print_lines([
+      "Config Parser",
+      "=============",
+      "Loaded #{Enum.count(keys)} settings:",
+      ""
+    ])
+    print_entries(keys, config)
+  end
+
+  defp print_entries([], _config) do
+    :ok
+  end
+
+  defp print_entries([key | rest], config) do
+    print_line("  #{key} = #{Map.get(config, key, "")}")
+    print_entries(rest, config)
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    print_line(line)
+    print_lines(rest)
+  end
+
+  defp print_line(text) do
+    case IO.puts(text) do
+      _ -> :ok
+    end
+  end
+end
