@@ -1,0 +1,310 @@
+defmodule CharDigit do
+  def value(ch) do
+    case ch do
+      "0" -> 0
+      "1" -> 1
+      "2" -> 2
+      "3" -> 3
+      "4" -> 4
+      "5" -> 5
+      "6" -> 6
+      "7" -> 7
+      "8" -> 8
+      "9" -> 9
+      _ -> 99
+    end
+  end
+
+  def is_digit(ch) do
+    case ch do
+      "0" -> true
+      "1" -> true
+      "2" -> true
+      "3" -> true
+      "4" -> true
+      "5" -> true
+      "6" -> true
+      "7" -> true
+      "8" -> true
+      "9" -> true
+      _ -> false
+    end
+  end
+end
+
+defmodule Luhn do
+  def valid(number) do
+    check_luhn(extract_digits(number, 0, String.length(number), []))
+  end
+
+  defp extract_digits(str, index, len, acc) do
+    case index do
+      i when i == len -> Enum.reverse(acc)
+      _ -> extract_one(str, index, len, acc)
+    end
+  end
+
+  defp extract_one(str, index, len, acc) do
+    ch = "#{String.slice(str, index, 1)}"
+    case CharDigit.is_digit(ch) do
+      true -> extract_digits(str, index + 1, len, [CharDigit.value(ch)] ++ acc)
+      _ -> extract_digits(str, index + 1, len, acc)
+    end
+  end
+
+  defp check_luhn(digits) do
+    rem(sum_luhn(Enum.reverse(digits), 0, 0), 10) == 0
+  end
+
+  defp sum_luhn([], _pos, acc) do
+    acc
+  end
+
+  defp sum_luhn([d | rest], pos, acc) do
+    case rem(pos, 2) do
+      0 -> sum_luhn(rest, pos + 1, acc + d)
+      _ -> sum_luhn(rest, pos + 1, acc + double_digit(d * 2))
+    end
+  end
+
+  defp double_digit(n) when n > 9 do
+    n - 9
+  end
+
+  defp double_digit(n) do
+    n
+  end
+end
+
+defmodule ISBN do
+  def valid_isbn10(str) do
+    check_isbn10_len(extract_isbn10(str, 0, String.length(str), []))
+  end
+
+  def valid_isbn13(str) do
+    check_isbn13_len(extract_digits_only(str, 0, String.length(str), []))
+  end
+
+  defp check_isbn10_len(digits) do
+    case Enum.count(digits) do
+      10 -> check_isbn10(digits)
+      _ -> false
+    end
+  end
+
+  defp check_isbn13_len(digits) do
+    case Enum.count(digits) do
+      13 -> check_isbn13(digits)
+      _ -> false
+    end
+  end
+
+  defp extract_isbn10(str, index, len, acc) do
+    case index do
+      i when i == len -> Enum.reverse(acc)
+      _ -> extract_isbn10_one(str, index, len, acc)
+    end
+  end
+
+  defp extract_isbn10_one(str, index, len, acc) do
+    ch = "#{String.slice(str, index, 1)}"
+    case ch do
+      "X" -> extract_isbn10(str, index + 1, len, [10] ++ acc)
+      "x" -> extract_isbn10(str, index + 1, len, [10] ++ acc)
+      _ -> try_digit_isbn10(str, ch, index, len, acc)
+    end
+  end
+
+  defp try_digit_isbn10(str, ch, index, len, acc) do
+    case CharDigit.is_digit(ch) do
+      true -> extract_isbn10(str, index + 1, len, [CharDigit.value(ch)] ++ acc)
+      _ -> extract_isbn10(str, index + 1, len, acc)
+    end
+  end
+
+  defp extract_digits_only(str, index, len, acc) do
+    case index do
+      i when i == len -> Enum.reverse(acc)
+      _ -> extract_digit_one(str, index, len, acc)
+    end
+  end
+
+  defp extract_digit_one(str, index, len, acc) do
+    ch = "#{String.slice(str, index, 1)}"
+    case CharDigit.is_digit(ch) do
+      true -> extract_digits_only(str, index + 1, len, [CharDigit.value(ch)] ++ acc)
+      _ -> extract_digits_only(str, index + 1, len, acc)
+    end
+  end
+
+  defp check_isbn10(digits) do
+    rem(weighted_sum10(digits, 10, 0), 11) == 0
+  end
+
+  defp weighted_sum10([], _weight, acc) do
+    acc
+  end
+
+  defp weighted_sum10([d | rest], weight, acc) do
+    weighted_sum10(rest, weight - 1, acc + d * weight)
+  end
+
+  defp check_isbn13(digits) do
+    rem(weighted_sum13(digits, 0, 0), 10) == 0
+  end
+
+  defp weighted_sum13([], _pos, acc) do
+    acc
+  end
+
+  defp weighted_sum13([d | rest], pos, acc) do
+    weighted_sum13(rest, pos + 1, acc + d * isbn13_weight(pos))
+  end
+
+  defp isbn13_weight(pos) do
+    case rem(pos, 2) do
+      0 -> 1
+      _ -> 3
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Checksum Validator"), "==================", ""]) do
+      _ -> case show_luhn() do
+        _ -> case print_lines(["", IO.ansi_green("ISBN-10 Validation"), "==================", ""]) do
+          _ -> case show_isbn10() do
+            _ -> case print_lines(["", IO.ansi_green("ISBN-13 Validation"), "==================", ""]) do
+              _ -> show_isbn13()
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_luhn() do
+    print_luhn_results(luhn_cases())
+  end
+
+  defp luhn_cases() do
+    [{"4539 1488 0343 6467", true},
+     {"4539 1488 0343 6468", false},
+     {"7992 7398 713", true},
+     {"1234 5678 9012 3456", false},
+     {"0000 0000 0000 0000", true}]
+  end
+
+  defp show_isbn10() do
+    print_isbn10_results(isbn10_cases())
+  end
+
+  defp isbn10_cases() do
+    [{"0-306-40615-2", true},
+     {"0-306-40615-3", false},
+     {"0-201-53082-1", true},
+     {"007-046-2107-X", false},
+     {"0-13-110362-8", true}]
+  end
+
+  defp show_isbn13() do
+    print_isbn13_results(isbn13_cases())
+  end
+
+  defp isbn13_cases() do
+    [{"978-0-306-40615-7", true},
+     {"978-0-306-40615-8", false},
+     {"978-3-16-148410-0", true},
+     {"978-1-56619-909-4", true},
+     {"978-1-56619-909-5", false}]
+  end
+
+  defp print_luhn_results([]) do
+    :ok
+  end
+
+  defp print_luhn_results([{input, true} | rest]) do
+    case Luhn.valid(input) do
+      true -> case IO.puts("  #{input}  #{IO.ansi_green("PASS")} valid") do
+        _ -> print_luhn_results(rest)
+      end
+      _ -> case IO.puts("  #{input}  FAIL got invalid expected valid") do
+        _ -> print_luhn_results(rest)
+      end
+    end
+  end
+
+  defp print_luhn_results([{input, false} | rest]) do
+    case Luhn.valid(input) do
+      false -> case IO.puts("  #{input}  #{IO.ansi_green("PASS")} invalid") do
+        _ -> print_luhn_results(rest)
+      end
+      _ -> case IO.puts("  #{input}  FAIL got valid expected invalid") do
+        _ -> print_luhn_results(rest)
+      end
+    end
+  end
+
+  defp print_isbn10_results([]) do
+    :ok
+  end
+
+  defp print_isbn10_results([{input, true} | rest]) do
+    case ISBN.valid_isbn10(input) do
+      true -> case IO.puts("  #{input}  #{IO.ansi_green("PASS")} valid") do
+        _ -> print_isbn10_results(rest)
+      end
+      _ -> case IO.puts("  #{input}  FAIL got invalid expected valid") do
+        _ -> print_isbn10_results(rest)
+      end
+    end
+  end
+
+  defp print_isbn10_results([{input, false} | rest]) do
+    case ISBN.valid_isbn10(input) do
+      false -> case IO.puts("  #{input}  #{IO.ansi_green("PASS")} invalid") do
+        _ -> print_isbn10_results(rest)
+      end
+      _ -> case IO.puts("  #{input}  FAIL got valid expected invalid") do
+        _ -> print_isbn10_results(rest)
+      end
+    end
+  end
+
+  defp print_isbn13_results([]) do
+    :ok
+  end
+
+  defp print_isbn13_results([{input, true} | rest]) do
+    case ISBN.valid_isbn13(input) do
+      true -> case IO.puts("  #{input}  #{IO.ansi_green("PASS")} valid") do
+        _ -> print_isbn13_results(rest)
+      end
+      _ -> case IO.puts("  #{input}  FAIL got invalid expected valid") do
+        _ -> print_isbn13_results(rest)
+      end
+    end
+  end
+
+  defp print_isbn13_results([{input, false} | rest]) do
+    case ISBN.valid_isbn13(input) do
+      false -> case IO.puts("  #{input}  #{IO.ansi_green("PASS")} invalid") do
+        _ -> print_isbn13_results(rest)
+      end
+      _ -> case IO.puts("  #{input}  FAIL got valid expected invalid") do
+        _ -> print_isbn13_results(rest)
+      end
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

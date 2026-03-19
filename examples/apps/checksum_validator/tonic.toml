@@ -1,0 +1,3 @@
+[project]
+name = "checksum_validator"
+entry = "src/main.tn"

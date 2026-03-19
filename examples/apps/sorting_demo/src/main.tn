@@ -1,0 +1,242 @@
+defmodule BubbleSort do
+  def sort(list) do
+    bubble_pass(list, Enum.count(list))
+  end
+
+  def sort_traced(list) do
+    bubble_pass_traced(list, Enum.count(list), [], 1)
+  end
+
+  defp bubble_pass(_list, 0) do
+    []
+  end
+
+  defp bubble_pass(list, remaining) do
+    continue_bubble(one_pass(list, false, []), remaining)
+  end
+
+  defp continue_bubble({new_list, false}, _remaining) do
+    new_list
+  end
+
+  defp continue_bubble({new_list, _swapped}, remaining) do
+    bubble_pass(new_list, remaining - 1)
+  end
+
+  defp bubble_pass_traced(list, 0, history, _step) do
+    {list, Enum.reverse(history)}
+  end
+
+  defp bubble_pass_traced(list, remaining, history, step) do
+    continue_traced(one_pass(list, false, []), remaining, history, step)
+  end
+
+  defp continue_traced({new_list, false}, _remaining, history, step) do
+    {new_list, Enum.reverse([{step, new_list}] ++ history)}
+  end
+
+  defp continue_traced({new_list, _swapped}, remaining, history, step) do
+    bubble_pass_traced(new_list, remaining - 1, [{step, new_list}] ++ history, step + 1)
+  end
+
+  defp one_pass([last], swapped, acc) do
+    {Enum.reverse([last] ++ acc), swapped}
+  end
+
+  defp one_pass([a, b | rest], swapped, acc) do
+    case a do
+      x when x > b -> one_pass([a] ++ rest, true, [b] ++ acc)
+      _ -> one_pass([b] ++ rest, swapped, [a] ++ acc)
+    end
+  end
+end
+
+defmodule InsertionSort do
+  def sort(list) do
+    insert_all(list, [])
+  end
+
+  def sort_traced(list) do
+    insert_all_traced(list, [], 1)
+  end
+
+  defp insert_all([], sorted) do
+    sorted
+  end
+
+  defp insert_all([x | rest], sorted) do
+    insert_all(rest, insert(x, sorted))
+  end
+
+  defp insert_all_traced([], sorted, _step) do
+    {sorted, []}
+  end
+
+  defp insert_all_traced([x | rest], sorted, step) do
+    build_trace(insert(x, sorted), rest, step)
+  end
+
+  defp build_trace(new_sorted, rest, step) do
+    attach_step(insert_all_traced(rest, new_sorted, step + 1), step, new_sorted)
+  end
+
+  defp attach_step({final, rest_steps}, step, snapshot) do
+    {final, [{step, snapshot}] ++ rest_steps}
+  end
+
+  defp insert(x, []) do
+    [x]
+  end
+
+  defp insert(x, [h | rest]) do
+    case x do
+      v when v > h -> [h] ++ insert(x, rest)
+      _ -> [x, h] ++ rest
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Sorting Algorithms"), "==================", ""]) do
+      _ -> case show_bubble() do
+        _ -> case IO.puts("") do
+          _ -> case show_insertion() do
+            _ -> case IO.puts("") do
+              _ -> show_comparison()
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp test_list() do
+    [64, 34, 25, 12, 22, 11, 90]
+  end
+
+  defp show_bubble() do
+    case IO.puts(IO.ansi_blue("Bubble Sort")) do
+      _ -> case IO.puts("Input: #{format_list(test_list())}") do
+        _ -> case print_traced_bubble(BubbleSort.sort_traced(test_list())) do
+          _ -> IO.puts("Result: #{IO.ansi_green(format_list(BubbleSort.sort(test_list())))}")
+        end
+      end
+    end
+  end
+
+  defp print_traced_bubble({_result, steps}) do
+    print_steps(steps)
+  end
+
+  defp show_insertion() do
+    case IO.puts(IO.ansi_blue("Insertion Sort")) do
+      _ -> case IO.puts("Input: #{format_list(test_list())}") do
+        _ -> case print_traced_insertion(InsertionSort.sort_traced(test_list())) do
+          _ -> IO.puts("Result: #{IO.ansi_green(format_list(InsertionSort.sort(test_list())))}")
+        end
+      end
+    end
+  end
+
+  defp print_traced_insertion({_result, steps}) do
+    print_steps(steps)
+  end
+
+  defp show_comparison() do
+    case IO.puts(IO.ansi_blue("Comparison with Enum.sort")) do
+      _ -> compare_all(comparison_lists())
+    end
+  end
+
+  defp comparison_lists() do
+    [[5, 3, 1, 4, 2],
+     [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+     [1, 2, 3, 4, 5],
+     [42]]
+  end
+
+  defp compare_all([]) do
+    :ok
+  end
+
+  defp compare_all([list | rest]) do
+    print_comparison(list, BubbleSort.sort(list), InsertionSort.sort(list), Enum.sort(list), rest)
+  end
+
+  defp print_comparison(list, bubble, insertion, builtin, rest) do
+    case IO.puts("  Input:     #{format_list(list)}") do
+      _ -> case IO.puts("  Bubble:    #{format_list(bubble)}#{match_label(bubble, builtin)}") do
+        _ -> case IO.puts("  Insertion: #{format_list(insertion)}#{match_label(insertion, builtin)}") do
+          _ -> case IO.puts("  Enum.sort: #{format_list(builtin)}") do
+            _ -> case IO.puts("") do
+              _ -> compare_all(rest)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp match_label(a, b) do
+    case lists_equal(a, b) do
+      true -> "  #{IO.ansi_green("match")}"
+      _ -> "  #{IO.ansi_red("MISMATCH")}"
+    end
+  end
+
+  defp lists_equal([], []) do
+    true
+  end
+
+  defp lists_equal([], _) do
+    false
+  end
+
+  defp lists_equal(_, []) do
+    false
+  end
+
+  defp lists_equal([a | ar], [b | br]) do
+    case a == b do
+      true -> lists_equal(ar, br)
+      _ -> false
+    end
+  end
+
+  defp print_steps([]) do
+    :ok
+  end
+
+  defp print_steps([{step, list} | rest]) do
+    case IO.puts("  Step #{step}: " <> format_list(list)) do
+      _ -> print_steps(rest)
+    end
+  end
+
+  defp format_list(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end
