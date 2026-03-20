@@ -1,0 +1,206 @@
+defmodule Lev do
+  defp list_at([h | _], 0) do h end
+  defp list_at([_ | rest], n) do list_at(rest, n - 1) end
+
+  def distance(s1, s2) do
+    len2 = String.length(s2)
+    first_row = make_range(0, len2)
+    last_row = fold_rows(s1, s2, String.length(s1), len2, 1, first_row)
+    list_at(last_row, len2)
+  end
+
+  def compute_table(s1, s2) do
+    len2 = String.length(s2)
+    first_row = make_range(0, len2)
+    collect_rows(s1, s2, String.length(s1), len2, 1, first_row, [first_row])
+  end
+
+  def chars(s) do
+    extract(s, 0, String.length(s))
+  end
+
+  defp extract(s, i, len) do
+    case i do
+      x when x >= len -> []
+      _ -> [String.slice(s, i, 1)] ++ extract(s, i + 1, len)
+    end
+  end
+
+  defp make_range(start, stop) do
+    case start do
+      s when s > stop -> []
+      _ -> [start] ++ make_range(start + 1, stop)
+    end
+  end
+
+  defp fold_rows(s1, s2, len1, len2, i, prev) do
+    case i do
+      x when x > len1 -> prev
+      _ -> fold_step(s1, s2, len1, len2, i, prev)
+    end
+  end
+
+  defp fold_step(s1, s2, len1, len2, i, prev) do
+    row = make_row(s1, s2, len2, i, 1, prev, [i])
+    fold_rows(s1, s2, len1, len2, i + 1, row)
+  end
+
+  defp collect_rows(s1, s2, len1, len2, i, prev, table) do
+    case i do
+      x when x > len1 -> table
+      _ -> collect_step(s1, s2, len1, len2, i, prev, table)
+    end
+  end
+
+  defp collect_step(s1, s2, len1, len2, i, prev, table) do
+    row = make_row(s1, s2, len2, i, 1, prev, [i])
+    collect_rows(s1, s2, len1, len2, i + 1, row, table ++ [row])
+  end
+
+  defp make_row(s1, s2, len2, i, j, prev, curr) do
+    case j do
+      x when x > len2 -> curr
+      _ -> make_cell(s1, s2, len2, i, j, prev, curr)
+    end
+  end
+
+  defp make_cell(s1, s2, len2, i, j, prev, curr) do
+    c1 = String.slice(s1, i - 1, 1)
+    c2 = String.slice(s2, j - 1, 1)
+    diag = list_at(prev, j - 1)
+    up = list_at(prev, j)
+    left = list_at(curr, j - 1)
+    val = cell_val(c1, c2, diag, up, left)
+    make_row(s1, s2, len2, i, j + 1, prev, curr ++ [val])
+  end
+
+  defp cell_val(c1, c2, diag, up, left) do
+    case String.starts_with(c1, c2) do
+      true -> diag
+      _ -> 1 + min3(diag, up, left)
+    end
+  end
+
+  defp min3(a, b, c) do
+    min2(a, min2(b, c))
+  end
+
+  defp min2(a, b) do
+    case a do
+      x when x <= b -> a
+      _ -> b
+    end
+  end
+end
+
+defmodule Format do
+  def pad(s, width) do
+    pad_left(s, width)
+  end
+
+  defp pad_left(s, width) do
+    len = String.length(s)
+    case len do
+      l when l >= width -> s
+      _ -> pad_left(" " <> s, width)
+    end
+  end
+
+  def show_table(row_chars, col_chars, table) do
+    case show_header(col_chars) do
+      _ -> show_rows(row_chars, table, 0)
+    end
+  end
+
+  defp show_header(col_chars) do
+    cols = format_char_list(col_chars)
+    IO.puts("        " <> cols)
+  end
+
+  defp format_char_list([]) do
+    ""
+  end
+
+  defp format_char_list([ch | rest]) do
+    pad(ch, 4) <> format_char_list(rest)
+  end
+
+  defp show_rows(_row_chars, [], _i) do
+    :ok
+  end
+
+  defp show_rows(row_chars, [row | rest], i) do
+    label = row_label(row_chars, i)
+    line = pad(label, 4) <> format_values(row)
+    case IO.puts(line) do
+      _ -> show_rows(row_chars, rest, i + 1)
+    end
+  end
+
+  defp row_label(_chars, 0) do
+    ""
+  end
+
+  defp row_label(chars, i) do
+    char_at(chars, i - 1)
+  end
+
+  defp char_at([h | _], 0) do h end
+  defp char_at([_ | rest], n) do char_at(rest, n - 1) end
+
+  defp format_values([]) do
+    ""
+  end
+
+  defp format_values([v | rest]) do
+    pad("#{v}", 4) <> format_values(rest)
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Levenshtein Distance"), "====================", ""]) do
+      _ -> case show_matrix() do
+        _ -> case IO.puts("") do
+          _ -> show_distances()
+        end
+      end
+    end
+  end
+
+  defp show_matrix() do
+    table = Lev.compute_table("flaw", "lawn")
+    dist = Lev.distance("flaw", "lawn")
+    row_chars = Lev.chars("flaw")
+    col_chars = Lev.chars("lawn")
+    case IO.puts(IO.ansi_blue("Distance table: flaw -> lawn")) do
+      _ -> case Format.show_table(row_chars, col_chars, table) do
+        _ -> IO.puts("Edit distance: #{dist}")
+      end
+    end
+  end
+
+  defp show_distances() do
+    case IO.puts(IO.ansi_blue("String Distances:")) do
+      _ -> case IO.puts("  kitten -> sitting = #{Lev.distance("kitten", "sitting")}") do
+        _ -> case IO.puts("  saturday -> sunday = #{Lev.distance("saturday", "sunday")}") do
+          _ -> case IO.puts("  flaw -> lawn = #{Lev.distance("flaw", "lawn")}") do
+            _ -> case IO.puts("  abc -> abc = #{Lev.distance("abc", "abc")}") do
+              _ -> IO.puts("  cat -> car = #{Lev.distance("cat", "car")}")
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

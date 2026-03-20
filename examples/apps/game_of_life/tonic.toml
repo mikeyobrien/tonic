@@ -1,0 +1,3 @@
+[project]
+name = "game_of_life"
+entry = "src/main.tn"

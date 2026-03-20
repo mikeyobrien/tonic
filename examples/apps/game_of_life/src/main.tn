@@ -1,0 +1,170 @@
+defmodule Grid do
+  def at(list, index) do
+    find_at(list, index)
+  end
+
+  defp find_at([h | _], 0) do
+    h
+  end
+
+  defp find_at([_ | rest], n) do
+    find_at(rest, n - 1)
+  end
+
+  def get(grid, row, col, rows, cols) do
+    case row do
+      r when r < 0 -> 0
+      r when r >= rows -> 0
+      _ -> get_col(grid, row, col, cols)
+    end
+  end
+
+  defp get_col(grid, row, col, cols) do
+    case col do
+      c when c < 0 -> 0
+      c when c >= cols -> 0
+      _ -> at(at(grid, row), col)
+    end
+  end
+
+  def count_neighbors(grid, r, c, rows, cols) do
+    top = get(grid, r - 1, c - 1, rows, cols) + get(grid, r - 1, c, rows, cols) + get(grid, r - 1, c + 1, rows, cols)
+    mid = get(grid, r, c - 1, rows, cols) + get(grid, r, c + 1, rows, cols)
+    bot = get(grid, r + 1, c - 1, rows, cols) + get(grid, r + 1, c, rows, cols) + get(grid, r + 1, c + 1, rows, cols)
+    top + mid + bot
+  end
+
+  def next_gen(grid, rows, cols) do
+    build_rows(grid, 0, rows, cols)
+  end
+
+  defp build_rows(grid, row, rows, cols) do
+    case row do
+      r when r >= rows -> []
+      _ -> [build_cols(grid, row, 0, rows, cols)] ++ build_rows(grid, row + 1, rows, cols)
+    end
+  end
+
+  defp build_cols(grid, row, col, rows, cols) do
+    case col do
+      c when c >= cols -> []
+      _ -> [next_cell(grid, row, col, rows, cols)] ++ build_cols(grid, row, col + 1, rows, cols)
+    end
+  end
+
+  defp next_cell(grid, row, col, rows, cols) do
+    cell = at(at(grid, row), col)
+    n = count_neighbors(grid, row, col, rows, cols)
+    apply_rule(cell, n)
+  end
+
+  defp apply_rule(cell, n) do
+    case cell do
+      1 -> survive(n)
+      _ -> birth(n)
+    end
+  end
+
+  defp survive(2) do 1 end
+  defp survive(3) do 1 end
+  defp survive(_) do 0 end
+
+  defp birth(3) do 1 end
+  defp birth(_) do 0 end
+end
+
+defmodule Display do
+  def show_grid(grid) do
+    print_rows(grid)
+  end
+
+  defp print_rows([]) do
+    :ok
+  end
+
+  defp print_rows([row | rest]) do
+    case IO.puts("    " <> row_str(row)) do
+      _ -> print_rows(rest)
+    end
+  end
+
+  defp row_str([]) do "" end
+
+  defp row_str([cell | rest]) do
+    cell_char(cell) <> row_str(rest)
+  end
+
+  defp cell_char(1) do "#" end
+  defp cell_char(_) do "." end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Conway's Game of Life"), "=====================", ""]) do
+      _ -> case show_block() do
+        _ -> case IO.puts("") do
+          _ -> case show_blinker() do
+            _ -> case IO.puts("") do
+              _ -> show_glider()
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_block() do
+    grid = [[0,0,0,0],
+            [0,1,1,0],
+            [0,1,1,0],
+            [0,0,0,0]]
+    case IO.puts(IO.ansi_blue("Block (still life)")) do
+      _ -> run_gens(grid, 4, 4, 0, 2)
+    end
+  end
+
+  defp show_blinker() do
+    grid = [[0,0,0,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,0,0,0]]
+    case IO.puts(IO.ansi_blue("Blinker (period 2)")) do
+      _ -> run_gens(grid, 5, 5, 0, 3)
+    end
+  end
+
+  defp show_glider() do
+    grid = [[0,0,0,0,0,0],
+            [0,0,1,0,0,0],
+            [0,0,0,1,0,0],
+            [0,1,1,1,0,0],
+            [0,0,0,0,0,0],
+            [0,0,0,0,0,0]]
+    case IO.puts(IO.ansi_blue("Glider (4 generations)")) do
+      _ -> run_gens(grid, 6, 6, 0, 5)
+    end
+  end
+
+  defp run_gens(_grid, _rows, _cols, gen, max_gen) when gen >= max_gen do
+    :ok
+  end
+
+  defp run_gens(grid, rows, cols, gen, max_gen) do
+    case IO.puts("  Gen #{gen}:") do
+      _ -> case Display.show_grid(grid) do
+        _ -> run_gens(Grid.next_gen(grid, rows, cols), rows, cols, gen + 1, max_gen)
+      end
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

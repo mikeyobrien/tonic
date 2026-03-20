@@ -1,0 +1,3 @@
+[project]
+name = "levenshtein"
+entry = "src/main.tn"
