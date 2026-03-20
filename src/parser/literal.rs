@@ -128,7 +128,10 @@ impl<'a> Parser<'a> {
             entries.push(self.parse_map_entry()?);
         }
 
-        self.expect(TokenKind::RBrace, "}")?;
+        if !self.check(TokenKind::RBrace) {
+            return Err(self.closing_delimiter_error(TokenKind::RBrace, "}"));
+        }
+        self.advance();
 
         Ok(Expr::map(self.node_ids.next_expr(), offset, entries))
     }
@@ -183,7 +186,10 @@ impl<'a> Parser<'a> {
             entries.push(self.parse_map_entry()?);
         }
 
-        self.expect(TokenKind::RBrace, "}")?;
+        if !self.check(TokenKind::RBrace) {
+            return Err(self.closing_delimiter_error(TokenKind::RBrace, "}"));
+        }
+        self.advance();
         Ok(entries)
     }
 
@@ -240,7 +246,11 @@ impl<'a> Parser<'a> {
             break;
         }
 
-        self.expect(closing, "literal terminator")?;
+        // Provide better error messages for maps/keyword lists
+        if !self.check(closing) {
+            return Err(self.closing_delimiter_error(closing, "}"));
+        }
+        self.advance();
         Ok(entries)
     }
 
@@ -266,7 +276,74 @@ impl<'a> Parser<'a> {
             break;
         }
 
-        self.expect(closing, expected_closing)?;
+        // Provide better error messages instead of generic "expected ], found X"
+        if !self.check(closing) {
+            return Err(self.closing_delimiter_error(closing, expected_closing));
+        }
+        self.advance();
         Ok(items)
+    }
+
+    /// Generate a helpful error message when a closing delimiter is missing.
+    ///
+    /// Detects two common patterns:
+    /// - Missing comma: the next token could start another expression
+    /// - Unclosed delimiter: reached `end` or EOF without finding the closing delimiter
+    fn closing_delimiter_error(&self, closing: TokenKind, expected_closing: &str) -> ParserError {
+        if let Some(token) = self.current() {
+            let kind = token.kind();
+
+            // Pattern: missing comma — next token can start an expression
+            if super::token_can_start_no_paren_arg(kind) || kind == TokenKind::Minus || kind == TokenKind::Not {
+                let container = match closing {
+                    TokenKind::RBracket => "list",
+                    TokenKind::RBrace => "tuple/map",
+                    TokenKind::RParen => "arguments",
+                    _ => "expression",
+                };
+                return ParserError::at_current(
+                    format!(
+                        "[E0001] missing comma in {container}: expected ',' or '{expected_closing}', but found another expression. \
+                         hint: add a comma between elements"
+                    ),
+                    self.current(),
+                );
+            }
+
+            // Pattern: unclosed delimiter — hit `end` or block-level keyword
+            if kind == TokenKind::End || kind == TokenKind::Eof {
+                let container = match closing {
+                    TokenKind::RBracket => "list '[' was never closed",
+                    TokenKind::RBrace => "tuple/map '{' was never closed",
+                    TokenKind::RParen => "parenthesis '(' was never closed",
+                    _ => "delimiter was never closed",
+                };
+                return ParserError::at_current(
+                    format!(
+                        "[E0002] unclosed delimiter: {container}. \
+                         hint: add '{expected_closing}' to close the expression"
+                    ),
+                    self.current(),
+                );
+            }
+        } else {
+            // EOF with no current token
+            let container = match closing {
+                TokenKind::RBracket => "list '[' was never closed",
+                TokenKind::RBrace => "tuple/map '{' was never closed",
+                TokenKind::RParen => "parenthesis '(' was never closed",
+                _ => "delimiter was never closed",
+            };
+            return ParserError::at_current(
+                format!(
+                    "[E0002] unclosed delimiter: {container}. \
+                     hint: add '{expected_closing}' before end of file"
+                ),
+                None,
+            );
+        }
+
+        // Fallback: use generic message with error code
+        self.expected(expected_closing)
     }
 }
