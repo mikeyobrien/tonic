@@ -1,0 +1,211 @@
+defmodule FreqCount do
+  def count(text) do
+    count_chars(text, 0, String.length(text), %{})
+  end
+
+  defp count_chars(text, i, len, acc) do
+    case i do
+      x when x >= len -> acc
+      _ -> count_one(text, i, len, acc)
+    end
+  end
+
+  defp count_one(text, i, len, acc) do
+    ch = String.slice(text, i, 1)
+    prev = Map.get(acc, ch, 0)
+    count_chars(text, i + 1, len, Map.put(acc, ch, prev + 1))
+  end
+
+  def show(freq_map) do
+    show_keys(Enum.sort(Map.keys(freq_map)), freq_map)
+  end
+
+  defp show_keys([], _map) do
+    :ok
+  end
+
+  defp show_keys([key | rest], map) do
+    freq = Map.get(map, key, 0)
+    case IO.puts("  '" <> key <> "': #{freq}") do
+      _ -> show_keys(rest, map)
+    end
+  end
+end
+
+defmodule HuffTree do
+  def build(freq_map) do
+    leaves = make_leaves(Enum.sort(Map.keys(freq_map)), freq_map)
+    sorted = sort_by_freq(leaves)
+    merge_all(sorted)
+  end
+
+  defp make_leaves([], _map) do
+    []
+  end
+
+  defp make_leaves([key | rest], map) do
+    freq = Map.get(map, key, 0)
+    [{freq, [key]}] ++ make_leaves(rest, map)
+  end
+
+  defp sort_by_freq([]) do
+    []
+  end
+
+  defp sort_by_freq([x | rest]) do
+    insert_sorted(x, sort_by_freq(rest))
+  end
+
+  defp insert_sorted(item, []) do
+    [item]
+  end
+
+  defp insert_sorted({f1, n1}, [{f2, n2} | rest]) do
+    case f1 do
+      x when x <= f2 -> [{f1, n1}, {f2, n2}] ++ rest
+      _ -> [{f2, n2}] ++ insert_sorted({f1, n1}, rest)
+    end
+  end
+
+  defp merge_all([{_f, tree}]) do
+    tree
+  end
+
+  defp merge_all([{f1, n1}, {f2, n2} | rest]) do
+    merged = {f1 + f2, [n1, n2]}
+    merge_all(insert_sorted(merged, rest))
+  end
+end
+
+defmodule HuffCode do
+  def generate(tree) do
+    traverse(tree, "", %{})
+  end
+
+  defp traverse([char], code, acc) do
+    Map.put(acc, char, code)
+  end
+
+  defp traverse([left, right], code, acc) do
+    acc2 = traverse(left, code <> "0", acc)
+    traverse(right, code <> "1", acc2)
+  end
+
+  def show(codes) do
+    show_keys(Enum.sort(Map.keys(codes)), codes)
+  end
+
+  defp show_keys([], _map) do
+    :ok
+  end
+
+  defp show_keys([key | rest], map) do
+    code = Map.get(map, key, "")
+    case IO.puts("  '" <> key <> "' -> " <> code) do
+      _ -> show_keys(rest, map)
+    end
+  end
+
+  def encode(text, codes) do
+    encode_chars(text, 0, String.length(text), codes, "")
+  end
+
+  defp encode_chars(text, i, len, codes, acc) do
+    case i do
+      x when x >= len -> acc
+      _ -> encode_one(text, i, len, codes, acc)
+    end
+  end
+
+  defp encode_one(text, i, len, codes, acc) do
+    ch = String.slice(text, i, 1)
+    bits = Map.get(codes, ch, "")
+    encode_chars(text, i + 1, len, codes, acc <> bits)
+  end
+
+  def decode(bits, tree) do
+    decode_walk(bits, 0, String.length(bits), tree, tree, "")
+  end
+
+  defp decode_walk(bits, i, len, root, [char], acc) do
+    decode_walk(bits, i, len, root, root, acc <> char)
+  end
+
+  defp decode_walk(bits, i, len, root, [left, right], acc) do
+    case i do
+      x when x >= len -> acc
+      _ -> step_bit(bits, i, len, root, left, right, acc)
+    end
+  end
+
+  defp step_bit(bits, i, len, root, left, right, acc) do
+    bit = String.slice(bits, i, 1)
+    case bit do
+      "0" -> decode_walk(bits, i + 1, len, root, left, acc)
+      _ -> decode_walk(bits, i + 1, len, root, right, acc)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    input = "aaaaaabbbbcccdde"
+    freq_map = FreqCount.count(input)
+    tree = HuffTree.build(freq_map)
+    codes = HuffCode.generate(tree)
+    encoded = HuffCode.encode(input, codes)
+    decoded = HuffCode.decode(encoded, tree)
+    match = str_match(input, decoded)
+    case print_lines([IO.ansi_green("Huffman Coding"), "==============", ""]) do
+      _ -> case print_lines(["Input: " <> input, ""]) do
+        _ -> show_freq(freq_map, codes, encoded, decoded, match)
+      end
+    end
+  end
+
+  defp show_freq(freq_map, codes, encoded, decoded, match) do
+    case IO.puts(IO.ansi_blue("Character Frequencies:")) do
+      _ -> case FreqCount.show(freq_map) do
+        _ -> case IO.puts("") do
+          _ -> show_codes(codes, encoded, decoded, match)
+        end
+      end
+    end
+  end
+
+  defp show_codes(codes, encoded, decoded, match) do
+    case IO.puts(IO.ansi_blue("Huffman Codes:")) do
+      _ -> case HuffCode.show(codes) do
+        _ -> case IO.puts("") do
+          _ -> show_result(encoded, decoded, match)
+        end
+      end
+    end
+  end
+
+  defp show_result(encoded, decoded, match) do
+    case IO.puts(IO.ansi_blue("Result:")) do
+      _ -> print_lines(["  Encoded: " <> encoded, "  Decoded: " <> decoded, "  Match:   " <> match])
+    end
+  end
+
+  defp str_match(a, b) do
+    case String.starts_with(a, b) do
+      true -> case String.starts_with(b, a) do
+        true -> "true"
+        _ -> "false"
+      end
+      _ -> "false"
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

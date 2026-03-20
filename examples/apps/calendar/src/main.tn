@@ -1,0 +1,186 @@
+defmodule Cal do
+  def month_name(n) do
+    case n do
+      1 -> "January"
+      2 -> "February"
+      3 -> "March"
+      4 -> "April"
+      5 -> "May"
+      6 -> "June"
+      7 -> "July"
+      8 -> "August"
+      9 -> "September"
+      10 -> "October"
+      11 -> "November"
+      _ -> "December"
+    end
+  end
+
+  def month_length(n, y) do
+    case n do
+      2 -> feb_days(y)
+      4 -> 30
+      6 -> 30
+      9 -> 30
+      11 -> 30
+      _ -> 31
+    end
+  end
+
+  def day_of_week(year, month, day) do
+    m = zeller_month(month)
+    y = zeller_year(year, month)
+    k = rem(y, 100)
+    j = div(y, 100)
+    mp = m + 1
+    tm = 13 * mp
+    t = div(tm, 5)
+    jt = 2 * j
+    h = day + t + k + div(k, 4) + div(j, 4) - jt + 6
+    w = rem(h, 7)
+    w
+  end
+
+  def render(year, month) do
+    name = month_name(month)
+    last = month_length(month, year)
+    start = day_of_week(year, month, 1)
+    title = name <> " #{year}"
+    len = String.length(title)
+    diff = 20 - len
+    pad = div(diff, 2)
+    header = make_spaces(pad) <> title
+    case IO.puts(header) do
+      _ -> case IO.puts("Su Mo Tu We Th Fr Sa") do
+        _ -> print_cal_rows(make_cal_cells(start, last))
+      end
+    end
+  end
+
+  defp make_spaces(0) do
+    ""
+  end
+
+  defp make_spaces(n) do
+    case n do
+      x when x <= 0 -> ""
+      _ -> " " <> make_spaces(n - 1)
+    end
+  end
+
+  defp make_cal_cells(start, last) do
+    blanks = make_blanks(start)
+    days = make_day_cells(1, last)
+    blanks ++ days
+  end
+
+  defp make_blanks(0) do
+    []
+  end
+
+  defp make_blanks(n) do
+    ["  "] ++ make_blanks(n - 1)
+  end
+
+  defp make_day_cells(day, last) do
+    case day do
+      d when d > last -> []
+      _ -> [String.pad_leading("#{day}", 2, " ")] ++ make_day_cells(day + 1, last)
+    end
+  end
+
+  defp print_cal_rows([]) do
+    :ok
+  end
+
+  defp print_cal_rows(cells) do
+    row = take(cells, 7)
+    rest = drop(cells, 7)
+    case IO.puts(join_cells(row)) do
+      _ -> print_cal_rows(rest)
+    end
+  end
+
+  defp take([], _n) do [] end
+  defp take(_list, 0) do [] end
+  defp take([h | rest], n) do [h] ++ take(rest, n - 1) end
+
+  defp drop(list, 0) do list end
+  defp drop([], _n) do [] end
+  defp drop([_ | rest], n) do drop(rest, n - 1) end
+
+  defp join_cells([]) do "" end
+  defp join_cells([x]) do x end
+  defp join_cells([x | rest]) do x <> " " <> join_cells(rest) end
+
+  defp feb_days(y) do
+    case is_leap(y) do
+      true -> 29
+      _ -> 28
+    end
+  end
+
+  defp is_leap(y) do
+    case rem(y, 400) do
+      0 -> true
+      _ -> check_100(y)
+    end
+  end
+
+  defp check_100(y) do
+    case rem(y, 100) do
+      0 -> false
+      _ -> rem(y, 4) == 0
+    end
+  end
+
+  defp zeller_month(month) do
+    case month do
+      1 -> 13
+      2 -> 14
+      _ -> month
+    end
+  end
+
+  defp zeller_year(year, month) do
+    case month do
+      1 -> year - 1
+      2 -> year - 1
+      _ -> year
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case print_lines([IO.ansi_green("Calendar"), "========", ""]) do
+      _ -> show_months([{2026, 3}, {2024, 2}, {1776, 7}])
+    end
+  end
+
+  defp show_months([]) do
+    :ok
+  end
+
+  defp show_months([{year, month}]) do
+    Cal.render(year, month)
+  end
+
+  defp show_months([{year, month} | rest]) do
+    case Cal.render(year, month) do
+      _ -> case IO.puts("") do
+        _ -> show_months(rest)
+      end
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+end

@@ -1,0 +1,24 @@
+Huffman Coding
+==============
+
+Input: aaaaaabbbbcccdde
+
+Character Frequencies:
+  'a': 6
+  'b': 4
+  'c': 3
+  'd': 2
+  'e': 1
+
+Huffman Codes:
+  'a' -> 0
+  'b' -> 10
+  'c' -> 111
+  'd' -> 1101
+  'e' -> 1100
+
+Result:
+  Encoded: 00000010101010111111111110111011100
+  Decoded: aaaaaabbbbcccdde
+  Match:   true
+:ok

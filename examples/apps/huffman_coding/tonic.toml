@@ -1,0 +1,3 @@
+[project]
+name = "huffman_coding"
+entry = "src/main.tn"
