@@ -143,7 +143,7 @@ fn host_string_to_float(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError
     expect_exact_args("String.to_float", args, 1)?;
     let s = expect_string_arg("String.to_float", args, 0)?;
     match s.trim().parse::<f64>() {
-        Ok(_) => Ok(RuntimeValue::String(s.trim().to_string())),
+        Ok(f) => Ok(RuntimeValue::Float(f.to_string())),
         Err(_) => Err(HostError::new(format!(
             "String.to_float could not parse {:?} as float",
             s
@@ -203,6 +203,22 @@ fn host_string_reverse(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError>
     Ok(RuntimeValue::String(s.chars().rev().collect()))
 }
 
+fn host_string_to_atom(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("String.to_atom", args, 1)?;
+    let s = expect_string_arg("String.to_atom", args, 0)?;
+    Ok(RuntimeValue::Atom(s))
+}
+
+fn host_string_graphemes(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("String.graphemes", args, 1)?;
+    let s = expect_string_arg("String.graphemes", args, 0)?;
+    let graphemes: Vec<RuntimeValue> = s
+        .chars()
+        .map(|ch| RuntimeValue::String(ch.to_string()))
+        .collect();
+    Ok(RuntimeValue::List(graphemes))
+}
+
 pub fn register_string_host_functions(registry: &HostRegistry) {
     registry.register("str_split", host_string_split);
     registry.register("str_replace", host_string_replace);
@@ -223,6 +239,8 @@ pub fn register_string_host_functions(registry: &HostRegistry) {
     registry.register("str_pad_leading", host_string_pad_leading);
     registry.register("str_pad_trailing", host_string_pad_trailing);
     registry.register("str_reverse", host_string_reverse);
+    registry.register("str_to_atom", host_string_to_atom);
+    registry.register("str_graphemes", host_string_graphemes);
 }
 
 #[cfg(test)]

@@ -1,0 +1,40 @@
+defmodule Demo do
+  def check_bool(x) do
+    if is_boolean(x) do
+      "yes"
+    else
+      "no"
+    end
+  end
+
+  def run() do
+    # map_size/1
+    IO.puts("#{map_size(%{})}")
+    IO.puts("#{map_size(%{a: 1, b: 2, c: 3})}")
+    IO.puts("#{map_size(%{x: 10, y: 20, z: 30, w: 40})}")
+
+    # is_boolean/1
+    IO.puts("#{is_boolean(true)}")
+    IO.puts("#{is_boolean(false)}")
+    IO.puts("#{is_boolean(1)}")
+    IO.puts("#{is_boolean(:ok)}")
+    IO.puts("#{is_boolean(nil)}")
+
+    # is_boolean in if condition (via helper)
+    IO.puts("#{check_bool(true)}")
+    IO.puts("#{check_bool(42)}")
+
+    # put_elem/3
+    t = {10, 20}
+    t2 = put_elem(t, 0, 99)
+    t3 = put_elem(t, 1, 42)
+    IO.puts("#{elem(t, 0)}, #{elem(t, 1)}")
+    IO.puts("#{elem(t2, 0)}, #{elem(t2, 1)}")
+    IO.puts("#{elem(t3, 0)}, #{elem(t3, 1)}")
+
+    # put_elem chain
+    pair = put_elem({0, 0}, 0, 5)
+    pair = put_elem(pair, 1, 10)
+    IO.puts("#{elem(pair, 0)}, #{elem(pair, 1)}")
+  end
+end

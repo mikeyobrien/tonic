@@ -86,7 +86,7 @@ def fizzbuzz(n) when rem(n, 5) == 0 do "Buzz" end
 def fizzbuzz(n) do n end
 ```
 
-Guard builtins: `is_integer/1`, `is_binary/1`, `is_atom/1`, `is_boolean/1`, `is_nil/1`, `is_list/1`, `is_map/1`, `is_tuple/1`, `is_float/1`, `is_number/1`
+Guard builtins (also work as regular expressions outside guards — in `if`, `case`, function bodies, etc.): `is_integer/1`, `is_binary/1`, `is_atom/1`, `is_boolean/1`, `is_nil/1`, `is_list/1`, `is_map/1`, `is_tuple/1`, `is_float/1`, `is_number/1`
 
 ### Default Arguments
 ```tonic
@@ -112,7 +112,7 @@ fun.(arg1, arg2)
 ## Operators
 
 ### Arithmetic
-`+`, `-`, `*`, `/`, `div`, `rem`
+`+`, `-`, `*`, `/` (work with Int, Float, or mixed — mixed promotes to Float), `div`, `rem` (Int only)
 
 ### Comparison
 `==`, `!=`, `===`, `!==`, `<`, `<=`, `>`, `>=`
@@ -128,6 +128,9 @@ fun.(arg1, arg2)
 
 ### Bitwise
 `&&&`, `|||`, `^^^`, `~~~`, `<<<`, `>>>`
+
+### Kernel Builtins (bare functions)
+`abs/1`, `length/1`, `hd/1`, `tl/1`, `elem/2`, `tuple_size/1`, `to_string/1`, `inspect/1`, `max/2`, `min/2`, `round/1`, `trunc/1`, `map_size/1`, `put_elem/3`, `div/2`, `rem/2`
 
 ### Pipe
 ```tonic
@@ -345,21 +348,44 @@ end
 ## Standard Library
 
 ### IO
-- `IO.puts(string)` — print to stdout with newline
+- `IO.puts(value)` — print to stdout with newline (accepts any type, auto-converts to string)
 - `IO.inspect(value)` — print to stderr, returns value
 - `IO.gets(prompt)` — read line from stdin
 
 ### String
-`split/2`, `replace/3`, `trim/1`, `trim_leading/1`, `trim_trailing/1`, `starts_with?/2`, `ends_with?/2`, `contains?/2`, `upcase/1`, `downcase/1`, `length/1`, `at/2`, `slice/3`, `to_integer/1`, `to_float/1`, `pad_leading/3`, `pad_trailing/3`, `reverse/1`, `to_charlist/1`
+`split/1`, `split/2`, `replace/3`, `trim/1`, `trim_leading/1`, `trim_trailing/1`, `starts_with/2`, `ends_with/2`, `contains/2`, `upcase/1`, `downcase/1`, `length/1`, `at/2`, `slice/3`, `to_integer/1`, `to_float/1`, `pad_leading/3`, `pad_trailing/3`, `reverse/1`, `to_charlist/1`, `duplicate/2`, `capitalize/1`, `to_atom/1`, `graphemes/1`
+
+**Note**: String function names do NOT use `?` suffix (e.g. `String.contains`, not `String.contains?`).
 
 ### Enum
-`count/1`, `sum/1`, `join/2`, `sort/1`, `reverse/1`, `take/2`, `drop/2`, `chunk_every/2`, `unique/1`, `into/2`
+`count/1`, `count/2`, `sum/1`, `product/1`, `join/1`, `join/2`, `sort/1`, `sort/2`, `reverse/1`, `take/2`, `drop/2`, `chunk_every/2`, `unique/1`, `uniq/1`, `into/2`, `map/2`, `filter/2`, `reduce/3`, `find/2`, `find_index/2`, `any/2`, `all/2`, `min/1`, `max/1`, `flat_map/2`, `zip/2`, `with_index/1`, `each/2`, `at/2`, `fetch/2`, `to_list/1`, `member/2`, `reject/2`, `sort_by/2`, `group_by/2`, `min_by/2`, `max_by/2`, `frequencies/1`, `uniq_by/2`, `map_join/3`, `dedup/1`, `intersperse/2`, `zip_with/3`, `take_while/2`, `drop_while/2`, `chunk_by/2`, `scan/3`, `split/2`, `count_by/2`, `map_reduce/3`, `concat/2`, `product/1`, `slice/3`, `random/1`, `reduce_while/3`, `shuffle/1`
+
+Higher-order Enum functions take closures:
+```tonic
+Enum.map([1, 2, 3], &(&1 * 2))           # [2, 4, 6]
+Enum.filter([1, 2, 3, 4], &(&1 > 2))     # [3, 4]
+Enum.reduce([1, 2, 3], 0, &(&1 + &2))    # 6
+Enum.find([1, 2, 3, 4], &(&1 > 2))       # 3
+Enum.any([1, 2, 3], &(&1 > 2))           # true
+Enum.each([1, 2, 3], &(IO.puts("#{&1}"))) # prints each, returns :ok
+```
 
 ### Map
-`keys/1`, `values/1`, `merge/2`, `drop/2`, `take/2`, `get/3`, `put/3`, `delete/2`, `has_key?/2`
+`keys/1`, `values/1`, `merge/2`, `merge/3`, `drop/2`, `take/2`, `get/2`, `get/3`, `put/3`, `delete/2`, `has_key/2`, `update/4`, `put_new/3`, `to_list/1`, `new/0`, `from_list/1`, `filter/2`, `reject/2`, `pop/2`, `pop/3`
+
+**Note**: `Map.has_key`, NOT `Map.has_key?` (no `?` in function names).
+
+### Integer
+`to_string/1`, `parse/1`
+
+### Float
+`to_string/1`, `round/2`, `ceil/1`, `floor/1`
 
 ### List
-`first/1`, `last/1`, `flatten/1`, `zip/2`, `unzip/1`, `wrap/1`
+`first/1,2`, `last/1,2`, `flatten/1`, `zip/2`, `unzip/1`, `wrap/1`, `delete/2`, `delete_at/2`, `update_at/3`, `insert_at/3`, `duplicate/2`, `starts_with/2`, `to_tuple/1`
+
+### Tuple
+`to_list/1`
 
 ### System
 - `System.run(cmd)` — execute shell command, returns `%{exit_code: int, output: string}`
@@ -387,7 +413,7 @@ end
 - Modules: `PascalCase`
 - Functions/variables: `snake_case`
 - Atoms: `:lowercase_atom`
-- Predicates: end with `?` (e.g., `has_key?/2`)
+- Predicates: Tonic does NOT use `?` suffix (e.g., `Map.has_key`, not `Map.has_key?`)
 - Private helpers: use `defp`
 
 ## Key Differences from Elixir
@@ -395,10 +421,26 @@ end
 2. `ok(val)` / `err(val)` built-in result constructors
 3. `?` postfix operator for result propagation (like Rust's `?`)
 4. `map(:seed, 0)` constructor for seeded maps in `into:`
-5. Guards in for-comprehension generators: `for x when pred <- list`
+5. For-comprehension filters use `when` guards: `for x when x > 3 <- list do x end` (NOT Elixir's comma syntax `for x <- list, x > 3`)
 6. `div` and `rem` are keywords (not `/` for integer division)
 7. `@doc` association is positional, not structural
 8. Bitstrings are byte-only (no multi-byte size specifiers)
+9. **No `?` in function names**: Use `Map.has_key` not `Map.has_key?`, `String.contains` not `String.contains?`
+10. **`==` and `!=` work for all types**: String, atom, bool, list, map, tuple, and cross-type comparisons all work with `==` and `!=`. Example: `name == "admin"`, `:ok != :err`, `[1,2] == [1,2]`.
+11. **`div()` may fail after variable bindings**: `div(scaled, n)` after complex expressions can cause parser errors. Wrap in a helper function:
+    ```tonic
+    defp int_div(a, b) do
+      div(a, b)
+    end
+    ```
+12. **Float arithmetic**: `+`, `-`, `*`, `/` all work with both integers and floats. `Int op Int` returns `Int`, any float operand returns `Float`. Use `div()` and `rem()` for explicit integer operations:
+    ```tonic
+    1.5 + 2.5     # => 4.0 (float addition)
+    3.0 * 2.5     # => 7.5 (float multiplication)
+    10 - 3.5      # => 6.5 (mixed → float)
+    10.0 / 3.0    # => 3.3333333333333335 (float division)
+    ```
+13. **Multi-expression branch bodies**: For multi-expression case/cond/fn/rescue branches, wrap the body in `do`/`end`: `pattern -> do expr1; expr2; expr3 end`. Single-expression branches work as before without `do`/`end`.
 
 ## Idiomatic Patterns
 
@@ -463,3 +505,5 @@ When writing Tonic code:
 10. **Keep modules focused** — one responsibility per module
 
 Save `.tn` files in the appropriate location. If no path is specified, use `examples/` for standalone programs or `src/` for project code.
+
+For the complete language reference including edge cases and workaround patterns, see `TONIC_REFERENCE.md`.

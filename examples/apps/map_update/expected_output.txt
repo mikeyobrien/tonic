@@ -1,0 +1,15 @@
+freq: %{"hello" => 3, "world" => 2}
+update existing: %{"a" => 2}
+update missing: %{"x" => 10}
+grouped: %{"fruit" => ["apple", "banana", "cherry"], "veg" => ["carrot"]}
+put_new existing: %{"a" => 1}
+put_new missing: %{"a" => 1, "b" => 2}
+put_new empty: %{"key" => "value"}
+chained defaults: %{"a" => 0, "b" => 0, "c" => 0}
+partial defaults: %{"a" => 42, "b" => 0, "c" => 0}
+product: 24
+product single: 5
+product empty: 1
+product negative: -24
+freq counts product: 6
+nil

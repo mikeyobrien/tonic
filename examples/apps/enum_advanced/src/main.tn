@@ -1,0 +1,92 @@
+defmodule Demo do
+  def run() do
+    IO.puts("=== Enum Advanced Functions ===")
+
+    # Enum.find
+    found = Enum.find([1, 2, 3, 4, 5], &(&1 > 3))
+    IO.puts("find >3 in [1..5]: #{found}")
+
+    not_found = Enum.find([1, 2, 3], &(&1 > 10))
+    IO.puts("find >10 in [1..3]: #{not_found}")
+
+    # Enum.any
+    has_big = Enum.any([1, 2, 3, 4, 5], &(&1 > 4))
+    IO.puts("any >4 in [1..5]: #{has_big}")
+
+    has_neg = Enum.any([1, 2, 3], &(&1 < 0))
+    IO.puts("any <0 in [1..3]: #{has_neg}")
+
+    # Enum.all
+    all_pos = Enum.all([1, 2, 3, 4], &(&1 > 0))
+    IO.puts("all >0 in [1..4]: #{all_pos}")
+
+    all_big = Enum.all([1, 2, 3, 4], &(&1 > 2))
+    IO.puts("all >2 in [1..4]: #{all_big}")
+
+    # Enum.min and Enum.max
+    min_val = Enum.min([5, 3, 8, 1, 4])
+    IO.puts("min [5,3,8,1,4]: #{min_val}")
+
+    max_val = Enum.max([5, 3, 8, 1, 4])
+    IO.puts("max [5,3,8,1,4]: #{max_val}")
+
+    min_single = Enum.min([42])
+    IO.puts("min [42]: #{min_single}")
+
+    max_single = Enum.max([42])
+    IO.puts("max [42]: #{max_single}")
+
+    # Enum.flat_map
+    expanded = Enum.flat_map([1, 2, 3], &([&1, &1 * 10]))
+    IO.puts("flat_map [1,2,3]: #{fmt(expanded)}")
+
+    # Enum.at
+    first = Enum.at([10, 20, 30, 40], 0)
+    IO.puts("at 0 [10,20,30,40]: #{first}")
+
+    third = Enum.at([10, 20, 30, 40], 2)
+    IO.puts("at 2 [10,20,30,40]: #{third}")
+
+    beyond = Enum.at([10, 20], 5)
+    IO.puts("at 5 [10,20]: #{beyond}")
+
+    # Enum.member
+    has_3 = Enum.member([1, 2, 3, 4], 3)
+    IO.puts("member 3 in [1..4]: #{has_3}")
+
+    has_9 = Enum.member([1, 2, 3, 4], 9)
+    IO.puts("member 9 in [1..4]: #{has_9}")
+
+    # Chaining new functions
+    result = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      |> Enum.filter(&(&1 > 3))
+      |> Enum.find(&(rem(&1, 4) == 0))
+    IO.puts("filter>3 then find div4: #{result}")
+
+    min_of_evens = [1, 2, 3, 4, 5, 6, 7, 8]
+      |> Enum.filter(&(rem(&1, 2) == 0))
+      |> Enum.min()
+    IO.puts("min of evens [1..8]: #{min_of_evens}")
+
+    max_of_odds = [1, 2, 3, 4, 5, 6, 7, 8]
+      |> Enum.filter(&(rem(&1, 2) != 0))
+      |> Enum.max()
+    IO.puts("max of odds [1..8]: #{max_of_odds}")
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

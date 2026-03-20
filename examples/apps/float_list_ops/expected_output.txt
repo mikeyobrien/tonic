@@ -1,0 +1,17 @@
+to_float: 3.14
+to_float + 1.0: 4.140000000000001
+to_float * 2: 6.28
+negative float: -2.5
+negative + 10.0: 7.5
+delete_at 0: [20, 30, 40, 50]
+delete_at 2: [10, 20, 40, 50]
+delete_at 4: [10, 20, 30, 40]
+delete_at out of bounds: [10, 20, 30, 40, 50]
+update_at 0: [1000, 20, 30, 40, 50]
+update_at 2: [10, 20, 35, 40, 50]
+update_at 4: [10, 20, 30, 40, 49]
+update_at out of bounds: [10, 20, 30, 40, 50]
+parsed prices: [1.99, 4.5, 2.75, 8]
+without second: [1.99, 2.75, 8]
+doubled first: [3.98, 4.5, 2.75, 8]
+nil

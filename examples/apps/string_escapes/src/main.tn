@@ -1,0 +1,24 @@
+defmodule Demo do
+  def run() do
+    # Test \n - newline
+    IO.puts("hello\nworld")
+    # Test \t - tab
+    IO.puts("col1\tcol2\tcol3")
+    # Test \\ - literal backslash
+    IO.puts("path\\to\\file")
+    # Test \" - double quote inside string
+    IO.puts("she said \"hi\"")
+    # Multiple escapes in one string
+    IO.puts("line1\nline2\nline3")
+    # Escapes inside interpolated strings
+    name = "world"
+    IO.puts("hello\t#{name}\there")
+    # Tab-separated data
+    IO.puts("id\tname\tscore\n1\tAlice\t95\n2\tBob\t87")
+    # Backslash at various positions
+    IO.puts("\\start")
+    IO.puts("end\\")
+    # Unknown escape - keeps backslash
+    IO.puts("hello\\xworld")
+  end
+end

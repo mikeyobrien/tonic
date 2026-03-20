@@ -13,21 +13,19 @@ fn infer_types_supports_polymorphic_like_helper_with_concrete_call_sites() {
         .expect("type inference should succeed for helper reuse across call sites");
 
     assert_eq!(summary.signature("Demo.helper"), Some("fn(dynamic) -> int"));
-    assert_eq!(summary.signature("Demo.run"), Some("fn() -> int"));
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
 }
 
 #[test]
-fn infer_types_reports_type_mismatch_with_span_offset() {
+fn infer_types_accepts_dynamic_operands_for_arithmetic() {
     let source = "defmodule Demo do\n  def unknown() do\n    ok(1)\n  end\n\n  def run() do\n    unknown() + 1\n  end\nend\n";
-    let tokens = scan_tokens(source).expect("scanner should tokenize mismatch fixture");
-    let ast = parse_ast(&tokens).expect("parser should build mismatch fixture ast");
+    let tokens = scan_tokens(source).expect("scanner should tokenize dynamic arithmetic fixture");
+    let ast = parse_ast(&tokens).expect("parser should build dynamic arithmetic fixture ast");
 
-    let error = infer_types(&ast).expect_err("type inference should reject non-int operands for +");
+    let summary = infer_types(&ast)
+        .expect("type inference should accept dynamic operands for arithmetic");
 
-    assert_eq!(
-        error.to_string(),
-        "[E2001] type mismatch: expected int, found result at offset 73"
-    );
+    assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
 }
 
 #[test]

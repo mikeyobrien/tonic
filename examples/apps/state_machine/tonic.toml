@@ -1,0 +1,3 @@
+[project]
+name = "state_machine"
+entry = "src/main.tn"

@@ -1,0 +1,47 @@
+defmodule Demo do
+  def run() do
+    # to_string/1 — integers
+    IO.puts(to_string(42))
+    IO.puts(to_string(-7))
+    IO.puts(to_string(0))
+
+    # to_string/1 — float
+    IO.puts(to_string(3.14))
+
+    # to_string/1 — boolean
+    IO.puts(to_string(true))
+    IO.puts(to_string(false))
+
+    # to_string/1 — atom
+    IO.puts(to_string(:hello))
+    IO.puts(to_string(:world))
+
+    # to_string/1 — nil (returns empty string)
+    result = to_string(nil)
+    IO.puts("nil->empty:" <> case result == "" do
+      true -> "yes"
+      _ -> "no"
+    end)
+
+    # to_string/1 — string passthrough
+    IO.puts(to_string("already a string"))
+
+    # to_string/1 — in a pipeline
+    values = [1, 2, 3]
+    strings = Enum.map(values, fn x -> to_string(x) end)
+    IO.puts(Enum.join(strings, "-"))
+
+    # to_string/1 — combined with concatenation
+    age = 25
+    message = "Age: " <> to_string(age)
+    IO.puts(message)
+
+    # to_string/1 — in conditions
+    x = 42
+    label = case is_integer(x) do
+      true -> "int:" <> to_string(x)
+      _ -> "other"
+    end
+    IO.puts(label)
+  end
+end

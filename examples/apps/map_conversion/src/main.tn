@@ -1,0 +1,61 @@
+defmodule Demo do
+  def run() do
+    # Map.to_list — convert map to list of tuples
+    map = %{a: 1, b: 2, c: 3}
+    pairs = Map.to_list(map)
+    count = Enum.count(pairs)
+    IO.puts("to_list count: #{count}")
+
+    # Map.new/0 — empty map
+    empty = Map.new()
+    IO.puts("new empty: #{empty}")
+
+    # Map.new/0 has no keys
+    empty_keys = Map.keys(Map.new())
+    IO.puts("new keys: #{empty_keys}")
+
+    # Map.from_list — from list of tuples
+    from_list = Map.from_list([{:x, 10}, {:y, 20}, {:z, 30}])
+    IO.puts("from_list x: #{from_list.x}")
+    IO.puts("from_list y: #{from_list.y}")
+    IO.puts("from_list z: #{from_list.z}")
+
+    # Round-trip: Map -> to_list -> Map.from_list
+    original = %{name: "Alice", age: 30}
+    round_trip = Map.from_list(Map.to_list(original))
+    IO.puts("round-trip name: #{round_trip.name}")
+    IO.puts("round-trip age: #{round_trip.age}")
+
+    # Map.from_list with empty list
+    empty_from_list = Map.from_list([])
+    IO.puts("from_list empty: #{empty_from_list}")
+
+    # Map.to_list with single entry
+    single = %{only: 42}
+    single_list = Map.to_list(single)
+    IO.puts("single to_list: #{single_list}")
+
+    # String.duplicate — repeat strings
+    IO.puts("dup 3: #{String.duplicate("ab", 3)}")
+    IO.puts("dup 1: #{String.duplicate("hello", 1)}")
+    IO.puts("dup 0: [#{String.duplicate("gone", 0)}]")
+
+    # String.duplicate for formatting
+    indent = String.duplicate("  ", 3)
+    IO.puts("#{indent}indented")
+
+    # String.duplicate single char
+    line = String.duplicate("-", 5)
+    IO.puts("line: #{line}")
+
+    # Pipeline: Map.to_list + Enum.map_join
+    data = %{x: 10, y: 20}
+    result = Enum.map_join(Map.to_list(data), ", ", &(format_pair(&1)))
+    IO.puts("pipeline: #{result}")
+  end
+
+  defp format_pair(pair) do
+    {k, v} = pair
+    "#{k}:#{v}"
+  end
+end

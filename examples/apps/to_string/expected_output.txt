@@ -1,0 +1,14 @@
+42
+-7
+0
+3.14
+true
+false
+hello
+world
+nil->empty:yes
+already a string
+1-2-3
+Age: 25
+int:42
+nil

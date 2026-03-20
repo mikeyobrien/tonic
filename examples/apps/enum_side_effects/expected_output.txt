@@ -1,0 +1,27 @@
+=== Enum Side Effects & Iteration ===
+each prints:
+  value: 10
+  value: 20
+  value: 30
+each returned: ok
+with_index [:a,:b,:c]:
+  0: a
+  1: b
+  2: c
+zip [1,2,3] [10,20,30]:
+  1 -> 10
+  2 -> 20
+  3 -> 30
+zip unequal count: 2
+numbered items:
+  0. alpha
+  1. beta
+  2. gamma
+scores:
+  Alice: 95
+  Bob: 87
+  Carol: 92
+flat_map repeat: [1, 2, 2, 3, 3, 3]
+any score >= 90: true
+all scores >= 60: true
+nil

@@ -1,0 +1,55 @@
+defmodule Demo do
+  def run() do
+    IO.puts("=== For-Comprehension When Filters ===")
+
+    # Simple guard filter
+    big = for x when x > 3 <- [1, 2, 3, 4, 5, 6] do
+      x * 10
+    end
+    IO.puts("big * 10: #{big}")
+
+    # Even filter using rem
+    evens = for x when rem(x, 2) == 0 <- [1, 2, 3, 4, 5, 6, 7, 8] do
+      x
+    end
+    IO.puts("evens: #{evens}")
+
+    # Tuple pattern with guard
+    pairs = [{:a, 1}, {:b, 5}, {:c, 2}, {:d, 8}, {:e, 3}]
+    high = for {k, v} when v > 3 <- pairs do
+      {k, v}
+    end
+    IO.puts("high pairs: #{high}")
+
+    # Guard filtering everything (empty result)
+    none = for x when x > 100 <- [1, 2, 3] do
+      x
+    end
+    IO.puts("none filtered: #{none}")
+
+    # Guard filtering nothing (all pass)
+    all = for x when x > 0 <- [1, 2, 3] do
+      x
+    end
+    IO.puts("all pass: #{all}")
+
+    # Guard with arithmetic
+    nums = [10, 25, 30, 5, 15, 40]
+    mid_range = for x when x > 10 <- nums do
+      case x < 35 do
+        true -> x
+        _ -> nil
+      end
+    end
+    filtered = Enum.filter(mid_range, &(&1 != nil))
+    IO.puts("mid range: #{filtered}")
+
+    # Nested for with filter on outer
+    result = for x when x > 1 <- [1, 2, 3], y <- [:a, :b] do
+      {x, y}
+    end
+    IO.puts("nested with filter: #{result}")
+
+    IO.puts("=== Done ===")
+  end
+end

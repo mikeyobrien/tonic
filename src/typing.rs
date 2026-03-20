@@ -123,12 +123,12 @@ impl ConstraintSolver {
                 self.unify(*expected_ok, *found_ok, offset)?;
                 self.unify(*expected_err, *found_err, offset)
             }
+            (Type::Dynamic, _) | (_, Type::Dynamic) => Ok(()),
             (Type::Int, Type::Int)
             | (Type::Float, Type::Float)
             | (Type::Bool, Type::Bool)
             | (Type::Nil, Type::Nil)
-            | (Type::String, Type::String)
-            | (Type::Dynamic, Type::Dynamic) => Ok(()),
+            | (Type::String, Type::String) => Ok(()),
             (expected_ty, found_ty) => Err(TypingError::type_mismatch(
                 expected_ty.label(),
                 found_ty.label(),

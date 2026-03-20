@@ -1,0 +1,51 @@
+defmodule Demo do
+  def run() do
+    # IO.puts with integer
+    IO.puts(42)
+    IO.puts(-7)
+    IO.puts(0)
+
+    # IO.puts with float
+    IO.puts(3.14)
+
+    # IO.puts with boolean
+    IO.puts(true)
+    IO.puts(false)
+
+    # IO.puts with atom
+    IO.puts(:hello)
+
+    # IO.puts with nil (prints empty line)
+    IO.puts(nil)
+
+    # IO.puts with string (still works)
+    IO.puts("hello world")
+
+    # IO.puts with list
+    IO.puts([1, 2, 3])
+
+    # IO.puts with map
+    IO.puts(%{a: 1})
+
+    # IO.puts with tuple
+    IO.puts({1, 2})
+
+    # IO.puts with expression result
+    IO.puts(length([1, 2, 3, 4, 5]))
+
+    # Pipeline into IO.puts
+    42 |> to_string() |> IO.puts()
+
+    # Map.get/2 (2-arg, defaults to nil)
+    map = %{name: "Alice", age: 30}
+    IO.puts(Map.get(map, :name))
+    IO.puts(Map.get(map, :age))
+
+    # Map.get/2 with missing key returns nil
+    result = Map.get(map, :missing)
+    IO.puts(is_nil(result))
+
+    # Map.get/3 still works
+    IO.puts(Map.get(map, :missing, "default"))
+  end
+end

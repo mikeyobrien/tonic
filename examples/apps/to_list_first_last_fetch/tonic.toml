@@ -1,0 +1,3 @@
+[project]
+name = "to_list_first_last_fetch"
+entry = "src/main.tn"

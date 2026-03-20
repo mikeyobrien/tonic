@@ -1,0 +1,6 @@
+Todo Manager
+================
+[ ] #1 buy groceries
+[x] #2 write tests
+[ ] #3 clean kitchen
+:ok

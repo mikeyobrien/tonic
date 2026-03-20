@@ -1,0 +1,17 @@
+to_list range: [1, 2, 3, 4, 5]
+to_list list: [10, 20, 30]
+first empty: none
+first non-empty: 42
+first nil: 
+first normal: 7
+last empty: default
+last non-empty: 3
+last nil: 
+last normal: 30
+fetch found: {:ok, 20}
+fetch error: error
+fetch first: {:ok, 100}
+pipeline fetch: {:ok, 5}
+pipeline last: 10
+pipeline first: 1
+nil

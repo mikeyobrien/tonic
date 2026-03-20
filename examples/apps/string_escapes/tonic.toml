@@ -1,0 +1,3 @@
+[project]
+name = "string_escapes"
+entry = "src/main.tn"

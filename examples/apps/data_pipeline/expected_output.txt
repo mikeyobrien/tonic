@@ -1,0 +1,14 @@
+=== Data Pipeline ===
+Input scores: [85, 92, 0, 78, 95, 0, 67, 88, 73, 91]
+Processed (>0, *10, sorted desc): [950, 920, 910, 880, 850, 780, 730, 670]
+Top 3: [950, 920, 910]
+Valid count: 8
+Total: 669
+Average: 83
+Grades: [B, A, C, A, D, B, C, A]
+A count: 3
+B count: 2
+C count: 2
+D count: 1
+F count: 0
+nil

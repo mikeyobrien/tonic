@@ -1,0 +1,57 @@
+defmodule Demo do
+  def run() do
+    # String.to_integer result used inline in arithmetic
+    sum = String.to_integer("42") + 1
+    IO.puts(sum)
+
+    # String.to_integer in subtraction
+    diff = String.to_integer("100") - 50
+    IO.puts(diff)
+
+    # String.to_integer in multiplication
+    product = String.to_integer("7") * 6
+    IO.puts(product)
+
+    # Map.get result in comparison
+    scores = %{alice: 95, bob: 80}
+    above_90 = Map.get(scores, :alice, 0) > 90
+    IO.puts(above_90)
+
+    # Map.get result in arithmetic
+    total = Map.get(scores, :alice, 0) + Map.get(scores, :bob, 0)
+    IO.puts(total)
+
+    # Enum.count in multiplication
+    items = [1, 2, 3, 4, 5]
+    doubled_count = Enum.count(items) * 2
+    IO.puts(doubled_count)
+
+    # Chained stdlib in arithmetic
+    a = String.to_integer("10")
+    b = String.to_integer("20")
+    result = a + b + 5
+    IO.puts(result)
+
+    # Comparison with stdlib results
+    x = String.to_integer("50")
+    is_large = x >= 50
+    IO.puts(is_large)
+
+    is_small = x < 100
+    IO.puts(is_small)
+
+    # Unary minus with dynamic
+    neg = -String.to_integer("42")
+    IO.puts(neg)
+
+    # Integer division with dynamic operands
+    quotient = div(String.to_integer("100"), 3)
+    IO.puts(quotient)
+
+    # Remainder with dynamic operands
+    remainder = rem(String.to_integer("100"), 3)
+    IO.puts(remainder)
+
+    IO.puts("done")
+  end
+end

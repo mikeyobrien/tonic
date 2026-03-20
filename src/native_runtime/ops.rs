@@ -7,9 +7,25 @@ pub(crate) fn add_int(
     right: RuntimeValue,
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
-    let left = expect_int_operand(left, offset)?;
-    let right = expect_int_operand(right, offset)?;
-    Ok(RuntimeValue::Int(left + right))
+    match (&left, &right) {
+        (RuntimeValue::Int(l), RuntimeValue::Int(r)) => Ok(RuntimeValue::Int(l + r)),
+        (RuntimeValue::Float(l), RuntimeValue::Float(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            Ok(RuntimeValue::Float(format_float(l + r)))
+        }
+        (RuntimeValue::Int(l), RuntimeValue::Float(r)) => {
+            let l = *l as f64;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            Ok(RuntimeValue::Float(format_float(l + r)))
+        }
+        (RuntimeValue::Float(l), RuntimeValue::Int(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r = *r as f64;
+            Ok(RuntimeValue::Float(format_float(l + r)))
+        }
+        _ => Err(NativeRuntimeError::badarg(offset)),
+    }
 }
 
 pub(crate) fn sub_int(
@@ -17,9 +33,25 @@ pub(crate) fn sub_int(
     right: RuntimeValue,
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
-    let left = expect_int_operand(left, offset)?;
-    let right = expect_int_operand(right, offset)?;
-    Ok(RuntimeValue::Int(left - right))
+    match (&left, &right) {
+        (RuntimeValue::Int(l), RuntimeValue::Int(r)) => Ok(RuntimeValue::Int(l - r)),
+        (RuntimeValue::Float(l), RuntimeValue::Float(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            Ok(RuntimeValue::Float(format_float(l - r)))
+        }
+        (RuntimeValue::Int(l), RuntimeValue::Float(r)) => {
+            let l = *l as f64;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            Ok(RuntimeValue::Float(format_float(l - r)))
+        }
+        (RuntimeValue::Float(l), RuntimeValue::Int(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r = *r as f64;
+            Ok(RuntimeValue::Float(format_float(l - r)))
+        }
+        _ => Err(NativeRuntimeError::badarg(offset)),
+    }
 }
 
 pub(crate) fn mul_int(
@@ -27,9 +59,25 @@ pub(crate) fn mul_int(
     right: RuntimeValue,
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
-    let left = expect_int_operand(left, offset)?;
-    let right = expect_int_operand(right, offset)?;
-    Ok(RuntimeValue::Int(left * right))
+    match (&left, &right) {
+        (RuntimeValue::Int(l), RuntimeValue::Int(r)) => Ok(RuntimeValue::Int(l * r)),
+        (RuntimeValue::Float(l), RuntimeValue::Float(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            Ok(RuntimeValue::Float(format_float(l * r)))
+        }
+        (RuntimeValue::Int(l), RuntimeValue::Float(r)) => {
+            let l = *l as f64;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            Ok(RuntimeValue::Float(format_float(l * r)))
+        }
+        (RuntimeValue::Float(l), RuntimeValue::Int(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r = *r as f64;
+            Ok(RuntimeValue::Float(format_float(l * r)))
+        }
+        _ => Err(NativeRuntimeError::badarg(offset)),
+    }
 }
 
 pub(crate) fn div_int(
@@ -37,18 +85,55 @@ pub(crate) fn div_int(
     right: RuntimeValue,
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
-    let left = expect_int_operand(left, offset)?;
-    let right = expect_int_operand(right, offset)?;
-
-    if right == 0 {
-        return Err(NativeRuntimeError::at_offset(
-            NativeRuntimeErrorCode::DivisionByZero,
-            "division by zero",
-            offset,
-        ));
+    match (&left, &right) {
+        (RuntimeValue::Int(l), RuntimeValue::Int(r)) => {
+            if *r == 0 {
+                return Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::DivisionByZero,
+                    "division by zero",
+                    offset,
+                ));
+            }
+            Ok(RuntimeValue::Int(l / r))
+        }
+        (RuntimeValue::Float(l), RuntimeValue::Float(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            if r == 0.0 {
+                return Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::DivisionByZero,
+                    "division by zero",
+                    offset,
+                ));
+            }
+            Ok(RuntimeValue::Float(format_float(l / r)))
+        }
+        (RuntimeValue::Int(l), RuntimeValue::Float(r)) => {
+            let l = *l as f64;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            if r == 0.0 {
+                return Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::DivisionByZero,
+                    "division by zero",
+                    offset,
+                ));
+            }
+            Ok(RuntimeValue::Float(format_float(l / r)))
+        }
+        (RuntimeValue::Float(l), RuntimeValue::Int(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r = *r as f64;
+            if r == 0.0 {
+                return Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::DivisionByZero,
+                    "division by zero",
+                    offset,
+                ));
+            }
+            Ok(RuntimeValue::Float(format_float(l / r)))
+        }
+        _ => Err(NativeRuntimeError::badarg(offset)),
     }
-
-    Ok(RuntimeValue::Int(left / right))
 }
 
 pub(crate) fn int_div(
@@ -96,27 +181,40 @@ pub(crate) fn cmp_int(
     right: RuntimeValue,
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
-    // StrictEq and StrictNotEq compare without coercion
-    if kind == CmpKind::StrictEq || kind == CmpKind::StrictNotEq {
+    // Eq, NotEq, StrictEq, and StrictNotEq compare polymorphically without coercion
+    if matches!(kind, CmpKind::Eq | CmpKind::NotEq | CmpKind::StrictEq | CmpKind::StrictNotEq) {
         let equal = left == right;
-        return Ok(RuntimeValue::Bool(if kind == CmpKind::StrictEq {
-            equal
-        } else {
-            !equal
+        return Ok(RuntimeValue::Bool(match kind {
+            CmpKind::Eq | CmpKind::StrictEq => equal,
+            CmpKind::NotEq | CmpKind::StrictNotEq => !equal,
+            _ => unreachable!(),
         }));
     }
 
-    let left = expect_int_operand(left, offset)?;
-    let right = expect_int_operand(right, offset)?;
+    let (lf, rf) = match (&left, &right) {
+        (RuntimeValue::Int(l), RuntimeValue::Int(r)) => (*l as f64, *r as f64),
+        (RuntimeValue::Float(l), RuntimeValue::Float(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            (l, r)
+        }
+        (RuntimeValue::Int(l), RuntimeValue::Float(r)) => {
+            let r: f64 = r.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            (*l as f64, r)
+        }
+        (RuntimeValue::Float(l), RuntimeValue::Int(r)) => {
+            let l: f64 = l.parse().map_err(|_| NativeRuntimeError::badarg(offset))?;
+            (l, *r as f64)
+        }
+        _ => return Err(NativeRuntimeError::badarg(offset)),
+    };
 
     let result = match kind {
-        CmpKind::Eq => left == right,
-        CmpKind::NotEq => left != right,
-        CmpKind::Lt => left < right,
-        CmpKind::Lte => left <= right,
-        CmpKind::Gt => left > right,
-        CmpKind::Gte => left >= right,
-        CmpKind::StrictEq | CmpKind::StrictNotEq => unreachable!(),
+        CmpKind::Lt => lf < rf,
+        CmpKind::Lte => lf <= rf,
+        CmpKind::Gt => lf > rf,
+        CmpKind::Gte => lf >= rf,
+        CmpKind::Eq | CmpKind::NotEq | CmpKind::StrictEq | CmpKind::StrictNotEq => unreachable!(),
     };
 
     Ok(RuntimeValue::Bool(result))
@@ -226,6 +324,16 @@ pub(crate) fn range(
 fn expect_int_operand(value: RuntimeValue, offset: usize) -> Result<i64, NativeRuntimeError> {
     match value {
         RuntimeValue::Int(number) => Ok(number),
+        RuntimeValue::String(_) => Err(NativeRuntimeError::at_offset(
+            NativeRuntimeErrorCode::BadArg,
+            "int operator expects int operands, found string. Hint: String comparison with == is not supported. Use the pin operator in a case expression: `case value do ^expected -> :match; _ -> :no_match end`",
+            offset,
+        )),
+        RuntimeValue::Float(_) => Err(NativeRuntimeError::at_offset(
+            NativeRuntimeErrorCode::BadArg,
+            "int operator expects int operands, found float. Hint: For integer operations (+, -, *, div, rem), convert floats to integers first. Use / for float division.",
+            offset,
+        )),
         other => Err(NativeRuntimeError::at_offset(
             NativeRuntimeErrorCode::BadArg,
             format!(
@@ -339,4 +447,12 @@ pub(crate) fn kernel_rem(
         ));
     }
     Ok(RuntimeValue::Int(left % right))
+}
+
+fn format_float(value: f64) -> String {
+    if value.fract() == 0.0 && value.is_finite() {
+        format!("{value:.1}")
+    } else {
+        value.to_string()
+    }
 }

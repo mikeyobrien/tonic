@@ -1,0 +1,36 @@
+defmodule Demo do
+  def run() do
+    # String.to_float bug fix — should return usable float, not string
+    pi = String.to_float("3.14")
+    IO.puts("to_float: #{pi}")
+    IO.puts("to_float + 1.0: #{pi + 1.0}")
+    IO.puts("to_float * 2: #{pi * 2.0}")
+
+    # String.to_float with negative
+    neg = String.to_float("-2.5")
+    IO.puts("negative float: #{neg}")
+    IO.puts("negative + 10.0: #{neg + 10.0}")
+
+    # List.delete_at — remove element at index
+    list = [10, 20, 30, 40, 50]
+    IO.puts("delete_at 0: #{inspect(List.delete_at(list, 0))}")
+    IO.puts("delete_at 2: #{inspect(List.delete_at(list, 2))}")
+    IO.puts("delete_at 4: #{inspect(List.delete_at(list, 4))}")
+    IO.puts("delete_at out of bounds: #{inspect(List.delete_at(list, 10))}")
+
+    # List.update_at — apply function at index
+    IO.puts("update_at 0: #{inspect(List.update_at(list, 0, fn x -> x * 100 end))}")
+    IO.puts("update_at 2: #{inspect(List.update_at(list, 2, fn x -> x + 5 end))}")
+    IO.puts("update_at 4: #{inspect(List.update_at(list, 4, fn x -> x - 1 end))}")
+    IO.puts("update_at out of bounds: #{inspect(List.update_at(list, 10, fn x -> x end))}")
+
+    # Combined pipeline: parse floats, delete_at, update_at
+    prices = ["1.99", "4.50", "2.75", "8.00"]
+    parsed = Enum.map(prices, fn p -> String.to_float(p) end)
+    IO.puts("parsed prices: #{inspect(parsed)}")
+    without_second = List.delete_at(parsed, 1)
+    IO.puts("without second: #{inspect(without_second)}")
+    doubled_first = List.update_at(parsed, 0, fn x -> x * 2.0 end)
+    IO.puts("doubled first: #{inspect(doubled_first)}")
+  end
+end

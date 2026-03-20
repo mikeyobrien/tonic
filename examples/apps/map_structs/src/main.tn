@@ -1,0 +1,160 @@
+defmodule User do
+  def new(name, age, role) do
+    %{name: name, age: age, role: role, active: true}
+  end
+
+  def deactivate(user) do
+    Map.put(user, :active, false)
+  end
+
+  def promote(user) do
+    Map.put(user, :role, "admin")
+  end
+
+  def display(user) do
+    name = user.name
+    age = user.age
+    role = user.role
+    active = user.active
+    "#{name} (#{age}, #{role}, active=#{active})"
+  end
+end
+
+defmodule UserDB do
+  def create() do
+    []
+  end
+
+  def add(db, user) do
+    [user] ++ db
+  end
+
+  def find_by_role(db, role) do
+    find_by_role_helper(db, role, [])
+  end
+
+  defp find_by_role_helper([], _role, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp find_by_role_helper([user | rest], role, acc) do
+    case user.role do
+      ^role -> find_by_role_helper(rest, role, [user] ++ acc)
+      _ -> find_by_role_helper(rest, role, acc)
+    end
+  end
+
+  def names(db) do
+    Enum.map(db, &(&1.name))
+  end
+
+  def active_count(db) do
+    Enum.count(Enum.filter(db, &(is_active(&1))))
+  end
+
+  defp is_active(user) do
+    user.active
+  end
+
+  def oldest(db) do
+    Enum.reduce(db, nil, &(pick_older(&1, &2)))
+  end
+
+  defp pick_older(user, nil) do
+    user
+  end
+
+  defp pick_older(user, best) do
+    case user.age > best.age do
+      true -> user
+      _ -> best
+    end
+  end
+
+  def update_all_roles(db, new_role) do
+    Enum.map(db, &(Map.put(&1, :role, new_role)))
+  end
+end
+
+defmodule Demo do
+  def run() do
+    alice = User.new("Alice", 30, "admin")
+    bob = User.new("Bob", 25, "user")
+    carol = User.new("Carol", 35, "user")
+    dave = User.new("Dave", 28, "moderator")
+
+    db = UserDB.create()
+    db = UserDB.add(db, alice)
+    db = UserDB.add(db, bob)
+    db = UserDB.add(db, carol)
+    db = UserDB.add(db, dave)
+
+    case IO.puts("=== Map Structs ===") do
+      _ -> case show_users(db) do
+        _ -> case show_queries(db) do
+          _ -> case show_transforms(db, carol) do
+            _ -> show_bulk_update(db)
+          end
+        end
+      end
+    end
+  end
+
+  defp show_users(db) do
+    case IO.puts("Users:") do
+      _ -> print_each(db)
+    end
+  end
+
+  defp print_each([]) do
+    :ok
+  end
+
+  defp print_each([user | rest]) do
+    case IO.puts("  " <> User.display(user)) do
+      _ -> print_each(rest)
+    end
+  end
+
+  defp show_queries(db) do
+    users = UserDB.find_by_role(db, "user")
+    user_names = UserDB.names(users)
+    oldest = UserDB.oldest(db)
+    active = UserDB.active_count(db)
+    case IO.puts("Users with role=user: " <> fmt(user_names)) do
+      _ -> case IO.puts("Oldest: " <> User.display(oldest)) do
+        _ -> IO.puts("Active count: #{active}")
+      end
+    end
+  end
+
+  defp show_transforms(db, carol) do
+    deactivated = User.deactivate(carol)
+    promoted = User.promote(carol)
+    case IO.puts("Deactivated Carol: " <> User.display(deactivated)) do
+      _ -> IO.puts("Promoted Carol: " <> User.display(promoted))
+    end
+  end
+
+  defp show_bulk_update(db) do
+    updated = UserDB.update_all_roles(db, "guest")
+    roles = Enum.map(updated, &(&1.role))
+    IO.puts("All roles after bulk update: " <> fmt(roles))
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

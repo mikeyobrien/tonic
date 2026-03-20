@@ -295,7 +295,14 @@ const BENCHMARK_THRESHOLD_WARM_START_P50_MS: u64 = 10;
 const BENCHMARK_THRESHOLD_IDLE_RSS_MB: u64 = 30;
 
 fn main() {
-    std::process::exit(run(std::env::args().skip(1).collect()));
+    // Spawn on a thread with 64MB stack to support deeply recursive Tonic programs.
+    // Rust's default 8MB stack overflows on idiomatic recursive code (e.g. brainfuck_interpreter).
+    const STACK_SIZE: usize = 64 * 1024 * 1024;
+    let builder = std::thread::Builder::new().stack_size(STACK_SIZE);
+    let handler = builder
+        .spawn(|| run(std::env::args().skip(1).collect()))
+        .expect("failed to spawn main thread");
+    std::process::exit(handler.join().expect("main thread panicked"));
 }
 
 fn run(args: Vec<String>) -> i32 {

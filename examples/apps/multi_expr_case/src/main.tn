@@ -1,0 +1,85 @@
+# Multi-expression branch bodies using do/end blocks
+
+defmodule Demo do
+  def run() do
+    # Case with multi-expression body
+    result = case :ok do
+      :ok -> do
+        a = 1
+        b = 2
+        a + b
+      end
+      _ -> 0
+    end
+    IO.puts("#{result}")
+
+    # Cond with multi-expression body
+    x = 10
+    output = cond do
+      x > 5 -> do
+        doubled = x * 2
+        doubled + 1
+      end
+      true -> 0
+    end
+    IO.puts("#{output}")
+
+    # Anonymous function with multi-expression body
+    compute = fn val -> do
+      step1 = val * 3
+      step2 = step1 + 10
+      step2
+    end end
+    IO.puts("#{compute.(5)}")
+
+    # Nested case with multi-expression bodies
+    value = :b
+    nested = case value do
+      :a -> do
+        inner = case 1 do
+          _ -> do
+            x = 10
+            x + 5
+          end
+        end
+        inner * 2
+      end
+      :b -> do
+        first = 100
+        second = 200
+        first + second
+      end
+      _ -> -1
+    end
+    IO.puts("#{nested}")
+
+    # Case with guard and multi-expression body
+    n = 7
+    guarded = case n do
+      x when x > 5 -> do
+        base = x * 10
+        base + x
+      end
+      x -> x
+    end
+    IO.puts("#{guarded}")
+
+    # Mixed single and multi-expression branches
+    mixed = case :third do
+      :first -> 1
+      :second -> do
+        a = 2
+        b = 3
+        a * b
+      end
+      :third -> do
+        x = 10
+        y = 20
+        z = 30
+        x + y + z
+      end
+      _ -> 0
+    end
+    IO.puts("#{mixed}")
+  end
+end

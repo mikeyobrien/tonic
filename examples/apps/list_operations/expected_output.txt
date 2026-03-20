@@ -1,0 +1,14 @@
+=== List Operations ===
+first of [10, 20, 30]: 10
+last of [10, 20, 30]: 30
+first of []: 
+last of []: 
+flatten [1,[2,[3,4]],5]: [1, 2, 3, 4, 5]
+flatten [[1,2],[],[3]]: [1, 2, 3]
+zip [1,2,3] [:a,:b,:c]: [{1, a}, {2, b}, {3, c}]
+zip [1,2] [:a,:b,:c]: [{1, a}, {2, b}]
+unzip [{1,:a},{2,:b},{3,:c}]: {[1, 2, 3], [a, b, c]}
+wrap nil: []
+wrap 42: [42]
+wrap [1, 2]: [1, 2]
+nil

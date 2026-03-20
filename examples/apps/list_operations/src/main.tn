@@ -1,0 +1,82 @@
+defmodule Demo do
+  def run() do
+    case IO.puts("=== List Operations ===") do
+      _ -> case show_first_last() do
+        _ -> case show_flatten() do
+          _ -> case show_zip_unzip() do
+            _ -> show_wrap()
+          end
+        end
+      end
+    end
+  end
+
+  defp show_first_last() do
+    case IO.puts("first of [10, 20, 30]: #{List.first([10, 20, 30])}") do
+      _ -> case IO.puts("last of [10, 20, 30]: #{List.last([10, 20, 30])}") do
+        _ -> case IO.puts("first of []: #{List.first([])}") do
+          _ -> IO.puts("last of []: #{List.last([])}")
+        end
+      end
+    end
+  end
+
+  defp show_flatten() do
+    result1 = List.flatten([1, [2, [3, 4]], 5])
+    result2 = List.flatten([[1, 2], [], [3]])
+    case IO.puts("flatten [1,[2,[3,4]],5]: " <> fmt(result1)) do
+      _ -> IO.puts("flatten [[1,2],[],[3]]: " <> fmt(result2))
+    end
+  end
+
+  defp show_zip_unzip() do
+    zipped = List.zip([1, 2, 3], [:a, :b, :c])
+    short_zip = List.zip([1, 2], [:a, :b, :c])
+    {lefts, rights} = List.unzip([{1, :a}, {2, :b}, {3, :c}])
+    case IO.puts("zip [1,2,3] [:a,:b,:c]: " <> fmt_tuples(zipped)) do
+      _ -> case IO.puts("zip [1,2] [:a,:b,:c]: " <> fmt_tuples(short_zip)) do
+        _ -> IO.puts("unzip [{1,:a},{2,:b},{3,:c}]: {" <> fmt(lefts) <> ", " <> fmt(rights) <> "}")
+      end
+    end
+  end
+
+  defp show_wrap() do
+    case IO.puts("wrap nil: " <> fmt(List.wrap(nil))) do
+      _ -> case IO.puts("wrap 42: " <> fmt(List.wrap(42))) do
+        _ -> IO.puts("wrap [1, 2]: " <> fmt(List.wrap([1, 2])))
+      end
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+
+  defp fmt_tuples(list) do
+    "[" <> join_tuple_items(list) <> "]"
+  end
+
+  defp join_tuple_items([]) do
+    ""
+  end
+
+  defp join_tuple_items([{a, b}]) do
+    "{#{a}, #{b}}"
+  end
+
+  defp join_tuple_items([{a, b} | rest]) do
+    "{#{a}, #{b}}, " <> join_tuple_items(rest)
+  end
+end

@@ -1,0 +1,3 @@
+[project]
+name = "string_processing"
+entry = "src/main.tn"

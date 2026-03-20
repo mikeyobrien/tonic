@@ -1,0 +1,29 @@
+# Float division tests — polymorphic / operator
+
+defmodule Demo do
+  def run() do
+    # Float / Float
+    result1 = 10.0 / 3.0
+    IO.puts("10.0 / 3.0 = #{result1}")
+
+    # Int / Int (unchanged behavior)
+    result2 = 10 / 3
+    IO.puts("10 / 3 = #{result2}")
+
+    # Int / Float (promotion)
+    result3 = 10 / 2.5
+    IO.puts("10 / 2.5 = #{result3}")
+
+    # Float / Int (promotion)
+    result4 = 7.5 / 3
+    IO.puts("7.5 / 3 = #{result4}")
+
+    # Float division yielding whole number
+    result5 = 10.0 / 2.0
+    IO.puts("10.0 / 2.0 = #{result5}")
+
+    # Large float division
+    result6 = 100.0 / 7.0
+    IO.puts("100.0 / 7.0 = #{result6}")
+  end
+end

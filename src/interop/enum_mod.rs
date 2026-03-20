@@ -117,9 +117,73 @@ fn compare_values(a: &RuntimeValue, b: &RuntimeValue) -> std::cmp::Ordering {
     }
 }
 
+fn host_enum_slice(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("Enum.slice", args, 3)?;
+    let list = expect_list_arg("Enum.slice", args, 0)?;
+    let start = match &args[1] {
+        RuntimeValue::Int(n) => *n as usize,
+        other => {
+            return Err(HostError::new(format!(
+                "Enum.slice expects int start; found {}",
+                host_value_kind(other)
+            )))
+        }
+    };
+    let count = match &args[2] {
+        RuntimeValue::Int(n) => *n as usize,
+        other => {
+            return Err(HostError::new(format!(
+                "Enum.slice expects int count; found {}",
+                host_value_kind(other)
+            )))
+        }
+    };
+    let sliced: Vec<RuntimeValue> = list.into_iter().skip(start).take(count).collect();
+    Ok(RuntimeValue::List(sliced))
+}
+
+fn host_enum_random(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("Enum.random", args, 1)?;
+    let list = expect_list_arg("Enum.random", args, 0)?;
+    if list.is_empty() {
+        return Err(HostError::new("Enum.random called on empty list"));
+    }
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos() as usize;
+    let index = nanos % list.len();
+    Ok(list[index].clone())
+}
+
+fn host_enum_shuffle(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("Enum.shuffle", args, 1)?;
+    let mut list = expect_list_arg("Enum.shuffle", args, 0)?;
+    if list.len() <= 1 {
+        return Ok(RuntimeValue::List(list));
+    }
+    // Fisher-Yates shuffle using system time nanos as randomness source
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let mut seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos() as u64;
+    for i in (1..list.len()).rev() {
+        // Simple LCG for pseudo-random numbers
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let j = (seed >> 33) as usize % (i + 1);
+        list.swap(i, j);
+    }
+    Ok(RuntimeValue::List(list))
+}
+
 pub fn register_enum_host_functions(registry: &HostRegistry) {
     registry.register("enum_join", host_enum_join);
     registry.register("enum_sort", host_enum_sort);
+    registry.register("enum_slice", host_enum_slice);
+    registry.register("enum_random", host_enum_random);
+    registry.register("enum_shuffle", host_enum_shuffle);
 }
 
 #[cfg(test)]

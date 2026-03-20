@@ -1,0 +1,19 @@
+["hello", "world", "foo"]
+["a", "b", "c"]
+["hello"]
+["h", "e", "l", "l", "o"]
+[]
+["x"]
+["1", "2", "3"]
+5
+[1, 2, 3, 4, 5]
+[42]
+[]
+2
+false
+nil
+3
+default_value
+h-e-l-l-o
+Took 3 bananas, 2 items left
+nil

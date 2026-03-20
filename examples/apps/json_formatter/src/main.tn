@@ -1,0 +1,149 @@
+# JSON-like formatter — pretty-print nested data structures
+# Tests: deep recursion, complex interpolation, string building, guard-based type dispatch
+
+defmodule JsonFmt do
+  def format(value) do
+    format_value(value, 0)
+  end
+
+  defp format_value(value, depth) when is_list(value) do
+    format_list(value, depth)
+  end
+
+  defp format_value(value, depth) when is_map(value) do
+    format_map(value, depth)
+  end
+
+  defp format_value(value, _depth) when is_atom(value) do
+    "#{value}"
+  end
+
+  defp format_value(value, _depth) when is_integer(value) do
+    "#{value}"
+  end
+
+  defp format_value(value, _depth) when is_float(value) do
+    "#{value}"
+  end
+
+  defp format_value(value, _depth) do
+    "#{value}"
+  end
+
+  defp format_list([], _depth) do
+    "[]"
+  end
+
+  defp format_list(list, depth) do
+    outer = indent(depth)
+    items = format_list_items(list, depth + 1)
+    "[" <> items <> outer <> "]"
+  end
+
+  defp format_list_items([], _depth) do
+    ""
+  end
+
+  defp format_list_items([item], depth) do
+    ind = indent(depth)
+    ind <> format_value(item, depth)
+  end
+
+  defp format_list_items([item | rest], depth) do
+    ind = indent(depth)
+    ind <> format_value(item, depth) <> "," <> format_list_items(rest, depth)
+  end
+
+  defp format_map(map, depth) do
+    keys = Map.keys(map)
+    case keys do
+      [] -> "{}"
+      _ -> do
+        outer = indent(depth)
+        items = format_map_items(keys, map, depth + 1)
+        "{" <> items <> outer <> "}"
+      end
+    end
+  end
+
+  defp format_map_items([], _map, _depth) do
+    ""
+  end
+
+  defp format_map_items([key], map, depth) do
+    ind = indent(depth)
+    val = Map.get(map, key, nil)
+    ind <> "#{key}: " <> format_value(val, depth)
+  end
+
+  defp format_map_items([key | rest], map, depth) do
+    ind = indent(depth)
+    val = Map.get(map, key, nil)
+    ind <> "#{key}: " <> format_value(val, depth) <> "," <> format_map_items(rest, map, depth)
+  end
+
+  defp indent(n) do
+    make_indent(n, "
+")
+  end
+
+  defp make_indent(0, acc) do
+    acc
+  end
+
+  defp make_indent(n, acc) when n > 0 do
+    make_indent(n - 1, acc <> "  ")
+  end
+end
+
+defmodule Demo do
+  def run() do
+    # Simple values
+    case IO.puts("=== JSON Formatter ===") do
+      _ -> case IO.puts("Integer: " <> JsonFmt.format(42)) do
+        _ -> case IO.puts("Atom: " <> JsonFmt.format(:hello)) do
+          _ -> case IO.puts("Nil: " <> JsonFmt.format(nil)) do
+            _ -> case IO.puts("") do
+              _ -> case show_list() do
+                _ -> case IO.puts("") do
+                  _ -> case show_map() do
+                    _ -> case IO.puts("") do
+                      _ -> show_nested()
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_list() do
+    list = [1, 2, 3, 4, 5]
+    case IO.puts("List:") do
+      _ -> IO.puts(JsonFmt.format(list))
+    end
+  end
+
+  defp show_map() do
+    map = %{:name => "alice", :age => 30}
+    case IO.puts("Map:") do
+      _ -> IO.puts(JsonFmt.format(map))
+    end
+  end
+
+  defp show_nested() do
+    nested = %{
+      :users => [
+        %{:name => "alice", :scores => [95, 87, 92]},
+        %{:name => "bob", :scores => [78, 84, 90]}
+      ],
+      :count => 2
+    }
+    case IO.puts("Nested:") do
+      _ -> IO.puts(JsonFmt.format(nested))
+    end
+  end
+end

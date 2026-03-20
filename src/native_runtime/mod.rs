@@ -173,6 +173,240 @@ pub(crate) fn evaluate_builtin_call(
                 )),
             }
         }
+        "abs" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::Int(n) => Ok(RuntimeValue::Int(n.abs())),
+                RuntimeValue::Float(ref s) => {
+                    let f: f64 = s.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Float(format!("{}", f.abs())))
+                }
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("abs expects a number, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "length" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::List(ref items) => Ok(RuntimeValue::Int(items.len() as i64)),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("length expects a list, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "hd" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::List(ref items) if !items.is_empty() => Ok(items[0].clone()),
+                RuntimeValue::List(_) => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    "hd called on empty list",
+                    offset,
+                )),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("hd expects a list, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "tl" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::List(ref items) if !items.is_empty() => {
+                    Ok(RuntimeValue::List(items[1..].to_vec()))
+                }
+                RuntimeValue::List(_) => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    "tl called on empty list",
+                    offset,
+                )),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("tl expects a list, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "elem" => {
+            let (tuple, index) = expect_pair_builtin_args(name, args, offset)?;
+            match (&tuple, &index) {
+                (RuntimeValue::Tuple(left, right), RuntimeValue::Int(i)) => match *i {
+                    0 => Ok(*left.clone()),
+                    1 => Ok(*right.clone()),
+                    _ => Err(NativeRuntimeError::at_offset(
+                        NativeRuntimeErrorCode::BadArg,
+                        format!("elem index {} out of range for 2-element tuple", i),
+                        offset,
+                    )),
+                },
+                (RuntimeValue::Tuple(_, _), _) => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("elem index must be an integer, found {}", runtime_value_kind(&index)),
+                    offset,
+                )),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("elem expects a tuple, found {}", runtime_value_kind(&tuple)),
+                    offset,
+                )),
+            }
+        }
+        "tuple_size" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::Tuple(_, _) => Ok(RuntimeValue::Int(2)),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("tuple_size expects a tuple, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "to_string" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            let str_value = match arg {
+                RuntimeValue::String(s) => s,
+                RuntimeValue::Int(i) => i.to_string(),
+                RuntimeValue::Float(f) => f.clone(),
+                RuntimeValue::Bool(b) => b.to_string(),
+                RuntimeValue::Nil => String::new(),
+                RuntimeValue::Atom(a) => a,
+                other => other.render(),
+            };
+            Ok(RuntimeValue::String(str_value))
+        }
+        "max" => {
+            let (a, b) = expect_pair_builtin_args(name, args, offset)?;
+            match (&a, &b) {
+                (RuntimeValue::Int(x), RuntimeValue::Int(y)) => Ok(RuntimeValue::Int(*x.max(y))),
+                (RuntimeValue::Float(x), RuntimeValue::Float(y)) => {
+                    let fx: f64 = x.parse().unwrap_or(0.0);
+                    let fy: f64 = y.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Float(format!("{}", fx.max(fy))))
+                }
+                (RuntimeValue::Int(x), RuntimeValue::Float(y)) => {
+                    let fy: f64 = y.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Float(format!("{}", (*x as f64).max(fy))))
+                }
+                (RuntimeValue::Float(x), RuntimeValue::Int(y)) => {
+                    let fx: f64 = x.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Float(format!("{}", fx.max(*y as f64))))
+                }
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("max expects two numbers, found {} and {}", runtime_value_kind(&a), runtime_value_kind(&b)),
+                    offset,
+                )),
+            }
+        }
+        "min" => {
+            let (a, b) = expect_pair_builtin_args(name, args, offset)?;
+            match (&a, &b) {
+                (RuntimeValue::Int(x), RuntimeValue::Int(y)) => Ok(RuntimeValue::Int(*x.min(y))),
+                (RuntimeValue::Float(x), RuntimeValue::Float(y)) => {
+                    let fx: f64 = x.parse().unwrap_or(0.0);
+                    let fy: f64 = y.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Float(format!("{}", fx.min(fy))))
+                }
+                (RuntimeValue::Int(x), RuntimeValue::Float(y)) => {
+                    let fy: f64 = y.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Float(format!("{}", (*x as f64).min(fy))))
+                }
+                (RuntimeValue::Float(x), RuntimeValue::Int(y)) => {
+                    let fx: f64 = x.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Float(format!("{}", fx.min(*y as f64))))
+                }
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("min expects two numbers, found {} and {}", runtime_value_kind(&a), runtime_value_kind(&b)),
+                    offset,
+                )),
+            }
+        }
+        "round" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::Int(n) => Ok(RuntimeValue::Int(n)),
+                RuntimeValue::Float(ref s) => {
+                    let f: f64 = s.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Int(f.round() as i64))
+                }
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("round expects a number, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "trunc" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::Int(n) => Ok(RuntimeValue::Int(n)),
+                RuntimeValue::Float(ref s) => {
+                    let f: f64 = s.parse().unwrap_or(0.0);
+                    Ok(RuntimeValue::Int(f.trunc() as i64))
+                }
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("trunc expects a number, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "map_size" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            match arg {
+                RuntimeValue::Map(ref entries) => Ok(RuntimeValue::Int(entries.len() as i64)),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("map_size expects a map, found {}", runtime_value_kind(&arg)),
+                    offset,
+                )),
+            }
+        }
+        "put_elem" => {
+            if args.len() != 3 {
+                return Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::ArityMismatch,
+                    format!("arity mismatch for put_elem: expected 3 args, found {}", args.len()),
+                    offset,
+                ));
+            }
+            let tuple = args[0].clone();
+            let index = args[1].clone();
+            let value = args[2].clone();
+            match (&tuple, &index) {
+                (RuntimeValue::Tuple(left, right), RuntimeValue::Int(i)) => match *i {
+                    0 => Ok(RuntimeValue::Tuple(Box::new(value), right.clone())),
+                    1 => Ok(RuntimeValue::Tuple(left.clone(), Box::new(value))),
+                    _ => Err(NativeRuntimeError::at_offset(
+                        NativeRuntimeErrorCode::BadArg,
+                        format!("put_elem index {} out of range for 2-element tuple", i),
+                        offset,
+                    )),
+                },
+                (RuntimeValue::Tuple(_, _), _) => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("put_elem index must be an integer, found {}", runtime_value_kind(&index)),
+                    offset,
+                )),
+                _ => Err(NativeRuntimeError::at_offset(
+                    NativeRuntimeErrorCode::BadArg,
+                    format!("put_elem expects a tuple, found {}", runtime_value_kind(&tuple)),
+                    offset,
+                )),
+            }
+        }
+        "inspect" => {
+            let arg = expect_single_builtin_arg(name, args, offset)?;
+            Ok(RuntimeValue::String(arg.render()))
+        }
         _ => Err(NativeRuntimeError::at_offset(
             NativeRuntimeErrorCode::UnsupportedBuiltin,
             format!("unsupported builtin call in runtime evaluator: {name}"),

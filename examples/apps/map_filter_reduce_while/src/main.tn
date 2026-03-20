@@ -1,0 +1,57 @@
+defmodule Demo do
+  def run() do
+    # Map.filter/2 - filter by value
+    scores = %{"alice" => 85, "bob" => 42, "charlie" => 91}
+    passing = Map.filter(scores, fn entry -> elem(entry, 1) >= 50 end)
+    IO.puts(inspect(passing))
+
+    # Map.filter/2 - filter by key length
+    data = %{"name" => "Alice", "age" => 30, "city" => "NYC"}
+    short_keys = Map.filter(data, fn entry -> String.length(elem(entry, 0)) <= 4 end)
+    IO.puts(inspect(short_keys))
+
+    # Map.reject/2 - reject low values
+    all_scores = %{"a" => 10, "b" => 90, "c" => 30}
+    rejected = Map.reject(all_scores, fn entry -> elem(entry, 1) < 50 end)
+    IO.puts(inspect(rejected))
+
+    # Map.filter even values
+    items = %{"x" => 1, "y" => 2, "z" => 3, "w" => 4}
+    even_only = Map.filter(items, fn entry -> rem(elem(entry, 1), 2) == 0 end)
+    IO.puts(inspect(even_only))
+
+    # Enum.find_index/2 - found
+    idx = Enum.find_index([10, 20, 30, 40], fn x -> x == 30 end)
+    IO.puts(idx)
+
+    # Enum.find_index/2 - not found returns nil
+    missing = Enum.find_index([1, 2, 3], fn x -> x == 99 end)
+    IO.puts(inspect(missing))
+
+    # Enum.find_index/2 - first match
+    first_even = Enum.find_index([1, 3, 4, 6, 8], fn x -> rem(x, 2) == 0 end)
+    IO.puts(first_even)
+
+    # Enum.reduce_while/3 - early termination with :halt
+    sum_until = Enum.reduce_while([1, 2, 3, 4, 5], 0, fn x, acc ->
+      case acc + x > 6 do
+        true -> {:halt, acc}
+        _ -> {:cont, acc + x}
+      end
+    end)
+    IO.puts(sum_until)
+
+    # Enum.reduce_while/3 - full traversal with :cont
+    total = Enum.reduce_while([1, 2, 3], 0, fn x, acc ->
+      {:cont, acc + x}
+    end)
+    IO.puts(total)
+
+    # Combined: Map.filter + Enum.find_index
+    config = %{"debug" => true, "verbose" => false, "trace" => true}
+    enabled = Map.filter(config, fn entry -> elem(entry, 1) == true end)
+    keys = Map.keys(enabled)
+    sorted_keys = Enum.sort(keys)
+    IO.puts(inspect(sorted_keys))
+  end
+end

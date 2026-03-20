@@ -1,0 +1,10 @@
+=== Map Operations ===
+keys: [name, year, status]
+values count: 3
+get :name: tonic
+get :missing: default
+delete :b from {a:1,b:2,c:3}: keys=[a, c]
+merge {a:1} {b:2,a:99}: a=99 b=2
+drop [:status,:year]: keys=[name]
+take [:name,:status]: keys=[name, status]
+nil

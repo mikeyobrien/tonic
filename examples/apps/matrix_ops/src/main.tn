@@ -1,0 +1,211 @@
+# Matrix operations using lists of lists
+# Tests: nested recursion, numeric operations, list building, index-based access
+
+defmodule Matrix do
+  def rows(matrix) do
+    Enum.count(matrix)
+  end
+
+  def cols(matrix) do
+    case matrix do
+      [first | _] -> Enum.count(first)
+      _ -> 0
+    end
+  end
+
+  def at(matrix, row, col) do
+    r = list_at(matrix, row)
+    list_at(r, col)
+  end
+
+  def transpose(matrix) do
+    ncols = cols(matrix)
+    build_cols(matrix, 0, ncols)
+  end
+
+  defp build_cols(_matrix, idx, ncols) when idx == ncols do
+    []
+  end
+
+  defp build_cols(matrix, idx, ncols) do
+    col = extract_col(matrix, idx)
+    [col] ++ build_cols(matrix, idx + 1, ncols)
+  end
+
+  defp extract_col([], _idx) do
+    []
+  end
+
+  defp extract_col([row | rest], idx) do
+    [list_at(row, idx)] ++ extract_col(rest, idx)
+  end
+
+  def add(a, b) do
+    add_rows(a, b)
+  end
+
+  defp add_rows([], []) do
+    []
+  end
+
+  defp add_rows([ra | resta], [rb | restb]) do
+    [add_elems(ra, rb)] ++ add_rows(resta, restb)
+  end
+
+  defp add_elems([], []) do
+    []
+  end
+
+  defp add_elems([a | ra], [b | rb]) do
+    [a + b] ++ add_elems(ra, rb)
+  end
+
+  def scale(matrix, factor) do
+    scale_rows(matrix, factor)
+  end
+
+  defp scale_rows([], _factor) do
+    []
+  end
+
+  defp scale_rows([row | rest], factor) do
+    [scale_elems(row, factor)] ++ scale_rows(rest, factor)
+  end
+
+  defp scale_elems([], _factor) do
+    []
+  end
+
+  defp scale_elems([x | rest], factor) do
+    [x * factor] ++ scale_elems(rest, factor)
+  end
+
+  def multiply(a, b) do
+    bt = transpose(b)
+    mult_rows(a, bt)
+  end
+
+  defp mult_rows([], _bt) do
+    []
+  end
+
+  defp mult_rows([row | rest], bt) do
+    [mult_row_cols(row, bt)] ++ mult_rows(rest, bt)
+  end
+
+  defp mult_row_cols(_row, []) do
+    []
+  end
+
+  defp mult_row_cols(row, [col | rest]) do
+    [dot(row, col)] ++ mult_row_cols(row, rest)
+  end
+
+  def dot([], []) do
+    0
+  end
+
+  def dot([a | ra], [b | rb]) do
+    a * b + dot(ra, rb)
+  end
+
+  def format(matrix) do
+    format_rows(matrix)
+  end
+
+  defp format_rows([]) do
+    ""
+  end
+
+  defp format_rows([row]) do
+    "  [" <> join_items(row) <> "]"
+  end
+
+  defp format_rows([row | rest]) do
+    "  [" <> join_items(row) <> "]" <> ", " <> format_rows(rest)
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+
+  defp list_at([h | _t], 0) do
+    h
+  end
+
+  defp list_at([_h | t], n) do
+    list_at(t, n - 1)
+  end
+end
+
+defmodule Demo do
+  def run() do
+    a = [[1, 2, 3], [4, 5, 6]]
+    b = [[7, 8, 9], [10, 11, 12]]
+
+    case IO.puts("=== Matrix Operations ===") do
+      _ -> case IO.puts("A = " <> Matrix.format(a)) do
+        _ -> case IO.puts("B = " <> Matrix.format(b)) do
+          _ -> case IO.puts("") do
+            _ -> case show_add(a, b) do
+              _ -> case show_scale(a) do
+                _ -> case show_transpose(a) do
+                  _ -> case show_multiply() do
+                    _ -> show_dot()
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_add(a, b) do
+    result = Matrix.add(a, b)
+    case IO.puts("A + B = " <> Matrix.format(result)) do
+      _ -> IO.puts("")
+    end
+  end
+
+  defp show_scale(a) do
+    result = Matrix.scale(a, 3)
+    case IO.puts("A * 3 = " <> Matrix.format(result)) do
+      _ -> IO.puts("")
+    end
+  end
+
+  defp show_transpose(a) do
+    result = Matrix.transpose(a)
+    case IO.puts("A transposed (#{Matrix.rows(a)}x#{Matrix.cols(a)} -> #{Matrix.rows(result)}x#{Matrix.cols(result)}):") do
+      _ -> case IO.puts("  " <> Matrix.format(result)) do
+        _ -> IO.puts("")
+      end
+    end
+  end
+
+  defp show_multiply() do
+    m1 = [[1, 2], [3, 4]]
+    m2 = [[5, 6], [7, 8]]
+    result = Matrix.multiply(m1, m2)
+    case IO.puts("[[1,2],[3,4]] x [[5,6],[7,8]] = " <> Matrix.format(result)) do
+      _ -> IO.puts("")
+    end
+  end
+
+  defp show_dot() do
+    v1 = [1, 2, 3]
+    v2 = [4, 5, 6]
+    result = Matrix.dot(v1, v2)
+    IO.puts("Dot product [1,2,3] . [4,5,6] = #{result}")
+  end
+end

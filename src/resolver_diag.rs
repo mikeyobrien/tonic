@@ -16,6 +16,7 @@ pub enum ResolverDiagnosticCode {
     UndefinedUseModule,
     ImportFilterExcludesCall,
     AmbiguousImportCall,
+    #[allow(dead_code)]
     GuardBuiltinOutsideGuard,
 }
 
@@ -57,10 +58,21 @@ impl ResolverError {
         }
     }
 
+    #[allow(dead_code)] // used by tests to validate stable message contract
     pub fn undefined_symbol(symbol: &str, module: &str, function: &str) -> Self {
+        Self::undefined_symbol_with_hint(symbol, module, function, None)
+    }
+
+    pub fn undefined_symbol_with_hint(
+        symbol: &str,
+        module: &str,
+        function: &str,
+        hint: Option<&str>,
+    ) -> Self {
+        let hint_str = hint.unwrap_or("");
         Self::new(
             ResolverDiagnosticCode::UndefinedSymbol,
-            format!("undefined symbol '{symbol}' in {module}.{function}"),
+            format!("undefined symbol '{symbol}' in {module}.{function}{hint_str}"),
         )
     }
 
@@ -170,6 +182,7 @@ impl ResolverError {
         )
     }
 
+    #[allow(dead_code)]
     pub fn guard_builtin_outside_guard(
         builtin: &str,
         arity: usize,

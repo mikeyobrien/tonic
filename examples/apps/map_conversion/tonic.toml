@@ -1,0 +1,3 @@
+[project]
+name = "map_conversion"
+entry = "src/main.tn"

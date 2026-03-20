@@ -1,0 +1,68 @@
+defmodule Demo do
+  def run() do
+    m = %{name: "tonic", year: 2026, status: :alpha}
+    case IO.puts("=== Map Operations ===") do
+      _ -> case show_keys_values(m) do
+        _ -> case show_get_put(m) do
+          _ -> case show_delete_merge() do
+            _ -> show_drop_take(m)
+          end
+        end
+      end
+    end
+  end
+
+  defp show_keys_values(m) do
+    keys = Map.keys(m)
+    values = Map.values(m)
+    case IO.puts("keys: " <> fmt(keys)) do
+      _ -> IO.puts("values count: #{Enum.count(values)}")
+    end
+  end
+
+  defp show_get_put(m) do
+    got = Map.get(m, :name, "unknown")
+    missing = Map.get(m, :missing, "default")
+    case IO.puts("get :name: #{got}") do
+      _ -> IO.puts("get :missing: #{missing}")
+    end
+  end
+
+  defp show_delete_merge() do
+    base = %{a: 1, b: 2, c: 3}
+    merged = Map.merge(%{a: 1}, %{b: 2, a: 99})
+    deleted = Map.delete(base, :b)
+    del_keys = Map.keys(deleted)
+    merge_a = Map.get(merged, :a, 0)
+    merge_b = Map.get(merged, :b, 0)
+    case IO.puts("delete :b from {a:1,b:2,c:3}: keys=" <> fmt(del_keys)) do
+      _ -> IO.puts("merge {a:1} {b:2,a:99}: a=#{merge_a} b=#{merge_b}")
+    end
+  end
+
+  defp show_drop_take(m) do
+    dropped = Map.drop(m, [:status, :year])
+    taken = Map.take(m, [:name, :status])
+    drop_keys = Map.keys(dropped)
+    take_keys = Map.keys(taken)
+    case IO.puts("drop [:status,:year]: keys=" <> fmt(drop_keys)) do
+      _ -> IO.puts("take [:name,:status]: keys=" <> fmt(take_keys))
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

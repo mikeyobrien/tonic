@@ -1,0 +1,50 @@
+# Polymorphic == and != operators
+# Tests that == and != work for all types, not just integers
+
+defmodule Demo do
+  def run() do
+    # String equality
+    IO.puts("hello == hello: #{("hello" == "hello")}")
+    IO.puts("hello == world: #{("hello" == "world")}")
+    IO.puts("hello != world: #{("hello" != "world")}")
+    IO.puts("hello != hello: #{("hello" != "hello")}")
+
+    # Atom equality
+    IO.puts("ok == ok: #{(:ok == :ok)}")
+    IO.puts("ok == err: #{(:ok == :err)}")
+    IO.puts("ok != err: #{(:ok != :err)}")
+
+    # Bool equality
+    IO.puts("true == true: #{(true == true)}")
+    IO.puts("true == false: #{(true == false)}")
+    IO.puts("true != false: #{(true != false)}")
+
+    # Int equality (still works)
+    IO.puts("42 == 42: #{(42 == 42)}")
+    IO.puts("42 == 99: #{(42 == 99)}")
+    IO.puts("42 != 99: #{(42 != 99)}")
+
+    # List equality
+    IO.puts("[1,2] == [1,2]: #{([1, 2] == [1, 2])}")
+    IO.puts("[1,2] == [3,4]: #{([1, 2] == [3, 4])}")
+    IO.puts("[1,2] != [3,4]: #{([1, 2] != [3, 4])}")
+
+    # Tuple equality
+    IO.puts("{1,2} == {1,2}: #{({1, 2} == {1, 2})}")
+    IO.puts("{1,2} == {3,4}: #{({1, 2} == {3, 4})}")
+
+    # Map equality
+    m1 = %{a: 1, b: 2}
+    m2 = %{a: 1, b: 2}
+    m3 = %{a: 1, b: 99}
+    IO.puts("map1 == map2: #{(m1 == m2)}")
+    IO.puts("map1 == map3: #{(m1 == m3)}")
+    IO.puts("map1 != map3: #{(m1 != m3)}")
+
+    # Cross-type inequality
+    IO.puts("42 == hello: #{(42 == "hello")}")
+    IO.puts("true == 1: #{(true == 1)}")
+    IO.puts("nil == false: #{(nil == false)}")
+    IO.puts("nil != false: #{(nil != false)}")
+  end
+end

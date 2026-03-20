@@ -1,0 +1,76 @@
+defmodule Demo do
+  def run() do
+    IO.puts("=== Enum Extended Functions ===")
+
+    # --- reject/2 ---
+    evens = Enum.reject([1, 2, 3, 4, 5, 6], &(rem(&1, 2) == 1))
+    IO.puts("reject odds: #{evens}")
+
+    empty = Enum.reject([], &(&1 > 0))
+    IO.puts("reject empty: #{empty}")
+
+    all_kept = Enum.reject([1, 2, 3], &(&1 > 10))
+    IO.puts("reject none: #{all_kept}")
+
+    # --- sort_by/2 ---
+    words = ["banana", "fig", "apple", "date"]
+    by_length = Enum.sort_by(words, &(String.length(&1)))
+    IO.puts("sort_by length: #{by_length}")
+
+    nums = [3, -1, 4, -5, 2]
+    by_abs = Enum.sort_by(nums, &(abs_val(&1)))
+    IO.puts("sort_by abs: #{by_abs}")
+
+    single = Enum.sort_by([42], &(&1))
+    IO.puts("sort_by single: #{single}")
+
+    # --- group_by/2 ---
+    grouped = Enum.group_by([1, 2, 3, 4, 5, 6], &(rem(&1, 2)))
+    IO.puts("group_by even/odd: #{grouped}")
+
+    words2 = ["cat", "car", "dog", "cow", "duck"]
+    by_first = Enum.group_by(words2, &(String.at(&1, 0)))
+    IO.puts("group_by first letter: #{by_first}")
+
+    empty_group = Enum.group_by([], &(&1))
+    IO.puts("group_by empty: #{empty_group}")
+
+    # --- min_by/2 ---
+    shortest = Enum.min_by(["hello", "hi", "hey"], &(String.length(&1)))
+    IO.puts("min_by length: #{shortest}")
+
+    closest_to_zero = Enum.min_by([5, -2, 8, 1, -7], &(abs_val(&1)))
+    IO.puts("min_by abs: #{closest_to_zero}")
+
+    # --- max_by/2 ---
+    longest = Enum.max_by(["hello", "hi", "hey"], &(String.length(&1)))
+    IO.puts("max_by length: #{longest}")
+
+    farthest = Enum.max_by([5, -2, 8, 1, -7], &(abs_val(&1)))
+    IO.puts("max_by abs: #{farthest}")
+
+    # --- frequencies/1 ---
+    freqs = Enum.frequencies([:a, :b, :a, :c, :b, :a])
+    IO.puts("frequencies: #{freqs}")
+
+    single_freq = Enum.frequencies([42])
+    IO.puts("frequencies single: #{single_freq}")
+
+    empty_freq = Enum.frequencies([])
+    IO.puts("frequencies empty: #{empty_freq}")
+
+    # --- Combined pipeline ---
+    result = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      |> Enum.reject(&(&1 <= 3))
+      |> Enum.sort_by(&(rem(&1, 3)))
+    IO.puts("pipeline reject+sort_by: #{result}")
+  end
+
+  defp abs_val(n) when n < 0 do
+    0 - n
+  end
+
+  defp abs_val(n) do
+    n
+  end
+end

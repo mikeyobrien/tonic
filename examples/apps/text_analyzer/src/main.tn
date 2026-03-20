@@ -1,0 +1,173 @@
+# Text analyzer — word frequency, character stats, basic text metrics
+# Tests: string operations pipeline, Map accumulation, sorting, recursive processing
+
+defmodule TextAnalyzer do
+  def word_count(text) do
+    words = String.split(text, " ")
+    count_non_empty(words, 0)
+  end
+
+  defp count_non_empty([], acc) do
+    acc
+  end
+
+  defp count_non_empty([word | rest], acc) do
+    case word == "" do
+      true -> count_non_empty(rest, acc)
+      _ -> count_non_empty(rest, acc + 1)
+    end
+  end
+
+  def char_count(text) do
+    String.length(text)
+  end
+
+  def word_frequency(text) do
+    words = String.split(text, " ")
+    lowered = lowercase_all(words)
+    build_freq(lowered, %{})
+  end
+
+  defp lowercase_all([]) do
+    []
+  end
+
+  defp lowercase_all([w | rest]) do
+    case w == "" do
+      true -> lowercase_all(rest)
+      _ -> [String.downcase(w)] ++ lowercase_all(rest)
+    end
+  end
+
+  defp build_freq([], freq) do
+    freq
+  end
+
+  defp build_freq([word | rest], freq) do
+    current = Map.get(freq, word, 0)
+    build_freq(rest, Map.put(freq, word, current + 1))
+  end
+
+  def top_words(freq, n) do
+    keys = Map.keys(freq)
+    pairs = build_pairs(keys, freq)
+    sorted = sort_pairs_desc(pairs)
+    Enum.take(sorted, n)
+  end
+
+  defp build_pairs([], _freq) do
+    []
+  end
+
+  defp build_pairs([key | rest], freq) do
+    count = Map.get(freq, key, 0)
+    [{key, count}] ++ build_pairs(rest, freq)
+  end
+
+  defp sort_pairs_desc(pairs) do
+    case pairs do
+      [] -> []
+      [pivot | rest] -> do
+        {left, right} = partition_pairs(rest, pivot, [], [])
+        sort_pairs_desc(left) ++ [pivot] ++ sort_pairs_desc(right)
+      end
+      _ -> pairs
+    end
+  end
+
+  defp partition_pairs([], _pivot, left, right) do
+    {left, right}
+  end
+
+  defp partition_pairs([{k, v} | rest], {_pk, pv}, left, right) do
+    case v > pv do
+      true -> partition_pairs(rest, {_pk, pv}, left ++ [{k, v}], right)
+      _ -> partition_pairs(rest, {_pk, pv}, left, right ++ [{k, v}])
+    end
+  end
+
+  def unique_words(text) do
+    freq = word_frequency(text)
+    keys = Map.keys(freq)
+    Enum.count(keys)
+  end
+
+  def avg_word_length_x10(text) do
+    words = String.split(text, " ")
+    filtered = filter_non_empty(words)
+    total = sum_lengths(filtered, 0)
+    n = Enum.count(filtered)
+    case n == 0 do
+      true -> 0
+      _ -> int_div(total * 10, n)
+    end
+  end
+
+  defp filter_non_empty([]) do
+    []
+  end
+
+  defp filter_non_empty([w | rest]) do
+    case w == "" do
+      true -> filter_non_empty(rest)
+      _ -> [w] ++ filter_non_empty(rest)
+    end
+  end
+
+  defp sum_lengths([], acc) do
+    acc
+  end
+
+  defp sum_lengths([w | rest], acc) do
+    len = String.length(w)
+    sum_lengths(rest, acc + len)
+  end
+
+  defp int_div(a, b) do
+    div(a, b)
+  end
+end
+
+defmodule Demo do
+  def run() do
+    text = "the cat sat on the mat the cat liked the mat"
+
+    wc = TextAnalyzer.word_count(text)
+    cc = TextAnalyzer.char_count(text)
+    uw = TextAnalyzer.unique_words(text)
+    avg = TextAnalyzer.avg_word_length_x10(text)
+
+    freq = TextAnalyzer.word_frequency(text)
+    top = TextAnalyzer.top_words(freq, 3)
+
+    case IO.puts("=== Text Analyzer ===") do
+      _ -> case IO.puts("Text: " <> text) do
+        _ -> case IO.puts("") do
+          _ -> case IO.puts("Word count: #{wc}") do
+            _ -> case IO.puts("Char count: #{cc}") do
+              _ -> case IO.puts("Unique words: #{uw}") do
+                _ -> case IO.puts("Avg word length (x10): #{avg}") do
+                  _ -> case IO.puts("") do
+                    _ -> case IO.puts("Top 3 words:") do
+                      _ -> print_top(top)
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp print_top([]) do
+    :ok
+  end
+
+  defp print_top([{word, count} | rest]) do
+    case IO.puts("  #{word}: #{count}") do
+      _ -> print_top(rest)
+    end
+  end
+end

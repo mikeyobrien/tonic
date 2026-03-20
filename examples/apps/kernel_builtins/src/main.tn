@@ -1,0 +1,64 @@
+defmodule Demo do
+  def run() do
+    # abs/1 — integer
+    IO.puts("#{abs(-42)}")
+    IO.puts("#{abs(10)}")
+    IO.puts("#{abs(0)}")
+
+    # abs/1 — with expressions
+    x = -7
+    IO.puts("#{abs(x)}")
+
+    # length/1
+    IO.puts("#{length([1, 2, 3, 4, 5])}")
+    IO.puts("#{length([])}")
+    IO.puts("#{length(["a", "b"])}")
+
+    # hd/1
+    IO.puts("#{hd([10, 20, 30])}")
+    IO.puts(hd(["hello", "world"]))
+
+    # tl/1
+    tail = tl([1, 2, 3])
+    IO.puts(Enum.join(tail, ", "))
+
+    single_tail = tl([42])
+    IO.puts("#{length(single_tail)}")
+
+    # elem/2
+    t = {100, 200}
+    IO.puts("#{elem(t, 0)}")
+    IO.puts("#{elem(t, 1)}")
+
+    # tuple_size/1
+    IO.puts("#{tuple_size({:a, :b})}")
+
+    # Combined: use length in a condition
+    list = [1, 2, 3]
+    result = case length(list) > 2 do
+      true -> "long"
+      _ -> "short"
+    end
+    IO.puts(result)
+
+    # Combined: hd/tl for manual list processing
+    nums = [10, 20, 30]
+    first = hd(nums)
+    rest = tl(nums)
+    second = hd(rest)
+    IO.puts("#{first + second}")
+
+    # Combined: abs in a pipeline
+    values = [-5, 3, -1, 4, -2]
+    positives = Enum.map(values, fn x -> abs(x) end)
+    IO.puts(Enum.join(positives, ", "))
+
+    # Combined: elem to destructure a tuple from a function
+    pair = make_pair()
+    IO.puts("#{elem(pair, 0)}: #{elem(pair, 1)}")
+  end
+
+  def make_pair() do
+    {"status", "ok"}
+  end
+end

@@ -1,0 +1,43 @@
+defmodule Demo do
+  def run() do
+    # Enum.sort/2 with custom comparator
+    sorted_desc = Enum.sort([3, 1, 4, 1, 5], fn a, b -> a > b end)
+    IO.puts(inspect(sorted_desc))
+
+    sorted_asc = Enum.sort([5, 3, 1, 4, 2], fn a, b -> a < b end)
+    IO.puts(inspect(sorted_asc))
+
+    # Sort strings by length
+    words = ["hello", "hi", "hey", "howdy"]
+    sorted_by_len = Enum.sort(words, fn a, b -> String.length(a) < String.length(b) end)
+    IO.puts(inspect(sorted_by_len))
+
+    # Enum.sort/1 still works (backward compat)
+    sorted_default = Enum.sort([3, 1, 2])
+    IO.puts(inspect(sorted_default))
+
+    # Enum.slice/3
+    sliced = Enum.slice([10, 20, 30, 40, 50], 1, 3)
+    IO.puts(inspect(sliced))
+
+    # Slice from beginning
+    first_two = Enum.slice([1, 2, 3, 4, 5], 0, 2)
+    IO.puts(inspect(first_two))
+
+    # Slice past end (should return available elements)
+    past_end = Enum.slice([1, 2, 3], 1, 10)
+    IO.puts(inspect(past_end))
+
+    # Slice empty
+    empty_slice = Enum.slice([1, 2, 3], 0, 0)
+    IO.puts(inspect(empty_slice))
+
+    # Enum.random/1 - just verify it returns an element from the list
+    random_val = Enum.random([42])
+    IO.puts(random_val)
+
+    # Combined: sort descending then slice top 3
+    top3 = Enum.sort([10, 50, 30, 20, 40], fn a, b -> a > b end) |> Enum.slice(0, 3)
+    IO.puts(inspect(top3))
+  end
+end

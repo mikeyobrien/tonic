@@ -2,7 +2,7 @@ use crate::runtime::RuntimeValue;
 
 pub(crate) const GUARD_BUILTIN_ARITY: usize = 1;
 
-const GUARD_BUILTINS: [GuardBuiltinSpec; 9] = [
+const GUARD_BUILTINS: [GuardBuiltinSpec; 10] = [
     GuardBuiltinSpec::new("is_integer", "tn_runtime_guard_is_integer"),
     GuardBuiltinSpec::new("is_float", "tn_runtime_guard_is_float"),
     GuardBuiltinSpec::new("is_number", "tn_runtime_guard_is_number"),
@@ -12,6 +12,7 @@ const GUARD_BUILTINS: [GuardBuiltinSpec; 9] = [
     GuardBuiltinSpec::new("is_tuple", "tn_runtime_guard_is_tuple"),
     GuardBuiltinSpec::new("is_map", "tn_runtime_guard_is_map"),
     GuardBuiltinSpec::new("is_nil", "tn_runtime_guard_is_nil"),
+    GuardBuiltinSpec::new("is_boolean", "tn_runtime_guard_is_boolean"),
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -45,6 +46,7 @@ pub(crate) fn evaluate_guard_builtin(name: &str, value: &RuntimeValue) -> Option
         "is_tuple" => matches!(value, RuntimeValue::Tuple(_, _)),
         "is_map" => matches!(value, RuntimeValue::Map(_)),
         "is_nil" => matches!(value, RuntimeValue::Nil),
+        "is_boolean" => matches!(value, RuntimeValue::Bool(_)),
         _ => return None,
     };
 

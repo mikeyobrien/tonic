@@ -1,0 +1,22 @@
+=== Markdown TOC Generator ===
+Found 11 headers
+--- Table of Contents ---
+- Introduction
+  - Background
+  - Motivation
+- Methods
+  - Data Collection
+    - Survey Design
+    - Sample Size
+  - Analysis
+- Results
+  - Key Findings
+- Conclusion
+--- Level Counts ---
+H1: 4
+H2: 5
+H3: 2
+--- Depth Info ---
+Max depth: 3
+Min depth: 1
+nil

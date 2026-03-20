@@ -1,0 +1,60 @@
+defmodule Demo do
+  def run() do
+    # Enum.count/2 - count with predicate
+    numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    evens = Enum.count(numbers, fn x -> rem(x, 2) == 0 end)
+    IO.puts("Even count: #{evens}")
+
+    gt_five = Enum.count(numbers, fn x -> x > 5 end)
+    IO.puts("Greater than 5: #{gt_five}")
+
+    # Enum.count/1 backward compat
+    total = Enum.count(numbers)
+    IO.puts("Total count: #{total}")
+
+    # Enum.count/2 with strings
+    words = ["hello", "hi", "hey", "world", "howdy"]
+    h_words = Enum.count(words, fn w -> String.starts_with(w, "h") end)
+    IO.puts("H-words: #{h_words}")
+
+    # Enum.count/2 with empty match
+    zeros = Enum.count([1, 2, 3], fn x -> x > 100 end)
+    IO.puts("Zeros: #{zeros}")
+
+    # Map.merge/3 - with conflict resolver (sum values)
+    m1 = %{a: 1, b: 2, c: 3}
+    m2 = %{b: 10, c: 20, d: 30}
+    merged = Map.merge(m1, m2, fn _k, v1, v2 -> v1 + v2 end)
+    IO.puts("Merged b: #{Map.get(merged, :b)}")
+    IO.puts("Merged c: #{Map.get(merged, :c)}")
+    IO.puts("Merged a: #{Map.get(merged, :a)}")
+    IO.puts("Merged d: #{Map.get(merged, :d)}")
+
+    # Map.merge/3 - keep left value
+    m3 = Map.merge(m1, m2, fn _k, v1, _v2 -> v1 end)
+    IO.puts("Keep-left b: #{Map.get(m3, :b)}")
+
+    # Map.merge/2 backward compat
+    m4 = Map.merge(%{x: 1}, %{y: 2})
+    IO.puts("Simple merge: #{Map.get(m4, :x)}, #{Map.get(m4, :y)}")
+
+    # List.wrap/1 - nil returns empty list
+    wrapped_nil = List.wrap(nil)
+    IO.puts("Wrap nil: #{inspect(wrapped_nil)}")
+
+    # List.wrap/1 - scalar wraps in list
+    wrapped_int = List.wrap(42)
+    IO.puts("Wrap int: #{inspect(wrapped_int)}")
+
+    # List.wrap/1 - list returns as-is
+    wrapped_list = List.wrap([1, 2, 3])
+    IO.puts("Wrap list: #{inspect(wrapped_list)}")
+
+    # Combined pipeline: count filtered items from merged map
+    scores1 = %{alice: 85, bob: 72}
+    scores2 = %{alice: 90, charlie: 68}
+    combined = Map.merge(scores1, scores2, fn _k, v1, v2 -> max(v1, v2) end)
+    high_scorers = Enum.count(Map.values(combined), fn s -> s >= 80 end)
+    IO.puts("High scorers: #{high_scorers}")
+  end
+end

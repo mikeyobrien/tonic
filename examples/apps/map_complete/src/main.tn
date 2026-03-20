@@ -1,0 +1,74 @@
+defmodule Demo do
+  def run() do
+    IO.puts("=== Map Complete ===")
+
+    m = %{name: "alice", age: 30, role: "admin"}
+
+    # Map.has_key
+    has_name = Map.has_key(m, :name)
+    IO.puts("has_key :name: #{has_name}")
+
+    has_email = Map.has_key(m, :email)
+    IO.puts("has_key :email: #{has_email}")
+
+    # Map.has_key on empty map
+    empty_has = Map.has_key(%{}, :x)
+    IO.puts("has_key empty :x: #{empty_has}")
+
+    # Map.get with default
+    name = Map.get(m, :name, "unknown")
+    IO.puts("get :name: #{name}")
+
+    missing = Map.get(m, :email, "none")
+    IO.puts("get :email default: #{missing}")
+
+    # Map.put
+    updated = Map.put(m, :email, "alice@example.com")
+    email = Map.get(updated, :email, "none")
+    IO.puts("put then get :email: #{email}")
+
+    # Map.delete
+    deleted = Map.delete(m, :role)
+    has_role = Map.has_key(deleted, :role)
+    IO.puts("delete :role, has_key: #{has_role}")
+
+    # Map.merge
+    extra = %{city: "nyc", active: true}
+    merged = Map.merge(m, extra)
+    has_city = Map.has_key(merged, :city)
+    IO.puts("merge has :city: #{has_city}")
+
+    # Map.keys and Map.values
+    small = %{x: 1, y: 2}
+    keys = Map.keys(small)
+    IO.puts("keys: #{fmt(Enum.sort(keys))}")
+
+    vals = Map.values(small)
+    IO.puts("values: #{fmt(Enum.sort(vals))}")
+
+    # Map.drop and Map.take
+    dropped = Map.drop(m, [:age, :role])
+    IO.puts("drop [:age,:role] has :name: #{Map.has_key(dropped, :name)}")
+    IO.puts("drop [:age,:role] has :age: #{Map.has_key(dropped, :age)}")
+
+    taken = Map.take(m, [:name, :age])
+    IO.puts("take [:name,:age] has :name: #{Map.has_key(taken, :name)}")
+    IO.puts("take [:name,:age] has :role: #{Map.has_key(taken, :role)}")
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

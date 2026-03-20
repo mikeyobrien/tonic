@@ -7,6 +7,19 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse sequential expressions in a block body (between `do`/`end`).
+    /// Parse a branch body: either a single expression, or a `do`/`end` block
+    /// for multi-expression branch bodies.
+    pub(super) fn parse_branch_body(&mut self) -> Result<Expr, ParserError> {
+        if self.check(TokenKind::Do) {
+            self.advance(); // consume `do`
+            let body = self.parse_block_body()?;
+            self.expect(TokenKind::End, "end")?;
+            Ok(body)
+        } else {
+            self.parse_expression()
+        }
+    }
+
     pub(super) fn parse_block_body(&mut self) -> Result<Expr, ParserError> {
         let offset = self.current().map(|t| t.span().start()).unwrap_or(0);
         let at_end = |s: &Self| {

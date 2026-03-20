@@ -67,7 +67,7 @@ impl<'a> Parser<'a> {
         };
 
         self.expect(TokenKind::Arrow, "->")?;
-        let body = self.parse_expression()?;
+        let body = self.parse_branch_body()?;
         Ok((patterns, guard, body))
     }
 

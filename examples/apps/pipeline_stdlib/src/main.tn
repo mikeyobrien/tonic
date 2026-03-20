@@ -1,0 +1,67 @@
+defmodule Demo do
+  def run() do
+    case IO.puts("=== Pipeline Stdlib ===") do
+      _ -> case show_sort_reverse() do
+        _ -> case show_take_after_sort() do
+          _ -> case show_count_chain() do
+            _ -> case show_map_pipeline() do
+              _ -> show_nested_pipeline()
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_sort_reverse() do
+    result = [5, 1, 3, 2, 4] |> Enum.sort() |> Enum.reverse()
+    IO.puts("sort then reverse [5,1,3,2,4]: " <> fmt(result))
+  end
+
+  defp show_take_after_sort() do
+    result = [9, 3, 7, 1, 5] |> Enum.sort() |> Enum.take(3)
+    IO.puts("sort then take 3 [9,3,7,1,5]: " <> fmt(result))
+  end
+
+  defp show_count_chain() do
+    result = [1, 2, 1, 3, 2, 4] |> Enum.unique() |> Enum.count()
+    IO.puts("unique then count [1,2,1,3,2,4]: #{result}")
+  end
+
+  defp show_map_pipeline() do
+    result = 1..10
+      |> Enum.take(5)
+      |> Enum.reverse()
+      |> Enum.drop(1)
+    IO.puts("1..10 take 5 reverse drop 1: " <> fmt(result))
+  end
+
+  defp show_nested_pipeline() do
+    data = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]
+    result = data
+      |> Enum.unique()
+      |> Enum.sort()
+      |> Enum.reverse()
+      |> Enum.take(5)
+    sum = Enum.sum(result)
+    case IO.puts("top 5 unique sorted desc: " <> fmt(result)) do
+      _ -> IO.puts("sum of top 5: #{sum}")
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

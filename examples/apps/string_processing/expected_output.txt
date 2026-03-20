@@ -1,0 +1,21 @@
+=== String Processing ===
+split: [hello, world, foo, bar]
+upcase: HELLO
+downcase: hello
+reverse: fedcba
+replace: hello tonic
+contains yes: true
+contains no: false
+starts_with: true
+ends_with: true
+trim: [hi]
+trim_leading: [hi  ]
+trim_trailing: [  hi]
+pad_leading: [000042]
+pad_trailing: [hi....]
+length: 8
+at 0: a
+at 3: d
+slice 2,3: cde
+to_integer: 42
+nil

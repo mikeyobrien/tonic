@@ -1,0 +1,3 @@
+[project]
+name = "enum_side_effects"
+entry = "src/main.tn"

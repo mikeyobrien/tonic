@@ -1,0 +1,91 @@
+defmodule Demo do
+  def run() do
+    nums = [5, 3, 8, 1, 9, 2, 7]
+    case IO.puts("=== Enum Transforms ===") do
+      _ -> case show_count_sum() do
+        _ -> case show_sort(nums) do
+          _ -> case show_reverse(nums) do
+            _ -> case show_map() do
+              _ -> case show_filter() do
+                _ -> show_reduce()
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_count_sum() do
+    case IO.puts("count [1,2,3,4,5]: #{Enum.count([1, 2, 3, 4, 5])}") do
+      _ -> case IO.puts("count 1..10: #{Enum.count(1..10)}") do
+        _ -> case IO.puts("sum [1,2,3,4,5]: #{Enum.sum([1, 2, 3, 4, 5])}") do
+          _ -> IO.puts("sum 1..5: #{Enum.sum(1..5)}")
+        end
+      end
+    end
+  end
+
+  defp show_sort(nums) do
+    sorted = Enum.sort(nums)
+    IO.puts("sort [5,3,8,1,9,2,7]: " <> fmt(sorted))
+  end
+
+  defp show_reverse(nums) do
+    reversed = Enum.reverse(nums)
+    IO.puts("reverse [5,3,8,1,9,2,7]: " <> fmt(reversed))
+  end
+
+  defp show_map() do
+    doubled = for x <- [1, 2, 3, 4, 5] do
+      x * 2
+    end
+    IO.puts("map *2 [1,2,3,4,5]: " <> fmt(doubled))
+  end
+
+  defp show_filter() do
+    evens = filter_gt([1, 2, 3, 4, 5, 6], 3)
+    IO.puts("filter >3 [1..6]: " <> fmt(evens))
+  end
+
+  defp show_reduce() do
+    product = reduce_list([1, 2, 3, 4, 5], 1)
+    IO.puts("reduce *product [1..5]: #{product}")
+  end
+
+  defp filter_gt([], _threshold) do
+    []
+  end
+
+  defp filter_gt([head | tail], threshold) when head > threshold do
+    [head] ++ filter_gt(tail, threshold)
+  end
+
+  defp filter_gt([_head | tail], threshold) do
+    filter_gt(tail, threshold)
+  end
+
+  defp reduce_list([], acc) do
+    acc
+  end
+
+  defp reduce_list([head | tail], acc) do
+    reduce_list(tail, acc * head)
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

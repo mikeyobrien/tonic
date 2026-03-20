@@ -1,6 +1,28 @@
 use super::types::{LexerError, Span, Token, TokenKind};
 use super::LexerState;
 
+/// Process a backslash escape sequence, returning the replacement character.
+/// Advances `idx` past the escape (caller already consumed the `\`).
+fn process_escape(chars: &[char], idx: &mut usize) -> char {
+    if *idx >= chars.len() {
+        return '\\';
+    }
+    let next = chars[*idx];
+    *idx += 1;
+    match next {
+        'n' => '\n',
+        't' => '\t',
+        'r' => '\r',
+        '\\' => '\\',
+        '"' => '"',
+        _other => {
+            // Unknown escape: keep both characters
+            *idx -= 1;
+            '\\'
+        }
+    }
+}
+
 /// Scan a `"..."` or `"""..."""` string literal (or interpolation start) in Normal state.
 ///
 /// Called when the current character is `"`. Handles heredocs, simple strings,
@@ -30,7 +52,11 @@ pub(super) fn scan_string_literal(
                 has_interpolation = true;
                 break;
             }
-            temp_idx += 1;
+            if chars.get(temp_idx) == Some(&'\\') {
+                temp_idx += 2; // skip escaped character
+            } else {
+                temp_idx += 1;
+            }
         }
     } else {
         while temp_idx < chars.len() {
@@ -42,7 +68,11 @@ pub(super) fn scan_string_literal(
                 has_interpolation = true;
                 break;
             }
-            temp_idx += 1;
+            if peek == '\\' {
+                temp_idx += 2; // skip escaped character
+            } else {
+                temp_idx += 1;
+            }
         }
     }
 
@@ -74,8 +104,13 @@ pub(super) fn scan_string_literal(
                     break;
                 }
 
-                literal.push(chars[*idx]);
-                *idx += 1;
+                if chars[*idx] == '\\' {
+                    *idx += 1;
+                    literal.push(process_escape(chars, idx));
+                } else {
+                    literal.push(chars[*idx]);
+                    *idx += 1;
+                }
             }
         } else {
             *idx += 1;
@@ -89,8 +124,13 @@ pub(super) fn scan_string_literal(
                     break;
                 }
 
-                literal.push(peek);
-                *idx += 1;
+                if peek == '\\' {
+                    *idx += 1;
+                    literal.push(process_escape(chars, idx));
+                } else {
+                    literal.push(peek);
+                    *idx += 1;
+                }
             }
         }
 
@@ -143,8 +183,13 @@ pub(super) fn scan_string_content(
                 break;
             }
 
-            literal.push(chars[*idx]);
-            *idx += 1;
+            if chars[*idx] == '\\' {
+                *idx += 1;
+                literal.push(process_escape(chars, idx));
+            } else {
+                literal.push(chars[*idx]);
+                *idx += 1;
+            }
         }
     } else {
         while *idx < chars.len() {
@@ -161,8 +206,13 @@ pub(super) fn scan_string_content(
                 break;
             }
 
-            literal.push(peek);
-            *idx += 1;
+            if peek == '\\' {
+                *idx += 1;
+                literal.push(process_escape(chars, idx));
+            } else {
+                literal.push(peek);
+                *idx += 1;
+            }
         }
     }
 

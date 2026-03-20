@@ -1,0 +1,77 @@
+defmodule Demo do
+  def run() do
+    # Enum.take_while — take while less than 4
+    result = Enum.take_while([1, 2, 3, 5, 2, 1], &(&1 < 4))
+    IO.puts("take_while <4: #{result}")
+
+    # Enum.take_while — all match
+    all_match = Enum.take_while([1, 2, 3], &(&1 < 10))
+    IO.puts("take_while all: #{all_match}")
+
+    # Enum.take_while — none match
+    none = Enum.take_while([5, 6, 7], &(&1 < 3))
+    IO.puts("take_while none: #{none}")
+
+    # Enum.take_while — empty list
+    tw_empty = Enum.take_while([], &(&1 < 4))
+    IO.puts("take_while empty: #{tw_empty}")
+
+    # Enum.drop_while — drop while less than 4
+    dropped = Enum.drop_while([1, 2, 3, 5, 2, 1], &(&1 < 4))
+    IO.puts("drop_while <4: #{dropped}")
+
+    # Enum.drop_while — all match (drop everything)
+    drop_all = Enum.drop_while([1, 2, 3], &(&1 < 10))
+    IO.puts("drop_while all: #{drop_all}")
+
+    # Enum.drop_while — none match (keep everything)
+    drop_none = Enum.drop_while([5, 6, 7], &(&1 < 3))
+    IO.puts("drop_while none: #{drop_none}")
+
+    # Enum.drop_while — empty list
+    dw_empty = Enum.drop_while([], &(&1 < 4))
+    IO.puts("drop_while empty: #{dw_empty}")
+
+    # Enum.chunk_by — group by even/odd
+    chunks = Enum.chunk_by([1, 1, 2, 4, 3, 5, 6], &(rem(&1, 2)))
+    IO.puts("chunk_by parity: #{chunks}")
+
+    # Enum.chunk_by — all same key
+    same = Enum.chunk_by([2, 4, 6], &(rem(&1, 2)))
+    IO.puts("chunk_by same: #{same}")
+
+    # Enum.chunk_by — each different
+    diff = Enum.chunk_by([1, 2, 1, 2], &(&1))
+    IO.puts("chunk_by diff: #{diff}")
+
+    # Enum.chunk_by — single element
+    cb_single = Enum.chunk_by([42], &(&1))
+    IO.puts("chunk_by single: #{cb_single}")
+
+    # Enum.chunk_by — empty list
+    cb_empty = Enum.chunk_by([], &(&1))
+    IO.puts("chunk_by empty: #{cb_empty}")
+
+    # List.insert_at — beginning
+    ins_start = List.insert_at([2, 3, 4], 0, 1)
+    IO.puts("insert_at 0: #{ins_start}")
+
+    # List.insert_at — middle
+    ins_mid = List.insert_at([1, 2, 4, 5], 2, 3)
+    IO.puts("insert_at 2: #{ins_mid}")
+
+    # List.insert_at — end
+    ins_end = List.insert_at([1, 2, 3], 3, 4)
+    IO.puts("insert_at end: #{ins_end}")
+
+    # List.insert_at — empty list
+    ins_empty = List.insert_at([], 0, 1)
+    IO.puts("insert_at empty: #{ins_empty}")
+
+    # Combined pipeline: take_while + chunk_by
+    data = [1, 3, 5, 2, 4, 6, 7]
+    taken = Enum.take_while(data, &(&1 < 6))
+    chunked = Enum.chunk_by(taken, &(rem(&1, 2)))
+    IO.puts("pipeline: #{chunked}")
+  end
+end

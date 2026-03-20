@@ -1,0 +1,3 @@
+[project]
+name = "for_filter"
+entry = "src/main.tn"

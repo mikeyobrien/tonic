@@ -1,0 +1,126 @@
+# Error Recovery Patterns
+# Demonstrates correct workarounds for the 3 most common LLM mistakes:
+# 1. String comparison (use pin operator, not ==)
+# 2. Float division (use scaled integer arithmetic, not /)
+# 3. Using available stdlib functions (know what exists)
+
+defmodule Demo do
+  # --- Pattern 1: String comparison via pin operator ---
+  # WRONG: name == "alice"  (causes: int operator expects int operands)
+  # RIGHT: use pin operator in case expression
+
+  def check_name(name) do
+    expected = "alice"
+    case name do
+      ^expected -> "found alice"
+      _ -> "not alice"
+    end
+  end
+
+  def classify_fruit(fruit) do
+    apple = "apple"
+    banana = "banana"
+    case fruit do
+      ^apple -> "red fruit"
+      ^banana -> "yellow fruit"
+      _ -> "unknown fruit"
+    end
+  end
+
+  # --- Pattern 2: Scaled integer arithmetic ---
+  # WRONG: 10.0 / 3.0  (causes: type mismatch: expected int, found float)
+  # RIGHT: multiply by scale factor first, use div()
+
+  defp int_div(a, b) do
+    div(a, b)
+  end
+
+  def percentage(part, total) do
+    scaled = part * 100
+    int_div(scaled, total)
+  end
+
+  def average(numbers) do
+    total = Enum.sum(numbers)
+    count = Enum.count(numbers)
+    scaled = total * 100
+    whole = int_div(scaled, count)
+    int_part = int_div(whole, 100)
+    frac_part = rem(whole, 100)
+    "#{int_part}.#{frac_part}"
+  end
+
+  def ratio(a, b) do
+    int_div(a * 1000, b)
+  end
+
+  # --- Pattern 3: Using available Enum/String/List functions ---
+  # WRONG: Enum.sum_by(list, fn)  (causes: undefined symbol)
+  # RIGHT: use Enum.map + Enum.sum pipeline
+
+  def double_all(numbers) do
+    Enum.map(numbers, fn n -> n * 2 end)
+  end
+
+  def only_positive(numbers) do
+    Enum.filter(numbers, fn n -> n > 0 end)
+  end
+
+  def total(numbers) do
+    Enum.reduce(numbers, 0, fn n, acc -> acc + n end)
+  end
+
+  def has_negative(numbers) do
+    Enum.any(numbers, fn n -> n < 0 end)
+  end
+
+  def all_positive(numbers) do
+    Enum.all(numbers, fn n -> n > 0 end)
+  end
+
+  def smallest(numbers) do
+    Enum.min(numbers)
+  end
+
+  def largest(numbers) do
+    Enum.max(numbers)
+  end
+
+  def run() do
+    # Pattern 1: String comparison
+    IO.puts("=== String Comparison ===")
+    IO.puts(check_name("alice"))
+    IO.puts(check_name("bob"))
+    IO.puts(classify_fruit("apple"))
+    IO.puts(classify_fruit("banana"))
+    IO.puts(classify_fruit("grape"))
+
+    # Pattern 2: Scaled integer arithmetic
+    IO.puts("=== Scaled Arithmetic ===")
+    p1 = percentage(75, 200)
+    IO.puts("75 of 200 = #{p1}%")
+    p2 = percentage(1, 3)
+    IO.puts("1 of 3 = #{p2}%")
+    IO.puts("Average: #{average([10, 20, 30, 40])}")
+    r = ratio(7, 3)
+    IO.puts("7/3 x1000 = #{r}")
+
+    # Pattern 3: Available stdlib functions
+    IO.puts("=== Stdlib Functions ===")
+    numbers = [3, -1, 4, -5, 2]
+    doubled = double_all(numbers)
+    IO.puts("Doubled: #{Enum.join(doubled, ", ")}")
+    pos = only_positive(numbers)
+    IO.puts("Positive: #{Enum.join(pos, ", ")}")
+    t = total(numbers)
+    IO.puts("Total: #{t}")
+    has_neg = has_negative(numbers)
+    IO.puts("Has negative: #{has_neg}")
+    all_pos = all_positive([1, 2, 3])
+    IO.puts("All positive [1,2,3]: #{all_pos}")
+    s = smallest(numbers)
+    IO.puts("Smallest: #{s}")
+    l = largest(numbers)
+    IO.puts("Largest: #{l}")
+  end
+end

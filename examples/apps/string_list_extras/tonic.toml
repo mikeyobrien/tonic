@@ -1,0 +1,3 @@
+[project]
+name = "string_list_extras"
+entry = "src/main.tn"

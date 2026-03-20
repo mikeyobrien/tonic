@@ -1,0 +1,16 @@
+=== Traffic Light FSM ===
+red + tick -> green (GO)
+green + tick -> yellow (CAUTION)
+yellow + tick -> red (STOP)
+green + pedestrian -> yellow (CAUTION)
+
+Sequence from :red with 7 events:
+  States: [red, green, yellow, red, green, yellow, red, green]
+  Red: 3, Green: 3, Yellow: 2
+
+Durations:
+  Red: 30s
+  Green: 25s
+  Yellow: 5s
+  Cycle: 60s
+nil

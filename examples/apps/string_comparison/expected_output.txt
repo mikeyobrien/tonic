@@ -1,0 +1,24 @@
+=== String Comparison ===
+--- Basic Matching (pin operator) ---
+hello == hello: true
+hello == world: false
+foo == foo: true
+--- Find by Name ---
+found: Carol, role: moderator
+found: Bob, role: user
+not found
+--- Count Matching ---
+apple count: 3
+banana count: 2
+grape count: 0
+--- Categorize ---
+yes -> affirmative
+no -> negative
+maybe -> uncertain
+other -> unknown
+--- Group by Status ---
+active: 3
+inactive: 1
+pending: 1
+other: 1
+nil

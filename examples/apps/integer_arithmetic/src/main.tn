@@ -1,0 +1,211 @@
+defmodule IntMath do
+  defp int_div(a, b) do
+    div(a, b)
+  end
+
+  def percentage(part, total) do
+    int_div(part * 100, total)
+  end
+
+  def average_x100(data) do
+    total = Enum.sum(data)
+    n = Enum.count(data)
+    int_div(total * 100, n)
+  end
+
+  def format_x100(value) do
+    whole = int_div(value, 100)
+    frac = rem(value, 100)
+    case frac < 10 do
+      true -> "#{whole}.0#{frac}"
+      _ -> "#{whole}.#{frac}"
+    end
+  end
+
+  def ratio_x100(a, b) do
+    int_div(a * 100, b)
+  end
+
+  def weighted_average_x100(values, weights) do
+    total_weight = Enum.sum(weights)
+    weighted_sum = sum_products(values, weights, 0)
+    int_div(weighted_sum * 100, total_weight)
+  end
+
+  defp sum_products([], _weights, acc) do
+    acc
+  end
+
+  defp sum_products(_values, [], acc) do
+    acc
+  end
+
+  defp sum_products([v | vrest], [w | wrest], acc) do
+    sum_products(vrest, wrest, acc + v * w)
+  end
+
+  def gcd(a, 0) do
+    a
+  end
+
+  def gcd(a, b) do
+    gcd(b, rem(a, b))
+  end
+
+  def is_even(n) do
+    rem(n, 2) == 0
+  end
+
+  def is_odd(n) do
+    rem(n, 2) != 0
+  end
+
+  def factorial(0) do
+    1
+  end
+
+  def factorial(n) do
+    n * factorial(n - 1)
+  end
+
+  def power(_, 0) do
+    1
+  end
+
+  def power(base, exp) do
+    base * power(base, exp - 1)
+  end
+
+  def sum_range(start, stop) do
+    sum_range_helper(start, stop, 0)
+  end
+
+  defp sum_range_helper(current, stop, acc) when current > stop do
+    acc
+  end
+
+  defp sum_range_helper(current, stop, acc) do
+    sum_range_helper(current + 1, stop, acc + current)
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case show_percentages() do
+      _ -> case show_averages() do
+        _ -> case show_ratios() do
+          _ -> case show_weighted() do
+            _ -> case show_gcd() do
+              _ -> case show_even_odd() do
+                _ -> case show_factorial() do
+                  _ -> case show_power() do
+                    _ -> show_sum_range()
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_percentages() do
+    case IO.puts("=== Integer Arithmetic ===") do
+      _ -> case IO.puts("--- Percentages (scaled integer) ---") do
+        _ -> case IO.puts("75/200 = #{IntMath.percentage(75, 200)}%") do
+          _ -> case IO.puts("1/3 = #{IntMath.percentage(1, 3)}%") do
+            _ -> IO.puts("7/8 = #{IntMath.percentage(7, 8)}%")
+          end
+        end
+      end
+    end
+  end
+
+  defp show_averages() do
+    data = [10, 20, 30, 40, 50]
+    avg = IntMath.average_x100(data)
+    case IO.puts("--- Averages (x100 format) ---") do
+      _ -> case IO.puts("Data: [10, 20, 30, 40, 50]") do
+        _ -> case IO.puts("Average x100: #{avg}") do
+          _ -> IO.puts("Average: " <> IntMath.format_x100(avg))
+        end
+      end
+    end
+  end
+
+  defp show_ratios() do
+    case IO.puts("--- Ratios (x100) ---") do
+      _ -> case IO.puts("3:4 = " <> IntMath.format_x100(IntMath.ratio_x100(3, 4))) do
+        _ -> case IO.puts("2:3 = " <> IntMath.format_x100(IntMath.ratio_x100(2, 3))) do
+          _ -> IO.puts("7:2 = " <> IntMath.format_x100(IntMath.ratio_x100(7, 2)))
+        end
+      end
+    end
+  end
+
+  defp show_weighted() do
+    values = [90, 80, 70]
+    weights = [3, 2, 1]
+    wavg = IntMath.weighted_average_x100(values, weights)
+    case IO.puts("--- Weighted Average ---") do
+      _ -> case IO.puts("Values: [90, 80, 70], Weights: [3, 2, 1]") do
+        _ -> case IO.puts("Weighted avg x100: #{wavg}") do
+          _ -> IO.puts("Weighted avg: " <> IntMath.format_x100(wavg))
+        end
+      end
+    end
+  end
+
+  defp show_gcd() do
+    case IO.puts("--- GCD ---") do
+      _ -> case IO.puts("gcd(12, 8) = #{IntMath.gcd(12, 8)}") do
+        _ -> case IO.puts("gcd(100, 75) = #{IntMath.gcd(100, 75)}") do
+          _ -> IO.puts("gcd(17, 13) = #{IntMath.gcd(17, 13)}")
+        end
+      end
+    end
+  end
+
+  defp show_even_odd() do
+    case IO.puts("--- Even/Odd ---") do
+      _ -> case IO.puts("4 even: #{IntMath.is_even(4)}") do
+        _ -> case IO.puts("7 even: #{IntMath.is_even(7)}") do
+          _ -> case IO.puts("3 odd: #{IntMath.is_odd(3)}") do
+            _ -> IO.puts("6 odd: #{IntMath.is_odd(6)}")
+          end
+        end
+      end
+    end
+  end
+
+  defp show_factorial() do
+    case IO.puts("--- Factorial ---") do
+      _ -> case IO.puts("5! = #{IntMath.factorial(5)}") do
+        _ -> case IO.puts("0! = #{IntMath.factorial(0)}") do
+          _ -> IO.puts("7! = #{IntMath.factorial(7)}")
+        end
+      end
+    end
+  end
+
+  defp show_power() do
+    case IO.puts("--- Power ---") do
+      _ -> case IO.puts("2^10 = #{IntMath.power(2, 10)}") do
+        _ -> case IO.puts("3^4 = #{IntMath.power(3, 4)}") do
+          _ -> IO.puts("5^0 = #{IntMath.power(5, 0)}")
+        end
+      end
+    end
+  end
+
+  defp show_sum_range() do
+    case IO.puts("--- Sum Range ---") do
+      _ -> case IO.puts("sum(1..10) = #{IntMath.sum_range(1, 10)}") do
+        _ -> case IO.puts("sum(1..100) = #{IntMath.sum_range(1, 100)}") do
+          _ -> IO.puts("sum(5..15) = #{IntMath.sum_range(5, 15)}")
+        end
+      end
+    end
+  end
+end

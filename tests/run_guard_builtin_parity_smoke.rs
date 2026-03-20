@@ -34,7 +34,7 @@ fn run_executes_guard_builtin_function_and_case_guards() {
 }
 
 #[test]
-fn check_rejects_guard_builtin_calls_outside_guards() {
+fn check_allows_guard_builtin_calls_outside_guards() {
     let fixture_root = common::unique_fixture_root("check-guard-builtin-outside-when");
     let examples_dir = fixture_root.join("examples");
 
@@ -43,7 +43,7 @@ fn check_rejects_guard_builtin_calls_outside_guards() {
         examples_dir.join("check_guard_builtin_outside_when.tn"),
         "defmodule Demo do\n  def run() do\n    is_integer(1)\n  end\nend\n",
     )
-    .expect("fixture setup should write guard builtin misuse source");
+    .expect("fixture setup should write guard builtin source");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
@@ -51,15 +51,10 @@ fn check_rejects_guard_builtin_calls_outside_guards() {
         .output()
         .expect("check command should run");
 
-    assert_eq!(output.status.code(), Some(1));
-
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains(
-        "error: [E1015] guard builtin 'is_integer/1' is only allowed in guard expressions (when) in Demo.run"
-    ));
     assert!(
-        stderr.contains("--> examples/check_guard_builtin_outside_when.tn:3:5"),
-        "expected filename:line:col location, got: {stderr}"
+        output.status.success(),
+        "expected successful check, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
     );
-    assert!(stderr.contains("3 |     is_integer(1)"));
 }

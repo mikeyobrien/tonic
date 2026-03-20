@@ -1,0 +1,107 @@
+defmodule Demo do
+  def run() do
+    IO.puts("=== Enum Side Effects & Iteration ===")
+
+    # Enum.each - side-effect iteration
+    case IO.puts("each prints:") do
+      _ -> case Enum.each([10, 20, 30], &(IO.puts("  value: #{&1}"))) do
+        _ -> IO.puts("each returned: ok")
+      end
+    end
+
+    # Enum.with_index
+    indexed = Enum.with_index([:a, :b, :c])
+    case IO.puts("with_index [:a,:b,:c]:") do
+      _ -> print_indexed(indexed)
+    end
+
+    # Enum.zip
+    zipped = Enum.zip([1, 2, 3], [10, 20, 30])
+    case IO.puts("zip [1,2,3] [10,20,30]:") do
+      _ -> print_pairs(zipped)
+    end
+
+    # zip with unequal lengths
+    short_zip = Enum.zip([1, 2, 3, 4], [:a, :b])
+    IO.puts("zip unequal count: #{Enum.count(short_zip)}")
+
+    # Combine each with with_index
+    items = ["alpha", "beta", "gamma"]
+    numbered = Enum.with_index(items)
+    case IO.puts("numbered items:") do
+      _ -> Enum.each(numbered, &(print_numbered(&1)))
+    end
+
+    # Combine zip with map
+    names = ["Alice", "Bob", "Carol"]
+    scores = [95, 87, 92]
+    pairs = Enum.zip(names, scores)
+    totals = Enum.map(pairs, &(format_score(&1)))
+    case IO.puts("scores:") do
+      _ -> Enum.each(totals, &(IO.puts("  #{&1}")))
+    end
+
+    # flat_map to expand items
+    expanded = Enum.flat_map([1, 2, 3], &(repeat(&1, &1)))
+    IO.puts("flat_map repeat: #{fmt(expanded)}")
+
+    # any/all on mapped data
+    has_high = Enum.any(scores, &(&1 >= 90))
+    IO.puts("any score >= 90: #{has_high}")
+
+    all_pass = Enum.all(scores, &(&1 >= 60))
+    IO.puts("all scores >= 60: #{all_pass}")
+  end
+
+  defp print_indexed([]) do
+    :ok
+  end
+
+  defp print_indexed([{item, idx} | rest]) do
+    case IO.puts("  #{idx}: #{item}") do
+      _ -> print_indexed(rest)
+    end
+  end
+
+  defp print_pairs([]) do
+    :ok
+  end
+
+  defp print_pairs([{a, b} | rest]) do
+    case IO.puts("  #{a} -> #{b}") do
+      _ -> print_pairs(rest)
+    end
+  end
+
+  defp print_numbered({item, idx}) do
+    IO.puts("  #{idx}. #{item}")
+  end
+
+  defp format_score({name, score}) do
+    name <> ": " <> "#{score}"
+  end
+
+  defp repeat(_val, 0) do
+    []
+  end
+
+  defp repeat(val, n) do
+    [val] ++ repeat(val, n - 1)
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

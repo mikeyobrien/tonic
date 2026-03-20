@@ -1,0 +1,12 @@
+=== Statistics ===
+Data: [4, 8, 6, 5, 3, 7, 8, 9, 2, 8]
+Count: 10
+Sum: 60
+Mean (x100): 600
+Median: 6
+Mode: 8
+Min: 2
+Max: 9
+Range: 7
+Variance (x100): 520
+nil

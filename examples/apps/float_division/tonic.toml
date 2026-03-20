@@ -1,0 +1,3 @@
+[project]
+name = "float_division"
+entry = "src/main.tn"

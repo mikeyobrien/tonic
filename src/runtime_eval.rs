@@ -23,12 +23,7 @@ pub(crate) fn evaluate_ops(
                     RuntimeValue::Bool(b) => b.to_string(),
                     RuntimeValue::Nil => String::new(),
                     RuntimeValue::Atom(a) => a,
-                    _ => {
-                        return Err(RuntimeError::at_offset(
-                            "cannot interpolate complex value".to_string(),
-                            *offset,
-                        ))
-                    }
+                    other => other.render()
                 };
                 stack.push(RuntimeValue::String(str_value));
             }

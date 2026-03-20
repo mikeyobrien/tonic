@@ -1,0 +1,78 @@
+defmodule Demo do
+  def run() do
+    # Enum.scan — running sum
+    running_sum = Enum.scan([1, 2, 3, 4, 5], 0, &(&1 + &2))
+    IO.puts("scan sum: #{running_sum}")
+
+    # Enum.scan — running product
+    running_prod = Enum.scan([1, 2, 3, 4], 1, &(&1 * &2))
+    IO.puts("scan product: #{running_prod}")
+
+    # Enum.scan — empty list
+    scan_empty = Enum.scan([], 0, &(&1 + &2))
+    IO.puts("scan empty: #{scan_empty}")
+
+    # Enum.scan — single element
+    scan_single = Enum.scan([10], 5, &(&1 + &2))
+    IO.puts("scan single: #{scan_single}")
+
+    # Enum.split — middle
+    {left, right} = Enum.split([1, 2, 3, 4, 5], 3)
+    IO.puts("split 3: {#{left}, #{right}}")
+
+    # Enum.split — at 0 (take nothing)
+    {l0, r0} = Enum.split([1, 2, 3], 0)
+    IO.puts("split 0: {#{l0}, #{r0}}")
+
+    # Enum.split — beyond length
+    {lb, rb} = Enum.split([1, 2], 5)
+    IO.puts("split beyond: {#{lb}, #{rb}}")
+
+    # Enum.split — empty list
+    {le, re} = Enum.split([], 3)
+    IO.puts("split empty: {#{le}, #{re}}")
+
+    # Enum.count_by — count evens
+    evens = Enum.count_by([1, 2, 3, 4, 5, 6], &(rem(&1, 2) == 0))
+    IO.puts("count_by even: #{evens}")
+
+    # Enum.count_by — count > 3
+    big = Enum.count_by([1, 2, 3, 4, 5], &(&1 > 3))
+    IO.puts("count_by >3: #{big}")
+
+    # Enum.count_by — none match
+    none = Enum.count_by([1, 2, 3], &(&1 > 10))
+    IO.puts("count_by none: #{none}")
+
+    # Enum.count_by — all match
+    all = Enum.count_by([2, 4, 6], &(rem(&1, 2) == 0))
+    IO.puts("count_by all: #{all}")
+
+    # Enum.count_by — empty
+    cb_empty = Enum.count_by([], &(&1 > 0))
+    IO.puts("count_by empty: #{cb_empty}")
+
+    # List.duplicate — normal
+    dup3 = List.duplicate(0, 3)
+    IO.puts("duplicate 3: #{dup3}")
+
+    # List.duplicate — single
+    dup1 = List.duplicate("x", 1)
+    IO.puts("duplicate 1: #{dup1}")
+
+    # List.duplicate — zero
+    dup0 = List.duplicate(42, 0)
+    IO.puts("duplicate 0: #{dup0}")
+
+    # List.duplicate — string value
+    stars = List.duplicate("*", 5)
+    IO.puts("duplicate stars: #{stars}")
+
+    # Combined pipeline: scan → split → count_by
+    data = [1, 2, 3, 4, 5]
+    sums = Enum.scan(data, 0, &(&1 + &2))
+    {first_half, _rest} = Enum.split(sums, 3)
+    big_count = Enum.count_by(first_half, &(&1 > 2))
+    IO.puts("pipeline: #{big_count}")
+  end
+end

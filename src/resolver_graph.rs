@@ -374,6 +374,21 @@ impl ModuleGraph {
         CallResolution::Missing
     }
 
+    pub(super) fn public_function_names(&self, module_name: &str) -> Option<Vec<String>> {
+        let symbols = self.modules.get(module_name)?;
+        let mut names: Vec<String> = symbols
+            .iter()
+            .filter(|(_, vis)| vis.public)
+            .map(|(name, _)| name.clone())
+            .collect();
+        names.sort();
+        if names.is_empty() {
+            None
+        } else {
+            Some(names)
+        }
+    }
+
     pub(super) fn import_filter_diagnostic(
         &self,
         current_module: &str,
@@ -483,5 +498,19 @@ fn is_builtin_call_target(callee: &str) -> bool {
             | "rem"
             | "byte_size"
             | "bit_size"
+            | "abs"
+            | "length"
+            | "hd"
+            | "tl"
+            | "elem"
+            | "tuple_size"
+            | "to_string"
+            | "max"
+            | "min"
+            | "round"
+            | "trunc"
+            | "map_size"
+            | "put_elem"
+            | "inspect"
     )
 }

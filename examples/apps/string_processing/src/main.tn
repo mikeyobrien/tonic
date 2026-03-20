@@ -1,0 +1,93 @@
+defmodule Demo do
+  def run() do
+    case IO.puts("=== String Processing ===") do
+      _ -> case show_split_join() do
+        _ -> case show_transform() do
+          _ -> case show_search() do
+            _ -> case show_trim_pad() do
+              _ -> show_slice_at()
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_split_join() do
+    words = String.split("hello world foo bar", " ")
+    IO.puts("split: " <> fmt(words))
+  end
+
+  defp show_transform() do
+    up = String.upcase("hello")
+    down = String.downcase("HELLO")
+    rev = String.reverse("abcdef")
+    replaced = String.replace("hello world", "world", "tonic")
+    case IO.puts("upcase: #{up}") do
+      _ -> case IO.puts("downcase: #{down}") do
+        _ -> case IO.puts("reverse: #{rev}") do
+          _ -> IO.puts("replace: #{replaced}")
+        end
+      end
+    end
+  end
+
+  defp show_search() do
+    case IO.puts("contains yes: #{String.contains("hello world", "world")}") do
+      _ -> case IO.puts("contains no: #{String.contains("hello world", "xyz")}") do
+        _ -> case IO.puts("starts_with: #{String.starts_with("hello", "hel")}") do
+          _ -> IO.puts("ends_with: #{String.ends_with("hello", "llo")}")
+        end
+      end
+    end
+  end
+
+  defp show_trim_pad() do
+    trimmed = String.trim("  hi  ")
+    trim_l = String.trim_leading("  hi  ")
+    trim_r = String.trim_trailing("  hi  ")
+    pad_l = String.pad_leading("42", 6, "0")
+    pad_r = String.pad_trailing("hi", 6, ".")
+    case IO.puts("trim: [#{trimmed}]") do
+      _ -> case IO.puts("trim_leading: [#{trim_l}]") do
+        _ -> case IO.puts("trim_trailing: [#{trim_r}]") do
+          _ -> case IO.puts("pad_leading: [#{pad_l}]") do
+            _ -> IO.puts("pad_trailing: [#{pad_r}]")
+          end
+        end
+      end
+    end
+  end
+
+  defp show_slice_at() do
+    s = "abcdefgh"
+    a0 = String.at(s, 0)
+    a3 = String.at(s, 3)
+    sl = String.slice(s, 2, 3)
+    case IO.puts("length: #{String.length(s)}") do
+      _ -> case IO.puts("at 0: #{a0}") do
+        _ -> case IO.puts("at 3: #{a3}") do
+          _ -> case IO.puts("slice 2,3: #{sl}") do
+            _ -> IO.puts("to_integer: #{String.to_integer("42")}")
+          end
+        end
+      end
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

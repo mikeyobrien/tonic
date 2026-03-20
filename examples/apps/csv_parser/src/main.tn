@@ -1,0 +1,159 @@
+defmodule CsvParser do
+  def parse(text) do
+    lines = String.split(text, ";")
+    parse_lines(lines, [])
+  end
+
+  defp parse_lines([], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp parse_lines(["" | rest], acc) do
+    parse_lines(rest, acc)
+  end
+
+  defp parse_lines([line | rest], acc) do
+    row = String.split(line, ",")
+    parse_lines(rest, [row] ++ acc)
+  end
+
+  def get_column(rows, col_idx) do
+    get_col_helper(rows, col_idx, [])
+  end
+
+  defp get_col_helper([], _col_idx, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp get_col_helper([row | rest], col_idx, acc) do
+    cell = list_at(row, col_idx, 0)
+    get_col_helper(rest, col_idx, [cell] ++ acc)
+  end
+
+  def filter_by_column(rows, col_idx, value) do
+    filter_rows(rows, col_idx, value, [])
+  end
+
+  defp filter_rows([], _col_idx, _value, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp filter_rows([row | rest], col_idx, value, acc) do
+    cell = list_at(row, col_idx, 0)
+    case cell do
+      ^value -> filter_rows(rest, col_idx, value, [row] ++ acc)
+      _ -> filter_rows(rest, col_idx, value, acc)
+    end
+  end
+
+  defp list_at([], _idx, _current) do
+    ""
+  end
+
+  defp list_at([h | _t], idx, current) when current == idx do
+    h
+  end
+
+  defp list_at([_h | t], idx, current) do
+    list_at(t, idx, current + 1)
+  end
+end
+
+defmodule Demo do
+  def run() do
+    csv = "name,age,city;Alice,30,NYC;Bob,25,LA;Carol,35,NYC;Dave,28,Chicago;Eve,30,LA"
+    rows = CsvParser.parse(csv)
+    header = List.first(rows)
+    data = Enum.drop(rows, 1)
+
+    case IO.puts("=== CSV Parser ===") do
+      _ -> case IO.puts("Header: " <> fmt_row(header)) do
+        _ -> case IO.puts("Rows: #{Enum.count(data)}") do
+          _ -> case show_data(data) do
+            _ -> case show_column(data) do
+              _ -> case show_filter(data) do
+                _ -> show_names(data)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_data(data) do
+    case IO.puts("--- All Data ---") do
+      _ -> print_rows(data)
+    end
+  end
+
+  defp print_rows([]) do
+    :ok
+  end
+
+  defp print_rows([row | rest]) do
+    name = list_at(row, 0, 0)
+    age = list_at(row, 1, 0)
+    city = list_at(row, 2, 0)
+    case IO.puts("  #{name}, age #{age}, from #{city}") do
+      _ -> print_rows(rest)
+    end
+  end
+
+  defp show_column(data) do
+    ages = CsvParser.get_column(data, 1)
+    IO.puts("Ages: " <> fmt_row(ages))
+  end
+
+  defp show_filter(data) do
+    nyc = CsvParser.filter_by_column(data, 2, "NYC")
+    case IO.puts("--- NYC Residents ---") do
+      _ -> print_names(nyc)
+    end
+  end
+
+  defp print_names([]) do
+    :ok
+  end
+
+  defp print_names([row | rest]) do
+    name = list_at(row, 0, 0)
+    case IO.puts("  #{name}") do
+      _ -> print_names(rest)
+    end
+  end
+
+  defp show_names(data) do
+    names = CsvParser.get_column(data, 0)
+    sorted = Enum.sort(names)
+    IO.puts("Sorted names: " <> fmt_row(sorted))
+  end
+
+  defp list_at([], _idx, _current) do
+    ""
+  end
+
+  defp list_at([h | _t], idx, current) when current == idx do
+    h
+  end
+
+  defp list_at([_h | t], idx, current) do
+    list_at(t, idx, current + 1)
+  end
+
+  defp fmt_row(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

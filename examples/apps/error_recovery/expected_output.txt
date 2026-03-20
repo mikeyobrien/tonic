@@ -1,0 +1,20 @@
+=== String Comparison ===
+found alice
+not alice
+red fruit
+yellow fruit
+unknown fruit
+=== Scaled Arithmetic ===
+75 of 200 = 37%
+1 of 3 = 33%
+Average: 25.0
+7/3 x1000 = 2333
+=== Stdlib Functions ===
+Doubled: 6, -2, 8, -10, 4
+Positive: 3, 4, 2
+Total: 3
+Has negative: true
+All positive [1,2,3]: true
+Smallest: -5
+Largest: 4
+nil

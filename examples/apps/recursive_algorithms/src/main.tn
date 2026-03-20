@@ -1,0 +1,197 @@
+defmodule Fib do
+  def sequence(n) do
+    build(n, 0, [])
+  end
+
+  defp build(0, _a, acc) do
+    Enum.reverse(acc)
+  end
+
+  defp build(n, 0, []) do
+    build(n - 1, 1, [0])
+  end
+
+  defp build(n, 1, [0]) do
+    build(n - 1, 1, [1, 0])
+  end
+
+  defp build(n, _step, [a, b | rest]) do
+    build(n - 1, 0, [a + b, a, b] ++ rest)
+  end
+end
+
+defmodule BinSearch do
+  def search(list, target) do
+    search_range(list, target, 0, Enum.count(list) - 1)
+  end
+
+  defp search_range(_list, _target, low, high) when low > high do
+    -1
+  end
+
+  defp search_range(list, target, low, high) do
+    mid = div(low + high, 2)
+    val = list_at(list, mid)
+    check_mid(list, target, low, high, mid, val)
+  end
+
+  defp check_mid(_list, target, _low, _high, mid, val) when val == target do
+    mid
+  end
+
+  defp check_mid(list, target, low, _high, mid, val) when val > target do
+    search_range(list, target, low, mid - 1)
+  end
+
+  defp check_mid(list, target, _low, high, mid, _val) do
+    search_range(list, target, mid + 1, high)
+  end
+
+  defp list_at([head | _tail], 0) do
+    head
+  end
+
+  defp list_at([_head | tail], n) do
+    list_at(tail, n - 1)
+  end
+end
+
+defmodule MergeSort do
+  def sort([]) do
+    []
+  end
+
+  def sort([x]) do
+    [x]
+  end
+
+  def sort(list) do
+    mid = div(Enum.count(list), 2)
+    left = sort(Enum.take(list, mid))
+    right = sort(Enum.drop(list, mid))
+    merge(left, right, [])
+  end
+
+  defp merge([], right, acc) do
+    acc ++ right
+  end
+
+  defp merge(left, [], acc) do
+    acc ++ left
+  end
+
+  defp merge([lh | lt], [rh | rt], acc) when lh <= rh do
+    merge(lt, [rh] ++ rt, acc ++ [lh])
+  end
+
+  defp merge([lh | lt], [rh | rt], acc) do
+    merge([lh] ++ lt, rt, acc ++ [rh])
+  end
+end
+
+defmodule Tree do
+  def leaf(value) do
+    %{type: :leaf, value: value}
+  end
+
+  def node(value, left, right) do
+    %{type: :node, value: value, left: left, right: right}
+  end
+
+  def sum(tree) do
+    val = tree.value
+    case tree.type do
+      :leaf -> val
+      :node -> val + sum(tree.left) + sum(tree.right)
+      _ -> 0
+    end
+  end
+
+  def depth(tree) do
+    case tree.type do
+      :leaf -> 1
+      :node -> 1 + max_of(depth(tree.left), depth(tree.right))
+      _ -> 0
+    end
+  end
+
+  def inorder(tree) do
+    case tree.type do
+      :leaf -> [tree.value]
+      :node -> inorder(tree.left) ++ [tree.value] ++ inorder(tree.right)
+      _ -> []
+    end
+  end
+
+  defp max_of(a, b) when a > b do
+    a
+  end
+
+  defp max_of(_a, b) do
+    b
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case IO.puts("=== Recursive Algorithms ===") do
+      _ -> case show_fib() do
+        _ -> case show_search() do
+          _ -> case show_sort() do
+            _ -> show_tree()
+          end
+        end
+      end
+    end
+  end
+
+  defp show_fib() do
+    fibs = Fib.sequence(10)
+    IO.puts("Fibonacci(10): " <> fmt(fibs))
+  end
+
+  defp show_search() do
+    sorted = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91]
+    case IO.puts("Binary search in " <> fmt(sorted)) do
+      _ -> case IO.puts("  find 23: index #{BinSearch.search(sorted, 23)}") do
+        _ -> case IO.puts("  find 72: index #{BinSearch.search(sorted, 72)}") do
+          _ -> IO.puts("  find 99: index #{BinSearch.search(sorted, 99)}")
+        end
+      end
+    end
+  end
+
+  defp show_sort() do
+    input = [38, 27, 43, 3, 9, 82, 10]
+    result = MergeSort.sort(input)
+    IO.puts("Merge sort " <> fmt(input) <> " -> " <> fmt(result))
+  end
+
+  defp show_tree() do
+    tree = Tree.node(1,
+      Tree.node(2, Tree.leaf(4), Tree.leaf(5)),
+      Tree.node(3, Tree.leaf(6), Tree.leaf(7))
+    )
+    case IO.puts("Tree sum: #{Tree.sum(tree)}") do
+      _ -> case IO.puts("Tree depth: #{Tree.depth(tree)}") do
+        _ -> IO.puts("Tree inorder: " <> fmt(Tree.inorder(tree)))
+      end
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

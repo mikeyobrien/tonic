@@ -1,0 +1,67 @@
+defmodule Demo do
+  def classify(value) do
+    if is_integer(value) do
+      "integer"
+    else
+      if is_float(value) do
+        "float"
+      else
+        if is_atom(value) do
+          "atom"
+        else
+          if is_binary(value) do
+            "binary"
+          else
+            if is_list(value) do
+              "list"
+            else
+              if is_nil(value) do
+                "nil"
+              else
+                "other"
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  def count_integers(items) do
+    do_count_integers(items, 0)
+  end
+
+  def do_count_integers(items, acc) do
+    case items do
+      [] -> acc
+      [head | tail] when is_integer(head) -> do_count_integers(tail, acc + 1)
+      [_head | tail] -> do_count_integers(tail, acc)
+      _ -> acc
+    end
+  end
+
+  def run() do
+    IO.puts(classify(42))
+    IO.puts(classify(3.14))
+    IO.puts(classify(:hello))
+    IO.puts(classify("world"))
+    IO.puts(classify([1, 2]))
+    IO.puts(classify(nil))
+
+    IO.puts("#{is_integer(10)}")
+    IO.puts("#{is_number(10)}")
+    IO.puts("#{is_number(2.5)}")
+    IO.puts("#{is_float(2.5)}")
+    IO.puts("#{is_atom(:ok)}")
+    IO.puts("#{is_binary("hi")}")
+    IO.puts("#{is_list([])}")
+    IO.puts("#{is_nil(nil)}")
+
+    t = {1, 2}
+    IO.puts("#{is_tuple(t)}")
+    m = %{a: 1}
+    IO.puts("#{is_map(m)}")
+
+    IO.puts("#{count_integers([1, :a, 2, "b", 3])}")
+  end
+end

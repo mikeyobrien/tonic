@@ -1,0 +1,3 @@
+[project]
+name = "map_tuple_builtins"
+entry = "src/main.tn"

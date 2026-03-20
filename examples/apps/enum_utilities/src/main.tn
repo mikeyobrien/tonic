@@ -1,0 +1,62 @@
+defmodule Demo do
+  def run() do
+    IO.puts("=== Enum Utilities ===")
+
+    # --- uniq_by/2 ---
+    words = ["apple", "avocado", "banana", "blueberry", "cherry"]
+    by_first = Enum.uniq_by(words, &(String.at(&1, 0)))
+    IO.puts("uniq_by first char: #{by_first}")
+
+    nums = [1, 2, 3, 4, 5, 6, 7, 8]
+    by_mod3 = Enum.uniq_by(nums, &(rem(&1, 3)))
+    IO.puts("uniq_by mod 3: #{by_mod3}")
+
+    single = Enum.uniq_by([42], &(&1))
+    IO.puts("uniq_by single: #{single}")
+
+    empty = Enum.uniq_by([], &(&1))
+    IO.puts("uniq_by empty: #{empty}")
+
+    # --- map_join/3 ---
+    items = [1, 2, 3, 4, 5]
+    joined = Enum.map_join(items, " | ", &("item_#{&1}"))
+    IO.puts("map_join pipes: #{joined}")
+
+    names = ["alice", "bob", "charlie"]
+    greeting = Enum.map_join(names, ", ", &("Hi #{&1}!"))
+    IO.puts("map_join greet: #{greeting}")
+
+    single_join = Enum.map_join([99], "-", &("#{&1}"))
+    IO.puts("map_join single: #{single_join}")
+
+    # --- dedup/1 ---
+    dupes = [1, 1, 2, 3, 3, 3, 2, 2, 1]
+    deduped = Enum.dedup(dupes)
+    IO.puts("dedup nums: #{deduped}")
+
+    atoms = [:a, :a, :b, :b, :b, :c, :a]
+    dedup_atoms = Enum.dedup(atoms)
+    IO.puts("dedup atoms: #{dedup_atoms}")
+
+    no_dupes = Enum.dedup([1, 2, 3])
+    IO.puts("dedup no dupes: #{no_dupes}")
+
+    all_same = Enum.dedup([5, 5, 5, 5])
+    IO.puts("dedup all same: #{all_same}")
+
+    empty_dedup = Enum.dedup([])
+    IO.puts("dedup empty: #{empty_dedup}")
+
+    single_dedup = Enum.dedup([42])
+    IO.puts("dedup single: #{single_dedup}")
+
+    # --- combined pipeline ---
+    data = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5]
+    sorted = Enum.sort(data)
+    deduped_sorted = Enum.dedup(sorted)
+    result = Enum.map_join(deduped_sorted, ", ", &("#{&1}"))
+    IO.puts("pipeline sorted dedup: #{result}")
+
+    IO.puts("=== Done ===")
+  end
+end

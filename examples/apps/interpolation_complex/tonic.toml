@@ -1,0 +1,3 @@
+[project]
+name = "interpolation_complex"
+entry = "src/main.tn"

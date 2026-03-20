@@ -1,0 +1,23 @@
+uniq: [1, 2, 3]
+uniq empty: []
+uniq no dups: [1, 2, 3]
+unique: [4, 5]
+map_reduce mapped: [2, 4, 6]
+map_reduce acc: 6
+map_reduce items: ["A", "B", "C"]
+map_reduce built: abc
+map_reduce empty: {[], 0}
+map_reduce single: {[11], 15}
+concat: [1, 2, 3, 4]
+concat empty left: [1, 2]
+concat empty right: [1, 2]
+concat both empty: []
+starts_with match: true
+starts_with no match: false
+starts_with empty prefix: true
+starts_with exact: true
+starts_with longer: false
+starts_with empty list: false
+starts_with both empty: true
+pipeline: [2, 4, 6, 6]
+nil

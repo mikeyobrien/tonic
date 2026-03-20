@@ -1,0 +1,19 @@
+42
+-7
+0
+3.14
+true
+false
+hello
+
+hello world
+[1, 2, 3]
+%{:a => 1}
+{1, 2}
+5
+42
+Alice
+30
+true
+default
+nil

@@ -1,0 +1,91 @@
+defmodule Demo do
+  def run() do
+    # Map.update — frequency counting (the #1 use case)
+    words = ["hello", "world", "hello", "hello", "world"]
+    freq = build_freq(words, %{})
+    IO.puts("freq: #{freq}")
+
+    # Map.update — increment existing key
+    m1 = %{"a" => 1}
+    m2 = Map.update(m1, "a", 0, &(&1 + 1))
+    IO.puts("update existing: #{m2}")
+
+    # Map.update — key missing, uses default
+    m3 = Map.update(%{}, "x", 10, &(&1 + 1))
+    IO.puts("update missing: #{m3}")
+
+    # Map.update — nested accumulation
+    data = [{"fruit", "apple"}, {"fruit", "banana"}, {"veg", "carrot"}, {"fruit", "cherry"}]
+    grouped = group_items(data, %{})
+    IO.puts("grouped: #{grouped}")
+
+    # Map.put_new — set default if not present
+    m4 = %{"a" => 1}
+    m5 = Map.put_new(m4, "a", 99)
+    IO.puts("put_new existing: #{m5}")
+
+    # Map.put_new — key not present
+    m6 = Map.put_new(m4, "b", 2)
+    IO.puts("put_new missing: #{m6}")
+
+    # Map.put_new — empty map
+    m7 = Map.put_new(%{}, "key", "value")
+    IO.puts("put_new empty: #{m7}")
+
+    # Map.put_new — chained defaults
+    defaults = set_defaults(%{}, ["a", "b", "c"], 0)
+    IO.puts("chained defaults: #{defaults}")
+
+    # Map.put_new — doesn't overwrite
+    partial = %{"a" => 42}
+    filled = set_defaults(partial, ["a", "b", "c"], 0)
+    IO.puts("partial defaults: #{filled}")
+
+    # Enum.product — basic
+    p1 = Enum.product([1, 2, 3, 4])
+    IO.puts("product: #{p1}")
+
+    # Enum.product — single element
+    p2 = Enum.product([5])
+    IO.puts("product single: #{p2}")
+
+    # Enum.product — empty (identity = 1)
+    p3 = Enum.product([])
+    IO.puts("product empty: #{p3}")
+
+    # Enum.product — with negative
+    p4 = Enum.product([2, -3, 4])
+    IO.puts("product negative: #{p4}")
+
+    # Combined: frequency counting + product of counts
+    words2 = ["a", "b", "a", "c", "b", "a"]
+    freq2 = build_freq(words2, %{})
+    count_product = Enum.product(Map.values(freq2))
+    IO.puts("freq counts product: #{count_product}")
+  end
+
+  defp build_freq([], acc) do
+    acc
+  end
+
+  defp build_freq([word | rest], acc) do
+    build_freq(rest, Map.update(acc, word, 1, &(&1 + 1)))
+  end
+
+  defp group_items([], acc) do
+    acc
+  end
+
+  defp group_items([{category, item} | rest], acc) do
+    updated = Map.update(acc, category, [item], fn existing -> existing ++ [item] end)
+    group_items(rest, updated)
+  end
+
+  defp set_defaults(map, [], _default) do
+    map
+  end
+
+  defp set_defaults(map, [key | rest], default) do
+    set_defaults(Map.put_new(map, key, default), rest, default)
+  end
+end

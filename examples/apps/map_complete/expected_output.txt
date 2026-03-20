@@ -1,0 +1,16 @@
+=== Map Complete ===
+has_key :name: true
+has_key :email: false
+has_key empty :x: false
+get :name: alice
+get :email default: none
+put then get :email: alice@example.com
+delete :role, has_key: false
+merge has :city: true
+keys: [x, y]
+values: [1, 2]
+drop [:age,:role] has :name: true
+drop [:age,:role] has :age: false
+take [:name,:age] has :name: true
+take [:name,:age] has :role: false
+nil

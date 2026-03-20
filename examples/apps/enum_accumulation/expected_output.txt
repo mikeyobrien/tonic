@@ -1,0 +1,19 @@
+scan sum: [1, 3, 6, 10, 15]
+scan product: [1, 2, 6, 24]
+scan empty: []
+scan single: [15]
+split 3: {[1, 2, 3], [4, 5]}
+split 0: {[], [1, 2, 3]}
+split beyond: {[1, 2], []}
+split empty: {[], []}
+count_by even: 3
+count_by >3: 2
+count_by none: 0
+count_by all: 3
+count_by empty: 0
+duplicate 3: [0, 0, 0]
+duplicate 1: ["x"]
+duplicate 0: []
+duplicate stars: ["*", "*", "*", "*", "*"]
+pipeline: 2
+nil

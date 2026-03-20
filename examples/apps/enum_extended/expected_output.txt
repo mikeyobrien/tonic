@@ -1,0 +1,19 @@
+=== Enum Extended Functions ===
+reject odds: [2, 4, 6]
+reject empty: []
+reject none: [1, 2, 3]
+sort_by length: ["fig", "date", "apple", "banana"]
+sort_by abs: [-1, 2, 3, 4, -5]
+sort_by single: [42]
+group_by even/odd: %{1 => [1, 3, 5], 0 => [2, 4, 6]}
+group_by first letter: %{"c" => ["cat", "car", "cow"], "d" => ["dog", "duck"]}
+group_by empty: %{}
+min_by length: hi
+min_by abs: 1
+max_by length: hello
+max_by abs: 8
+frequencies: %{:a => 3, :b => 2, :c => 1}
+frequencies single: %{42 => 1}
+frequencies empty: %{}
+pipeline reject+sort_by: [6, 9, 4, 7, 10, 5, 8]
+nil

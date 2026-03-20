@@ -1,0 +1,13 @@
+list: [1, 2, 3]
+map: %{:name => "alice", :age => 30}
+tuple: {:ok, 42}
+nested: [[:a, :b], [:c, :d]]
+result: {:ok, "success"}
+atom: hello
+bool: true
+nil: 
+int: 42
+float: 3.14
+empty: []
+range: 1..5
+nil

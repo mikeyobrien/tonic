@@ -1,0 +1,16 @@
+Even count: 5
+Greater than 5: 5
+Total count: 10
+H-words: 4
+Zeros: 0
+Merged b: 12
+Merged c: 23
+Merged a: 1
+Merged d: 30
+Keep-left b: 2
+Simple merge: 1, 2
+Wrap nil: []
+Wrap int: [42]
+Wrap list: [1, 2, 3]
+High scorers: 1
+nil

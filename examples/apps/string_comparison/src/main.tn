@@ -1,0 +1,161 @@
+defmodule StringCompare do
+  def match(value, target) do
+    case value do
+      ^target -> true
+      _ -> false
+    end
+  end
+
+  def find_by_name(list, name) do
+    find_helper(list, name)
+  end
+
+  defp find_helper([], _name) do
+    "not found"
+  end
+
+  defp find_helper([item | rest], name) do
+    item_name = item.name
+    case item_name do
+      ^name -> "found: " <> item_name <> ", role: " <> item.role
+      _ -> find_helper(rest, name)
+    end
+  end
+
+  def count_matching(list, target) do
+    count_helper(list, target, 0)
+  end
+
+  defp count_helper([], _target, acc) do
+    acc
+  end
+
+  defp count_helper([item | rest], target, acc) do
+    case item do
+      ^target -> count_helper(rest, target, acc + 1)
+      _ -> count_helper(rest, target, acc)
+    end
+  end
+
+  def categorize(value) do
+    yes = "yes"
+    no = "no"
+    maybe = "maybe"
+    case value do
+      ^yes -> "affirmative"
+      ^no -> "negative"
+      ^maybe -> "uncertain"
+      _ -> "unknown"
+    end
+  end
+
+  def group_by_status(items) do
+    group_helper(items, %{active: 0, inactive: 0, pending: 0, other: 0})
+  end
+
+  defp group_helper([], counts) do
+    counts
+  end
+
+  defp group_helper([item | rest], counts) do
+    status = item.status
+    active = "active"
+    inactive = "inactive"
+    pending = "pending"
+    key = case status do
+      ^active -> :active
+      ^inactive -> :inactive
+      ^pending -> :pending
+      _ -> :other
+    end
+    current = Map.get(counts, key, 0)
+    new_counts = Map.put(counts, key, current + 1)
+    group_helper(rest, new_counts)
+  end
+end
+
+defmodule Demo do
+  def run() do
+    case show_basic_matching() do
+      _ -> case show_find_by_name() do
+        _ -> case show_count_matching() do
+          _ -> case show_categorize() do
+            _ -> show_group_by_status()
+          end
+        end
+      end
+    end
+  end
+
+  defp show_basic_matching() do
+    case IO.puts("=== String Comparison ===") do
+      _ -> case IO.puts("--- Basic Matching (pin operator) ---") do
+        _ -> case IO.puts("hello == hello: #{StringCompare.match("hello", "hello")}") do
+          _ -> case IO.puts("hello == world: #{StringCompare.match("hello", "world")}") do
+            _ -> IO.puts("foo == foo: #{StringCompare.match("foo", "foo")}")
+          end
+        end
+      end
+    end
+  end
+
+  defp show_find_by_name() do
+    people = [
+      %{name: "Alice", role: "admin"},
+      %{name: "Bob", role: "user"},
+      %{name: "Carol", role: "moderator"},
+      %{name: "Dave", role: "user"}
+    ]
+    case IO.puts("--- Find by Name ---") do
+      _ -> case IO.puts(StringCompare.find_by_name(people, "Carol")) do
+        _ -> case IO.puts(StringCompare.find_by_name(people, "Bob")) do
+          _ -> IO.puts(StringCompare.find_by_name(people, "Eve"))
+        end
+      end
+    end
+  end
+
+  defp show_count_matching() do
+    fruits = ["apple", "banana", "apple", "cherry", "apple", "banana"]
+    case IO.puts("--- Count Matching ---") do
+      _ -> case IO.puts("apple count: #{StringCompare.count_matching(fruits, "apple")}") do
+        _ -> case IO.puts("banana count: #{StringCompare.count_matching(fruits, "banana")}") do
+          _ -> IO.puts("grape count: #{StringCompare.count_matching(fruits, "grape")}")
+        end
+      end
+    end
+  end
+
+  defp show_categorize() do
+    case IO.puts("--- Categorize ---") do
+      _ -> case IO.puts("yes -> #{StringCompare.categorize("yes")}") do
+        _ -> case IO.puts("no -> #{StringCompare.categorize("no")}") do
+          _ -> case IO.puts("maybe -> #{StringCompare.categorize("maybe")}") do
+            _ -> IO.puts("other -> #{StringCompare.categorize("other")}")
+          end
+        end
+      end
+    end
+  end
+
+  defp show_group_by_status() do
+    items = [
+      %{name: "Task 1", status: "active"},
+      %{name: "Task 2", status: "inactive"},
+      %{name: "Task 3", status: "active"},
+      %{name: "Task 4", status: "pending"},
+      %{name: "Task 5", status: "active"},
+      %{name: "Task 6", status: "archived"}
+    ]
+    counts = StringCompare.group_by_status(items)
+    case IO.puts("--- Group by Status ---") do
+      _ -> case IO.puts("active: #{Map.get(counts, :active, 0)}") do
+        _ -> case IO.puts("inactive: #{Map.get(counts, :inactive, 0)}") do
+          _ -> case IO.puts("pending: #{Map.get(counts, :pending, 0)}") do
+            _ -> IO.puts("other: #{Map.get(counts, :other, 0)}")
+          end
+        end
+      end
+    end
+  end
+end

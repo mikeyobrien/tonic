@@ -34,9 +34,10 @@ impl TypingError {
     }
 
     pub fn type_mismatch(expected: &str, found: &str, offset: Option<usize>) -> Self {
+        let hint = "";
         Self {
             code: Some(TypingDiagnosticCode::TypeMismatch),
-            message: format!("type mismatch: expected {expected}, found {found}"),
+            message: format!("type mismatch: expected {expected}, found {found}{hint}"),
             offset,
         }
     }

@@ -1,0 +1,16 @@
+hello
+world
+col1	col2	col3
+path\to\file
+she said "hi"
+line1
+line2
+line3
+hello	world	here
+id	name	score
+1	Alice	95
+2	Bob	87
+\start
+end\
+hello\xworld
+nil

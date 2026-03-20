@@ -1,0 +1,11 @@
+%{"alice" => 85, "charlie" => 91}
+%{"name" => "Alice", "age" => 30, "city" => "NYC"}
+%{"b" => 90}
+%{"y" => 2, "w" => 4}
+2
+nil
+2
+6
+6
+["debug", "trace"]
+nil

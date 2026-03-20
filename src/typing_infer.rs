@@ -117,8 +117,7 @@ pub(super) fn infer_expression_type(
                 }
                 crate::parser::UnaryOp::Bang => Ok(Type::Bool),
                 crate::parser::UnaryOp::Plus | crate::parser::UnaryOp::Minus => {
-                    solver.unify(Type::Int, value_type, Some(value.offset()))?;
-                    Ok(Type::Int)
+                    Ok(Type::Dynamic)
                 }
                 crate::parser::UnaryOp::BitwiseNot => {
                     solver.unify(Type::Int, value_type, Some(value.offset()))?;
@@ -137,23 +136,14 @@ pub(super) fn infer_expression_type(
                 BinaryOp::Plus
                 | BinaryOp::Minus
                 | BinaryOp::Mul
-                | BinaryOp::Div
                 | BinaryOp::IntDiv
-                | BinaryOp::Rem => {
-                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
-                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
-                    Ok(Type::Int)
-                }
-                BinaryOp::Eq
-                | BinaryOp::NotEq
-                | BinaryOp::Lt
+                | BinaryOp::Rem => Ok(Type::Dynamic),
+                BinaryOp::Div => Ok(Type::Dynamic),
+                BinaryOp::Eq | BinaryOp::NotEq => Ok(Type::Bool),
+                BinaryOp::Lt
                 | BinaryOp::Lte
                 | BinaryOp::Gt
-                | BinaryOp::Gte => {
-                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
-                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
-                    Ok(Type::Bool)
-                }
+                | BinaryOp::Gte => Ok(Type::Bool),
                 BinaryOp::AndAnd | BinaryOp::OrOr => Ok(Type::Dynamic),
                 BinaryOp::And | BinaryOp::Or => {
                     solver.unify(Type::Bool, left_type, Some(left.offset()))?;
@@ -481,6 +471,96 @@ fn infer_builtin_call_type(
                 )));
             }
             Ok(Some(Type::Int))
+        }
+        "abs" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for abs: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Dynamic))
+        }
+        "length" | "tuple_size" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for {callee}: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Int))
+        }
+        "hd" | "tl" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for {callee}: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Dynamic))
+        }
+        "elem" => {
+            if arg_types.len() != 2 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for elem: expected 2 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Dynamic))
+        }
+        "to_string" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for to_string: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::String))
+        }
+        "max" | "min" => {
+            if arg_types.len() != 2 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for {callee}: expected 2 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Dynamic))
+        }
+        "round" | "trunc" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for {callee}: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Int))
+        }
+        "map_size" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for map_size: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Int))
+        }
+        "put_elem" => {
+            if arg_types.len() != 3 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for put_elem: expected 3 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::Dynamic))
+        }
+        "inspect" => {
+            if arg_types.len() != 1 {
+                return Err(TypingError::new(format!(
+                    "arity mismatch for inspect: expected 1 args, found {}",
+                    arg_types.len()
+                )));
+            }
+            Ok(Some(Type::String))
         }
         _ => Ok(None),
     }

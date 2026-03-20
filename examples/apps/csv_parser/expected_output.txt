@@ -1,0 +1,15 @@
+=== CSV Parser ===
+Header: [name, age, city]
+Rows: 5
+--- All Data ---
+  Alice, age 30, from NYC
+  Bob, age 25, from LA
+  Carol, age 35, from NYC
+  Dave, age 28, from Chicago
+  Eve, age 30, from LA
+Ages: [30, 25, 35, 28, 30]
+--- NYC Residents ---
+  Alice
+  Carol
+Sorted names: [Alice, Bob, Carol, Dave, Eve]
+nil

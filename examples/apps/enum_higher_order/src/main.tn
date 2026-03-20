@@ -1,0 +1,72 @@
+defmodule Demo do
+  def run() do
+    IO.puts("=== Enum Higher-Order Functions ===")
+
+    # Enum.map with various transforms
+    doubled = Enum.map([1, 2, 3, 4, 5], &(&1 * 2))
+    IO.puts("map *2 [1..5]: #{fmt(doubled)}")
+
+    squared = Enum.map([1, 2, 3, 4], &(&1 * &1))
+    IO.puts("map ^2 [1..4]: #{fmt(squared)}")
+
+    negated = Enum.map([10, 20, 30], &(0 - &1))
+    IO.puts("map negate [10,20,30]: #{fmt(negated)}")
+
+    # Enum.map on range
+    from_range = Enum.map(1..5, &(&1 + 10))
+    IO.puts("map +10 1..5: #{fmt(from_range)}")
+
+    # Enum.filter
+    evens = Enum.filter([1, 2, 3, 4, 5, 6, 7, 8], &(rem(&1, 2) == 0))
+    IO.puts("filter even [1..8]: #{fmt(evens)}")
+
+    big = Enum.filter([1, 5, 10, 15, 20, 25], &(&1 > 10))
+    IO.puts("filter >10 [1,5,10,15,20,25]: #{fmt(big)}")
+
+    # Enum.filter on empty list
+    empty = Enum.filter([], &(&1 > 0))
+    IO.puts("filter empty: #{fmt(empty)}")
+
+    # Enum.reduce
+    sum = Enum.reduce([1, 2, 3, 4, 5], 0, &(&1 + &2))
+    IO.puts("reduce sum [1..5]: #{sum}")
+
+    product = Enum.reduce([1, 2, 3, 4, 5], 1, &(&1 * &2))
+    IO.puts("reduce product [1..5]: #{product}")
+
+    # Enum.reduce to find max
+    max = Enum.reduce([3, 7, 2, 9, 4], 0, &(max_of(&1, &2)))
+    IO.puts("reduce max [3,7,2,9,4]: #{max}")
+
+    # Chaining: map then filter then reduce
+    result = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      |> Enum.map(&(&1 * &1))
+      |> Enum.filter(&(&1 > 20))
+      |> Enum.reduce(0, &(&1 + &2))
+    IO.puts("chain squares>20 sum: #{result}")
+  end
+
+  defp max_of(a, b) when a > b do
+    a
+  end
+
+  defp max_of(_a, b) do
+    b
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

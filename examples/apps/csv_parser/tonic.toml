@@ -1,0 +1,3 @@
+[project]
+name = "csv_parser"
+entry = "src/main.tn"

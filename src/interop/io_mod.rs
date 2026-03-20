@@ -44,9 +44,21 @@ fn expect_string_arg(
     }
 }
 
+fn value_to_string(value: &RuntimeValue) -> String {
+    match value {
+        RuntimeValue::String(s) => s.clone(),
+        RuntimeValue::Int(i) => i.to_string(),
+        RuntimeValue::Float(f) => f.clone(),
+        RuntimeValue::Bool(b) => b.to_string(),
+        RuntimeValue::Nil => String::new(),
+        RuntimeValue::Atom(a) => a.clone(),
+        other => other.render(),
+    }
+}
+
 fn host_io_puts(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("IO.puts", args, 1)?;
-    let s = expect_string_arg("IO.puts", args, 0)?;
+    let s = value_to_string(&args[0]);
     println!("{s}");
     Ok(RuntimeValue::Nil)
 }
@@ -189,13 +201,11 @@ mod tests {
     }
 
     #[test]
-    fn io_puts_rejects_non_string() {
-        let error = HOST_REGISTRY
+    fn io_puts_accepts_non_string() {
+        let result = HOST_REGISTRY
             .call("io_puts", &[RuntimeValue::Int(42)])
-            .expect_err("io_puts should reject non-string");
-        assert!(error
-            .to_string()
-            .contains("IO.puts expects string argument"));
+            .expect("io_puts should accept non-string");
+        assert_eq!(result, RuntimeValue::Nil);
     }
 
     #[test]

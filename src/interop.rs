@@ -8,12 +8,15 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 mod enum_mod;
+mod float_mod;
 mod http_server;
+mod integer_mod;
 mod io_mod;
 mod map_mod;
 mod path_mod;
 mod string_mod;
 mod system;
+mod tuple_mod;
 
 /// Host function signature: takes runtime values, returns result
 pub type HostFn = fn(&[RuntimeValue]) -> Result<RuntimeValue, HostError>;
@@ -152,6 +155,15 @@ impl HostRegistry {
 
         // Enum stdlib interop primitives for the remaining host-backed Enum.* calls.
         enum_mod::register_enum_host_functions(self);
+
+        // Integer stdlib interop primitives for interpreter-backed Integer.* calls.
+        integer_mod::register_integer_host_functions(self);
+
+        // Float stdlib interop primitives for interpreter-backed Float.* calls.
+        float_mod::register_float_host_functions(self);
+
+        // Tuple stdlib interop primitives for interpreter-backed Tuple.* and List.to_tuple calls.
+        tuple_mod::register_tuple_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);

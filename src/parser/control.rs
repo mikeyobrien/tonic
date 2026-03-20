@@ -51,7 +51,7 @@ impl<'a> Parser<'a> {
 
             let condition = self.parse_expression()?;
             self.expect(TokenKind::Arrow, "->")?;
-            let body = self.parse_expression()?;
+            let body = self.parse_branch_body()?;
             let guard = self.lower_truthy_guard(condition);
             branches.push(CaseBranch::new(Pattern::Wildcard, Some(guard), body));
         }
@@ -338,7 +338,7 @@ impl<'a> Parser<'a> {
             None
         };
         self.expect(TokenKind::Arrow, "->")?;
-        let body = self.parse_expression()?;
+        let body = self.parse_branch_body()?;
 
         Ok(CaseBranch::new(pattern, guard, body))
     }

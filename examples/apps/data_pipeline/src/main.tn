@@ -1,0 +1,128 @@
+defmodule Pipeline do
+  def process_scores(scores) do
+    scores
+    |> Enum.filter(&(&1 > 0))
+    |> Enum.map(&(&1 * 10))
+    |> Enum.sort()
+    |> Enum.reverse()
+  end
+
+  def top_n(scores, n) do
+    process_scores(scores) |> Enum.take(n)
+  end
+
+  def summary(scores) do
+    valid = Enum.filter(scores, &(&1 > 0))
+    count = Enum.count(valid)
+    total = Enum.sum(valid)
+    %{count: count, total: total, avg: div(total, count)}
+  end
+
+  def grade(score) when score >= 90 do
+    "A"
+  end
+
+  def grade(score) when score >= 80 do
+    "B"
+  end
+
+  def grade(score) when score >= 70 do
+    "C"
+  end
+
+  def grade(score) when score >= 60 do
+    "D"
+  end
+
+  def grade(_score) do
+    "F"
+  end
+
+  def grade_all(scores) do
+    Enum.map(scores, &(grade(&1)))
+  end
+
+  def count_grades(grades) do
+    count_grades_helper(grades, %{})
+  end
+
+  defp count_grades_helper([], acc) do
+    acc
+  end
+
+  defp count_grades_helper([g | rest], acc) do
+    current = Map.get(acc, g, 0)
+    count_grades_helper(rest, Map.put(acc, g, current + 1))
+  end
+end
+
+defmodule Demo do
+  def run() do
+    scores = [85, 92, 0, 78, 95, 0, 67, 88, 73, 91]
+
+    case IO.puts("=== Data Pipeline ===") do
+      _ -> case IO.puts("Input scores: " <> fmt(scores)) do
+        _ -> case show_processed(scores) do
+          _ -> case show_top(scores) do
+            _ -> case show_summary(scores) do
+              _ -> show_grades(scores)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_processed(scores) do
+    result = Pipeline.process_scores(scores)
+    IO.puts("Processed (>0, *10, sorted desc): " <> fmt(result))
+  end
+
+  defp show_top(scores) do
+    top3 = Pipeline.top_n(scores, 3)
+    IO.puts("Top 3: " <> fmt(top3))
+  end
+
+  defp show_summary(scores) do
+    valid = Enum.filter(scores, &(&1 > 0))
+    stats = Pipeline.summary(scores)
+    case IO.puts("Valid count: #{Map.get(stats, :count, 0)}") do
+      _ -> case IO.puts("Total: #{Map.get(stats, :total, 0)}") do
+        _ -> IO.puts("Average: #{Map.get(stats, :avg, 0)}")
+      end
+    end
+  end
+
+  defp show_grades(scores) do
+    valid = Enum.filter(scores, &(&1 > 0))
+    grades = Pipeline.grade_all(valid)
+    dist = Pipeline.count_grades(grades)
+    case IO.puts("Grades: " <> fmt(grades)) do
+      _ -> case IO.puts("A count: #{Map.get(dist, "A", 0)}") do
+        _ -> case IO.puts("B count: #{Map.get(dist, "B", 0)}") do
+          _ -> case IO.puts("C count: #{Map.get(dist, "C", 0)}") do
+            _ -> case IO.puts("D count: #{Map.get(dist, "D", 0)}") do
+              _ -> IO.puts("F count: #{Map.get(dist, "F", 0)}")
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

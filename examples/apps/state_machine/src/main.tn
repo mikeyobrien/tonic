@@ -1,0 +1,142 @@
+# Finite State Machine — traffic light with pedestrian button
+# Tests: nested case, guards, multi-expression branches, pattern matching, recursion
+
+defmodule TrafficLight do
+  # States: :red, :yellow, :green
+  # Events: :tick, :pedestrian_button
+
+  def transition(state, event) do
+    case state do
+      :red -> do
+        case event do
+          :tick -> :green
+          _ -> :red
+        end
+      end
+      :green -> do
+        case event do
+          :tick -> :yellow
+          :pedestrian_button -> :yellow
+          _ -> :green
+        end
+      end
+      :yellow -> do
+        case event do
+          :tick -> :red
+          _ -> :yellow
+        end
+      end
+      _ -> :red
+    end
+  end
+
+  def duration(state) do
+    case state do
+      :red -> 30
+      :green -> 25
+      :yellow -> 5
+      _ -> 0
+    end
+  end
+
+  def label(state) do
+    case state do
+      :red -> "STOP"
+      :green -> "GO"
+      :yellow -> "CAUTION"
+      _ -> "UNKNOWN"
+    end
+  end
+
+  def run_sequence(state, []) do
+    [state]
+  end
+
+  def run_sequence(state, [event | rest]) do
+    next = transition(state, event)
+    [state] ++ run_sequence(next, rest)
+  end
+
+  def count_state([], _target) do
+    0
+  end
+
+  def count_state([state | rest], target) do
+    case state == target do
+      true -> 1 + count_state(rest, target)
+      _ -> count_state(rest, target)
+    end
+  end
+end
+
+defmodule Demo do
+  def run() do
+    # Basic transitions
+    s1 = TrafficLight.transition(:red, :tick)
+    s2 = TrafficLight.transition(:green, :tick)
+    s3 = TrafficLight.transition(:yellow, :tick)
+    s4 = TrafficLight.transition(:green, :pedestrian_button)
+
+    case IO.puts("=== Traffic Light FSM ===") do
+      _ -> case IO.puts("red + tick -> #{s1} (#{TrafficLight.label(s1)})") do
+        _ -> case IO.puts("green + tick -> #{s2} (#{TrafficLight.label(s2)})") do
+          _ -> case IO.puts("yellow + tick -> #{s3} (#{TrafficLight.label(s3)})") do
+            _ -> case IO.puts("green + pedestrian -> #{s4} (#{TrafficLight.label(s4)})") do
+              _ -> case IO.puts("") do
+                _ -> case show_sequence() do
+                  _ -> show_durations()
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_sequence() do
+    events = [:tick, :tick, :tick, :tick, :pedestrian_button, :tick, :tick]
+    states = TrafficLight.run_sequence(:red, events)
+
+    reds = TrafficLight.count_state(states, :red)
+    greens = TrafficLight.count_state(states, :green)
+    yellows = TrafficLight.count_state(states, :yellow)
+
+    case IO.puts("Sequence from :red with 7 events:") do
+      _ -> case IO.puts("  States: #{format_list(states)}") do
+        _ -> case IO.puts("  Red: #{reds}, Green: #{greens}, Yellow: #{yellows}") do
+          _ -> IO.puts("")
+        end
+      end
+    end
+  end
+
+  defp show_durations() do
+    total = TrafficLight.duration(:red) + TrafficLight.duration(:green) + TrafficLight.duration(:yellow)
+    case IO.puts("Durations:") do
+      _ -> case IO.puts("  Red: #{TrafficLight.duration(:red)}s") do
+        _ -> case IO.puts("  Green: #{TrafficLight.duration(:green)}s") do
+          _ -> case IO.puts("  Yellow: #{TrafficLight.duration(:yellow)}s") do
+            _ -> IO.puts("  Cycle: #{total}s")
+          end
+        end
+      end
+    end
+  end
+
+  defp format_list(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

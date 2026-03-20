@@ -108,13 +108,12 @@ fn resolve_ast_accepts_guard_builtins_in_guard_context() {
 }
 
 #[test]
-fn resolve_ast_rejects_guard_builtins_in_non_guard_context() {
+fn resolve_ast_accepts_guard_builtins_in_non_guard_context() {
     let source = "defmodule Demo do\n  def run(x) do\n    is_integer(x)\n  end\nend\n";
     let tokens = scan_tokens(source).expect("scanner should tokenize non-guard context fixture");
     let ast = parse_ast(&tokens).expect("parser should build non-guard context fixture ast");
 
-    let err = resolve_ast(&ast).expect_err("resolver should reject guard builtins outside guard");
-    assert_eq!(err.code(), ResolverDiagnosticCode::GuardBuiltinOutsideGuard);
+    resolve_ast(&ast).expect("resolver should accept guard builtins as regular expressions");
 }
 
 #[test]

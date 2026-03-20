@@ -1,0 +1,3 @@
+[project]
+name = "to_string"
+entry = "src/main.tn"

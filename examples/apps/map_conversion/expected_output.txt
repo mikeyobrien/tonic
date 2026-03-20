@@ -1,0 +1,17 @@
+to_list count: 3
+new empty: %{}
+new keys: []
+from_list x: 10
+from_list y: 20
+from_list z: 30
+round-trip name: Alice
+round-trip age: 30
+from_list empty: %{}
+single to_list: [{:only, 42}]
+dup 3: ababab
+dup 1: hello
+dup 0: []
+      indented
+line: -----
+pipeline: x:10, y:20
+nil

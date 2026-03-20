@@ -1,0 +1,3 @@
+[project]
+name = "float_arithmetic"
+entry = "src/main.tn"

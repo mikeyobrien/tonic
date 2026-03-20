@@ -1,0 +1,17 @@
+=== Enum Utilities ===
+uniq_by first char: ["apple", "banana", "cherry"]
+uniq_by mod 3: [1, 2, 3]
+uniq_by single: [42]
+uniq_by empty: []
+map_join pipes: item_1 | item_2 | item_3 | item_4 | item_5
+map_join greet: Hi alice!, Hi bob!, Hi charlie!
+map_join single: 99
+dedup nums: [1, 2, 3, 2, 1]
+dedup atoms: [:a, :b, :c, :a]
+dedup no dupes: [1, 2, 3]
+dedup all same: [5]
+dedup empty: []
+dedup single: [42]
+pipeline sorted dedup: 1, 2, 3, 4, 5, 6, 9
+=== Done ===
+nil

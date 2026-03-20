@@ -1,0 +1,3 @@
+[project]
+name = "recursive_algorithms"
+entry = "src/main.tn"

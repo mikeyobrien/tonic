@@ -1,0 +1,156 @@
+defmodule MarkdownToc do
+  def generate(text) do
+    lines = String.split(text, ";")
+    extract_headers(lines, [])
+  end
+
+  defp extract_headers([], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp extract_headers([line | rest], acc) do
+    case is_header(line) do
+      true -> extract_headers(rest, [make_entry(line)] ++ acc)
+      _ -> extract_headers(rest, acc)
+    end
+  end
+
+  defp make_entry(line) do
+    level = count_hashes(line, 0)
+    title = strip_hashes(line, level)
+    %{level: level, title: title}
+  end
+
+  defp is_header(line) do
+    String.starts_with(line, "#")
+  end
+
+  defp count_hashes(line, n) do
+    char = String.at(line, n)
+    case char do
+      "#" -> count_hashes(line, n + 1)
+      _ -> n
+    end
+  end
+
+  defp strip_hashes(line, level) do
+    rest = String.slice(line, level, 1000)
+    String.trim(rest)
+  end
+
+  def format_toc(headers) do
+    format_entries(headers, [])
+  end
+
+  defp format_entries([], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp format_entries([entry | rest], acc) do
+    indent = make_indent(entry.level - 1, "")
+    line = indent <> "- " <> entry.title
+    format_entries(rest, [line] ++ acc)
+  end
+
+  defp make_indent(0, acc) do
+    acc
+  end
+
+  defp make_indent(n, acc) when n > 0 do
+    make_indent(n - 1, acc <> "  ")
+  end
+
+  def count_by_level(headers) do
+    count_levels(headers, %{})
+  end
+
+  defp count_levels([], counts) do
+    counts
+  end
+
+  defp count_levels([entry | rest], counts) do
+    level = entry.level
+    current = Map.get(counts, level, 0)
+    count_levels(rest, Map.put(counts, level, current + 1))
+  end
+end
+
+defmodule Demo do
+  def run() do
+    md = "# Introduction;## Background;## Motivation;# Methods;## Data Collection;### Survey Design;### Sample Size;## Analysis;# Results;## Key Findings;# Conclusion"
+    headers = MarkdownToc.generate(md)
+    toc_lines = MarkdownToc.format_toc(headers)
+    counts = MarkdownToc.count_by_level(headers)
+
+    case IO.puts("=== Markdown TOC Generator ===") do
+      _ -> case IO.puts("Found #{Enum.count(headers)} headers") do
+        _ -> case show_toc(toc_lines) do
+          _ -> case show_counts(counts) do
+            _ -> show_depths(headers)
+          end
+        end
+      end
+    end
+  end
+
+  defp show_toc(lines) do
+    case IO.puts("--- Table of Contents ---") do
+      _ -> print_lines(lines)
+    end
+  end
+
+  defp print_lines([]) do
+    :ok
+  end
+
+  defp print_lines([line | rest]) do
+    case IO.puts(line) do
+      _ -> print_lines(rest)
+    end
+  end
+
+  defp show_counts(counts) do
+    h1 = Map.get(counts, 1, 0)
+    h2 = Map.get(counts, 2, 0)
+    h3 = Map.get(counts, 3, 0)
+    case IO.puts("--- Level Counts ---") do
+      _ -> case IO.puts("H1: #{h1}") do
+        _ -> case IO.puts("H2: #{h2}") do
+          _ -> IO.puts("H3: #{h3}")
+        end
+      end
+    end
+  end
+
+  defp show_depths(headers) do
+    max_d = max_depth(headers, 0)
+    min_d = min_depth(headers, 999)
+    case IO.puts("--- Depth Info ---") do
+      _ -> case IO.puts("Max depth: #{max_d}") do
+        _ -> IO.puts("Min depth: #{min_d}")
+      end
+    end
+  end
+
+  defp max_depth([], current) do
+    current
+  end
+
+  defp max_depth([entry | rest], current) do
+    case entry.level > current do
+      true -> max_depth(rest, entry.level)
+      _ -> max_depth(rest, current)
+    end
+  end
+
+  defp min_depth([], current) do
+    current
+  end
+
+  defp min_depth([entry | rest], current) do
+    case entry.level < current do
+      true -> min_depth(rest, entry.level)
+      _ -> min_depth(rest, current)
+    end
+  end
+end

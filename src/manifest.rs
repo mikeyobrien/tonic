@@ -190,7 +190,7 @@ struct ProjectSourceAnalysis {
     referenced_modules: Vec<String>,
 }
 
-const STDLIB_MODULE_NAMES: &[&str] = &["System", "String", "Path", "IO", "List", "Map", "Enum"];
+const STDLIB_MODULE_NAMES: &[&str] = &["System", "String", "Path", "IO", "List", "Map", "Enum", "Integer", "Float", "Tuple"];
 
 fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {
     let Some(ast) = parse_project_ast(source) else {

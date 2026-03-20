@@ -1,0 +1,13 @@
+=== Text Analyzer ===
+Text: the cat sat on the mat the cat liked the mat
+
+Word count: 11
+Char count: 44
+Unique words: 6
+Avg word length (x10): 30
+
+Top 3 words:
+  the: 4
+  cat: 2
+  mat: 2
+:ok

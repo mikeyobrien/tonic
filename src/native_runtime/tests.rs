@@ -174,10 +174,11 @@ fn helper_errors_are_deterministic() {
         RuntimeValue::Int(1),
         45,
     )
-    .expect_err("non-int add should fail deterministically");
-    assert_eq!(
-        bad_add.to_string(),
-        "int operator expects int operands, found string at offset 45"
+    .expect_err("non-numeric add should fail deterministically");
+    assert!(
+        bad_add.to_string().contains("badarg"),
+        "bad_add error should be badarg, got: {}",
+        bad_add
     );
 
     let missing = collections::map_update(

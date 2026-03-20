@@ -1,0 +1,3 @@
+[project]
+name = "pipeline_stdlib"
+entry = "src/main.tn"

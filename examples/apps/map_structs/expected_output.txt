@@ -1,0 +1,13 @@
+=== Map Structs ===
+Users:
+  Dave (28, moderator, active=true)
+  Carol (35, user, active=true)
+  Bob (25, user, active=true)
+  Alice (30, admin, active=true)
+Users with role=user: [Carol, Bob]
+Oldest: Carol (35, user, active=true)
+Active count: 4
+Deactivated Carol: Carol (35, user, active=false)
+Promoted Carol: Carol (35, admin, active=true)
+All roles after bulk update: [guest, guest, guest, guest]
+nil

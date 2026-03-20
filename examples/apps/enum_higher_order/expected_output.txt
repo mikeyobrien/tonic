@@ -1,0 +1,13 @@
+=== Enum Higher-Order Functions ===
+map *2 [1..5]: [2, 4, 6, 8, 10]
+map ^2 [1..4]: [1, 4, 9, 16]
+map negate [10,20,30]: [-10, -20, -30]
+map +10 1..5: [11, 12, 13, 14, 15]
+filter even [1..8]: [2, 4, 6, 8]
+filter >10 [1,5,10,15,20,25]: [15, 20, 25]
+filter empty: []
+reduce sum [1..5]: 15
+reduce product [1..5]: 120
+reduce max [3,7,2,9,4]: 9
+chain squares>20 sum: 355
+nil

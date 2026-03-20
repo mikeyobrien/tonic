@@ -28,6 +28,9 @@ pub(crate) fn is_builtin_call_target(callee: &str) -> bool {
     matches!(
         callee,
         "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
+            | "abs" | "length" | "hd" | "tl" | "elem" | "tuple_size" | "to_string"
+            | "max" | "min" | "round" | "trunc"
+            | "map_size" | "put_elem" | "inspect"
     ) || guard_builtins::is_guard_builtin(callee)
 }
 

@@ -1,0 +1,87 @@
+defmodule Demo do
+  def run() do
+    # Enum.uniq — alias for unique
+    u1 = Enum.uniq([1, 2, 2, 3, 3, 3])
+    IO.puts("uniq: #{u1}")
+
+    # Enum.uniq — empty
+    u2 = Enum.uniq([])
+    IO.puts("uniq empty: #{u2}")
+
+    # Enum.uniq — no duplicates
+    u3 = Enum.uniq([1, 2, 3])
+    IO.puts("uniq no dups: #{u3}")
+
+    # Enum.unique still works
+    u4 = Enum.unique([4, 4, 5, 5])
+    IO.puts("unique: #{u4}")
+
+    # Enum.map_reduce — double and sum
+    {mapped, total} = Enum.map_reduce([1, 2, 3], 0, fn x, acc -> {x * 2, acc + x} end)
+    IO.puts("map_reduce mapped: #{mapped}")
+    IO.puts("map_reduce acc: #{total}")
+
+    # Enum.map_reduce — string building
+    {items, built} = Enum.map_reduce(["a", "b", "c"], "", fn x, acc -> {String.upcase(x), acc <> x} end)
+    IO.puts("map_reduce items: #{items}")
+    IO.puts("map_reduce built: #{built}")
+
+    # Enum.map_reduce — empty
+    {me, ae} = Enum.map_reduce([], 0, fn x, acc -> {x, acc} end)
+    IO.puts("map_reduce empty: {#{me}, #{ae}}")
+
+    # Enum.map_reduce — single
+    {ms, as} = Enum.map_reduce([10], 5, fn x, acc -> {x + 1, acc + x} end)
+    IO.puts("map_reduce single: {#{ms}, #{as}}")
+
+    # Enum.concat — two lists
+    c1 = Enum.concat([1, 2], [3, 4])
+    IO.puts("concat: #{c1}")
+
+    # Enum.concat — empty left
+    c2 = Enum.concat([], [1, 2])
+    IO.puts("concat empty left: #{c2}")
+
+    # Enum.concat — empty right
+    c3 = Enum.concat([1, 2], [])
+    IO.puts("concat empty right: #{c3}")
+
+    # Enum.concat — both empty
+    c4 = Enum.concat([], [])
+    IO.puts("concat both empty: #{c4}")
+
+    # List.starts_with — match
+    sw1 = List.starts_with([1, 2, 3, 4], [1, 2])
+    IO.puts("starts_with match: #{sw1}")
+
+    # List.starts_with — no match
+    sw2 = List.starts_with([1, 2, 3], [2, 3])
+    IO.puts("starts_with no match: #{sw2}")
+
+    # List.starts_with — empty prefix (always true)
+    sw3 = List.starts_with([1, 2, 3], [])
+    IO.puts("starts_with empty prefix: #{sw3}")
+
+    # List.starts_with — exact match
+    sw4 = List.starts_with([1, 2], [1, 2])
+    IO.puts("starts_with exact: #{sw4}")
+
+    # List.starts_with — prefix longer than list
+    sw5 = List.starts_with([1], [1, 2])
+    IO.puts("starts_with longer: #{sw5}")
+
+    # List.starts_with — empty list
+    sw6 = List.starts_with([], [1])
+    IO.puts("starts_with empty list: #{sw6}")
+
+    # List.starts_with — both empty
+    sw7 = List.starts_with([], [])
+    IO.puts("starts_with both empty: #{sw7}")
+
+    # Combined pipeline: uniq + map_reduce + concat
+    data = Enum.uniq([1, 1, 2, 2, 3, 3])
+    {doubled, sum} = Enum.map_reduce(data, 0, fn x, acc -> {x * 2, acc + x} end)
+    result = Enum.concat(doubled, [sum])
+    IO.puts("pipeline: #{result}")
+  end
+end

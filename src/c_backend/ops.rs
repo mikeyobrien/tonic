@@ -478,6 +478,146 @@ fn emit_c_builtin_call(
                 "  v{dest} = tn_runtime_bit_size({rendered_args});\n"
             ));
         }
+        "abs" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin abs arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_abs({rendered_args});\n"
+            ));
+        }
+        "length" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin length arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_length({rendered_args});\n"
+            ));
+        }
+        "hd" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin hd arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_hd({rendered_args});\n"
+            ));
+        }
+        "tl" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin tl arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_tl({rendered_args});\n"
+            ));
+        }
+        "elem" => {
+            if args.len() != 2 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin elem arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_elem({rendered_args});\n"
+            ));
+        }
+        "tuple_size" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin tuple_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_tuple_size({rendered_args});\n"
+            ));
+        }
+        "to_string" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin to_string arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_to_string({rendered_args});\n"
+            ));
+        }
+        "max" => {
+            if args.len() != 2 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin max arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_max({rendered_args});\n"
+            ));
+        }
+        "min" => {
+            if args.len() != 2 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin min arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_min({rendered_args});\n"
+            ));
+        }
+        "round" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin round arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_round({rendered_args});\n"
+            ));
+        }
+        "trunc" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin trunc arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_trunc({rendered_args});\n"
+            ));
+        }
+        "map_size" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin map_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_map_size({rendered_args});\n"
+            ));
+        }
+        "put_elem" => {
+            if args.len() != 3 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin put_elem arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_put_elem({rendered_args});\n"
+            ));
+        }
+        "inspect" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin inspect arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_inspect({rendered_args});\n"
+            ));
+        }
         other => {
             return Err(CBackendError::new(format!(
                 "c backend unsupported builtin call target {other} in function {function_name} at offset {offset}"

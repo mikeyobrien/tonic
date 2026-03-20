@@ -183,15 +183,8 @@ fn resolve_expr_with_guard_context(
             ..
         } => {
             if guard_builtins::is_guard_builtin(callee) {
-                if !in_guard_context {
-                    return Err(ResolverError::guard_builtin_outside_guard(
-                        callee,
-                        guard_builtins::guard_builtin_arity(callee).unwrap_or(args.len()),
-                        context.module_name,
-                        context.function_name,
-                    )
-                    .with_offset(*offset));
-                }
+                // Guard builtins are allowed everywhere — in guards AND
+                // as regular boolean expressions (matching Elixir semantics).
             } else {
                 match context.module_graph.resolve_call_target(
                     context.module_name,
@@ -211,10 +204,16 @@ fn resolve_expr_with_guard_context(
                             }
                         }
 
-                        return Err(ResolverError::undefined_symbol(
+                        let hint = callee.rsplit_once('.').and_then(|(mod_name, _)| {
+                            context.module_graph.public_function_names(mod_name).map(|fns| {
+                                format!(". Available {mod_name} functions: {}", fns.join(", "))
+                            })
+                        });
+                        return Err(ResolverError::undefined_symbol_with_hint(
                             callee,
                             context.module_name,
                             context.function_name,
+                            hint.as_deref(),
                         )
                         .with_offset(*offset));
                     }

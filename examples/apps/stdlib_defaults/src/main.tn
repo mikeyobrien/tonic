@@ -1,0 +1,49 @@
+defmodule Demo do
+  def run() do
+    # Enum.join/1 — default separator (empty string)
+    IO.puts(Enum.join(["a", "b", "c"]))
+    # Enum.join/2 — backward compatibility
+    IO.puts(Enum.join(["x", "y", "z"], ", "))
+
+    # String.to_atom/1
+    atom = String.to_atom("hello")
+    IO.puts(atom)
+    IO.puts(is_atom(atom))
+
+    # Integer.to_string/1
+    IO.puts(Integer.to_string(42))
+    IO.puts(Integer.to_string(-7))
+    IO.puts(Integer.to_string(0))
+
+    # Integer.parse/1 — successful parse
+    {n, rest} = Integer.parse("123abc")
+    IO.puts(n)
+    IO.puts(rest)
+
+    # Integer.parse/1 — full number
+    {n2, rest2} = Integer.parse("456")
+    IO.puts(n2)
+    IO.puts(rest2 == "")
+
+    # Integer.parse/1 — error case
+    result = Integer.parse("abc")
+    IO.puts(result)
+
+    # Float.to_string/1
+    IO.puts(Float.to_string(3.14))
+
+    # Float.round/2
+    IO.puts(Float.round(3.14159, 2))
+
+    # Float.ceil/1
+    IO.puts(Float.ceil(3.2))
+
+    # Float.floor/1
+    IO.puts(Float.floor(3.8))
+
+    # Combined: Enum.join/1 with Integer.to_string in pipeline
+    nums = Enum.map([1, 2, 3], fn n -> Integer.to_string(n) end)
+    IO.puts(Enum.join(nums))
+    IO.puts(Enum.join(nums, "-"))
+  end
+end

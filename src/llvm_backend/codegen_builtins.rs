@@ -239,6 +239,160 @@ pub(super) fn emit_builtin_call_from_registers(
                 rendered_args[0]
             ));
         }
+        "abs" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin abs arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_abs({})",
+                rendered_args[0]
+            ));
+        }
+        "length" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin length arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_length({})",
+                rendered_args[0]
+            ));
+        }
+        "hd" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin hd arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_hd({})",
+                rendered_args[0]
+            ));
+        }
+        "tl" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin tl arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_tl({})",
+                rendered_args[0]
+            ));
+        }
+        "elem" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin elem arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_elem({}, {})",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "tuple_size" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin tuple_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_tuple_size({})",
+                rendered_args[0]
+            ));
+        }
+        "to_string" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin to_string arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_to_string({})",
+                rendered_args[0]
+            ));
+        }
+        "max" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin max arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_max({}, {})",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "min" => {
+            if rendered_args.len() != 2 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin min arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_min({}, {})",
+                rendered_args[0], rendered_args[1]
+            ));
+        }
+        "round" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin round arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_round({})",
+                rendered_args[0]
+            ));
+        }
+        "trunc" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin trunc arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_trunc({})",
+                rendered_args[0]
+            ));
+        }
+        "map_size" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin map_size arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_map_size({})",
+                rendered_args[0]
+            ));
+        }
+        "put_elem" => {
+            if rendered_args.len() != 3 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin put_elem arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_put_elem({}, {}, {})",
+                rendered_args[0], rendered_args[1], rendered_args[2]
+            ));
+        }
+        "inspect" => {
+            if rendered_args.len() != 1 {
+                return Err(LlvmBackendError::new(format!(
+                    "llvm backend builtin inspect arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            lines.push(format!(
+                "  {dest} = call i64 @tn_runtime_inspect({})",
+                rendered_args[0]
+            ));
+        }
         other => {
             return Err(LlvmBackendError::new(format!(
                 "llvm backend unsupported builtin call target {other} in function {function_name} at offset {offset}"

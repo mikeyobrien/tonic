@@ -1,0 +1,19 @@
+abc
+x, y, z
+hello
+true
+42
+-7
+0
+123
+abc
+456
+true
+error
+3.14
+3.14
+4
+3
+123
+1-2-3
+nil

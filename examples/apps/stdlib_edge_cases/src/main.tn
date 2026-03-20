@@ -1,0 +1,106 @@
+defmodule Demo do
+  def run() do
+    case IO.puts("=== Stdlib Edge Cases ===") do
+      _ -> case show_empty_list_ops() do
+        _ -> case show_empty_map_ops() do
+          _ -> case show_nested() do
+            _ -> case show_range_ops() do
+              _ -> show_single_element()
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_empty_list_ops() do
+    case IO.puts("count []: #{Enum.count([])}") do
+      _ -> case IO.puts("sum []: #{Enum.sum([])}") do
+        _ -> case IO.puts("reverse []: " <> fmt(Enum.reverse([]))) do
+          _ -> case IO.puts("sort []: " <> fmt(Enum.sort([]))) do
+            _ -> case IO.puts("unique []: " <> fmt(Enum.unique([]))) do
+              _ -> IO.puts("flatten []: " <> fmt(List.flatten([])))
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp show_empty_map_ops() do
+    empty = %{}
+    case IO.puts("keys %{}: " <> fmt(Map.keys(empty))) do
+      _ -> case IO.puts("values %{}: " <> fmt(Map.values(empty))) do
+        _ -> case IO.puts("get from %{}: #{Map.get(empty, :x, "none")}") do
+          _ -> case IO.puts("delete from %{}: keys=" <> fmt(Map.keys(Map.delete(empty, :x)))) do
+            _ -> IO.puts("merge %{} %{a:1}: a=#{Map.get(Map.merge(empty, %{a: 1}), :a, 0)}")
+          end
+        end
+      end
+    end
+  end
+
+  defp show_nested() do
+    nested = [[1, 2], [3, [4, 5]], [6]]
+    flat = List.flatten(nested)
+    case IO.puts("flatten nested: " <> fmt(flat)) do
+      _ -> case IO.puts("count flattened: #{Enum.count(flat)}") do
+        _ -> IO.puts("sum flattened: #{Enum.sum(flat)}")
+      end
+    end
+  end
+
+  defp show_range_ops() do
+    case IO.puts("count 1..1: #{Enum.count(1..1)}") do
+      _ -> case IO.puts("sum 1..1: #{Enum.sum(1..1)}") do
+        _ -> case IO.puts("take 3 from 1..100: " <> fmt(Enum.take(1..100, 3))) do
+          _ -> IO.puts("drop 97 from 1..100: " <> fmt(Enum.drop(1..100, 97)))
+        end
+      end
+    end
+  end
+
+  defp show_single_element() do
+    case IO.puts("sort [42]: " <> fmt(Enum.sort([42]))) do
+      _ -> case IO.puts("reverse [42]: " <> fmt(Enum.reverse([42]))) do
+        _ -> case IO.puts("first [42]: #{List.first([42])}") do
+          _ -> case IO.puts("last [42]: #{List.last([42])}") do
+            _ -> IO.puts("chunk_every [1] by 3: " <> fmt_nested(Enum.chunk_every([1], 3)))
+          end
+        end
+      end
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+
+  defp fmt_nested(list) do
+    "[" <> join_nested(list) <> "]"
+  end
+
+  defp join_nested([]) do
+    ""
+  end
+
+  defp join_nested([x]) do
+    fmt(x)
+  end
+
+  defp join_nested([x | rest]) do
+    fmt(x) <> ", " <> join_nested(rest)
+  end
+end

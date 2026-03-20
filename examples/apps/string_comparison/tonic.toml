@@ -1,0 +1,3 @@
+[project]
+name = "string_comparison"
+entry = "src/main.tn"

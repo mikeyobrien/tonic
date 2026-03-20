@@ -1,0 +1,20 @@
+cap hello: Hello
+cap Hello: Hello
+cap WORLD: World
+cap a: A
+cap empty: []
+intersperse: [1, 0, 2, 0, 3]
+intersperse str: ["a", "-", "b", "-", "c"]
+intersperse single: [42]
+intersperse empty: []
+zip_with add: [11, 22, 33]
+zip_with mul: [10, 18, 28]
+zip_with short: [11, 22]
+zip_with empty: []
+delete 2: [1, 3, 2, 1]
+delete absent: [1, 2, 3]
+delete empty: []
+delete first: [2, 3]
+delete last: [1, 2]
+pipeline: Alice & Bob & Charlie
+nil

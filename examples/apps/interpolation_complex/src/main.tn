@@ -1,0 +1,40 @@
+defmodule Demo do
+  def run() do
+    # List interpolation
+    list = [1, 2, 3]
+    IO.puts("list: #{list}")
+
+    # Map interpolation
+    map = %{:name => "alice", :age => 30}
+    IO.puts("map: #{map}")
+
+    # Tuple interpolation
+    tuple = {:ok, 42}
+    IO.puts("tuple: #{tuple}")
+
+    # Nested structures
+    nested = [[:a, :b], [:c, :d]]
+    IO.puts("nested: #{nested}")
+
+    # Result types
+    ok_val = {:ok, "success"}
+    IO.puts("result: #{ok_val}")
+
+    # Atom interpolation (already works, but verify)
+    IO.puts("atom: #{:hello}")
+
+    # Bool and nil
+    IO.puts("bool: #{true}")
+    IO.puts("nil: #{"#{nil}"}")
+
+    # Integer and float (already work)
+    IO.puts("int: #{42}")
+    IO.puts("float: #{3.14}")
+
+    # Empty list
+    IO.puts("empty: #{[]}")
+
+    # Range
+    IO.puts("range: #{1..5}")
+  end
+end

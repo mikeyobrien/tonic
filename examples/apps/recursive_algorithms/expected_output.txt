@@ -1,0 +1,11 @@
+=== Recursive Algorithms ===
+Fibonacci(10): [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+Binary search in [2, 5, 8, 12, 16, 23, 38, 56, 72, 91]
+  find 23: index 5
+  find 72: index 8
+  find 99: index -1
+Merge sort [38, 27, 43, 3, 9, 82, 10] -> [3, 9, 10, 27, 38, 43, 82]
+Tree sum: 28
+Tree depth: 3
+Tree inorder: [4, 2, 5, 1, 6, 3, 7]
+nil

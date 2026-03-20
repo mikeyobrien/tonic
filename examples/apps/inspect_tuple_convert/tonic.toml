@@ -1,0 +1,3 @@
+[project]
+name = "inspect_tuple_convert"
+entry = "src/main.tn"

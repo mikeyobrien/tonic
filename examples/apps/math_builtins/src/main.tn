@@ -1,0 +1,43 @@
+defmodule Demo do
+  def run() do
+    # max/2 — integers
+    IO.puts("#{max(3, 7)}")
+    IO.puts("#{max(10, 2)}")
+    IO.puts("#{max(-5, -1)}")
+    IO.puts("#{max(4, 4)}")
+
+    # min/2 — integers
+    IO.puts("#{min(3, 7)}")
+    IO.puts("#{min(10, 2)}")
+    IO.puts("#{min(-5, -1)}")
+    IO.puts("#{min(4, 4)}")
+
+    # max/2 and min/2 — floats
+    IO.puts("#{max(3.5, 2.1)}")
+    IO.puts("#{min(3.5, 2.1)}")
+
+    # round/1
+    IO.puts("#{round(3.7)}")
+    IO.puts("#{round(3.2)}")
+    IO.puts("#{round(5)}")
+
+    # trunc/1
+    IO.puts("#{trunc(3.7)}")
+    IO.puts("#{trunc(3.2)}")
+    IO.puts("#{trunc(5)}")
+
+    # Combined: clamp a value between bounds
+    value = 15
+    clamped = min(max(value, 0), 10)
+    IO.puts("#{clamped}")
+
+    # Combined: round in a pipeline
+    scores = [3.7, 8.2, 5.5, 1.9]
+    rounded = Enum.map(scores, fn s -> round(s) end)
+    IO.puts(Enum.join(rounded, ", "))
+
+    # Combined: trunc for integer division result
+    ratio = 7.0 / 2.0
+    IO.puts("#{trunc(ratio)}")
+  end
+end

@@ -66,7 +66,7 @@ impl<'a> Parser<'a> {
             let (module, module_offset) = self.parse_rescue_module_reference()?;
             let guard = self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
             self.expect(TokenKind::Arrow, "->")?;
-            let body = self.parse_expression()?;
+            let body = self.parse_branch_body()?;
             return Ok(CaseBranch::new(
                 Pattern::Bind { name: binding },
                 guard,
@@ -79,7 +79,7 @@ impl<'a> Parser<'a> {
             let binding = RESCUE_EXCEPTION_BINDING.to_string();
             let guard = self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
             self.expect(TokenKind::Arrow, "->")?;
-            let body = self.parse_expression()?;
+            let body = self.parse_branch_body()?;
             return Ok(CaseBranch::new(
                 Pattern::Bind { name: binding },
                 guard,

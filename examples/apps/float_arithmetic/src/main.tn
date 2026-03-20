@@ -1,0 +1,46 @@
+defmodule Demo do
+  def run() do
+    # Float + Float
+    IO.puts(1.5 + 2.5)
+
+    # Float - Float
+    IO.puts(5.0 - 2.0)
+
+    # Float * Float
+    IO.puts(3.0 * 2.5)
+
+    # Int + Float (mixed)
+    IO.puts(1 + 2.5)
+
+    # Float + Int (mixed)
+    IO.puts(2.5 + 1)
+
+    # Int - Float (mixed)
+    IO.puts(10 - 3.5)
+
+    # Int * Float (mixed)
+    IO.puts(3 * 2.5)
+
+    # Chained float operations
+    IO.puts(1.5 + 2.5 - 1.0)
+
+    # Float comparison
+    IO.puts(3.14 > 2.0)
+    IO.puts(1.5 < 2.5)
+    IO.puts(2.0 >= 2.0)
+    IO.puts(1.0 <= 0.5)
+
+    # Int vs Float comparison (mixed)
+    IO.puts(3 > 2.5)
+    IO.puts(2 < 2.5)
+
+    # Negative float arithmetic
+    IO.puts(-1.5 + 2.5)
+    IO.puts(-3.0 * 2.0)
+
+    # Int arithmetic still works
+    IO.puts(2 + 3)
+    IO.puts(10 - 4)
+    IO.puts(3 * 7)
+  end
+end

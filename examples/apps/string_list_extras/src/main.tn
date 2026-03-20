@@ -1,0 +1,75 @@
+defmodule Demo do
+  def run() do
+    # String.capitalize — normal word
+    IO.puts("cap hello: #{String.capitalize("hello")}")
+
+    # String.capitalize — already capitalized
+    IO.puts("cap Hello: #{String.capitalize("Hello")}")
+
+    # String.capitalize — all caps
+    IO.puts("cap WORLD: #{String.capitalize("WORLD")}")
+
+    # String.capitalize — single char
+    IO.puts("cap a: #{String.capitalize("a")}")
+
+    # String.capitalize — empty string
+    IO.puts("cap empty: [#{String.capitalize("")}]")
+
+    # Enum.intersperse — numbers
+    result = Enum.intersperse([1, 2, 3], 0)
+    IO.puts("intersperse: #{result}")
+
+    # Enum.intersperse — strings
+    words = Enum.intersperse(["a", "b", "c"], "-")
+    IO.puts("intersperse str: #{words}")
+
+    # Enum.intersperse — single element
+    single = Enum.intersperse([42], 0)
+    IO.puts("intersperse single: #{single}")
+
+    # Enum.intersperse — empty list
+    empty = Enum.intersperse([], 0)
+    IO.puts("intersperse empty: #{empty}")
+
+    # Enum.zip_with — add pairs
+    sums = Enum.zip_with([1, 2, 3], [10, 20, 30], &(&1 + &2))
+    IO.puts("zip_with add: #{sums}")
+
+    # Enum.zip_with — multiply pairs
+    products = Enum.zip_with([2, 3, 4], [5, 6, 7], &(&1 * &2))
+    IO.puts("zip_with mul: #{products}")
+
+    # Enum.zip_with — uneven lists (stops at shorter)
+    short = Enum.zip_with([1, 2], [10, 20, 30], &(&1 + &2))
+    IO.puts("zip_with short: #{short}")
+
+    # Enum.zip_with — empty list
+    empty_zw = Enum.zip_with([], [1, 2], &(&1 + &2))
+    IO.puts("zip_with empty: #{empty_zw}")
+
+    # List.delete — remove first occurrence
+    deleted = List.delete([1, 2, 3, 2, 1], 2)
+    IO.puts("delete 2: #{deleted}")
+
+    # List.delete — element not found
+    not_found = List.delete([1, 2, 3], 5)
+    IO.puts("delete absent: #{not_found}")
+
+    # List.delete — empty list
+    del_empty = List.delete([], 1)
+    IO.puts("delete empty: #{del_empty}")
+
+    # List.delete — first element
+    del_first = List.delete([1, 2, 3], 1)
+    IO.puts("delete first: #{del_first}")
+
+    # List.delete — last element
+    del_last = List.delete([1, 2, 3], 3)
+    IO.puts("delete last: #{del_last}")
+
+    # Combined pipeline: capitalize + intersperse + join
+    names = ["alice", "bob", "charlie"]
+    formatted = Enum.join(Enum.intersperse(Enum.map(names, &(String.capitalize(&1))), " & "), "")
+    IO.puts("pipeline: #{formatted}")
+  end
+end

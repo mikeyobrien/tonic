@@ -1,0 +1,41 @@
+defmodule Demo do
+  def run() do
+    # inspect with various types
+    IO.puts(inspect(42))
+    IO.puts(inspect(3.14))
+    IO.puts(inspect("hello"))
+    IO.puts(inspect(true))
+    IO.puts(inspect(false))
+    IO.puts(inspect(nil))
+    IO.puts(inspect(:ok))
+    IO.puts(inspect([1, 2, 3]))
+    IO.puts(inspect({:ok, 42}))
+    IO.puts(inspect(%{a: 1, b: 2}))
+
+    # inspect in string interpolation
+    list = [1, 2, 3]
+    IO.puts("list is: #{inspect(list)}")
+
+    # inspect with empty collections
+    IO.puts(inspect([]))
+    IO.puts(inspect(%{}))
+
+    # Tuple.to_list
+    t = {:hello, :world}
+    converted = Tuple.to_list(t)
+    IO.puts(inspect(converted))
+
+    # List.to_tuple
+    pair = List.to_tuple([:a, :b])
+    IO.puts(inspect(pair))
+
+    # roundtrip: tuple -> list -> tuple
+    original = {1, 2}
+    roundtrip = List.to_tuple(Tuple.to_list(original))
+    IO.puts(inspect(roundtrip))
+
+    # inspect pipeline
+    result = {10, 20} |> Tuple.to_list() |> inspect()
+    IO.puts(result)
+  end
+end

@@ -1,0 +1,73 @@
+defmodule Demo do
+  def run() do
+    # String.split/1 - split on whitespace (default)
+    words = String.split("hello world foo")
+    IO.puts(inspect(words))
+
+    # String.split/2 - backward compat with delimiter
+    parts = String.split("a,b,c", ",")
+    IO.puts(inspect(parts))
+
+    # String.split/1 - single word (no spaces)
+    single = String.split("hello")
+    IO.puts(inspect(single))
+
+    # String.graphemes/1 - basic string
+    chars = String.graphemes("hello")
+    IO.puts(inspect(chars))
+
+    # String.graphemes/1 - empty string
+    empty = String.graphemes("")
+    IO.puts(inspect(empty))
+
+    # String.graphemes/1 - single char
+    one = String.graphemes("x")
+    IO.puts(inspect(one))
+
+    # String.graphemes/1 - numbers in string
+    digits = String.graphemes("123")
+    IO.puts(inspect(digits))
+
+    # Enum.shuffle/1 - verify same length after shuffle
+    original = [1, 2, 3, 4, 5]
+    shuffled = Enum.shuffle(original)
+    IO.puts(length(shuffled))
+
+    # Enum.shuffle/1 - sorted result matches original sorted
+    sorted = Enum.sort(shuffled)
+    IO.puts(inspect(sorted))
+
+    # Enum.shuffle/1 - single element
+    one_elem = Enum.shuffle([42])
+    IO.puts(inspect(one_elem))
+
+    # Enum.shuffle/1 - empty list
+    empty_shuf = Enum.shuffle([])
+    IO.puts(inspect(empty_shuf))
+
+    # Map.pop/2 - key exists
+    m = %{"a" => 1, "b" => 2, "c" => 3}
+    {val, rest} = Map.pop(m, "b")
+    IO.puts(val)
+    IO.puts(Map.has_key(rest, "b"))
+
+    # Map.pop/2 - key missing (returns nil)
+    {missing_val, same_map} = Map.pop(m, "z")
+    IO.puts(inspect(missing_val))
+    IO.puts(Enum.count(Map.keys(same_map)))
+
+    # Map.pop/3 - key missing with default
+    {def_val, _rest2} = Map.pop(m, "z", "default_value")
+    IO.puts(def_val)
+
+    # Combined: split then graphemes
+    first_word = List.first(String.split("hello world"))
+    chars2 = String.graphemes(first_word)
+    IO.puts(Enum.join(chars2, "-"))
+
+    # Combined: Map.pop in pipeline
+    inventory = %{"apples" => 5, "bananas" => 3, "cherries" => 8}
+    {count, remaining} = Map.pop(inventory, "bananas")
+    IO.puts("Took #{count} bananas, #{Enum.count(Map.keys(remaining))} items left")
+  end
+end

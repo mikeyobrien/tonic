@@ -1,0 +1,25 @@
+=== Stdlib Edge Cases ===
+count []: 0
+sum []: 0
+reverse []: []
+sort []: []
+unique []: []
+flatten []: []
+keys %{}: []
+values %{}: []
+get from %{}: none
+delete from %{}: keys=[]
+merge %{} %{a:1}: a=1
+flatten nested: [1, 2, 3, 4, 5, 6]
+count flattened: 6
+sum flattened: 21
+count 1..1: 1
+sum 1..1: 1
+take 3 from 1..100: [1, 2, 3]
+drop 97 from 1..100: [98, 99, 100]
+sort [42]: [42]
+reverse [42]: [42]
+first [42]: 42
+last [42]: 42
+chunk_every [1] by 3: [[1]]
+nil

@@ -1,0 +1,178 @@
+defmodule Stats do
+  def mean_x100(data) do
+    total = Enum.sum(data)
+    n = Enum.count(data)
+    int_div(total * 100, n)
+  end
+
+  def median(data) do
+    sorted = Enum.sort(data)
+    n = Enum.count(sorted)
+    mid = int_div(n, 2)
+    case rem(n, 2) do
+      0 -> median_even(sorted, mid)
+      _ -> list_at(sorted, mid, 0)
+    end
+  end
+
+  defp median_even(sorted, mid) do
+    a = list_at(sorted, mid - 1, 0)
+    b = list_at(sorted, mid, 0)
+    int_div(a + b, 2)
+  end
+
+  def mode(data) do
+    freq = build_freq(data, %{})
+    keys = Map.keys(freq)
+    find_max_key(keys, freq)
+  end
+
+  defp build_freq([], freq) do
+    freq
+  end
+
+  defp build_freq([x | rest], freq) do
+    current = Map.get(freq, x, 0)
+    build_freq(rest, Map.put(freq, x, current + 1))
+  end
+
+  defp find_max_key([only], _freq) do
+    only
+  end
+
+  defp find_max_key([first | rest], freq) do
+    find_max_helper(rest, freq, first, Map.get(freq, first, 0))
+  end
+
+  defp find_max_helper([], _freq, best, _best_count) do
+    best
+  end
+
+  defp find_max_helper([key | rest], freq, best, best_count) do
+    count = Map.get(freq, key, 0)
+    case count > best_count do
+      true -> find_max_helper(rest, freq, key, count)
+      _ -> find_max_helper(rest, freq, best, best_count)
+    end
+  end
+
+  def min_val(data) do
+    find_min(data, 999999)
+  end
+
+  defp find_min([], current) do
+    current
+  end
+
+  defp find_min([x | rest], current) do
+    case x < current do
+      true -> find_min(rest, x)
+      _ -> find_min(rest, current)
+    end
+  end
+
+  def max_val(data) do
+    find_max(data, -999999)
+  end
+
+  defp find_max([], current) do
+    current
+  end
+
+  defp find_max([x | rest], current) do
+    case x > current do
+      true -> find_max(rest, x)
+      _ -> find_max(rest, current)
+    end
+  end
+
+  def range(data) do
+    max_val(data) - min_val(data)
+  end
+
+  def variance_x100(data) do
+    mean100 = mean_x100(data)
+    n = Enum.count(data)
+    sum_sq = sum_squared_diff(data, mean100, 0)
+    int_div(sum_sq, n)
+  end
+
+  defp sum_squared_diff([], _mean100, acc) do
+    acc
+  end
+
+  defp sum_squared_diff([x | rest], mean100, acc) do
+    diff = x * 100 - mean100
+    sq = int_div(diff * diff, 100)
+    sum_squared_diff(rest, mean100, acc + sq)
+  end
+
+  defp list_at([], _idx, _current) do
+    0
+  end
+
+  defp list_at([h | _t], idx, current) when current == idx do
+    h
+  end
+
+  defp list_at([_h | t], idx, current) do
+    list_at(t, idx, current + 1)
+  end
+
+  defp int_div(a, b) do
+    div(a, b)
+  end
+end
+
+defmodule Demo do
+  def run() do
+    data = [4, 8, 6, 5, 3, 7, 8, 9, 2, 8]
+    n = Enum.count(data)
+    total = Enum.sum(data)
+    mean100 = Stats.mean_x100(data)
+    med = Stats.median(data)
+    mode = Stats.mode(data)
+    mn = Stats.min_val(data)
+    mx = Stats.max_val(data)
+    rng = Stats.range(data)
+    var100 = Stats.variance_x100(data)
+
+    case IO.puts("=== Statistics ===") do
+      _ -> case IO.puts("Data: " <> fmt(data)) do
+        _ -> case IO.puts("Count: #{n}") do
+          _ -> case IO.puts("Sum: #{total}") do
+            _ -> case IO.puts("Mean (x100): #{mean100}") do
+              _ -> case IO.puts("Median: #{med}") do
+                _ -> case IO.puts("Mode: #{mode}") do
+                  _ -> case IO.puts("Min: #{mn}") do
+                    _ -> case IO.puts("Max: #{mx}") do
+                      _ -> case IO.puts("Range: #{rng}") do
+                        _ -> IO.puts("Variance (x100): #{var100}")
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  defp fmt(list) do
+    "[" <> join_items(list) <> "]"
+  end
+
+  defp join_items([]) do
+    ""
+  end
+
+  defp join_items([x]) do
+    "#{x}"
+  end
+
+  defp join_items([x | rest]) do
+    "#{x}, " <> join_items(rest)
+  end
+end

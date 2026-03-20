@@ -1,0 +1,3 @@
+[project]
+name = "arithmetic_dynamic"
+entry = "src/main.tn"
