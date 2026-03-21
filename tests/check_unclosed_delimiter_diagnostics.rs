@@ -159,6 +159,94 @@ fn check_reports_unclosed_structured_raise_arguments_parse_error() {
 }
 
 #[test]
+fn check_reports_unclosed_keyword_list_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-keyword-list",
+        "unclosed_keyword_list.tn",
+        "defmodule Demo do\n  def run() do\n    [message: \"oops\", detail: 1\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: keyword list is missing ']'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add ']' to close the keyword list"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[message: \"oops\", detail: info]`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_map_literal_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-map-literal",
+        "unclosed_map_literal.tn",
+        "defmodule Demo do\n  def run() do\n    %{foo: 1, bar: 2\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: map literal is missing '}'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add '}' to close the map literal"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`%{foo: 1, bar: 2}`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_list_pattern_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-list-pattern",
+        "unclosed_list_pattern.tn",
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      [head, tail -> head\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: list pattern is missing ']'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add ']' to close the list pattern"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[head, tail] -> ...`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_struct_pattern_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-struct-pattern",
+        "unclosed_struct_pattern.tn",
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %User{name: name, age: age -> name\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: struct pattern is missing '}'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add '}' to close the struct pattern"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`%User{name: name, age: age} -> ...`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn check_reports_unclosed_bitstring_literal_parse_error() {
     let stderr = run_check(
         "check-unclosed-bitstring-literal",

@@ -308,6 +308,22 @@ impl<'a> Parser<'a> {
         )
     }
 
+    pub(crate) fn missing_comma_error_at_token(
+        &self,
+        list_kind: &str,
+        token: &Token,
+        hint: impl Into<String>,
+    ) -> ParserError {
+        ParserError::at_current(
+            format!(
+                "[E0010] missing ',' in {list_kind}; found {} instead. hint: {}",
+                token.dump_label(),
+                hint.into()
+            ),
+            Some(token),
+        )
+    }
+
     pub(crate) fn expect_closing_delimiter(
         &mut self,
         kind: TokenKind,
@@ -320,6 +336,24 @@ impl<'a> Parser<'a> {
             self.advance();
             Ok(())
         } else if self.current_ends_unclosed_delimiter_for(kind) {
+            Err(self.unclosed_delimiter_error(construct, expected, opening_span, hint))
+        } else {
+            Err(self.expected(expected))
+        }
+    }
+
+    pub(crate) fn expect_pattern_closing_delimiter(
+        &mut self,
+        kind: TokenKind,
+        expected: &str,
+        construct: &str,
+        opening_span: Span,
+        hint: impl Into<String>,
+    ) -> Result<(), ParserError> {
+        if self.check(kind) {
+            self.advance();
+            Ok(())
+        } else if self.current_ends_pattern_unclosed_delimiter_for(kind) {
             Err(self.unclosed_delimiter_error(construct, expected, opening_span, hint))
         } else {
             Err(self.expected(expected))
@@ -350,6 +384,13 @@ impl<'a> Parser<'a> {
                     .is_some_and(|token| token.kind() == TokenKind::Arrow))
     }
 
+    fn current_ends_pattern_unclosed_delimiter_for(&self, closing: TokenKind) -> bool {
+        self.current_ends_unclosed_delimiter_for(closing)
+            || self
+                .current()
+                .is_some_and(|token| token.kind() == TokenKind::Arrow)
+    }
+
     fn current_ends_unclosed_delimiter(&self) -> bool {
         self.current()
             .map(|token| {
@@ -369,15 +410,33 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn current_starts_missing_call_comma(&self) -> bool {
+        self.current_starts_missing_expression_item_comma()
+    }
+
+    pub(crate) fn current_starts_missing_expression_item_comma(&self) -> bool {
         self.current().is_some_and(|token| {
             token_can_start_no_paren_arg(token.kind())
                 || matches!(token.kind(), TokenKind::Minus | TokenKind::Not)
         })
     }
 
+    pub(crate) fn current_starts_missing_map_entry_comma(&self) -> bool {
+        self.current_starts_missing_keyword_entry_comma()
+            || self.current_starts_missing_expression_item_comma()
+    }
+
     pub(crate) fn current_starts_missing_param_comma(&self) -> bool {
+        self.current_starts_missing_pattern_item_comma()
+    }
+
+    pub(crate) fn current_starts_missing_pattern_item_comma(&self) -> bool {
         self.current()
             .is_some_and(|token| token_can_start_pattern(token.kind()))
+    }
+
+    pub(crate) fn current_starts_missing_map_pattern_entry_comma(&self) -> bool {
+        self.current_starts_missing_keyword_entry_comma()
+            || self.current_starts_missing_pattern_item_comma()
     }
 
     pub(crate) fn current_starts_missing_bitstring_item_comma(&self) -> bool {

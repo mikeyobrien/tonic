@@ -9,7 +9,7 @@ An LLM-first error answers: (1) What went wrong? (2) Where? (3) How to fix it?
 ## Metrics
 
 - **Primary**: Number of error categories with actionable fix suggestions
-- **Current Best**: 152/152 representative parser + typing + resolver + CLI diagnostics checks green (run 18)
+- **Current Best**: 166/166 representative parser + typing + resolver + CLI diagnostics checks green (run 19)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ## Benchmark Commands
@@ -69,3 +69,4 @@ done
 - **Run 16 (KEEP, metric=128/128)**: Extended parser-side `[E0002]` unclosed-delimiter diagnostics to grouped expressions, call/capture parentheses, index access, and function/protocol parameter lists, then expanded representative parser + CLI coverage for those missing-closer failures. Hypothesis: confirmed — construct-aware unclosed-delimiter diagnostics help LLMs repair missing `)`/`]` mistakes in one shot instead of chasing bare `expected )` / `expected ]` parser errors.
 - **Run 17 (KEEP, metric=138/138)**: Added parser-side E0010/E0002 bitstring missing-comma and unclosed-delimiter diagnostics for bitstring literals and patterns, then expanded representative parser + CLI coverage for those failures. Hypothesis: confirmed — bitstring-specific separator and closing-delimiter diagnostics help LLMs repair `<<...>>` mistakes in one shot instead of chasing bare `expected >>` parser errors.
 - **Run 18 (KEEP, metric=152/152)**: Extended parser-side E0010/E0002 diagnostics to alias child lists, import filter lists, and structured `raise(...)` keyword arguments, then expanded representative parser + CLI coverage for those failures. Hypothesis: confirmed — alias/import/raise list diagnostics help LLMs repair common separator and missing-closer mistakes in one shot instead of chasing bare delimiter or generic import-shape parser errors.
+- **Run 19 (KEEP, metric=166/166)**: Extended parser-side E0010/E0002 diagnostics to remaining tuple/list/keyword/map/struct literals and patterns, then expanded representative parser + CLI coverage for those failures. Hypothesis: confirmed — construct-specific container separator and closing-delimiter diagnostics help LLMs repair common literal/pattern mistakes in one shot instead of chasing legacy generic parser errors.

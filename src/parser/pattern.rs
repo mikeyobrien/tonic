@@ -78,8 +78,18 @@ impl<'a> Parser<'a> {
             return Ok(Pattern::String { value });
         }
 
-        if self.match_kind(TokenKind::LBrace) {
-            let (items, tail) = self.parse_pattern_items(TokenKind::RBrace)?;
+        if self.check(TokenKind::LBrace) {
+            let opening_span = self
+                .advance()
+                .expect("tuple pattern opener should be available")
+                .span();
+            let (items, tail) = self.parse_pattern_items(
+                TokenKind::RBrace,
+                "tuple pattern",
+                opening_span,
+                "separate tuple pattern items with commas, for example `{left, right}`",
+                "add '}' to close the tuple pattern, for example `{left, right} -> ...`",
+            )?;
             if tail.is_some() {
                 return Err(ParserError::at_current(
                     "tuple patterns do not support tail syntax",
@@ -89,8 +99,18 @@ impl<'a> Parser<'a> {
             return Ok(Pattern::Tuple { items });
         }
 
-        if self.match_kind(TokenKind::LBracket) {
-            let (items, tail) = self.parse_pattern_items(TokenKind::RBracket)?;
+        if self.check(TokenKind::LBracket) {
+            let opening_span = self
+                .advance()
+                .expect("list pattern opener should be available")
+                .span();
+            let (items, tail) = self.parse_pattern_items(
+                TokenKind::RBracket,
+                "list pattern",
+                opening_span,
+                "separate list pattern items with commas, for example `[head, tail]`",
+                "add ']' to close the list pattern, for example `[head, tail] -> ...`",
+            )?;
             return Ok(Pattern::List { items, tail });
         }
 
@@ -127,6 +147,10 @@ impl<'a> Parser<'a> {
     fn parse_pattern_items(
         &mut self,
         closing: TokenKind,
+        construct: &str,
+        opening_span: crate::lexer::Span,
+        missing_comma_hint: &str,
+        unclosed_hint: &str,
     ) -> Result<(Vec<Pattern>, Option<Box<Pattern>>), ParserError> {
         let mut items = Vec::new();
         let mut tail = None;
@@ -148,10 +172,25 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            if !self.check(closing) && self.current_starts_missing_pattern_item_comma() {
+                return Err(self.missing_comma_error(construct, missing_comma_hint));
+            }
+
             break;
         }
 
-        self.expect(closing, "pattern terminator")?;
+        let expected_closing = match closing {
+            TokenKind::RBrace => "}",
+            TokenKind::RBracket => "]",
+            _ => "pattern terminator",
+        };
+        self.expect_pattern_closing_delimiter(
+            closing,
+            expected_closing,
+            construct,
+            opening_span,
+            unclosed_hint,
+        )?;
         Ok((items, tail))
     }
 
@@ -164,7 +203,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_map_pattern(&mut self) -> Result<Pattern, ParserError> {
-        self.expect(TokenKind::LBrace, "{")?;
+        let opening_span = self.expect_token(TokenKind::LBrace, "{")?.span();
 
         let mut entries = Vec::new();
         if !self.check(TokenKind::RBrace) {
@@ -199,18 +238,33 @@ impl<'a> Parser<'a> {
                     continue;
                 }
 
+                if !self.check(TokenKind::RBrace)
+                    && self.current_starts_missing_map_pattern_entry_comma()
+                {
+                    return Err(self.missing_comma_error(
+                        "map pattern",
+                        "separate map pattern entries with commas, for example `%{left: left, right: right}` or `%{key => value, other => next}`",
+                    ));
+                }
+
                 break;
             }
         }
 
-        self.expect(TokenKind::RBrace, "}")?;
+        self.expect_pattern_closing_delimiter(
+            TokenKind::RBrace,
+            "}",
+            "map pattern",
+            opening_span,
+            "add '}' to close the map pattern, for example `%{left: left, right: right} -> ...`",
+        )?;
 
         Ok(Pattern::Map { entries })
     }
 
     fn parse_struct_pattern(&mut self) -> Result<Pattern, ParserError> {
         let module = self.parse_module_reference("struct module")?;
-        self.expect(TokenKind::LBrace, "{")?;
+        let opening_span = self.expect_token(TokenKind::LBrace, "{")?.span();
 
         let mut entries = Vec::new();
         if !self.check(TokenKind::RBrace) {
@@ -224,11 +278,26 @@ impl<'a> Parser<'a> {
                     continue;
                 }
 
+                if !self.check(TokenKind::RBrace)
+                    && self.current_starts_missing_keyword_entry_comma()
+                {
+                    return Err(self.missing_comma_error(
+                        "struct pattern",
+                        "separate struct pattern fields with commas, for example `%User{name: name, age: age}`",
+                    ));
+                }
+
                 break;
             }
         }
 
-        self.expect(TokenKind::RBrace, "}")?;
+        self.expect_pattern_closing_delimiter(
+            TokenKind::RBrace,
+            "}",
+            "struct pattern",
+            opening_span,
+            "add '}' to close the struct pattern, for example `%User{name: name, age: age} -> ...`",
+        )?;
 
         Ok(Pattern::Struct { module, entries })
     }

@@ -167,6 +167,138 @@ fn check_reports_structured_raise_keyword_missing_comma_parse_error() {
 }
 
 #[test]
+fn check_reports_list_literal_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-list-literal",
+        "list_literal_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    [1 2]\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in list literal; found INT(2) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate list elements with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[left, right]`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_keyword_list_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-keyword-list",
+        "keyword_list_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    [message: \"oops\" detail: 1]\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in keyword list; found IDENT(detail) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate keyword entries with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[message: \"oops\", detail: info]`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_map_literal_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-map-literal",
+        "map_literal_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    %{foo: 1 bar: 2}\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in map literal; found IDENT(bar) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate map entries with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`%{foo: 1, bar: 2}`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_struct_literal_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-struct-literal",
+        "struct_literal_missing_comma.tn",
+        "defmodule Demo do\n  def run(user) do\n    %User{name: user age: user}\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in struct literal; found IDENT(age) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate struct fields with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`%User{name: name, age: age}`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_list_pattern_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-list-pattern",
+        "list_pattern_missing_comma.tn",
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      [head tail] -> head\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in list pattern; found IDENT(tail) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate list pattern items with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[head, tail]`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_struct_pattern_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-struct-pattern",
+        "struct_pattern_missing_comma.tn",
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %User{name: name age: age} -> name\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in struct pattern; found IDENT(age) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate struct pattern fields with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`%User{name: name, age: age}`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn check_reports_bitstring_literal_missing_comma_parse_error() {
     let stderr = run_check(
         "check-missing-comma-bitstring-literal",

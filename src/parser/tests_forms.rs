@@ -148,6 +148,316 @@ fn parse_ast_reports_unclosed_structured_raise_arguments_with_repair_hint() {
 }
 
 #[test]
+fn parse_ast_reports_missing_list_literal_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    [1 2]\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject list literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in list literal; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate list elements with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[left, right]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_keyword_list_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    [message: \"oops\" detail: 1]\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject keyword lists without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in keyword list; found IDENT(detail) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate keyword entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[message: \"oops\", detail: info]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_map_literal_comma_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    %{foo: 1 bar: 2}\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject map literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in map literal; found IDENT(bar) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate map entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{foo: 1, bar: 2}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_struct_literal_field_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(user) do\n    %User{name: user age: user}\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject struct literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in struct literal; found IDENT(age) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate struct fields with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%User{name: name, age: age}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_tuple_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      {left right} -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject tuple patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in tuple pattern; found IDENT(right) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate tuple pattern items with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`{left, right}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_list_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      [head tail] -> head\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject list patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in list pattern; found IDENT(tail) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate list pattern items with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[head, tail]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_map_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %{left: left right: right} -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject map patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in map pattern; found IDENT(right) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate map pattern entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{left: left, right: right}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_struct_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %User{name: name age: age} -> name\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject struct patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in struct pattern; found IDENT(age) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate struct pattern fields with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%User{name: name, age: age}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_keyword_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    [message: \"oops\", detail: 1\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed keyword lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: keyword list is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the keyword list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[message: \"oops\", detail: info]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_map_literal_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    %{foo: 1, bar: 2\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed map literals");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: map literal is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the map literal"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{foo: 1, bar: 2}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_list_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      [head, tail -> head\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed list patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: list pattern is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the list pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[head, tail] -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_map_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %{left: left, right: right -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed map patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: map pattern is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the map pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{left: left, right: right} -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_struct_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %User{name: name, age: age -> name\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed struct patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: struct pattern is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the struct pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%User{name: name, age: age} -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_missing_bitstring_literal_comma_with_repair_hint() {
     let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    <<1 2>>\n  end\nend\n")
         .expect("scanner should tokenize parser fixture");
