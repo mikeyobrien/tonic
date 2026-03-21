@@ -97,6 +97,50 @@ fn check_reports_for_option_missing_comma_parse_error() {
 }
 
 #[test]
+fn check_reports_bitstring_literal_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-bitstring-literal",
+        "bitstring_literal_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    <<1 2>>\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in bitstring literal; found INT(2) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate bitstring elements with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`<<left, right>>`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_bitstring_pattern_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-bitstring-pattern",
+        "bitstring_pattern_missing_comma.tn",
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      <<left right>> -> left\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in bitstring pattern; found IDENT(right) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate bitstring pattern elements with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`<<left, right>>`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn check_reports_function_param_missing_comma_parse_error() {
     let stderr = run_check(
         "check-missing-comma-function-params",

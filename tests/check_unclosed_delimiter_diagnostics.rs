@@ -93,6 +93,50 @@ fn check_reports_unclosed_function_param_list_parse_error() {
 }
 
 #[test]
+fn check_reports_unclosed_bitstring_literal_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-bitstring-literal",
+        "unclosed_bitstring_literal.tn",
+        "defmodule Demo do\n  def run() do\n    <<1, 2\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: bitstring literal is missing '>>'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add '>>' to close the bitstring literal"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`<<left, right>>`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_bitstring_pattern_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-bitstring-pattern",
+        "unclosed_bitstring_pattern.tn",
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      <<left, right -> left\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: bitstring pattern is missing '>>'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add '>>' to close the bitstring pattern"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`<<left, right>> -> ...`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn check_reports_unclosed_protocol_param_list_parse_error() {
     let stderr = run_check(
         "check-unclosed-protocol-params",

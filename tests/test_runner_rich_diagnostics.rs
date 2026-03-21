@@ -269,6 +269,56 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_with_clause_commas(
     assert!(stderr.contains("4 |          value <- ok + 1 do"));
 }
 
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_bitstring_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-bitstring-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    <<1 2>>\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in bitstring literal; found INT(2) instead."));
+    assert!(stderr.contains("hint: separate bitstring elements with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:9"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     <<1 2>>"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_unclosed_bitstring_patterns() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-unclosed-bitstring-pattern",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad(value) do\n    case value do\n      <<left, right -> left\n    end\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0002] unclosed delimiter: bitstring pattern is missing '>>'."));
+    assert!(stderr.contains("hint: add '>>' to close the bitstring pattern"));
+    assert!(
+        stderr.contains("invalid_test.tn:4:7"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("4 |       <<left, right -> left"));
+}
+
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
 

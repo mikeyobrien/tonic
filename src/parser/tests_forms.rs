@@ -95,6 +95,55 @@ fn parse_ast_reports_missing_no_paren_call_arg_comma_with_repair_hint() {
 }
 
 #[test]
+fn parse_ast_reports_missing_bitstring_literal_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    <<1 2>>\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject bitstring literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in bitstring literal; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate bitstring elements with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>>`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_bitstring_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      <<left right>> -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject bitstring patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0010] missing ',' in bitstring pattern; found IDENT(right) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate bitstring pattern elements with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>>`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_unclosed_grouped_expression_with_repair_hint() {
     let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    (1 + 2\n  end\nend\n")
         .expect("scanner should tokenize parser fixture");
@@ -200,6 +249,52 @@ fn parse_ast_reports_unclosed_index_access_with_repair_hint() {
     );
     assert!(
         message.contains("`value[index]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_bitstring_literal_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    <<1, 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed bitstring literals");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: bitstring literal is missing '>>'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '>>' to close the bitstring literal"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>>`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_bitstring_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      <<left, right -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed bitstring patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: bitstring pattern is missing '>>'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '>>' to close the bitstring pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>> -> ...`"),
         "unexpected parser error: {error}"
     );
 }

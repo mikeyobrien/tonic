@@ -5,7 +5,10 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_pattern(&mut self) -> Result<Pattern, ParserError> {
         // Bitstring pattern: <<p1, p2, ...>>
         if self.check(TokenKind::LtLt) {
-            self.advance(); // consume '<<'
+            let opening_span = self
+                .advance()
+                .expect("bitstring pattern opener should be available")
+                .span();
             let mut items = Vec::new();
             // Check for empty <<>>
             if !self.check(TokenKind::GtGt) {
@@ -14,10 +17,24 @@ impl<'a> Parser<'a> {
                     if self.match_kind(TokenKind::Comma) {
                         continue;
                     }
+                    if !self.check(TokenKind::GtGt)
+                        && self.current_starts_missing_bitstring_pattern_comma()
+                    {
+                        return Err(self.missing_comma_error(
+                            "bitstring pattern",
+                            "separate bitstring pattern elements with commas, for example `<<left, right>>`",
+                        ));
+                    }
                     break;
                 }
             }
-            self.expect(TokenKind::GtGt, ">>")?;
+            self.expect_closing_delimiter(
+                TokenKind::GtGt,
+                ">>",
+                "bitstring pattern",
+                opening_span,
+                "add '>>' to close the bitstring pattern, for example `<<left, right>> -> ...`",
+            )?;
             return Ok(Pattern::Bitstring { items });
         }
 

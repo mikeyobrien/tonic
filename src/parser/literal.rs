@@ -42,7 +42,8 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_bitstring_literal_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::LtLt, "<<")?.span().start();
+        let opening_span = self.expect_token(TokenKind::LtLt, "<<")?.span();
+        let offset = opening_span.start();
 
         let mut items = Vec::new();
         if !self.check(TokenKind::GtGt) {
@@ -53,11 +54,26 @@ impl<'a> Parser<'a> {
                     continue;
                 }
 
+                if !self.check(TokenKind::GtGt)
+                    && self.current_starts_missing_bitstring_item_comma()
+                {
+                    return Err(self.missing_comma_error(
+                        "bitstring literal",
+                        "separate bitstring elements with commas, for example `<<left, right>>`",
+                    ));
+                }
+
                 break;
             }
         }
 
-        self.expect(TokenKind::GtGt, ">>")?;
+        self.expect_closing_delimiter(
+            TokenKind::GtGt,
+            ">>",
+            "bitstring literal",
+            opening_span,
+            "add '>>' to close the bitstring literal, for example `<<left, right>>`",
+        )?;
 
         Ok(Expr::bitstring(self.node_ids.next_expr(), offset, items))
     }

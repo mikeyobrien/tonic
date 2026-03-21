@@ -319,7 +319,7 @@ impl<'a> Parser<'a> {
         if self.check(kind) {
             self.advance();
             Ok(())
-        } else if self.current_ends_unclosed_delimiter() {
+        } else if self.current_ends_unclosed_delimiter_for(kind) {
             Err(self.unclosed_delimiter_error(construct, expected, opening_span, hint))
         } else {
             Err(self.expected(expected))
@@ -340,6 +340,14 @@ impl<'a> Parser<'a> {
             ),
             opening_span,
         )
+    }
+
+    fn current_ends_unclosed_delimiter_for(&self, closing: TokenKind) -> bool {
+        self.current_ends_unclosed_delimiter()
+            || (closing == TokenKind::GtGt
+                && self
+                    .current()
+                    .is_some_and(|token| token.kind() == TokenKind::Arrow))
     }
 
     fn current_ends_unclosed_delimiter(&self) -> bool {
@@ -368,6 +376,16 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn current_starts_missing_param_comma(&self) -> bool {
+        self.current()
+            .is_some_and(|token| token_can_start_pattern(token.kind()))
+    }
+
+    pub(crate) fn current_starts_missing_bitstring_item_comma(&self) -> bool {
+        self.current()
+            .is_some_and(|token| token_can_start_no_paren_arg(token.kind()))
+    }
+
+    pub(crate) fn current_starts_missing_bitstring_pattern_comma(&self) -> bool {
         self.current()
             .is_some_and(|token| token_can_start_pattern(token.kind()))
     }
