@@ -416,6 +416,114 @@ fn parse_ast_reports_missing_try_do() {
 }
 
 #[test]
+fn parse_ast_reports_missing_arrow_in_case_style_clauses() {
+    let cases = [
+        (
+            "case branch",
+            "defmodule Demo do\n  def run(value) do\n    case value do\n      :ok value\n    end\n  end\nend\n",
+            "[E0007] missing '->' in case branch; found IDENT(value) instead.",
+            "add '->' after the case pattern before the branch body",
+        ),
+        (
+            "with else clause",
+            "defmodule Demo do\n  def run(result) do\n    with value <- result do\n      value\n    else\n      :error 0\n    end\n  end\nend\n",
+            "[E0007] missing '->' in with else clause; found INT(0) instead.",
+            "add '->' after the with else pattern before the fallback body",
+        ),
+        (
+            "for reduce clause",
+            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), reduce: 0 do\n      acc acc + x\n    end\n  end\nend\n",
+            "[E0007] missing '->' in for reduce clause; found IDENT(acc) instead.",
+            "add '->' after the accumulator pattern before the reduce body",
+        ),
+        (
+            "try catch clause",
+            "defmodule Demo do\n  def run() do\n    try do\n      risky()\n    catch\n      :throw :fallback\n    end\n  end\nend\n",
+            "[E0007] missing '->' in try catch clause; found ATOM(fallback) instead.",
+            "add '->' after the catch pattern before the clause body",
+        ),
+    ];
+
+    for (clause, source, prefix, hint) in cases {
+        let tokens = scan_tokens(source).expect("scanner should tokenize parser fixture");
+        let error = parse_ast(&tokens).expect_err("parser should reject missing clause arrow");
+        let message = error.to_string();
+
+        assert!(
+            message.starts_with(prefix),
+            "unexpected parser error for {clause}: {error}"
+        );
+        assert!(
+            message.contains(hint),
+            "unexpected parser error for {clause}: {error}"
+        );
+    }
+}
+
+#[test]
+fn parse_ast_reports_missing_arrow_in_cond_branch() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    cond do\n      value > 2 4\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing cond arrow");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0007] missing '->' in cond branch; found INT(4) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '->' after the cond condition before the branch body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_arrow_in_try_rescue_clause() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    try do\n      risky()\n    rescue\n      Demo.Error :error\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing rescue arrow");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0007] missing '->' in try rescue clause; found ATOM(error) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '->' after the rescue pattern before the clause body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_arrow_in_anonymous_function_clause() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    fn value value + 1 end\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing anonymous fn arrow");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0007] missing '->' in anonymous function clause; found IDENT(value) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message
+            .contains("hint: add '->' between the anonymous function parameters and clause body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_unexpected_arrow_outside_branch() {
     let tokens =
         scan_tokens("defmodule Demo do\n  def run() do\n    value -> value + 1\n  end\nend\n")

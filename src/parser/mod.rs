@@ -216,6 +216,42 @@ impl<'a> Parser<'a> {
         )
     }
 
+    pub(crate) fn expect_clause_arrow(
+        &mut self,
+        clause: &str,
+        clause_span: Span,
+        hint: impl Into<String>,
+    ) -> Result<(), ParserError> {
+        if self.check(TokenKind::Arrow) {
+            self.advance();
+            Ok(())
+        } else {
+            Err(self.missing_arrow_error(clause, clause_span, hint))
+        }
+    }
+
+    pub(crate) fn missing_arrow_error(
+        &self,
+        clause: &str,
+        clause_span: Span,
+        hint: impl Into<String>,
+    ) -> ParserError {
+        let found = self
+            .current()
+            .map(|token| token.dump_label())
+            .unwrap_or_else(|| "EOF".to_string());
+        let message = format!(
+            "[E0007] missing '->' in {clause}; found {found} instead. hint: {}",
+            hint.into()
+        );
+
+        if self.is_at_end() {
+            ParserError::at_span(message, clause_span)
+        } else {
+            ParserError::at_current(message, self.current())
+        }
+    }
+
     pub(crate) fn unexpected_arrow_error(&self) -> ParserError {
         ParserError::at_current(
             "[E0004] unexpected '->' outside a valid branch. hint: use 'fn ... -> ... end' for anonymous functions, or move '->' into a branch inside case/cond/with/for/try",

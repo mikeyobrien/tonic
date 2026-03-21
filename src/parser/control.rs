@@ -61,8 +61,16 @@ impl<'a> Parser<'a> {
                 return Err(self.missing_end_error("cond expression", cond_span));
             }
 
+            let clause_span = self
+                .current()
+                .expect("cond branch should start with a token")
+                .span();
             let condition = self.parse_expression()?;
-            self.expect(TokenKind::Arrow, "->")?;
+            self.expect_clause_arrow(
+                "cond branch",
+                clause_span,
+                "add '->' after the cond condition before the branch body",
+            )?;
             let body = self.parse_branch_body()?;
             let guard = self.lower_truthy_guard(condition);
             branches.push(CaseBranch::new(Pattern::Wildcard, Some(guard), body));
@@ -111,7 +119,10 @@ impl<'a> Parser<'a> {
                     return Err(self.missing_end_error("with expression", with_span));
                 }
 
-                branches.push(self.parse_case_branch()?);
+                branches.push(self.parse_case_branch(
+                    "with else clause",
+                    "add '->' after the with else pattern before the fallback body",
+                )?);
             }
 
             branches
@@ -239,7 +250,10 @@ impl<'a> Parser<'a> {
             if self.is_at_end() {
                 return Err(self.missing_end_error("for expression", for_span));
             }
-            branches.push(self.parse_case_branch()?);
+            branches.push(self.parse_case_branch(
+                "for reduce clause",
+                "add '->' after the accumulator pattern before the reduce body",
+            )?);
             if self.match_kind(TokenKind::Semicolon) {
                 continue;
             }
@@ -348,7 +362,10 @@ impl<'a> Parser<'a> {
                 return Err(self.missing_end_error("case expression", case_span));
             }
 
-            branches.push(self.parse_case_branch()?);
+            branches.push(self.parse_case_branch(
+                "case branch",
+                "add '->' after the case pattern before the branch body",
+            )?);
         }
 
         self.expect_block_end("case expression", case_span)?;
@@ -361,14 +378,22 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub(super) fn parse_case_branch(&mut self) -> Result<CaseBranch, ParserError> {
+    pub(super) fn parse_case_branch(
+        &mut self,
+        clause: &str,
+        hint: &str,
+    ) -> Result<CaseBranch, ParserError> {
+        let clause_span = self
+            .current()
+            .expect("case-style branch should start with a token")
+            .span();
         let pattern = self.parse_pattern()?;
         let guard = if self.match_kind(TokenKind::When) {
             Some(self.parse_expression()?)
         } else {
             None
         };
-        self.expect(TokenKind::Arrow, "->")?;
+        self.expect_clause_arrow(clause, clause_span, hint)?;
         let body = self.parse_branch_body()?;
 
         Ok(CaseBranch::new(pattern, guard, body))

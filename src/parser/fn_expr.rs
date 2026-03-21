@@ -49,6 +49,10 @@ impl<'a> Parser<'a> {
     fn parse_anonymous_function_clause(
         &mut self,
     ) -> Result<(Vec<Pattern>, Option<Expr>, Expr), ParserError> {
+        let clause_span = self
+            .current()
+            .expect("anonymous function clause should start with a token")
+            .span();
         let mut patterns = Vec::new();
 
         if !self.check(TokenKind::Arrow) {
@@ -67,7 +71,11 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.expect(TokenKind::Arrow, "->")?;
+        self.expect_clause_arrow(
+            "anonymous function clause",
+            clause_span,
+            "add '->' between the anonymous function parameters and clause body",
+        )?;
         let body = self.parse_branch_body()?;
         Ok((patterns, guard, body))
     }

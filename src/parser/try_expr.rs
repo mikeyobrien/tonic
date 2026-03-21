@@ -31,7 +31,10 @@ impl<'a> Parser<'a> {
                 if self.is_at_end() {
                     return Err(self.missing_end_error("try expression", try_span));
                 }
-                catch.push(self.parse_case_branch()?);
+                catch.push(self.parse_case_branch(
+                    "try catch clause",
+                    "add '->' after the catch pattern before the clause body",
+                )?);
             }
         }
 
@@ -61,6 +64,12 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_rescue_branch(&mut self) -> Result<CaseBranch, ParserError> {
+        let clause_span = self
+            .current()
+            .expect("rescue clause should start with a token")
+            .span();
+        let hint = "add '->' after the rescue pattern before the clause body";
+
         if self.check(TokenKind::Ident)
             && self
                 .peek(1)
@@ -70,7 +79,7 @@ impl<'a> Parser<'a> {
             self.expect(TokenKind::In, "in")?;
             let (module, module_offset) = self.parse_rescue_module_reference()?;
             let guard = self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
-            self.expect(TokenKind::Arrow, "->")?;
+            self.expect_clause_arrow("try rescue clause", clause_span, hint)?;
             let body = self.parse_branch_body()?;
             return Ok(CaseBranch::new(
                 Pattern::Bind { name: binding },
@@ -83,7 +92,7 @@ impl<'a> Parser<'a> {
             let (module, module_offset) = self.parse_rescue_module_reference()?;
             let binding = RESCUE_EXCEPTION_BINDING.to_string();
             let guard = self.parse_rescue_module_guard(binding.as_str(), module, module_offset)?;
-            self.expect(TokenKind::Arrow, "->")?;
+            self.expect_clause_arrow("try rescue clause", clause_span, hint)?;
             let body = self.parse_branch_body()?;
             return Ok(CaseBranch::new(
                 Pattern::Bind { name: binding },
@@ -92,7 +101,7 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        self.parse_case_branch()
+        self.parse_case_branch("try rescue clause", hint)
     }
 
     fn parse_rescue_module_reference(&mut self) -> Result<(String, usize), ParserError> {
