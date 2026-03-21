@@ -80,6 +80,62 @@ fn resolve_ast_rejects_undefined_module_references() {
 }
 
 #[test]
+fn resolve_ast_reports_local_call_typos_with_did_you_mean_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    helpr()\n  end\n\n  def helper() do\n    1\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize local typo fixture");
+    let ast = parse_ast(&tokens).expect("parser should build local typo fixture ast");
+
+    let err = resolve_ast(&ast).expect_err("resolver should reject local typo call");
+    assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedSymbol);
+    assert_eq!(
+        err.message(),
+        "undefined symbol 'helpr' in Demo.run; did you mean `helper/0`?"
+    );
+}
+
+#[test]
+fn resolve_ast_reports_imported_call_typos_with_imported_hint() {
+    let source = "defmodule Math do\n  def helper(value) do\n    value\n  end\nend\n\ndefmodule Demo do\n  import Math\n\n  def run() do\n    halper(1)\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize imported typo fixture");
+    let ast = parse_ast(&tokens).expect("parser should build imported typo fixture ast");
+
+    let err = resolve_ast(&ast).expect_err("resolver should reject imported typo call");
+    assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedSymbol);
+    assert_eq!(
+        err.message(),
+        "undefined symbol 'halper' in Demo.run; did you mean `helper/1` from imported module `Math`?"
+    );
+}
+
+#[test]
+fn resolve_ast_reports_missing_import_guidance_for_unqualified_calls() {
+    let source = "defmodule Math do\n  def helper(value) do\n    value\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    helper(1)\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize missing import fixture");
+    let ast = parse_ast(&tokens).expect("parser should build missing import fixture ast");
+
+    let err = resolve_ast(&ast).expect_err("resolver should reject missing import call");
+    assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedSymbol);
+    assert_eq!(
+        err.message(),
+        "undefined symbol 'helper' in Demo.run; hint: call `Math.helper/1` or add `import Math` to use `helper/1` here"
+    );
+}
+
+#[test]
+fn resolve_ast_reports_module_qualified_call_typos_with_available_functions() {
+    let source = "defmodule Math do\n  def helper() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.helpr()\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize qualified typo fixture");
+    let ast = parse_ast(&tokens).expect("parser should build qualified typo fixture ast");
+
+    let err = resolve_ast(&ast).expect_err("resolver should reject qualified typo call");
+    assert_eq!(err.code(), ResolverDiagnosticCode::UndefinedSymbol);
+    assert_eq!(
+        err.message(),
+        "undefined symbol 'Math.helpr' in Demo.run; did you mean `Math.helper/0`?. Available Math functions: helper"
+    );
+}
+
+#[test]
 fn resolve_ast_rejects_private_function_calls_from_other_modules() {
     let source = "defmodule Math do\n  defp helper() do\n    1\n  end\nend\n\ndefmodule Demo do\n  def run() do\n    Math.helper()\n  end\nend\n";
     let tokens = scan_tokens(source).expect("scanner should tokenize private function fixture");

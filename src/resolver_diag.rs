@@ -76,6 +76,28 @@ impl ResolverError {
         )
     }
 
+    pub fn did_you_mean_hint(target: &str) -> String {
+        format!("; did you mean `{target}`?")
+    }
+
+    pub fn imported_did_you_mean_hint(module: &str, target: &str) -> String {
+        format!("; did you mean `{target}` from imported module `{module}`?")
+    }
+
+    pub fn import_call_hint(
+        module: &str,
+        qualified_target: &str,
+        unqualified_target: &str,
+    ) -> String {
+        format!(
+            "; hint: call `{qualified_target}` or add `import {module}` to use `{unqualified_target}` here"
+        )
+    }
+
+    pub fn available_module_functions_hint(module: &str, functions: &[String]) -> String {
+        format!(". Available {module} functions: {}", functions.join(", "))
+    }
+
     pub fn private_function(symbol: &str, module: &str, function: &str) -> Self {
         Self::new(
             ResolverDiagnosticCode::PrivateFunction,
@@ -242,6 +264,29 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "[E1001] undefined symbol 'missing' in Demo.run"
+        );
+    }
+
+    #[test]
+    fn undefined_symbol_hint_helpers_render_llm_friendly_suggestions() {
+        assert_eq!(
+            ResolverError::did_you_mean_hint("helper/0"),
+            "; did you mean `helper/0`?"
+        );
+        assert_eq!(
+            ResolverError::imported_did_you_mean_hint("Math", "helper/1"),
+            "; did you mean `helper/1` from imported module `Math`?"
+        );
+        assert_eq!(
+            ResolverError::import_call_hint("Math", "Math.helper/1", "helper/1"),
+            "; hint: call `Math.helper/1` or add `import Math` to use `helper/1` here"
+        );
+        assert_eq!(
+            ResolverError::available_module_functions_hint(
+                "Math",
+                &["add".to_string(), "sub".to_string()],
+            ),
+            ". Available Math functions: add, sub"
         );
     }
 

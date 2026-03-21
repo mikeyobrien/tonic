@@ -9,7 +9,7 @@ pub type ExternalModules = HashMap<String, HashMap<String, bool>>;
 
 #[path = "resolver_graph.rs"]
 mod graph;
-use graph::{ensure_no_duplicate_modules, CallResolution, ModuleGraph};
+use graph::{ensure_no_duplicate_modules, CallResolution, ModuleGraph, UndefinedCallSuggestion};
 
 pub fn resolve_ast(ast: &Ast) -> Result<(), ResolverError> {
     resolve_ast_with_externals(ast, &ExternalModules::new())
@@ -204,11 +204,44 @@ fn resolve_expr_with_guard_context(
                             }
                         }
 
-                        let hint = callee.rsplit_once('.').and_then(|(mod_name, _)| {
-                            context.module_graph.public_function_names(mod_name).map(|fns| {
-                                format!(". Available {mod_name} functions: {}", fns.join(", "))
-                            })
-                        });
+                        let mut hint_parts = Vec::new();
+
+                        if let Some(suggestion) = context.module_graph.undefined_call_suggestion(
+                            context.module_name,
+                            callee,
+                            args.len(),
+                        ) {
+                            let hint = match suggestion {
+                                UndefinedCallSuggestion::DidYouMean { target } => {
+                                    ResolverError::did_you_mean_hint(&target)
+                                }
+                                UndefinedCallSuggestion::Imported { module, target } => {
+                                    ResolverError::imported_did_you_mean_hint(&module, &target)
+                                }
+                                UndefinedCallSuggestion::Import {
+                                    module,
+                                    qualified_target,
+                                    unqualified_target,
+                                } => ResolverError::import_call_hint(
+                                    &module,
+                                    &qualified_target,
+                                    &unqualified_target,
+                                ),
+                            };
+                            hint_parts.push(hint);
+                        }
+
+                        if let Some((mod_name, _)) = callee.rsplit_once('.') {
+                            if let Some(functions) =
+                                context.module_graph.public_function_names(mod_name)
+                            {
+                                hint_parts.push(ResolverError::available_module_functions_hint(
+                                    mod_name, &functions,
+                                ));
+                            }
+                        }
+
+                        let hint = (!hint_parts.is_empty()).then(|| hint_parts.join(""));
                         return Err(ResolverError::undefined_symbol_with_hint(
                             callee,
                             context.module_name,

@@ -30,10 +30,40 @@ struct ProtocolDefinition {
     impl_targets: HashSet<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 struct FunctionVisibility {
     public: bool,
     private: bool,
+    public_arities: HashSet<usize>,
+    private_arities: HashSet<usize>,
+}
+
+impl FunctionVisibility {
+    fn record(&mut self, arity: usize, is_private: bool) {
+        if is_private {
+            self.private = true;
+            self.private_arities.insert(arity);
+        } else {
+            self.public = true;
+            self.public_arities.insert(arity);
+        }
+    }
+
+    fn callable_arities(&self, allow_private: bool) -> Vec<usize> {
+        let mut arities = self.public_arities.iter().copied().collect::<Vec<_>>();
+        if allow_private {
+            arities.extend(self.private_arities.iter().copied());
+        }
+        arities.sort_unstable();
+        arities.dedup();
+        arities
+    }
+
+    fn public_arities(&self) -> Vec<usize> {
+        let mut arities = self.public_arities.iter().copied().collect::<Vec<_>>();
+        arities.sort_unstable();
+        arities
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +122,21 @@ pub(super) enum CallResolution {
     Private,
 }
 
+pub(super) enum UndefinedCallSuggestion {
+    DidYouMean {
+        target: String,
+    },
+    Imported {
+        module: String,
+        target: String,
+    },
+    Import {
+        module: String,
+        qualified_target: String,
+        unqualified_target: String,
+    },
+}
+
 impl ModuleGraph {
     pub(super) fn from_ast(ast: &Ast) -> Result<Self, ResolverError> {
         let mut modules: HashMap<String, HashMap<String, FunctionVisibility>> = HashMap::new();
@@ -103,11 +148,7 @@ impl ModuleGraph {
             let symbols = modules.entry(module.name.clone()).or_default();
             for function in &module.functions {
                 let visibility = symbols.entry(function.name.clone()).or_default();
-                if function.is_private() {
-                    visibility.private = true;
-                } else {
-                    visibility.public = true;
-                }
+                visibility.record(function.params.len(), function.is_private());
             }
 
             if let Some(fields) = module.forms.iter().find_map(|form| {
@@ -166,7 +207,7 @@ impl ModuleGraph {
                         .or_default()
                         .entry(function.name.clone())
                         .or_default()
-                        .public = true;
+                        .record(arity, false);
                 }
 
                 protocols.insert(
@@ -389,6 +430,54 @@ impl ModuleGraph {
         }
     }
 
+    pub(super) fn undefined_call_suggestion(
+        &self,
+        current_module: &str,
+        callee: &str,
+        arity: usize,
+    ) -> Option<UndefinedCallSuggestion> {
+        if let Some((module_name, function_name)) = callee.rsplit_once('.') {
+            let (_, suggested_function, suggested_arity) = self.closest_module_function(
+                module_name,
+                function_name,
+                arity,
+                module_name == current_module,
+            )?;
+            return Some(UndefinedCallSuggestion::DidYouMean {
+                target: format_call_target(Some(module_name), &suggested_function, suggested_arity),
+            });
+        }
+
+        if let Some((_, suggested_function, suggested_arity)) =
+            self.closest_module_function(current_module, callee, arity, true)
+        {
+            return Some(UndefinedCallSuggestion::DidYouMean {
+                target: format_call_target(None, &suggested_function, suggested_arity),
+            });
+        }
+
+        if let Some((module_name, suggested_function, suggested_arity)) =
+            self.closest_imported_function(current_module, callee, arity)
+        {
+            return Some(UndefinedCallSuggestion::Imported {
+                module: module_name,
+                target: format_call_target(None, &suggested_function, suggested_arity),
+            });
+        }
+
+        let (module_name, suggested_function, suggested_arity) =
+            self.closest_unimported_public_function(current_module, callee, arity)?;
+        Some(UndefinedCallSuggestion::Import {
+            module: module_name.clone(),
+            qualified_target: format_call_target(
+                Some(&module_name),
+                &suggested_function,
+                suggested_arity,
+            ),
+            unqualified_target: format_call_target(None, &suggested_function, suggested_arity),
+        })
+    }
+
     pub(super) fn import_filter_diagnostic(
         &self,
         current_module: &str,
@@ -453,6 +542,112 @@ impl ModuleGraph {
         None
     }
 
+    fn closest_module_function(
+        &self,
+        module_name: &str,
+        needle: &str,
+        requested_arity: usize,
+        allow_private: bool,
+    ) -> Option<(String, String, usize)> {
+        let symbols = self.modules.get(module_name)?;
+        let candidates = symbols
+            .iter()
+            .filter_map(|(function_name, visibility)| {
+                let arities = visibility.callable_arities(allow_private);
+                let suggested_arity = preferred_arity(&arities, requested_arity)?;
+                Some((
+                    format_call_target(Some(module_name), function_name, suggested_arity),
+                    function_name.clone(),
+                    (
+                        module_name.to_string(),
+                        function_name.clone(),
+                        suggested_arity,
+                    ),
+                ))
+            })
+            .collect::<Vec<_>>();
+        best_call_suggestion(needle, candidates)
+    }
+
+    fn closest_imported_function(
+        &self,
+        current_module: &str,
+        needle: &str,
+        requested_arity: usize,
+    ) -> Option<(String, String, usize)> {
+        let mut candidates = Vec::new();
+
+        for scope in self.imports.get(current_module).into_iter().flatten() {
+            let Some(symbols) = self.modules.get(&scope.module) else {
+                continue;
+            };
+
+            for (function_name, visibility) in symbols {
+                if !visibility.public {
+                    continue;
+                }
+
+                let arities = visibility
+                    .public_arities()
+                    .into_iter()
+                    .filter(|arity| scope.allows(function_name, *arity))
+                    .collect::<Vec<_>>();
+                let Some(suggested_arity) = preferred_arity(&arities, requested_arity) else {
+                    continue;
+                };
+
+                candidates.push((
+                    format_call_target(Some(&scope.module), function_name, suggested_arity),
+                    function_name.clone(),
+                    (scope.module.clone(), function_name.clone(), suggested_arity),
+                ));
+            }
+        }
+
+        best_call_suggestion(needle, candidates)
+    }
+
+    fn closest_unimported_public_function(
+        &self,
+        current_module: &str,
+        needle: &str,
+        requested_arity: usize,
+    ) -> Option<(String, String, usize)> {
+        let imported_modules = self
+            .imports
+            .get(current_module)
+            .into_iter()
+            .flatten()
+            .map(|scope| scope.module.as_str())
+            .collect::<HashSet<_>>();
+        let mut candidates = Vec::new();
+
+        for (module_name, symbols) in &self.modules {
+            if module_name == current_module || imported_modules.contains(module_name.as_str()) {
+                continue;
+            }
+
+            for (function_name, visibility) in symbols {
+                if !visibility.public {
+                    continue;
+                }
+
+                let arities = visibility.public_arities();
+                let Some(suggested_arity) = preferred_arity(&arities, requested_arity) else {
+                    continue;
+                };
+
+                candidates.push((
+                    format_call_target(Some(module_name), function_name, suggested_arity),
+                    function_name.clone(),
+                    (module_name.clone(), function_name.clone(), suggested_arity),
+                ));
+            }
+        }
+
+        best_call_suggestion(needle, candidates)
+    }
+
     pub(super) fn merge_externals(&mut self, externals: &ExternalModules) {
         for (mod_name, functions) in externals {
             if !self.modules.contains_key(mod_name) {
@@ -464,6 +659,8 @@ impl ModuleGraph {
                             FunctionVisibility {
                                 public: is_public,
                                 private: !is_public,
+                                public_arities: HashSet::new(),
+                                private_arities: HashSet::new(),
                             },
                         )
                     })
@@ -482,6 +679,97 @@ impl ModuleGraph {
             .get(module_name)
             .is_some_and(|fields| fields.contains(field))
     }
+}
+
+fn preferred_arity(arities: &[usize], requested_arity: usize) -> Option<usize> {
+    if arities.is_empty() {
+        return None;
+    }
+
+    if arities.contains(&requested_arity) {
+        return Some(requested_arity);
+    }
+
+    arities.first().copied()
+}
+
+fn format_call_target(module_name: Option<&str>, function_name: &str, arity: usize) -> String {
+    match module_name {
+        Some(module_name) => format!("{module_name}.{function_name}/{arity}"),
+        None => format!("{function_name}/{arity}"),
+    }
+}
+
+fn best_call_suggestion<T>(needle: &str, candidates: Vec<(String, String, T)>) -> Option<T> {
+    let mut best: Option<(usize, String, T)> = None;
+    let mut ambiguous = false;
+
+    for (key, function_name, candidate) in candidates {
+        let Some(distance) = edit_distance_with_limit(needle, &function_name, 2) else {
+            continue;
+        };
+
+        match &best {
+            None => {
+                best = Some((distance, key, candidate));
+                ambiguous = false;
+            }
+            Some((best_distance, _, _)) if distance < *best_distance => {
+                best = Some((distance, key, candidate));
+                ambiguous = false;
+            }
+            Some((best_distance, best_key, _))
+                if distance == *best_distance && key != *best_key =>
+            {
+                ambiguous = true;
+            }
+            _ => {}
+        }
+    }
+
+    if ambiguous {
+        None
+    } else {
+        best.map(|(_, _, candidate)| candidate)
+    }
+}
+
+fn edit_distance_with_limit(left: &str, right: &str, limit: usize) -> Option<usize> {
+    if left == right {
+        return Some(0);
+    }
+
+    let left = left.chars().collect::<Vec<_>>();
+    let right = right.chars().collect::<Vec<_>>();
+
+    if left.len().abs_diff(right.len()) > limit {
+        return None;
+    }
+
+    let mut previous = (0..=right.len()).collect::<Vec<_>>();
+    let mut current = vec![0; right.len() + 1];
+
+    for (left_index, left_char) in left.iter().enumerate() {
+        current[0] = left_index + 1;
+        let mut row_min = current[0];
+
+        for (right_index, right_char) in right.iter().enumerate() {
+            let substitution_cost = usize::from(left_char != right_char);
+            current[right_index + 1] = (current[right_index] + 1)
+                .min(previous[right_index + 1] + 1)
+                .min(previous[right_index] + substitution_cost);
+            row_min = row_min.min(current[right_index + 1]);
+        }
+
+        if row_min > limit {
+            return None;
+        }
+
+        std::mem::swap(&mut previous, &mut current);
+    }
+
+    let distance = previous[right.len()];
+    (distance <= limit).then_some(distance)
 }
 
 fn is_builtin_call_target(callee: &str) -> bool {
