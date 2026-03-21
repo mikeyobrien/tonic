@@ -86,7 +86,11 @@ fn check_reports_capture_arity_mismatch_against_target_signature() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("arity mismatch for Math.add: expected 2 args, found 3"),
+        stderr.contains(
+            "error: [E2002] arity mismatch for Math.add: expected 2 args, found 3; hint: call `Math.add/2`"
+        ),
         "unexpected typing diagnostic: {stderr}"
     );
+    assert!(stderr.contains("--> examples/named_capture_arity_mismatch.tn:9:6"));
+    assert!(stderr.contains("9 |     (&Math.add/3).(1, 2, 3)"));
 }

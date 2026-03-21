@@ -115,10 +115,43 @@ fn infer_types_rejects_guard_builtin_arity_mismatch() {
 
     let error = infer_types(&ast).expect_err("type inference should reject guard arity mismatch");
 
-    assert_eq!(error.code(), None);
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
     assert_eq!(
         error.message(),
-        "arity mismatch for is_integer: expected 1 args, found 2"
+        "arity mismatch for is_integer: expected 1 arg, found 2; hint: call `is_integer/1`"
+    );
+}
+
+#[test]
+fn infer_types_reports_user_defined_arity_ranges_with_defaults() {
+    let source = "defmodule Demo do\n  def join(left, right \\\\ 0) do\n    left + right\n  end\n\n  def run() do\n    join()\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize default arity mismatch fixture");
+    let ast = parse_ast(&tokens).expect("parser should build default arity mismatch fixture ast");
+
+    let error = infer_types(&ast)
+        .expect_err("type inference should reject calls outside accepted default arities");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
+    assert_eq!(
+        error.message(),
+        "arity mismatch for Demo.join: expected 1..2 args, found 0; hint: use one of the accepted arities: `Demo.join/1` or `Demo.join/2`"
+    );
+}
+
+#[test]
+fn infer_types_reports_builtin_arity_hints() {
+    let source = "defmodule Demo do\n  def run() do\n    ok(1, 2)\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize builtin arity mismatch fixture");
+    let ast = parse_ast(&tokens).expect("parser should build builtin arity mismatch fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject builtin arity mismatch");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
+    assert_eq!(
+        error.message(),
+        "arity mismatch for ok: expected 1 arg, found 2; hint: call `ok/1`"
     );
 }
 

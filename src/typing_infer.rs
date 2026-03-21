@@ -72,9 +72,20 @@ pub(super) fn infer_expression_type(
             infer_expression_type(index, current_module, signatures, solver)?;
             Ok(solver.fresh_var())
         }
-        Expr::Call { callee, args, .. } => {
-            infer_call_type(callee, args, None, current_module, signatures, solver)
-        }
+        Expr::Call {
+            callee,
+            args,
+            offset,
+            ..
+        } => infer_call_type(
+            callee,
+            args,
+            Some(*offset),
+            None,
+            current_module,
+            signatures,
+            solver,
+        ),
         Expr::Fn { body, .. } => {
             infer_expression_type(body, current_module, signatures, solver)?;
             Ok(Type::Dynamic)
@@ -174,10 +185,17 @@ pub(super) fn infer_expression_type(
         Expr::Pipe { left, right, .. } => {
             let piped_value_type = infer_expression_type(left, current_module, signatures, solver)?;
 
-            if let Expr::Call { callee, args, .. } = right.as_ref() {
+            if let Expr::Call {
+                callee,
+                args,
+                offset,
+                ..
+            } = right.as_ref()
+            {
                 return infer_call_type(
                     callee,
                     args,
+                    Some(*offset),
                     Some(piped_value_type),
                     current_module,
                     signatures,
@@ -288,6 +306,7 @@ pub(super) fn infer_expression_type(
 fn infer_call_type(
     callee: &str,
     args: &[Expr],
+    call_offset: Option<usize>,
     piped_value_type: Option<Type>,
     current_module: &str,
     signatures: &BTreeMap<String, FunctionSignature>,
@@ -311,7 +330,7 @@ fn infer_call_type(
 
     validate_host_call_key_type(callee, &arg_types, args, has_piped_value, solver)?;
 
-    if let Some(result_type) = infer_builtin_call_type(callee, &arg_types, solver)? {
+    if let Some(result_type) = infer_builtin_call_type(callee, &arg_types, call_offset, solver)? {
         return Ok(result_type);
     }
 
@@ -331,16 +350,13 @@ fn infer_call_type(
     let min_arity = max_arity.saturating_sub(signature.default_count);
 
     if arg_types.len() < min_arity || arg_types.len() > max_arity {
-        let expected = if min_arity == max_arity {
-            max_arity.to_string()
-        } else {
-            format!("{min_arity}..{max_arity}")
-        };
-
-        return Err(TypingError::new(format!(
-            "arity mismatch for {target_name}: expected {expected} args, found {}",
-            arg_types.len()
-        )));
+        let accepted_arities = (min_arity..=max_arity).collect::<Vec<_>>();
+        return Err(TypingError::arity_mismatch(
+            &target_name,
+            &accepted_arities,
+            arg_types.len(),
+            call_offset,
+        ));
     }
 
     Ok(signature.return_type.clone())
@@ -394,14 +410,17 @@ fn validate_host_call_key_type(
 fn infer_builtin_call_type(
     callee: &str,
     arg_types: &[Type],
+    call_offset: Option<usize>,
     solver: &mut ConstraintSolver,
 ) -> Result<Option<Type>, TypingError> {
     if let Some(expected_arity) = guard_builtins::guard_builtin_arity(callee) {
         if arg_types.len() != expected_arity {
-            return Err(TypingError::new(format!(
-                "arity mismatch for {callee}: expected {expected_arity} args, found {}",
-                arg_types.len()
-            )));
+            return Err(TypingError::arity_mismatch(
+                callee,
+                &[expected_arity],
+                arg_types.len(),
+                call_offset,
+            ));
         }
 
         return Ok(Some(Type::Bool));
@@ -410,10 +429,12 @@ fn infer_builtin_call_type(
     match callee {
         "ok" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for ok: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "ok",
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
 
             let ok_type = arg_types[0].clone();
@@ -422,10 +443,12 @@ fn infer_builtin_call_type(
         }
         "err" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for err: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "err",
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
 
             let ok_type = solver.fresh_var();
@@ -434,10 +457,12 @@ fn infer_builtin_call_type(
         }
         "tuple" | "map" | "keyword" => {
             if arg_types.len() != 2 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {callee}: expected 2 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    callee,
+                    &[2],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
 
             Ok(Some(Type::Dynamic))
@@ -445,10 +470,12 @@ fn infer_builtin_call_type(
         "list" => Ok(Some(Type::Dynamic)),
         "protocol_dispatch" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for protocol_dispatch: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "protocol_dispatch",
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
 
             Ok(Some(Type::Dynamic))
@@ -457,117 +484,145 @@ fn infer_builtin_call_type(
             // host_call requires at least 1 arg (the host key atom)
             // Returns dynamic since host functions can return any type
             if arg_types.is_empty() {
-                return Err(TypingError::new(
-                    "host_call requires at least 1 argument (host function key)",
+                return Err(TypingError::minimum_arity_mismatch(
+                    "host_call",
+                    1,
+                    0,
+                    "start with the host key atom, for example `host_call(:sum_ints, ...)`",
+                    call_offset,
                 ));
             }
             Ok(Some(Type::Dynamic))
         }
         "div" | "rem" => {
             if arg_types.len() != 2 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {callee}: expected 2 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    callee,
+                    &[2],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Int))
         }
         "byte_size" | "bit_size" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {callee}: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    callee,
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Int))
         }
         "abs" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for abs: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "abs",
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Dynamic))
         }
         "length" | "tuple_size" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {callee}: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    callee,
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Int))
         }
         "hd" | "tl" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {callee}: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    callee,
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Dynamic))
         }
         "elem" => {
             if arg_types.len() != 2 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for elem: expected 2 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "elem",
+                    &[2],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Dynamic))
         }
         "to_string" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for to_string: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "to_string",
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::String))
         }
         "max" | "min" => {
             if arg_types.len() != 2 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {callee}: expected 2 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    callee,
+                    &[2],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Dynamic))
         }
         "round" | "trunc" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for {callee}: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    callee,
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Int))
         }
         "map_size" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for map_size: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "map_size",
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Int))
         }
         "put_elem" => {
             if arg_types.len() != 3 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for put_elem: expected 3 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "put_elem",
+                    &[3],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::Dynamic))
         }
         "inspect" => {
             if arg_types.len() != 1 {
-                return Err(TypingError::new(format!(
-                    "arity mismatch for inspect: expected 1 args, found {}",
-                    arg_types.len()
-                )));
+                return Err(TypingError::arity_mismatch(
+                    "inspect",
+                    &[1],
+                    arg_types.len(),
+                    call_offset,
+                ));
             }
             Ok(Some(Type::String))
         }

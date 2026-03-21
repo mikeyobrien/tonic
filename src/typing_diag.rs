@@ -3,6 +3,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypingDiagnosticCode {
     TypeMismatch,
+    ArityMismatch,
     QuestionRequiresResult,
     NonExhaustiveCase,
 }
@@ -11,6 +12,7 @@ impl TypingDiagnosticCode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::TypeMismatch => "E2001",
+            Self::ArityMismatch => "E2002",
             Self::QuestionRequiresResult => "E3001",
             Self::NonExhaustiveCase => "E3002",
         }
@@ -55,6 +57,64 @@ impl TypingError {
         )
     }
 
+    pub fn arity_mismatch(
+        target: &str,
+        accepted_arities: &[usize],
+        found: usize,
+        offset: Option<usize>,
+    ) -> Self {
+        let expected = match accepted_arities {
+            [] => "expected a supported number of args".to_string(),
+            [arity] => format!(
+                "expected {} {}, found {found}",
+                arity,
+                Self::arg_word(*arity)
+            ),
+            arities if Self::is_contiguous(arities) => {
+                let min = arities[0];
+                let max = arities[arities.len() - 1];
+                format!("expected {min}..{max} args, found {found}")
+            }
+            arities => {
+                let expected = arities
+                    .iter()
+                    .map(|arity| arity.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("expected one of {expected} args, found {found}")
+            }
+        };
+
+        let hint = match accepted_arities {
+            [] => format!("adjust this call to match one of {target}'s supported arities"),
+            [arity] => format!("call `{target}/{arity}`"),
+            arities => format!(
+                "use one of the accepted arities: {}",
+                Self::format_accepted_arities(target, arities)
+            ),
+        };
+
+        Self::arity_mismatch_with_hint(target, expected, hint, offset)
+    }
+
+    pub fn minimum_arity_mismatch(
+        target: &str,
+        minimum: usize,
+        found: usize,
+        hint: &str,
+        offset: Option<usize>,
+    ) -> Self {
+        Self::arity_mismatch_with_hint(
+            target,
+            format!(
+                "expected at least {minimum} {}, found {found}",
+                Self::arg_word(minimum)
+            ),
+            hint,
+            offset,
+        )
+    }
+
     pub fn question_requires_result(found: &str, hint: &str, offset: Option<usize>) -> Self {
         Self::result_match_with_hint(
             TypingDiagnosticCode::QuestionRequiresResult,
@@ -89,6 +149,23 @@ impl TypingError {
         }
     }
 
+    fn arity_mismatch_with_hint(
+        target: &str,
+        detail: impl Into<String>,
+        hint: impl Into<String>,
+        offset: Option<usize>,
+    ) -> Self {
+        Self {
+            code: Some(TypingDiagnosticCode::ArityMismatch),
+            message: format!(
+                "arity mismatch for {target}: {}; hint: {}",
+                detail.into(),
+                hint.into()
+            ),
+            offset,
+        }
+    }
+
     fn result_match(
         code: TypingDiagnosticCode,
         message: impl Into<String>,
@@ -108,6 +185,39 @@ impl TypingError {
         offset: Option<usize>,
     ) -> Self {
         Self::result_match(code, format!("{}; hint: {hint}", message.into()), offset)
+    }
+
+    fn arg_word(count: usize) -> &'static str {
+        if count == 1 {
+            "arg"
+        } else {
+            "args"
+        }
+    }
+
+    fn is_contiguous(arities: &[usize]) -> bool {
+        arities
+            .windows(2)
+            .all(|window| window[0].saturating_add(1) == window[1])
+    }
+
+    fn format_accepted_arities(target: &str, arities: &[usize]) -> String {
+        let forms = arities
+            .iter()
+            .map(|arity| format!("`{target}/{arity}`"))
+            .collect::<Vec<_>>();
+
+        match forms.as_slice() {
+            [] => "".to_string(),
+            [only] => only.clone(),
+            [left, right] => format!("{left} or {right}"),
+            _ => {
+                let mut rendered = forms[..forms.len() - 1].join(", ");
+                rendered.push_str(", or ");
+                rendered.push_str(forms.last().expect("non-empty forms should have last"));
+                rendered
+            }
+        }
     }
 
     pub fn offset(&self) -> Option<usize> {
@@ -142,6 +252,36 @@ impl std::error::Error for TypingError {}
 #[cfg(test)]
 mod tests {
     use super::{TypingDiagnosticCode, TypingError};
+
+    #[test]
+    fn arity_mismatch_constructor_uses_stable_contract() {
+        let error = TypingError::arity_mismatch("Math.add", &[2], 1, Some(64));
+
+        assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
+        assert_eq!(
+            error.message(),
+            "arity mismatch for Math.add: expected 2 args, found 1; hint: call `Math.add/2`"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E2002] arity mismatch for Math.add: expected 2 args, found 1; hint: call `Math.add/2` at offset 64"
+        );
+    }
+
+    #[test]
+    fn arity_range_mismatch_constructor_uses_stable_contract() {
+        let error = TypingError::arity_mismatch("Demo.join", &[1, 2], 0, Some(29));
+
+        assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
+        assert_eq!(
+            error.message(),
+            "arity mismatch for Demo.join: expected 1..2 args, found 0; hint: use one of the accepted arities: `Demo.join/1` or `Demo.join/2`"
+        );
+        assert_eq!(
+            error.to_string(),
+            "[E2002] arity mismatch for Demo.join: expected 1..2 args, found 0; hint: use one of the accepted arities: `Demo.join/1` or `Demo.join/2` at offset 29"
+        );
+    }
 
     #[test]
     fn question_requires_result_constructor_uses_stable_contract() {
