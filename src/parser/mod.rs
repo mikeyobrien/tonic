@@ -27,10 +27,27 @@ pub(crate) fn is_builtin_call_target(callee: &str) -> bool {
     use crate::guard_builtins;
     matches!(
         callee,
-        "ok" | "err" | "tuple" | "list" | "map" | "keyword" | "protocol_dispatch" | "host_call"
-            | "abs" | "length" | "hd" | "tl" | "elem" | "tuple_size" | "to_string"
-            | "max" | "min" | "round" | "trunc"
-            | "map_size" | "put_elem" | "inspect"
+        "ok" | "err"
+            | "tuple"
+            | "list"
+            | "map"
+            | "keyword"
+            | "protocol_dispatch"
+            | "host_call"
+            | "abs"
+            | "length"
+            | "hd"
+            | "tl"
+            | "elem"
+            | "tuple_size"
+            | "to_string"
+            | "max"
+            | "min"
+            | "round"
+            | "trunc"
+            | "map_size"
+            | "put_elem"
+            | "inspect"
     ) || guard_builtins::is_guard_builtin(callee)
 }
 
@@ -162,6 +179,13 @@ impl<'a> Parser<'a> {
                  hint: add 'end' to finish {construct}"
             ),
             opening_span,
+        )
+    }
+
+    pub(crate) fn unexpected_arrow_error(&self) -> ParserError {
+        ParserError::at_current(
+            "[E0004] unexpected '->' outside a valid branch. hint: use 'fn ... -> ... end' for anonymous functions, or move '->' into a branch inside case/cond/with/for/try",
+            self.current(),
         )
     }
 

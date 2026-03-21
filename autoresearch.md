@@ -9,7 +9,7 @@ An LLM-first error answers: (1) What went wrong? (2) Where? (3) How to fix it?
 ## Metrics
 
 - **Primary**: Number of error categories with actionable fix suggestions
-- **Current Best**: 6/6 representative missing-end parser + CLI checks green (run 1)
+- **Current Best**: 8/8 representative missing-end + unexpected-arrow parser + CLI checks green (run 2)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ## Benchmark Commands
@@ -52,3 +52,4 @@ done
 ## What's Been Tried
 
 - **Run 1 (KEEP, metric=6/6)**: Added `[E0003] unexpected end of file: missing 'end'` diagnostics that anchor on the opening construct span for `defmodule`, `def`/`defp`, `if`/`unless`, `cond`, `with`, `for`, `case`, `try`, and anonymous `fn`. Added parser + CLI coverage for missing module/function/if `end` cases, with 6/6 representative missing-end checks green. Hypothesis: confirmed — dedicated EOF/missing-`end` diagnostics make truncated block failures much more actionable for LLM repair loops without changing parse semantics.
+- **Run 2 (KEEP, metric=8/8)**: Added `[E0004] unexpected '->' outside a valid branch` diagnostics with a repair hint to wrap anonymous functions in `fn ... -> ... end` or move `->` into valid `case`/`cond`/`with`/`for`/`try` branches. Added parser + CLI coverage for bare `value -> value + 1`, bringing the representative parser + CLI diagnostic suite to 8/8 green. Hypothesis: confirmed — a dedicated unexpected-arrow diagnostic turns a generic parse failure into an actionable one-shot fix for LLM repair loops.

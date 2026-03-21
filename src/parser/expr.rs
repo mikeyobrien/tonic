@@ -211,6 +211,10 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_atomic_expression(&mut self) -> Result<Expr, ParserError> {
+        if self.check(TokenKind::Arrow) {
+            return Err(self.unexpected_arrow_error());
+        }
+
         if self.check(TokenKind::LtLt) {
             return self.parse_bitstring_literal_expression();
         }

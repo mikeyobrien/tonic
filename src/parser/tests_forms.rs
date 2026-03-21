@@ -352,3 +352,26 @@ fn parse_ast_reports_missing_if_end() {
         "unexpected parser error: {error}"
     );
 }
+
+#[test]
+fn parse_ast_reports_unexpected_arrow_outside_branch() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    value -> value + 1\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject bare arrow outside branch");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0004] unexpected '->' outside a valid branch."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: use 'fn ... -> ... end' for anonymous functions"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("case/cond/with/for/try"),
+        "unexpected parser error: {error}"
+    );
+}
