@@ -215,6 +215,10 @@ impl<'a> Parser<'a> {
             return Err(self.unexpected_arrow_error());
         }
 
+        if let Some(error) = self.unexpected_block_keyword_error() {
+            return Err(error);
+        }
+
         if self.check(TokenKind::LtLt) {
             return self.parse_bitstring_literal_expression();
         }

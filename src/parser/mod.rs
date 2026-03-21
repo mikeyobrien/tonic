@@ -189,6 +189,33 @@ impl<'a> Parser<'a> {
         )
     }
 
+    pub(crate) fn unexpected_block_keyword_error(&self) -> Option<ParserError> {
+        let token = self.current()?;
+        let message = match token.kind() {
+            TokenKind::Else => {
+                "[E0005] unexpected 'else' without a matching block. hint: move 'else' inside an 'if', 'unless', or 'with' expression, or remove the extra 'else'"
+            }
+            TokenKind::Rescue => {
+                "[E0005] unexpected 'rescue' without a matching 'try'. hint: move 'rescue' inside a 'try ... end' expression, add the missing 'try', or remove the extra 'rescue'"
+            }
+            TokenKind::Catch => {
+                "[E0005] unexpected 'catch' without a matching 'try'. hint: move 'catch' inside a 'try ... end' expression, add the missing 'try', or remove the extra 'catch'"
+            }
+            TokenKind::After => {
+                "[E0005] unexpected 'after' without a matching 'try'. hint: move 'after' inside a 'try ... end' expression, add the missing 'try', or remove the extra 'after'"
+            }
+            TokenKind::End => {
+                "[E0005] unexpected 'end' without an opening block. hint: remove the extra 'end', or add the missing block opener before this point"
+            }
+            TokenKind::Do => {
+                "[E0005] unexpected 'do' without a block header. hint: put 'do' after a block opener like 'def', 'if', 'case', 'cond', 'with', 'for', or 'try', or remove the extra 'do'"
+            }
+            _ => return None,
+        };
+
+        Some(ParserError::at_current(message, Some(token)))
+    }
+
     pub(crate) fn check(&self, kind: TokenKind) -> bool {
         self.current()
             .map(|token| token.kind() == kind)

@@ -375,3 +375,81 @@ fn parse_ast_reports_unexpected_arrow_outside_branch() {
         "unexpected parser error: {error}"
     );
 }
+
+#[test]
+fn parse_ast_reports_stray_clause_keywords_outside_valid_blocks() {
+    let cases = [
+        (
+            "else",
+            "defmodule Demo do\n  def run() do\n    else\n  end\nend\n",
+            "[E0005] unexpected 'else' without a matching block.",
+            "move 'else' inside an 'if', 'unless', or 'with' expression",
+        ),
+        (
+            "rescue",
+            "defmodule Demo do\n  def run() do\n    rescue\n  end\nend\n",
+            "[E0005] unexpected 'rescue' without a matching 'try'.",
+            "move 'rescue' inside a 'try ... end' expression",
+        ),
+        (
+            "catch",
+            "defmodule Demo do\n  def run() do\n    catch\n  end\nend\n",
+            "[E0005] unexpected 'catch' without a matching 'try'.",
+            "move 'catch' inside a 'try ... end' expression",
+        ),
+        (
+            "after",
+            "defmodule Demo do\n  def run() do\n    after\n  end\nend\n",
+            "[E0005] unexpected 'after' without a matching 'try'.",
+            "move 'after' inside a 'try ... end' expression",
+        ),
+    ];
+
+    for (keyword, source, prefix, hint) in cases {
+        let tokens = scan_tokens(source).expect("scanner should tokenize parser fixture");
+        let error = parse_ast(&tokens).expect_err("parser should reject stray block keyword");
+        let message = error.to_string();
+
+        assert!(
+            message.starts_with(prefix),
+            "unexpected parser error for {keyword}: {error}"
+        );
+        assert!(
+            message.contains(hint),
+            "unexpected parser error for {keyword}: {error}"
+        );
+    }
+}
+
+#[test]
+fn parse_ast_reports_stray_block_boundary_keywords() {
+    let cases = [
+        (
+            "end",
+            "defmodule Demo do\n  def run() do\n    end\n  end\nend\n",
+            "[E0005] unexpected 'end' without an opening block.",
+            "remove the extra 'end'",
+        ),
+        (
+            "do",
+            "defmodule Demo do\n  def run() do\n    do\n  end\nend\n",
+            "[E0005] unexpected 'do' without a block header.",
+            "put 'do' after a block opener like 'def', 'if', 'case', 'cond', 'with', 'for', or 'try'",
+        ),
+    ];
+
+    for (keyword, source, prefix, hint) in cases {
+        let tokens = scan_tokens(source).expect("scanner should tokenize parser fixture");
+        let error = parse_ast(&tokens).expect_err("parser should reject stray block keyword");
+        let message = error.to_string();
+
+        assert!(
+            message.starts_with(prefix),
+            "unexpected parser error for {keyword}: {error}"
+        );
+        assert!(
+            message.contains(hint),
+            "unexpected parser error for {keyword}: {error}"
+        );
+    }
+}
