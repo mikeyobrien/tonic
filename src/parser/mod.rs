@@ -252,6 +252,25 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub(crate) fn missing_map_fat_arrow_error(
+        &self,
+        entry_kind: &str,
+        hint: impl Into<String>,
+    ) -> ParserError {
+        let found = self
+            .current()
+            .map(|token| token.dump_label())
+            .unwrap_or_else(|| "EOF".to_string());
+
+        ParserError::at_current(
+            format!(
+                "[E0008] missing '=>' in {entry_kind}; found {found} instead. hint: {}",
+                hint.into()
+            ),
+            self.current(),
+        )
+    }
+
     pub(crate) fn unexpected_arrow_error(&self) -> ParserError {
         ParserError::at_current(
             "[E0004] unexpected '->' outside a valid branch. hint: use 'fn ... -> ... end' for anonymous functions, or move '->' into a branch inside case/cond/with/for/try",

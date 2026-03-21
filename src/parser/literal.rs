@@ -221,7 +221,13 @@ impl<'a> Parser<'a> {
         &mut self,
         key: Expr,
     ) -> Result<MapExprEntry, ParserError> {
-        self.expect(TokenKind::FatArrow, "map fat arrow `=>`")?;
+        if !self.match_kind(TokenKind::FatArrow) {
+            return Err(self.missing_map_fat_arrow_error(
+                "map entry",
+                "write `%{key => value}` for computed keys, or use `%{name: value}` when the key is an atom label",
+            ));
+        }
+
         let value = self.parse_expression()?;
         Ok(MapExprEntry { key, value })
     }
@@ -294,7 +300,10 @@ impl<'a> Parser<'a> {
             let kind = token.kind();
 
             // Pattern: missing comma — next token can start an expression
-            if super::token_can_start_no_paren_arg(kind) || kind == TokenKind::Minus || kind == TokenKind::Not {
+            if super::token_can_start_no_paren_arg(kind)
+                || kind == TokenKind::Minus
+                || kind == TokenKind::Not
+            {
                 let container = match closing {
                     TokenKind::RBracket => "list",
                     TokenKind::RBrace => "tuple/map",

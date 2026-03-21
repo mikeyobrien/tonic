@@ -185,7 +185,8 @@ fn test_command_surfaces_rich_source_diagnostics_for_frontend_errors() {
 
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("expected map fat arrow `=>`, found INT(2)"));
+    assert!(stderr.contains("[E0008] missing '=>' in map entry; found INT(2) instead."));
+    assert!(stderr.contains("hint: write `%{key => value}` for computed keys"));
     assert!(
         stderr.contains("invalid_test.tn:3:"),
         "expected filename:line:col location, got: {stderr}"

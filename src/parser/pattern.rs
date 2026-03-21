@@ -167,7 +167,10 @@ impl<'a> Parser<'a> {
                     let key = self.parse_pattern()?;
                     if !(self.match_kind(TokenKind::FatArrow) || self.match_kind(TokenKind::Arrow))
                     {
-                        return Err(self.expected("map pattern fat arrow `=>`"));
+                        return Err(self.missing_map_fat_arrow_error(
+                            "map pattern entry",
+                            "write `%{key => pattern}` for computed keys, or use `%{name: pattern}` when the key is an atom label",
+                        ));
                     }
                     let value = self.parse_pattern()?;
                     (key, value)

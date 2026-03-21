@@ -2,16 +2,49 @@ use super::{parse_ast, Expr};
 use crate::lexer::scan_tokens;
 
 #[test]
-fn parse_ast_reports_deterministic_map_entry_diagnostics() {
+fn parse_ast_reports_missing_map_entry_fat_arrow_with_repair_hint() {
     let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    %{1 2}\n  end\nend\n")
         .expect("scanner should tokenize parser fixture");
 
     let error = parse_ast(&tokens).expect_err("parser should reject malformed map entries");
+    let message = error.to_string();
 
     assert!(
-        error
-            .to_string()
-            .contains("expected map fat arrow `=>`, found INT(2)"),
+        message.starts_with("[E0008] missing '=>' in map entry; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: write `%{key => value}` for computed keys"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{name: value}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_map_pattern_fat_arrow_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %{1 payload} -> payload\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject malformed map patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0008] missing '=>' in map pattern entry; found IDENT(payload) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: write `%{key => pattern}` for computed keys"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{name: pattern}`"),
         "unexpected parser error: {error}"
     );
 }

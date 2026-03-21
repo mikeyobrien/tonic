@@ -26,7 +26,11 @@ fn check_reports_deterministic_map_fat_arrow_parse_error() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("expected map fat arrow `=>`, found INT(2)"),
+        stderr.contains("[E0008] missing '=>' in map entry; found INT(2) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: write `%{key => value}` for computed keys"),
         "unexpected parser diagnostic: {stderr}"
     );
 }
