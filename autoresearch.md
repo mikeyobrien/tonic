@@ -9,7 +9,7 @@ An LLM-first error answers: (1) What went wrong? (2) Where? (3) How to fix it?
 ## Metrics
 
 - **Primary**: Number of error categories with actionable fix suggestions
-- **Current Best**: 35/35 representative parser + typing + CLI diagnostics checks green (run 7)
+- **Current Best**: 40/40 representative parser + typing + CLI diagnostics checks green (run 8)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ## Benchmark Commands
@@ -58,3 +58,4 @@ done
 - **Run 5 (KEEP, metric=27/27)**: Added `[E0007] missing '->'` clause diagnostics anchored to clause starts for `case`, `cond`, `with else`, `for reduce`, `try rescue`/`catch`, and anonymous `fn`, plus parser + CLI coverage for representative case/rescue/fn missing-arrow failures. Hypothesis: confirmed — construct-specific missing-arrow diagnostics tell LLMs exactly which clause form is incomplete and how to repair it in one shot.
 - **Run 6 (DISCARD, metric=34/34)**: Tried actionable E2001 integer/operator mismatch diagnostics for arithmetic, comparison, unary-minus, and integer-only operators, plus representative typing + CLI coverage. Hypothesis: refuted — while the representative diagnostic suite improved to 34/34, the change regressed `typing::tests::infer_types_accepts_dynamic_operands_for_arithmetic`, so it changed typing behavior instead of purely improving diagnostics.
 - **Run 7 (KEEP, metric=35/35)**: Added diagnostic-only E2001 bool-required and host-call atom-key mismatch hints, threaded them through existing mismatch sites, and expanded representative typing + CLI coverage for `not 1`, `case ... when 1`, function guards, and `host_call(1, 2)`. Hypothesis: confirmed — richer hints on already-failing bool/atom mismatch paths improve LLM repair guidance without changing typing semantics.
+- **Run 8 (KEEP, metric=40/40)**: Added actionable E3001 `?`-requires-`Result` and E3002 non-exhaustive-`case` hints, threaded the new `?` hint selection through existing typing diagnostics, and expanded representative typing + CLI coverage for literal `1?`, mixed result/match flows, and missing wildcard `case` branches. Hypothesis: confirmed — richer result-propagation and exhaustiveness repair hints improve LLM guidance on existing failure paths without changing typing semantics.

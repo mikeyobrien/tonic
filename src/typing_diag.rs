@@ -55,18 +55,20 @@ impl TypingError {
         )
     }
 
-    pub fn question_requires_result(found: &str, offset: Option<usize>) -> Self {
-        Self::result_match(
+    pub fn question_requires_result(found: &str, hint: &str, offset: Option<usize>) -> Self {
+        Self::result_match_with_hint(
             TypingDiagnosticCode::QuestionRequiresResult,
             format!("? operator requires Result value, found {found}"),
+            hint,
             offset,
         )
     }
 
     pub fn non_exhaustive_case(offset: Option<usize>) -> Self {
-        Self::result_match(
+        Self::result_match_with_hint(
             TypingDiagnosticCode::NonExhaustiveCase,
             "non-exhaustive case expression: missing wildcard branch",
+            "add a catch-all branch such as `_ -> ...` to handle any remaining values",
             offset,
         )
     }
@@ -97,6 +99,15 @@ impl TypingError {
             message: message.into(),
             offset,
         }
+    }
+
+    fn result_match_with_hint(
+        code: TypingDiagnosticCode,
+        message: impl Into<String>,
+        hint: &str,
+        offset: Option<usize>,
+    ) -> Self {
+        Self::result_match(code, format!("{}; hint: {hint}", message.into()), offset)
     }
 
     pub fn offset(&self) -> Option<usize> {
@@ -134,7 +145,11 @@ mod tests {
 
     #[test]
     fn question_requires_result_constructor_uses_stable_contract() {
-        let error = TypingError::question_requires_result("int", Some(74));
+        let error = TypingError::question_requires_result(
+            "int",
+            "wrap this value with `ok(...)` or `err(...)`, or remove the trailing `?`",
+            Some(74),
+        );
 
         assert_eq!(
             error.code(),
@@ -142,11 +157,11 @@ mod tests {
         );
         assert_eq!(
             error.message(),
-            "? operator requires Result value, found int"
+            "? operator requires Result value, found int; hint: wrap this value with `ok(...)` or `err(...)`, or remove the trailing `?`"
         );
         assert_eq!(
             error.to_string(),
-            "[E3001] ? operator requires Result value, found int at offset 74"
+            "[E3001] ? operator requires Result value, found int; hint: wrap this value with `ok(...)` or `err(...)`, or remove the trailing `?` at offset 74"
         );
     }
 
@@ -157,11 +172,11 @@ mod tests {
         assert_eq!(error.code(), Some(TypingDiagnosticCode::NonExhaustiveCase));
         assert_eq!(
             error.message(),
-            "non-exhaustive case expression: missing wildcard branch"
+            "non-exhaustive case expression: missing wildcard branch; hint: add a catch-all branch such as `_ -> ...` to handle any remaining values"
         );
         assert_eq!(
             error.to_string(),
-            "[E3002] non-exhaustive case expression: missing wildcard branch at offset 37"
+            "[E3002] non-exhaustive case expression: missing wildcard branch; hint: add a catch-all branch such as `_ -> ...` to handle any remaining values at offset 37"
         );
     }
 }

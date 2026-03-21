@@ -226,7 +226,7 @@ fn infer_types_reports_non_exhaustive_case_without_wildcard_branch() {
 
     assert_eq!(
         error.to_string(),
-        "[E3002] non-exhaustive case expression: missing wildcard branch at offset 37"
+        "[E3002] non-exhaustive case expression: missing wildcard branch; hint: add a catch-all branch such as `_ -> ...` to handle any remaining values at offset 37"
     );
 }
 
@@ -275,6 +275,24 @@ fn infer_types_accepts_match_operator_with_pattern_bindings() {
 }
 
 #[test]
+fn infer_types_reports_literal_question_operand_with_wrap_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    1?\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize literal question fixture");
+    let ast = parse_ast(&tokens).expect("parser should build literal question fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject question on int");
+
+    assert_eq!(
+        error.code(),
+        Some(TypingDiagnosticCode::QuestionRequiresResult)
+    );
+    assert_eq!(
+        error.message(),
+        "? operator requires Result value, found int; hint: wrap this value with `ok(...)` or `err(...)`, or remove the trailing `?`"
+    );
+}
+
+#[test]
 fn infer_types_harmonizes_result_and_match_diagnostics() {
     let question_source =
         "defmodule Demo do\n  def value() do\n    1\n  end\n\n  def run() do\n    value()?\n  end\nend\n";
@@ -292,7 +310,7 @@ fn infer_types_harmonizes_result_and_match_diagnostics() {
     );
     assert_eq!(
         question_error.message(),
-        "? operator requires Result value, found int"
+        "? operator requires Result value, found int; hint: make this expression return `ok(...)` or `err(...)`, or remove the trailing `?`"
     );
 
     let case_source = "defmodule Demo do\n  def run() do\n    case value() do\n      :ok -> 1\n    end\n  end\n\n  def value() do\n    1\n  end\nend\n";
@@ -310,6 +328,6 @@ fn infer_types_harmonizes_result_and_match_diagnostics() {
     );
     assert_eq!(
         case_error.message(),
-        "non-exhaustive case expression: missing wildcard branch"
+        "non-exhaustive case expression: missing wildcard branch; hint: add a catch-all branch such as `_ -> ...` to handle any remaining values"
     );
 }

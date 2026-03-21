@@ -104,6 +104,7 @@ pub(super) fn infer_expression_type(
                 }
                 other => Err(TypingError::question_requires_result(
                     other.label_for_question_requirement(),
+                    question_requires_result_hint(value),
                     Some(*offset),
                 )),
             }
@@ -343,6 +344,20 @@ fn infer_call_type(
     }
 
     Ok(signature.return_type.clone())
+}
+
+fn question_requires_result_hint(value: &Expr) -> &'static str {
+    match value {
+        Expr::Call { .. }
+        | Expr::FieldAccess { .. }
+        | Expr::IndexAccess { .. }
+        | Expr::Invoke { .. }
+        | Expr::Pipe { .. }
+        | Expr::Variable { .. } => {
+            "make this expression return `ok(...)` or `err(...)`, or remove the trailing `?`"
+        }
+        _ => "wrap this value with `ok(...)` or `err(...)`, or remove the trailing `?`",
+    }
 }
 
 fn validate_host_call_key_type(
