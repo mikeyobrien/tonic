@@ -50,6 +50,51 @@ fn parse_ast_reports_missing_map_pattern_fat_arrow_with_repair_hint() {
 }
 
 #[test]
+fn parse_ast_reports_missing_parenthesized_call_arg_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    Math.add(1 2)\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject call arguments without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in call arguments; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate call arguments with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`Math.add(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_no_paren_call_arg_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    tuple 1 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens)
+        .expect_err("parser should reject no-paren call arguments without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in call arguments; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate call arguments with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`tuple(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_supports_pin_patterns_case_guards_and_match_operator() {
     let tokens = scan_tokens(
         "defmodule PatternDemo do\n  def run() do\n    case list(7, 8) do\n      [^value, tail] when tail == 8 -> value = tail\n      _ -> 0\n    end\n  end\n\n  def value() do\n    7\n  end\nend\n",

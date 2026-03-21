@@ -163,7 +163,7 @@ impl<'a> Parser<'a> {
                         .span()
                         .start();
                     self.expect(TokenKind::LParen, "(")?;
-                    let args = self.parse_call_args()?;
+                    let args = self.parse_call_args(None)?;
                     self.expect(TokenKind::RParen, ")")?;
                     expression = Expr::invoke(self.node_ids.next_expr(), offset, expression, args);
                     continue;
@@ -424,7 +424,10 @@ impl<'a> Parser<'a> {
         Err(self.expected("expression"))
     }
 
-    pub(super) fn parse_call_args(&mut self) -> Result<Vec<Expr>, ParserError> {
+    pub(super) fn parse_call_args(
+        &mut self,
+        callee: Option<&str>,
+    ) -> Result<Vec<Expr>, ParserError> {
         let mut args = Vec::new();
 
         if self.check(TokenKind::RParen) {
@@ -438,26 +441,56 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            break;
-        }
-
-        Ok(args)
-    }
-
-    pub(super) fn parse_no_paren_call_args(&mut self) -> Result<Vec<Expr>, ParserError> {
-        let mut args = Vec::new();
-
-        loop {
-            args.push(self.parse_expression()?);
-
-            if self.match_kind(TokenKind::Comma) {
-                continue;
+            if !self.check(TokenKind::RParen) && self.current_starts_missing_call_comma() {
+                return Err(self
+                    .missing_comma_error("call arguments", self.call_argument_comma_hint(callee)));
             }
 
             break;
         }
 
         Ok(args)
+    }
+
+    pub(super) fn parse_no_paren_call_args(
+        &mut self,
+        callee: &str,
+    ) -> Result<Vec<Expr>, ParserError> {
+        let mut args = Vec::new();
+
+        loop {
+            args.push(self.parse_expression()?);
+            let last_arg_end = self.tokens[self.index - 1].span().end();
+
+            if self.match_kind(TokenKind::Comma) {
+                continue;
+            }
+
+            let adjacent_arg_start = self
+                .current()
+                .is_some_and(|token| token.span().start() == last_arg_end + 1);
+            if adjacent_arg_start && self.current_starts_missing_call_comma() {
+                return Err(self.missing_comma_error(
+                    "call arguments",
+                    self.call_argument_comma_hint(Some(callee)),
+                ));
+            }
+
+            break;
+        }
+
+        Ok(args)
+    }
+
+    fn call_argument_comma_hint(&self, callee: Option<&str>) -> String {
+        match callee {
+            Some(callee) => {
+                format!("separate call arguments with commas, for example `{callee}(left, right)`")
+            }
+            None => {
+                "separate call arguments with commas, for example `call(left, right)`".to_string()
+            }
+        }
     }
 
     pub(super) fn current_binary_operator(&self) -> Option<(u8, u8, BinaryOp)> {

@@ -159,6 +159,59 @@ fn parse_ast_rejects_malformed_import_filter_options() {
 }
 
 #[test]
+fn parse_ast_reports_missing_function_param_comma_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run(left right) do\n    left + right\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject function params without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in function parameter list; found IDENT(right) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate parameters with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def run(left, right) do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_protocol_param_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  defprotocol Size do\n    def size(left right)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject protocol params without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in protocol parameter list; found IDENT(right) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate protocol parameters with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def size(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_missing_module_end() {
     let tokens = scan_tokens("defmodule Broken do\n  def one() do\n    1\n  end\n")
         .expect("scanner should tokenize parser fixture");

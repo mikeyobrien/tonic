@@ -194,6 +194,31 @@ fn test_command_surfaces_rich_source_diagnostics_for_frontend_errors() {
     assert!(stderr.contains("3 |     %{1 2}"));
 }
 
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_call_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-call-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    tuple 1 2\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in call arguments; found INT(2) instead."));
+    assert!(stderr.contains("hint: separate call arguments with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     tuple 1 2"));
+}
+
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
 

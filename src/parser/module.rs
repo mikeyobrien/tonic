@@ -82,7 +82,7 @@ impl<'a> Parser<'a> {
 
         let name = self.expect_ident("function name")?;
         self.expect(TokenKind::LParen, "(")?;
-        let params = self.parse_params()?;
+        let params = self.parse_params(name.as_str())?;
         self.expect(TokenKind::RParen, ")")?;
 
         if self.check(TokenKind::Arrow)
@@ -226,6 +226,14 @@ impl<'a> Parser<'a> {
                 if self.match_kind(TokenKind::Comma) {
                     continue;
                 }
+                if !self.check(TokenKind::RParen) && self.current_starts_missing_param_comma() {
+                    return Err(self.missing_comma_error(
+                        "protocol parameter list",
+                        format!(
+                            "separate protocol parameters with commas, for example `def {name}(left, right)`"
+                        ),
+                    ));
+                }
                 break;
             }
         }
@@ -321,7 +329,10 @@ impl<'a> Parser<'a> {
         Ok(module)
     }
 
-    pub(super) fn parse_params(&mut self) -> Result<Vec<Parameter>, ParserError> {
+    pub(super) fn parse_params(
+        &mut self,
+        function_name: &str,
+    ) -> Result<Vec<Parameter>, ParserError> {
         let mut params = Vec::new();
         let mut saw_default = false;
 
@@ -343,6 +354,15 @@ impl<'a> Parser<'a> {
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
+            }
+
+            if !self.check(TokenKind::RParen) && self.current_starts_missing_param_comma() {
+                return Err(self.missing_comma_error(
+                    "function parameter list",
+                    format!(
+                        "separate parameters with commas, for example `def {function_name}(left, right) do ... end`"
+                    ),
+                ));
             }
 
             break;

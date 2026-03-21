@@ -271,6 +271,52 @@ impl<'a> Parser<'a> {
         )
     }
 
+    pub(crate) fn missing_comma_error(
+        &self,
+        list_kind: &str,
+        hint: impl Into<String>,
+    ) -> ParserError {
+        let found = self
+            .current()
+            .map(|token| token.dump_label())
+            .unwrap_or_else(|| "EOF".to_string());
+
+        ParserError::at_current(
+            format!(
+                "[E0010] missing ',' in {list_kind}; found {found} instead. hint: {}",
+                hint.into()
+            ),
+            self.current(),
+        )
+    }
+
+    pub(crate) fn current_starts_missing_call_comma(&self) -> bool {
+        self.current().is_some_and(|token| {
+            token_can_start_no_paren_arg(token.kind())
+                || matches!(token.kind(), TokenKind::Minus | TokenKind::Not)
+        })
+    }
+
+    pub(crate) fn current_starts_missing_param_comma(&self) -> bool {
+        self.current().is_some_and(|token| {
+            matches!(
+                token.kind(),
+                TokenKind::Ident
+                    | TokenKind::Atom
+                    | TokenKind::Integer
+                    | TokenKind::String
+                    | TokenKind::LBrace
+                    | TokenKind::LBracket
+                    | TokenKind::Percent
+                    | TokenKind::Caret
+                    | TokenKind::True
+                    | TokenKind::False
+                    | TokenKind::Nil
+                    | TokenKind::LtLt
+            )
+        })
+    }
+
     fn anonymous_fn_clause_signature_example(arity: usize) -> String {
         match arity {
             0 => "-> ...".to_string(),

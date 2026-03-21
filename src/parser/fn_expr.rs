@@ -324,13 +324,13 @@ impl<'a> Parser<'a> {
         }
 
         if self.match_kind(TokenKind::LParen) {
-            let args = self.parse_call_args()?;
+            let args = self.parse_call_args(Some(callee.as_str()))?;
             self.expect(TokenKind::RParen, ")")?;
             return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
         }
 
         if self.current_starts_no_paren_call_arg(callee_end) {
-            let args = self.parse_no_paren_call_args()?;
+            let args = self.parse_no_paren_call_args(callee.as_str())?;
             return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
         }
 
