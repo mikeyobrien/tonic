@@ -154,7 +154,7 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_capture_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::Ampersand, "&")?.span().start();
-        self.expect(TokenKind::LParen, "(")?;
+        let opening_span = self.expect_token(TokenKind::LParen, "(")?.span();
 
         if self.check(TokenKind::RParen) {
             return Err(self.empty_capture_expression_error(offset));
@@ -167,7 +167,13 @@ impl<'a> Parser<'a> {
             .pop()
             .expect("capture placeholder scope should exist");
 
-        self.expect(TokenKind::RParen, ")")?;
+        self.expect_closing_delimiter(
+            TokenKind::RParen,
+            ")",
+            "capture expression",
+            opening_span,
+            "add ')' to close the capture expression, for example `&(&1 + 1)`",
+        )?;
 
         if max_capture_index == 0 {
             return Err(ParserError::at_current(
@@ -324,8 +330,17 @@ impl<'a> Parser<'a> {
         }
 
         if self.match_kind(TokenKind::LParen) {
+            let opening_span = self.tokens[self.index - 1].span();
             let args = self.parse_call_args(Some(callee.as_str()))?;
-            self.expect(TokenKind::RParen, ")")?;
+            let call_hint =
+                format!("add ')' to close the call arguments, for example `{callee}(left, right)`");
+            self.expect_closing_delimiter(
+                TokenKind::RParen,
+                ")",
+                "call argument list",
+                opening_span,
+                call_hint,
+            )?;
             return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
         }
 

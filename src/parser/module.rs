@@ -81,9 +81,18 @@ impl<'a> Parser<'a> {
         };
 
         let name = self.expect_ident("function name")?;
-        self.expect(TokenKind::LParen, "(")?;
+        let params_opening_span = self.expect_token(TokenKind::LParen, "(")?.span();
         let params = self.parse_params(name.as_str())?;
-        self.expect(TokenKind::RParen, ")")?;
+        let params_hint = format!(
+            "add ')' to close the parameter list, for example `def {name}(left, right) do ... end`"
+        );
+        self.expect_closing_delimiter(
+            TokenKind::RParen,
+            ")",
+            "function parameter list",
+            params_opening_span,
+            params_hint,
+        )?;
 
         if self.check(TokenKind::Arrow)
             && self
@@ -217,7 +226,7 @@ impl<'a> Parser<'a> {
     fn parse_protocol_signature(&mut self) -> Result<ProtocolFunctionSignature, ParserError> {
         self.expect(TokenKind::Def, "def")?;
         let name = self.expect_ident("protocol function name")?;
-        self.expect(TokenKind::LParen, "(")?;
+        let params_opening_span = self.expect_token(TokenKind::LParen, "(")?.span();
 
         let mut params = Vec::new();
         if !self.check(TokenKind::RParen) {
@@ -238,7 +247,16 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect(TokenKind::RParen, ")")?;
+        let params_hint = format!(
+            "add ')' to close the protocol parameter list, for example `def {name}(left, right)`"
+        );
+        self.expect_closing_delimiter(
+            TokenKind::RParen,
+            ")",
+            "protocol parameter list",
+            params_opening_span,
+            params_hint,
+        )?;
 
         if self.check(TokenKind::Do) {
             return Err(ParserError::at_current(

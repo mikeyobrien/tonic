@@ -162,9 +162,15 @@ impl<'a> Parser<'a> {
                         .expect("dot token should be available")
                         .span()
                         .start();
-                    self.expect(TokenKind::LParen, "(")?;
+                    let opening_span = self.expect_token(TokenKind::LParen, "(")?.span();
                     let args = self.parse_call_args(None)?;
-                    self.expect(TokenKind::RParen, ")")?;
+                    self.expect_closing_delimiter(
+                        TokenKind::RParen,
+                        ")",
+                        "invocation argument list",
+                        opening_span,
+                        "add ')' to close the invocation arguments, for example `callback.(value)`",
+                    )?;
                     expression = Expr::invoke(self.node_ids.next_expr(), offset, expression, args);
                     continue;
                 } else if self
@@ -192,13 +198,19 @@ impl<'a> Parser<'a> {
                     break;
                 }
 
-                let offset = self
+                let opening_span = self
                     .advance()
                     .expect("lbracket token should be available")
-                    .span()
-                    .start();
+                    .span();
+                let offset = opening_span.start();
                 let index = self.parse_expression()?;
-                self.expect(TokenKind::RBracket, "]")?;
+                self.expect_closing_delimiter(
+                    TokenKind::RBracket,
+                    "]",
+                    "index access",
+                    opening_span,
+                    "add ']' to close the index access, for example `value[index]`",
+                )?;
                 expression =
                     Expr::index_access(self.node_ids.next_expr(), offset, expression, index);
                 continue;
@@ -411,13 +423,19 @@ impl<'a> Parser<'a> {
 
         // Handle parenthesized expressions: (expr)
         if self.check(TokenKind::LParen) {
-            let offset = self
+            let opening_span = self
                 .advance()
                 .expect("lparen token should be available")
-                .span()
-                .start();
+                .span();
+            let offset = opening_span.start();
             let inner = self.parse_expression()?;
-            self.expect(TokenKind::RParen, ")")?;
+            self.expect_closing_delimiter(
+                TokenKind::RParen,
+                ")",
+                "grouped expression",
+                opening_span,
+                "add ')' to close the grouped expression, for example `(left + right)`",
+            )?;
             return Ok(Expr::group(self.node_ids.next_expr(), offset, inner));
         }
 

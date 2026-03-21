@@ -308,6 +308,58 @@ impl<'a> Parser<'a> {
         )
     }
 
+    pub(crate) fn expect_closing_delimiter(
+        &mut self,
+        kind: TokenKind,
+        expected: &str,
+        construct: &str,
+        opening_span: Span,
+        hint: impl Into<String>,
+    ) -> Result<(), ParserError> {
+        if self.check(kind) {
+            self.advance();
+            Ok(())
+        } else if self.current_ends_unclosed_delimiter() {
+            Err(self.unclosed_delimiter_error(construct, expected, opening_span, hint))
+        } else {
+            Err(self.expected(expected))
+        }
+    }
+
+    pub(crate) fn unclosed_delimiter_error(
+        &self,
+        construct: &str,
+        expected: &str,
+        opening_span: Span,
+        hint: impl Into<String>,
+    ) -> ParserError {
+        ParserError::at_span(
+            format!(
+                "[E0002] unclosed delimiter: {construct} is missing '{expected}'. hint: {}",
+                hint.into()
+            ),
+            opening_span,
+        )
+    }
+
+    fn current_ends_unclosed_delimiter(&self) -> bool {
+        self.current()
+            .map(|token| {
+                matches!(
+                    token.kind(),
+                    TokenKind::Do
+                        | TokenKind::End
+                        | TokenKind::Else
+                        | TokenKind::Rescue
+                        | TokenKind::Catch
+                        | TokenKind::After
+                        | TokenKind::Semicolon
+                        | TokenKind::Eof
+                )
+            })
+            .unwrap_or(true)
+    }
+
     pub(crate) fn current_starts_missing_call_comma(&self) -> bool {
         self.current().is_some_and(|token| {
             token_can_start_no_paren_arg(token.kind())

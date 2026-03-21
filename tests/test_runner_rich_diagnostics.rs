@@ -220,6 +220,31 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_call_commas() {
 }
 
 #[test]
+fn test_command_surfaces_rich_source_diagnostics_for_unclosed_call_delimiters() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-unclosed-call-delimiter",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    Math.add(1, 2\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0002] unclosed delimiter: call argument list is missing ')'."));
+    assert!(stderr.contains("hint: add ')' to close the call arguments"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:13"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     Math.add(1, 2"));
+}
+
+#[test]
 fn test_command_surfaces_rich_source_diagnostics_for_missing_with_clause_commas() {
     let fixture_root = write_single_test_file(
         "test-rich-diag-missing-with-clause-comma",

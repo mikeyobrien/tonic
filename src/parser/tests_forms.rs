@@ -95,6 +95,116 @@ fn parse_ast_reports_missing_no_paren_call_arg_comma_with_repair_hint() {
 }
 
 #[test]
+fn parse_ast_reports_unclosed_grouped_expression_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    (1 + 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed grouped expressions");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: grouped expression is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the grouped expression"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`(left + right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_parenthesized_call_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    Math.add(1, 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed call argument lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: call argument list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the call arguments"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`Math.add(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_invocation_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    (&(&1 + 1)).(2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed invocation arguments");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: invocation argument list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the invocation arguments"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`callback.(value)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_capture_expression_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    &(&1 + 1\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed capture expressions");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: capture expression is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the capture expression"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`&(&1 + 1)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_index_access_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run(value) do\n    value[0\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed index access");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: index access is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the index access"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`value[index]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_missing_with_clause_comma_with_repair_hint() {
     let tokens = scan_tokens(
         "defmodule Demo do\n  def run() do\n    with ok <- ok(1)\n         value <- ok + 1 do\n      value\n    end\n  end\nend\n",

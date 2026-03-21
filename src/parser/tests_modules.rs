@@ -212,6 +212,53 @@ fn parse_ast_reports_missing_protocol_param_comma_with_repair_hint() {
 }
 
 #[test]
+fn parse_ast_reports_unclosed_function_param_list_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run(left, right do\n    left + right\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed function params");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: function parameter list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the parameter list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def run(left, right) do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_protocol_param_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  defprotocol Size do\n    def size(left, right\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed protocol params");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: protocol parameter list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the protocol parameter list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def size(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_missing_module_end() {
     let tokens = scan_tokens("defmodule Broken do\n  def one() do\n    1\n  end\n")
         .expect("scanner should tokenize parser fixture");

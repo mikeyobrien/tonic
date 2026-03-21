@@ -9,7 +9,7 @@ An LLM-first error answers: (1) What went wrong? (2) Where? (3) How to fix it?
 ## Metrics
 
 - **Primary**: Number of error categories with actionable fix suggestions
-- **Current Best**: 114/114 representative parser + typing + resolver + CLI diagnostics checks green (run 15)
+- **Current Best**: 128/128 representative parser + typing + resolver + CLI diagnostics checks green (run 16)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ## Benchmark Commands
@@ -66,3 +66,4 @@ done
 - **Run 13 (KEEP, metric=100/100)**: Added diagnostic-only E2001 numeric operand hints for bitwise operators, range bounds, and unary bitwise-not on already-failing concrete int-only mismatches, then expanded representative typing + CLI coverage for bool/string/nil numeric misuse. Hypothesis: confirmed — numeric operand failures become more one-shot-fixable for LLMs when E2001 explains the bad operand kind and suggests a concrete conversion or replacement without changing dynamic arithmetic semantics.
 - **Run 14 (KEEP, metric=108/108)**: Added parser-side `[E0010]` missing-comma diagnostics for parenthesized/no-paren call arguments and function/protocol parameter lists, then expanded representative parser + CLI coverage for those separator mistakes. Hypothesis: confirmed — list-specific missing-comma diagnostics help LLMs repair common separator omissions in one shot instead of chasing generic parse or downstream arity errors.
 - **Run 15 (KEEP, metric=114/114)**: Extended parser-side `[E0010]` missing-comma diagnostics to `with` clause lists plus `for` generator/option lists, then expanded representative parser + CLI coverage for those control-form separator mistakes. Hypothesis: confirmed — control-form missing-comma diagnostics help LLMs repair multi-clause `with`/`for` omissions in one shot instead of chasing misleading missing-`do` parser errors.
+- **Run 16 (KEEP, metric=128/128)**: Extended parser-side `[E0002]` unclosed-delimiter diagnostics to grouped expressions, call/capture parentheses, index access, and function/protocol parameter lists, then expanded representative parser + CLI coverage for those missing-closer failures. Hypothesis: confirmed — construct-aware unclosed-delimiter diagnostics help LLMs repair missing `)`/`]` mistakes in one shot instead of chasing bare `expected )` / `expected ]` parser errors.

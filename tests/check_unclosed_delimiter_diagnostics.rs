@@ -1,0 +1,142 @@
+use std::fs;
+use std::path::Path;
+mod common;
+
+#[test]
+fn check_reports_unclosed_grouped_expression_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-grouped-expression",
+        "unclosed_group.tn",
+        "defmodule Demo do\n  def run() do\n    (1 + 2\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: grouped expression is missing ')'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add ')' to close the grouped expression"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_call_argument_list_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-call-args",
+        "unclosed_call.tn",
+        "defmodule Demo do\n  def run() do\n    Math.add(1, 2\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: call argument list is missing ')'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`Math.add(left, right)`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_capture_expression_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-capture-expression",
+        "unclosed_capture.tn",
+        "defmodule Demo do\n  def run() do\n    &(&1 + 1\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: capture expression is missing ')'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`&(&1 + 1)`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_index_access_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-index-access",
+        "unclosed_index.tn",
+        "defmodule Demo do\n  def run(value) do\n    value[0\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: index access is missing ']'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`value[index]`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_function_param_list_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-function-params",
+        "unclosed_function_params.tn",
+        "defmodule Demo do\n  def run(left, right do\n    left + right\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: function parameter list is missing ')'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`def run(left, right) do ... end`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_protocol_param_list_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-protocol-params",
+        "unclosed_protocol_params.tn",
+        "defmodule Demo do\n  defprotocol Size do\n    def size(left, right\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: protocol parameter list is missing ')'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`def size(left, right)`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+fn run_check(fixture_name: &str, file_name: &str, source: &str) -> String {
+    let fixture_root = common::unique_fixture_root(fixture_name);
+    let examples_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+    let source_path = examples_dir.join(file_name);
+    fs::write(&source_path, source).expect("fixture setup should write invalid source file");
+
+    let relative_path = relative_example_path(&source_path);
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["check", relative_path.as_str()])
+        .output()
+        .expect("check command should run");
+
+    assert!(
+        !output.status.success(),
+        "expected check command to fail for unclosed delimiters"
+    );
+
+    String::from_utf8(output.stderr).expect("stderr should be utf8")
+}
+
+fn relative_example_path(path: &Path) -> String {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("fixture file name should be utf8");
+    format!("examples/{file_name}")
+}
