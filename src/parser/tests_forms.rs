@@ -95,6 +95,78 @@ fn parse_ast_reports_missing_no_paren_call_arg_comma_with_repair_hint() {
 }
 
 #[test]
+fn parse_ast_reports_missing_with_clause_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    with ok <- ok(1)\n         value <- ok + 1 do\n      value\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject with clauses without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in with clauses; found IDENT(value) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate with clauses with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`with left <- first(), right <- second() do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_for_generator_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2)\n        y <- list(3, 4) do\n      {x, y}\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject for generators without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in for clauses; found IDENT(y) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate for generators and options with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`for x <- xs, y <- ys, into: [] do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_for_option_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), into: []\n        reduce: 0 do\n      acc -> acc + x\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject for options without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in for clauses; found IDENT(reduce) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate for generators and options with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`for x <- xs, y <- ys, into: [] do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_supports_pin_patterns_case_guards_and_match_operator() {
     let tokens = scan_tokens(
         "defmodule PatternDemo do\n  def run() do\n    case list(7, 8) do\n      [^value, tail] when tail == 8 -> value = tail\n      _ -> 0\n    end\n  end\n\n  def value() do\n    7\n  end\nend\n",

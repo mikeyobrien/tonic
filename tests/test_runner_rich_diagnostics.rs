@@ -219,6 +219,31 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_call_commas() {
     assert!(stderr.contains("3 |     tuple 1 2"));
 }
 
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_with_clause_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-with-clause-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    with ok <- ok(1)\n         value <- ok + 1 do\n      value\n    end\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in with clauses; found IDENT(value) instead."));
+    assert!(stderr.contains("hint: separate with clauses with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:4:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("4 |          value <- ok + 1 do"));
+}
+
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
 

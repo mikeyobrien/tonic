@@ -101,6 +101,13 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            if self.current_starts_missing_with_clause_comma() {
+                return Err(self.missing_comma_error(
+                    "with clauses",
+                    "separate with clauses with commas, for example `with left <- first(), right <- second() do ... end`",
+                ));
+            }
+
             break;
         }
 
@@ -184,6 +191,12 @@ impl<'a> Parser<'a> {
                 if self.match_kind(TokenKind::Comma) {
                     continue;
                 }
+                if self.current_starts_missing_for_clause_comma() {
+                    return Err(self.missing_comma_error(
+                        "for clauses",
+                        "separate for generators and options with commas, for example `for x <- xs, y <- ys, into: [] do ... end`",
+                    ));
+                }
                 break;
             }
 
@@ -199,6 +212,12 @@ impl<'a> Parser<'a> {
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
+            }
+            if self.current_starts_missing_for_clause_comma() {
+                return Err(self.missing_comma_error(
+                    "for clauses",
+                    "separate for generators and options with commas, for example `for x <- xs, y <- ys, into: [] do ... end`",
+                ));
             }
             break;
         }

@@ -80,6 +80,24 @@ pub(crate) fn token_can_start_no_paren_arg(kind: TokenKind) -> bool {
     )
 }
 
+pub(crate) fn token_can_start_pattern(kind: TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Ident
+            | TokenKind::Atom
+            | TokenKind::Integer
+            | TokenKind::String
+            | TokenKind::LBrace
+            | TokenKind::LBracket
+            | TokenKind::Percent
+            | TokenKind::Caret
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::Nil
+            | TokenKind::LtLt
+    )
+}
+
 pub fn parse_ast(tokens: &[Token]) -> Result<Ast, ParserError> {
     Parser::new(tokens).parse_program()
 }
@@ -298,23 +316,69 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn current_starts_missing_param_comma(&self) -> bool {
+        self.current()
+            .is_some_and(|token| token_can_start_pattern(token.kind()))
+    }
+
+    pub(crate) fn current_starts_missing_with_clause_comma(&self) -> bool {
+        self.current()
+            .is_some_and(|token| token_can_start_pattern(token.kind()))
+            && self.current_starts_clause_before_control_boundary(TokenKind::LeftArrow)
+    }
+
+    pub(crate) fn current_starts_missing_for_clause_comma(&self) -> bool {
         self.current().is_some_and(|token| {
-            matches!(
-                token.kind(),
-                TokenKind::Ident
-                    | TokenKind::Atom
-                    | TokenKind::Integer
-                    | TokenKind::String
-                    | TokenKind::LBrace
-                    | TokenKind::LBracket
-                    | TokenKind::Percent
-                    | TokenKind::Caret
-                    | TokenKind::True
-                    | TokenKind::False
-                    | TokenKind::Nil
-                    | TokenKind::LtLt
-            )
+            (token.kind() == TokenKind::Ident
+                && self
+                    .peek(1)
+                    .is_some_and(|next| next.kind() == TokenKind::Colon))
+                || (token_can_start_pattern(token.kind())
+                    && self.current_starts_clause_before_control_boundary(TokenKind::LeftArrow))
         })
+    }
+
+    fn current_starts_clause_before_control_boundary(&self, marker: TokenKind) -> bool {
+        let mut paren_depth = 0usize;
+        let mut brace_depth = 0usize;
+        let mut bracket_depth = 0usize;
+        let mut bitstring_depth = 0usize;
+
+        for token in &self.tokens[self.index..] {
+            match token.kind() {
+                TokenKind::LParen => paren_depth += 1,
+                TokenKind::RParen => paren_depth = paren_depth.saturating_sub(1),
+                TokenKind::LBrace => brace_depth += 1,
+                TokenKind::RBrace => brace_depth = brace_depth.saturating_sub(1),
+                TokenKind::LBracket => bracket_depth += 1,
+                TokenKind::RBracket => bracket_depth = bracket_depth.saturating_sub(1),
+                TokenKind::LtLt => bitstring_depth += 1,
+                TokenKind::GtGt => bitstring_depth = bitstring_depth.saturating_sub(1),
+                kind if paren_depth == 0
+                    && brace_depth == 0
+                    && bracket_depth == 0
+                    && bitstring_depth == 0
+                    && kind == marker =>
+                {
+                    return true;
+                }
+                TokenKind::Comma
+                | TokenKind::Do
+                | TokenKind::Else
+                | TokenKind::End
+                | TokenKind::Semicolon
+                | TokenKind::Eof
+                    if paren_depth == 0
+                        && brace_depth == 0
+                        && bracket_depth == 0
+                        && bitstring_depth == 0 =>
+                {
+                    return false;
+                }
+                _ => {}
+            }
+        }
+
+        false
     }
 
     fn anonymous_fn_clause_signature_example(arity: usize) -> String {

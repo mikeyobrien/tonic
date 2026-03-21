@@ -43,6 +43,60 @@ fn check_reports_no_paren_call_missing_comma_parse_error() {
 }
 
 #[test]
+fn check_reports_with_clause_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-with-clauses",
+        "with_clause_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    with ok <- ok(1)\n         value <- ok + 1 do\n      value\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in with clauses; found IDENT(value) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate with clauses with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_for_generator_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-for-generators",
+        "for_generator_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2)\n        y <- list(3, 4) do\n      {x, y}\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in for clauses; found IDENT(y) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate for generators and options with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_for_option_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-for-options",
+        "for_option_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), into: []\n        reduce: 0 do\n      acc -> acc + x\n    end\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in for clauses; found IDENT(reduce) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate for generators and options with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn check_reports_function_param_missing_comma_parse_error() {
     let stderr = run_check(
         "check-missing-comma-function-params",
