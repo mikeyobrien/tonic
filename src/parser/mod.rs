@@ -271,6 +271,80 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn anonymous_fn_clause_signature_example(arity: usize) -> String {
+        match arity {
+            0 => "-> ...".to_string(),
+            1 => "value -> ...".to_string(),
+            2 => "left, right -> ...".to_string(),
+            _ => format!(
+                "{} -> ...",
+                (1..=arity)
+                    .map(|index| format!("arg{index}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    }
+
+    pub(crate) fn missing_named_capture_arity_error(
+        &self,
+        offset: usize,
+        target: &str,
+    ) -> ParserError {
+        ParserError::at_span(
+            format!(
+                "[E0009] missing '/arity' in named function capture `&{target}`. hint: write `&{target}/arity`, for example `&{target}/2` if the function takes two arguments"
+            ),
+            Span::new(offset, offset + 1),
+        )
+    }
+
+    pub(crate) fn empty_capture_expression_error(&self, offset: usize) -> ParserError {
+        ParserError::at_span(
+            "[E0009] empty capture expression `&()`. hint: wrap an expression that uses placeholders, for example `&(&1 + 1)` or `&(expr_with_&1)`",
+            Span::new(offset, offset + 1),
+        )
+    }
+
+    pub(crate) fn invalid_capture_placeholder_error(
+        &self,
+        offset: usize,
+        placeholder: usize,
+    ) -> ParserError {
+        ParserError::at_span(
+            format!(
+                "[E0009] invalid capture placeholder `&{placeholder}`. hint: capture placeholders start at `&1`; replace `&{placeholder}` with `&1` or another positive index"
+            ),
+            Span::new(offset, offset + 1),
+        )
+    }
+
+    pub(crate) fn anonymous_function_clause_arity_mismatch_error(
+        &self,
+        clause_span: Span,
+        expected_arity: usize,
+        found_arity: usize,
+    ) -> ParserError {
+        let expected_label = if expected_arity == 1 {
+            "parameter"
+        } else {
+            "parameters"
+        };
+        let found_label = if found_arity == 1 {
+            "parameter"
+        } else {
+            "parameters"
+        };
+        let example = Self::anonymous_fn_clause_signature_example(expected_arity);
+
+        ParserError::at_span(
+            format!(
+                "[E0009] anonymous function clause arity mismatch: the first clause takes {expected_arity} {expected_label}, but this clause takes {found_arity} {found_label}. hint: make every clause in the same 'fn' use the same arity, for example `{example}`"
+            ),
+            clause_span,
+        )
+    }
+
     pub(crate) fn unexpected_arrow_error(&self) -> ParserError {
         ParserError::at_current(
             "[E0004] unexpected '->' outside a valid branch. hint: use 'fn ... -> ... end' for anonymous functions, or move '->' into a branch inside case/cond/with/for/try",

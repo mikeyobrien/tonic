@@ -215,6 +215,90 @@ fn parse_ast_supports_named_function_capture_shorthand() {
 }
 
 #[test]
+fn parse_ast_reports_missing_named_capture_arity_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    &Math.add\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing capture arity");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0009] missing '/arity' in named function capture `&Math.add`."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: write `&Math.add/arity`, for example `&Math.add/2`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_empty_capture_expression_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    &()\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject empty capture expressions");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0009] empty capture expression `&()`."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: wrap an expression that uses placeholders"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`&(expr_with_&1)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_invalid_capture_placeholder_zero_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    (&0)\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject &0 capture placeholders");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0009] invalid capture placeholder `&0`."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: capture placeholders start at `&1`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_anonymous_function_clause_arity_mismatch_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    fn value -> value; left, right -> left + right end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject fn clause arity mismatches");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0009] anonymous function clause arity mismatch: the first clause takes 1 parameter, but this clause takes 2 parameters."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: make every clause in the same 'fn' use the same arity"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`value -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_supports_multi_clause_anonymous_functions_with_guards() {
     let tokens = scan_tokens(
         "defmodule Demo do\n  def run() do\n    (fn {:ok, value} when is_integer(value) -> value; {:ok, _} -> -1; _ -> 0 end).({:ok, 4})\n  end\nend\n",

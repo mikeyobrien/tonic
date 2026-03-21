@@ -9,7 +9,7 @@ An LLM-first error answers: (1) What went wrong? (2) Where? (3) How to fix it?
 ## Metrics
 
 - **Primary**: Number of error categories with actionable fix suggestions
-- **Current Best**: 84/84 representative parser + typing + resolver + CLI diagnostics checks green (run 11)
+- **Current Best**: 91/91 representative parser + typing + resolver + CLI diagnostics checks green (run 12)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ## Benchmark Commands
@@ -62,3 +62,4 @@ done
 - **Run 9 (KEEP, metric=49/49)**: Added diagnostic-only E2002 arity-mismatch helpers for exact/range/minimum arities, threaded call-expression offsets through existing typing inference error paths, and expanded representative typing + CLI coverage for module calls, builtins, guard builtins, and named captures. Hypothesis: confirmed — arity errors become materially more self-correctable for LLMs when they include accepted arities, repair guidance, and source locations without changing typing semantics.
 - **Run 10 (KEEP, metric=79/79)**: Added diagnostic-only E1001 undefined-symbol suggestion plumbing for local/imported/module-qualified call typos, plus representative resolver + CLI coverage for typo, missing-import, and module-qualified miss cases. Hypothesis: confirmed — undefined-call failures become materially more one-shot-fixable for LLMs when E1001 points to the closest callable target or missing import/module guidance without changing resolution semantics.
 - **Run 11 (KEEP, metric=84/84)**: Added shared parser-side `[E0008]` missing-map-entry `=>` diagnostics for map literals and map patterns, then expanded representative parser + CLI coverage for malformed `%{key value}` entries and broken map-pattern branches inside `case`. Hypothesis: confirmed — dedicated map-entry separator diagnostics give LLMs the exact missing token and repair pattern for a common `%{...}` syntax slip without changing parse semantics.
+- **Run 12 (KEEP, metric=91/91)**: Added parser-side `[E0009]` capture and anonymous-function diagnostics for missing named-capture `/arity`, empty `&()` expressions, invalid `&0` placeholders, and mismatched `fn` clause arities, then expanded representative parser + CLI coverage for those failures. Hypothesis: confirmed — dedicated capture/fn diagnostics turn common `&` shorthand and multi-clause `fn` mistakes into one-shot-fixable parser feedback without changing parse semantics.

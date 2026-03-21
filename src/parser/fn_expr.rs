@@ -9,22 +9,21 @@ impl<'a> Parser<'a> {
         let mut expected_arity = None;
 
         loop {
-            let clause = self.parse_anonymous_function_clause()?;
+            let (clause_span, patterns, guard, body) = self.parse_anonymous_function_clause()?;
+            let clause_arity = patterns.len();
             if let Some(arity) = expected_arity {
-                if arity != clause.0.len() {
-                    return Err(ParserError::at_current(
-                        format!(
-                            "anonymous function clause arity mismatch: expected {arity}, found {}",
-                            clause.0.len()
-                        ),
-                        self.current(),
+                if arity != clause_arity {
+                    return Err(self.anonymous_function_clause_arity_mismatch_error(
+                        clause_span,
+                        arity,
+                        clause_arity,
                     ));
                 }
             } else {
-                expected_arity = Some(clause.0.len());
+                expected_arity = Some(clause_arity);
             }
 
-            clauses.push(clause);
+            clauses.push((patterns, guard, body));
 
             if self.match_kind(TokenKind::Semicolon) {
                 if self.check(TokenKind::End) {
@@ -48,7 +47,7 @@ impl<'a> Parser<'a> {
 
     fn parse_anonymous_function_clause(
         &mut self,
-    ) -> Result<(Vec<Pattern>, Option<Expr>, Expr), ParserError> {
+    ) -> Result<(Span, Vec<Pattern>, Option<Expr>, Expr), ParserError> {
         let clause_span = self
             .current()
             .expect("anonymous function clause should start with a token")
@@ -77,7 +76,7 @@ impl<'a> Parser<'a> {
             "add '->' between the anonymous function parameters and clause body",
         )?;
         let body = self.parse_branch_body()?;
-        Ok((patterns, guard, body))
+        Ok((clause_span, patterns, guard, body))
     }
 
     fn lower_anonymous_function_clauses(
@@ -157,6 +156,10 @@ impl<'a> Parser<'a> {
         let offset = self.expect_token(TokenKind::Ampersand, "&")?.span().start();
         self.expect(TokenKind::LParen, "(")?;
 
+        if self.check(TokenKind::RParen) {
+            return Err(self.empty_capture_expression_error(offset));
+        }
+
         self.capture_param_max_stack.push(0);
         let body = self.parse_expression()?;
         let max_capture_index = self
@@ -193,7 +196,10 @@ impl<'a> Parser<'a> {
             segments.push(self.expect_ident("captured module or function segment")?);
         }
 
-        self.expect(TokenKind::Slash, "/ in function capture")?;
+        let target = segments.join(".");
+        if !self.match_kind(TokenKind::Slash) {
+            return Err(self.missing_named_capture_arity_error(offset, &target));
+        }
 
         let arity = self
             .expect_token(TokenKind::Integer, "function capture arity")?

@@ -295,10 +295,7 @@ impl<'a> Parser<'a> {
                     })?;
 
                 if placeholder == 0 {
-                    return Err(ParserError::at_current(
-                        "capture placeholder index must be >= 1",
-                        self.current(),
-                    ));
+                    return Err(self.invalid_capture_placeholder_error(offset, placeholder));
                 }
 
                 if let Some(current_max) = self.capture_param_max_stack.last_mut() {
