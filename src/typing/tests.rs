@@ -22,8 +22,8 @@ fn infer_types_accepts_dynamic_operands_for_arithmetic() {
     let tokens = scan_tokens(source).expect("scanner should tokenize dynamic arithmetic fixture");
     let ast = parse_ast(&tokens).expect("parser should build dynamic arithmetic fixture ast");
 
-    let summary = infer_types(&ast)
-        .expect("type inference should accept dynamic operands for arithmetic");
+    let summary =
+        infer_types(&ast).expect("type inference should accept dynamic operands for arithmetic");
 
     assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
 }
@@ -61,7 +61,10 @@ fn infer_types_keeps_not_strictly_boolean() {
     let error = infer_types(&ast).expect_err("type inference should reject not on non-boolean");
 
     assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
-    assert_eq!(error.message(), "type mismatch: expected bool, found int");
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected bool, found int; hint: use a boolean expression here, for example `value != 0` or `is_nil(value)`"
+    );
 }
 
 #[test]
@@ -155,7 +158,10 @@ fn infer_types_rejects_host_call_with_non_atom_key() {
     let error = infer_types(&ast).expect_err("type inference should reject non-atom host keys");
 
     assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
-    assert_eq!(error.message(), "type mismatch: expected atom, found int");
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected atom, found int; hint: pass an atom key as the first argument, for example `:sum_ints`"
+    );
 }
 
 #[test]
@@ -233,7 +239,27 @@ fn infer_types_requires_boolean_case_guard_expressions() {
     let error = infer_types(&ast).expect_err("type inference should reject non-boolean guards");
 
     assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
-    assert_eq!(error.message(), "type mismatch: expected bool, found int");
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected bool, found int; hint: use a boolean expression here, for example `value != 0` or `is_nil(value)`"
+    );
+}
+
+#[test]
+fn infer_types_requires_boolean_function_guard_expressions() {
+    let source = "defmodule Demo do\n  def choose(value) when 1 do\n    value\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize function guard typing fixture");
+    let ast = parse_ast(&tokens).expect("parser should build function guard typing fixture ast");
+
+    let error =
+        infer_types(&ast).expect_err("type inference should reject non-boolean function guards");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected bool, found int; hint: use a boolean expression here, for example `value != 0` or `is_nil(value)`"
+    );
 }
 
 #[test]

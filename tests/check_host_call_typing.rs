@@ -28,7 +28,7 @@ fn check_rejects_host_call_with_non_atom_key() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
 
-    assert!(stderr.contains("error: [E2001] type mismatch: expected atom, found int"));
+    assert!(stderr.contains("error: [E2001] type mismatch: expected atom, found int; hint: pass an atom key as the first argument, for example `:sum_ints`"));
     assert!(
         stderr.contains("--> examples/host_call_non_atom_key.tn:3:15"),
         "expected filename:line:col location, got: {stderr}"

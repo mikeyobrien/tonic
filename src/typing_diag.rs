@@ -34,12 +34,25 @@ impl TypingError {
     }
 
     pub fn type_mismatch(expected: &str, found: &str, offset: Option<usize>) -> Self {
-        let hint = "";
-        Self {
-            code: Some(TypingDiagnosticCode::TypeMismatch),
-            message: format!("type mismatch: expected {expected}, found {found}{hint}"),
+        Self::type_mismatch_with_hint(expected, found, None, offset)
+    }
+
+    pub fn bool_type_mismatch(found: &str, offset: Option<usize>) -> Self {
+        Self::type_mismatch_with_hint(
+            "bool",
+            found,
+            Some("use a boolean expression here, for example `value != 0` or `is_nil(value)`"),
             offset,
-        }
+        )
+    }
+
+    pub fn host_call_key_type_mismatch(found: &str, offset: Option<usize>) -> Self {
+        Self::type_mismatch_with_hint(
+            "atom",
+            found,
+            Some("pass an atom key as the first argument, for example `:sum_ints`"),
+            offset,
+        )
     }
 
     pub fn question_requires_result(found: &str, offset: Option<usize>) -> Self {
@@ -56,6 +69,22 @@ impl TypingError {
             "non-exhaustive case expression: missing wildcard branch",
             offset,
         )
+    }
+
+    fn type_mismatch_with_hint(
+        expected: &str,
+        found: &str,
+        hint: Option<&str>,
+        offset: Option<usize>,
+    ) -> Self {
+        let hint = hint
+            .map(|hint| format!("; hint: {hint}"))
+            .unwrap_or_default();
+        Self {
+            code: Some(TypingDiagnosticCode::TypeMismatch),
+            message: format!("type mismatch: expected {expected}, found {found}{hint}"),
+            offset,
+        }
     }
 
     fn result_match(

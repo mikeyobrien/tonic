@@ -116,9 +116,7 @@ pub(super) fn infer_expression_type(
                     Ok(Type::Bool)
                 }
                 crate::parser::UnaryOp::Bang => Ok(Type::Bool),
-                crate::parser::UnaryOp::Plus | crate::parser::UnaryOp::Minus => {
-                    Ok(Type::Dynamic)
-                }
+                crate::parser::UnaryOp::Plus | crate::parser::UnaryOp::Minus => Ok(Type::Dynamic),
                 crate::parser::UnaryOp::BitwiseNot => {
                     solver.unify(Type::Int, value_type, Some(value.offset()))?;
                     Ok(Type::Int)
@@ -140,10 +138,7 @@ pub(super) fn infer_expression_type(
                 | BinaryOp::Rem => Ok(Type::Dynamic),
                 BinaryOp::Div => Ok(Type::Dynamic),
                 BinaryOp::Eq | BinaryOp::NotEq => Ok(Type::Bool),
-                BinaryOp::Lt
-                | BinaryOp::Lte
-                | BinaryOp::Gt
-                | BinaryOp::Gte => Ok(Type::Bool),
+                BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte => Ok(Type::Bool),
                 BinaryOp::AndAnd | BinaryOp::OrOr => Ok(Type::Dynamic),
                 BinaryOp::And | BinaryOp::Or => {
                     solver.unify(Type::Bool, left_type, Some(left.offset()))?;
@@ -372,8 +367,7 @@ fn validate_host_call_key_type(
         key_type,
         Type::Int | Type::Float | Type::Bool | Type::Nil | Type::String | Type::Result { .. }
     ) {
-        return Err(TypingError::type_mismatch(
-            "atom",
+        return Err(TypingError::host_call_key_type_mismatch(
             key_type.label(),
             key_offset,
         ));
