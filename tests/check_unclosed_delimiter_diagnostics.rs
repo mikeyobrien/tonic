@@ -93,6 +93,72 @@ fn check_reports_unclosed_function_param_list_parse_error() {
 }
 
 #[test]
+fn check_reports_unclosed_alias_child_list_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-alias-child-list",
+        "unclosed_alias_child_list.tn",
+        "defmodule Demo do\n  alias Math.{Add, Sub\n\n  def run() do\n    Add.value()\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: alias child list is missing '}'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add '}' to close the alias child list"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`alias Math.{Bar, Baz}`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_import_filter_list_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-import-filter-list",
+        "unclosed_import_filter_list.tn",
+        "defmodule Demo do\n  import Enum, only: [map: 2\n\n  def run() do\n    map([1], fn value -> value end)\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: import only filter list is missing ']'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add ']' to close the import only filter list"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`import Enum, only: [map: 2]`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_unclosed_structured_raise_arguments_parse_error() {
+    let stderr = run_check(
+        "check-unclosed-structured-raise-arguments",
+        "unclosed_structured_raise_arguments.tn",
+        "defmodule Demo do\n  def run() do\n    raise(RuntimeError, message: \"oops\"\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: structured raise arguments is missing ')'."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("hint: add ')' to close the structured raise arguments"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`raise(RuntimeError, message: \"oops\")`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn check_reports_unclosed_bitstring_literal_parse_error() {
     let stderr = run_check(
         "check-unclosed-bitstring-literal",

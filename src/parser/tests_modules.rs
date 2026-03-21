@@ -159,6 +159,105 @@ fn parse_ast_rejects_malformed_import_filter_options() {
 }
 
 #[test]
+fn parse_ast_reports_missing_alias_child_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  alias Math.{Add Sub}\n\n  def run() do\n    Add.value()\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject alias child lists without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in alias child list; found IDENT(Sub) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate alias children with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`alias Math.{Bar, Baz}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_alias_child_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  alias Math.{Add, Sub\n\n  def run() do\n    Add.value()\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed alias child lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: alias child list is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the alias child list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`alias Math.{Bar, Baz}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_import_filter_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  import Enum, only: [map: 2 reduce: 3]\n\n  def run() do\n    map([1], fn value -> value end)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject import filters without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in import only filter list; found IDENT(reduce) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate import only entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`import Enum, only: [map: 2, reduce: 3]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_import_filter_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  import Enum, only: [map: 2\n\n  def run() do\n    map([1], fn value -> value end)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed import filter lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: import only filter list is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the import only filter list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`import Enum, only: [map: 2]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_missing_function_param_comma_with_repair_hint() {
     let tokens =
         scan_tokens("defmodule Demo do\n  def run(left right) do\n    left + right\n  end\nend\n")

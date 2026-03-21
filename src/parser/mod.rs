@@ -407,6 +407,14 @@ impl<'a> Parser<'a> {
         })
     }
 
+    pub(crate) fn current_starts_missing_alias_child_comma(&self) -> bool {
+        self.current_starts_module_reference()
+    }
+
+    pub(crate) fn current_starts_missing_keyword_entry_comma(&self) -> bool {
+        self.starts_keyword_literal_entry()
+    }
+
     fn current_starts_clause_before_control_boundary(&self, marker: TokenKind) -> bool {
         let mut paren_depth = 0usize;
         let mut brace_depth = 0usize;

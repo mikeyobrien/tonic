@@ -270,6 +270,58 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_with_clause_commas(
 }
 
 #[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_alias_child_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-alias-child-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  alias Math.{Add Sub}\n\n  def test_bad() do\n    Add.value()\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in alias child list; found IDENT(Sub) instead."));
+    assert!(stderr.contains("hint: separate alias children with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:2:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("2 |   alias Math.{Add Sub}"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_unclosed_structured_raise_arguments() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-unclosed-structured-raise-arguments",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    raise(RuntimeError, message: \"oops\"\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: structured raise arguments is missing ')'.")
+    );
+    assert!(stderr.contains("hint: add ')' to close the structured raise arguments"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:10"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     raise(RuntimeError, message: \"oops\""));
+}
+
+#[test]
 fn test_command_surfaces_rich_source_diagnostics_for_missing_bitstring_commas() {
     let fixture_root = write_single_test_file(
         "test-rich-diag-missing-bitstring-comma",

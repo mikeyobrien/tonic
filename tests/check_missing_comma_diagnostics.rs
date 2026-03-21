@@ -97,6 +97,76 @@ fn check_reports_for_option_missing_comma_parse_error() {
 }
 
 #[test]
+fn check_reports_alias_child_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-alias-children",
+        "alias_child_missing_comma.tn",
+        "defmodule Demo do\n  alias Math.{Add Sub}\n\n  def run() do\n    Add.value()\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains("[E0010] missing ',' in alias child list; found IDENT(Sub) instead."),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate alias children with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`alias Math.{Bar, Baz}`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_import_filter_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-import-filter",
+        "import_filter_missing_comma.tn",
+        "defmodule Demo do\n  import Enum, only: [map: 2 reduce: 3]\n\n  def run() do\n    map([1], fn value -> value end)\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains(
+            "[E0010] missing ',' in import only filter list; found IDENT(reduce) instead."
+        ),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate import only entries with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`import Enum, only: [map: 2, reduce: 3]`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn check_reports_structured_raise_keyword_missing_comma_parse_error() {
+    let stderr = run_check(
+        "check-missing-comma-structured-raise",
+        "structured_raise_missing_comma.tn",
+        "defmodule Demo do\n  def run() do\n    raise(RuntimeError, message: \"oops\" detail: 1)\n  end\nend\n",
+    );
+
+    assert!(
+        stderr.contains(
+            "[E0010] missing ',' in structured raise arguments; found IDENT(detail) instead."
+        ),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("separate structured raise keyword arguments with commas"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+    assert!(
+        stderr.contains("`raise(RuntimeError, message: \"oops\", detail: info)`"),
+        "unexpected parser diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn check_reports_bitstring_literal_missing_comma_parse_error() {
     let stderr = run_check(
         "check-missing-comma-bitstring-literal",

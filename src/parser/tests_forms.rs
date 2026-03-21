@@ -95,6 +95,59 @@ fn parse_ast_reports_missing_no_paren_call_arg_comma_with_repair_hint() {
 }
 
 #[test]
+fn parse_ast_reports_missing_structured_raise_keyword_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    raise(RuntimeError, message: \"oops\" detail: 1)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens)
+        .expect_err("parser should reject structured raise keyword arguments without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in structured raise arguments; found IDENT(detail) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate structured raise keyword arguments with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`raise(RuntimeError, message: \"oops\", detail: info)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_structured_raise_arguments_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    raise(RuntimeError, message: \"oops\"\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens)
+        .expect_err("parser should reject unclosed structured raise argument lists");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0002] unclosed delimiter: structured raise arguments is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the structured raise arguments"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`raise(RuntimeError, message: \"oops\")`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_missing_bitstring_literal_comma_with_repair_hint() {
     let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    <<1 2>>\n  end\nend\n")
         .expect("scanner should tokenize parser fixture");

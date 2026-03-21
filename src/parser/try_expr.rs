@@ -178,8 +178,14 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_raise_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::Raise, "raise")?.span().start();
 
-        let has_parens = self.match_kind(TokenKind::LParen);
+        let opening_span = if self.match_kind(TokenKind::LParen) {
+            Some(self.tokens[self.index - 1].span())
+        } else {
+            None
+        };
+        let mut is_structured_raise = false;
         let error = if self.current_starts_module_reference() {
+            is_structured_raise = true;
             let module_offset = self
                 .current()
                 .map(|token| token.span().start())
@@ -202,8 +208,18 @@ impl<'a> Parser<'a> {
             error
         };
 
-        if has_parens {
-            self.expect(TokenKind::RParen, ")")?;
+        if let Some(opening_span) = opening_span {
+            if is_structured_raise {
+                self.expect_closing_delimiter(
+                    TokenKind::RParen,
+                    ")",
+                    "structured raise arguments",
+                    opening_span,
+                    "add ')' to close the structured raise arguments, for example `raise(RuntimeError, message: \"oops\")`",
+                )?;
+            } else {
+                self.expect(TokenKind::RParen, ")")?;
+            }
         }
 
         Ok(Expr::raise(self.node_ids.next_expr(), offset, error))
@@ -225,13 +241,20 @@ impl<'a> Parser<'a> {
             entries.push(LabelExprEntry { key, value });
 
             if self.match_kind(TokenKind::Comma) {
-                if self.check(TokenKind::RParen) {
+                if !self.starts_keyword_literal_entry() {
                     return Err(ParserError::at_current(
                         "structured raise expects keyword arguments after module",
                         self.current(),
                     ));
                 }
                 continue;
+            }
+
+            if self.current_starts_missing_keyword_entry_comma() {
+                return Err(self.missing_comma_error(
+                    "structured raise arguments",
+                    "separate structured raise keyword arguments with commas, for example `raise(RuntimeError, message: \"oops\", detail: info)`",
+                ));
             }
 
             break;
