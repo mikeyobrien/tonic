@@ -56,6 +56,21 @@ fn check_reports_bool_hint_for_case_guard() {
 }
 
 #[test]
+fn check_reports_numeric_hint_for_bitwise_bool_operand() {
+    let stderr = run_check_fixture(
+        "check-type-mismatch-bitwise-bool",
+        "bitwise_bool_operand_hint.tn",
+        "defmodule Demo do\n  def run() do\n    true &&& 1\n  end\nend\n",
+    );
+
+    assert!(stderr.contains(
+        "error: [E2001] type mismatch: `&&&` requires ints on both sides, found bool on the left-hand side; hint: replace the boolean operand with an int value, or use `and`/`or` for boolean logic"
+    ));
+    assert!(stderr.contains("--> examples/bitwise_bool_operand_hint.tn:3:5"));
+    assert!(stderr.contains("3 |     true &&& 1"));
+}
+
+#[test]
 fn check_reports_atom_hint_for_host_call_key() {
     let stderr = run_check_fixture(
         "check-type-mismatch-host-call-key",

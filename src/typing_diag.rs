@@ -57,6 +57,48 @@ impl TypingError {
         )
     }
 
+    pub fn int_binary_operator_type_mismatch(
+        operator: &str,
+        side: &str,
+        found: &str,
+        offset: Option<usize>,
+    ) -> Self {
+        Self {
+            code: Some(TypingDiagnosticCode::TypeMismatch),
+            message: format!(
+                "type mismatch: `{operator}` requires ints on both sides, found {found} on the {side}; hint: {}",
+                Self::int_operator_hint(found, operator, true)
+            ),
+            offset,
+        }
+    }
+
+    pub fn int_range_bound_type_mismatch(side: &str, found: &str, offset: Option<usize>) -> Self {
+        Self {
+            code: Some(TypingDiagnosticCode::TypeMismatch),
+            message: format!(
+                "type mismatch: `..` requires int bounds, found {found} on the {side}; hint: {}",
+                Self::range_bound_hint(found)
+            ),
+            offset,
+        }
+    }
+
+    pub fn int_unary_operator_type_mismatch(
+        operator: &str,
+        found: &str,
+        offset: Option<usize>,
+    ) -> Self {
+        Self {
+            code: Some(TypingDiagnosticCode::TypeMismatch),
+            message: format!(
+                "type mismatch: `{operator}` requires an int operand, found {found}; hint: {}",
+                Self::int_operator_hint(found, operator, false)
+            ),
+            offset,
+        }
+    }
+
     pub fn arity_mismatch(
         target: &str,
         accepted_arities: &[usize],
@@ -217,6 +259,46 @@ impl TypingError {
                 rendered.push_str(forms.last().expect("non-empty forms should have last"));
                 rendered
             }
+        }
+    }
+
+    fn int_operator_hint(found: &str, operator: &str, allow_boolean_logic_hint: bool) -> String {
+        match found {
+            "string" => {
+                "convert the string to an int first, for example `String.to_integer(value)`"
+                    .to_string()
+            }
+            "float" => {
+                "round or truncate the float first, for example `round(value)` or `trunc(value)`"
+                    .to_string()
+            }
+            "bool" if allow_boolean_logic_hint => {
+                "replace the boolean operand with an int value, or use `and`/`or` for boolean logic"
+                    .to_string()
+            }
+            "bool" => {
+                format!("replace the boolean operand with an int before applying `{operator}`")
+            }
+            "nil" => format!("replace `nil` with an int before applying `{operator}`"),
+            "result" => "unwrap the Result to an int before using this operator".to_string(),
+            _ => format!("pass an int value before applying `{operator}`"),
+        }
+    }
+
+    fn range_bound_hint(found: &str) -> String {
+        match found {
+            "string" => {
+                "convert the string bound to an int first, for example `String.to_integer(value)`"
+                    .to_string()
+            }
+            "float" => {
+                "round or truncate the float bound first, for example `round(value)` or `trunc(value)`"
+                    .to_string()
+            }
+            "bool" => "replace the boolean bound with an int such as `0` or `1`".to_string(),
+            "nil" => "replace `nil` with an int bound before building the range".to_string(),
+            "result" => "unwrap the Result to an int before building the range".to_string(),
+            _ => "use an int value for each side of the range".to_string(),
         }
     }
 

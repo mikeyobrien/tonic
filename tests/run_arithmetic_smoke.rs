@@ -248,36 +248,38 @@ fn run_executes_remaining_comparison_operators() {
 }
 
 #[test]
-fn run_check_rejects_non_int_comparison_right_operand_with_type_mismatch() {
-    let fixture_root = common::unique_fixture_root("run-check-bool-comparison");
+fn run_check_rejects_string_range_upper_bound_with_numeric_hint() {
+    let fixture_root = common::unique_fixture_root("run-check-range-string-bound");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("bool_cmp.tn"),
-        "defmodule Demo do\n  def run() do\n    1 < false\n  end\nend\n",
+        examples_dir.join("range_string_bound.tn"),
+        "defmodule Demo do\n  def run() do\n    1..\"2\"\n  end\nend\n",
     )
-    .expect("fixture setup should write comparison source file");
+    .expect("fixture setup should write range source file");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["check", "examples/bool_cmp.tn"])
+        .args(["check", "examples/range_string_bound.tn"])
         .output()
         .expect("check command should run");
 
     assert!(
         !output.status.success(),
-        "expected check to fail for bool in comparison context, got status {:?}",
+        "expected check to fail for string range bound, got status {:?}",
         output.status.code()
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool"));
+    assert!(stderr.contains(
+        "error: [E2001] type mismatch: `..` requires int bounds, found string on the right-hand side; hint: convert the string bound to an int first, for example `String.to_integer(value)`"
+    ));
     assert!(
-        stderr.contains("--> examples/bool_cmp.tn:3:9"),
+        stderr.contains("--> examples/range_string_bound.tn:3:8"),
         "expected filename:line:col location, got: {stderr}"
     );
-    assert!(stderr.contains("3 |     1 < false"));
+    assert!(stderr.contains("3 |     1..\"2\""));
 }
 
 #[test]
@@ -312,36 +314,38 @@ fn run_division_by_zero_produces_runtime_error() {
 }
 
 #[test]
-fn run_check_rejects_non_int_left_operand_with_type_mismatch() {
-    let fixture_root = common::unique_fixture_root("run-check-bool-arithmetic");
+fn run_check_rejects_bool_bitwise_left_operand_with_numeric_hint() {
+    let fixture_root = common::unique_fixture_root("run-check-bool-bitwise");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("bool_add.tn"),
-        "defmodule Demo do\n  def run() do\n    true + 1\n  end\nend\n",
+        examples_dir.join("bool_bitwise.tn"),
+        "defmodule Demo do\n  def run() do\n    true &&& 1\n  end\nend\n",
     )
-    .expect("fixture setup should write bool arithmetic source file");
+    .expect("fixture setup should write bool bitwise source file");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["check", "examples/bool_add.tn"])
+        .args(["check", "examples/bool_bitwise.tn"])
         .output()
         .expect("check command should run");
 
     assert!(
         !output.status.success(),
-        "expected check to fail for bool in arithmetic context, got status {:?}",
+        "expected check to fail for bool in bitwise context, got status {:?}",
         output.status.code()
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool"));
+    assert!(stderr.contains(
+        "error: [E2001] type mismatch: `&&&` requires ints on both sides, found bool on the left-hand side; hint: replace the boolean operand with an int value, or use `and`/`or` for boolean logic"
+    ));
     assert!(
-        stderr.contains("--> examples/bool_add.tn:3:5"),
+        stderr.contains("--> examples/bool_bitwise.tn:3:5"),
         "expected filename:line:col location, got: {stderr}"
     );
-    assert!(stderr.contains("3 |     true + 1"));
+    assert!(stderr.contains("3 |     true &&& 1"));
 }
 
 #[test]
@@ -376,36 +380,38 @@ fn run_executes_unary_plus_and_minus() {
 }
 
 #[test]
-fn run_check_rejects_unary_minus_on_non_int_operand() {
-    let fixture_root = common::unique_fixture_root("run-check-unary-minus-bool");
+fn run_check_rejects_nil_bitwise_not_operand_with_numeric_hint() {
+    let fixture_root = common::unique_fixture_root("run-check-bitwise-not-nil");
     let examples_dir = fixture_root.join("examples");
 
     fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
     fs::write(
-        examples_dir.join("unary_minus_bool.tn"),
-        "defmodule Demo do\n  def run() do\n    -true\n  end\nend\n",
+        examples_dir.join("bitwise_not_nil.tn"),
+        "defmodule Demo do\n  def run() do\n    ~~~nil\n  end\nend\n",
     )
-    .expect("fixture setup should write unary bool source file");
+    .expect("fixture setup should write unary bitwise-not source file");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["check", "examples/unary_minus_bool.tn"])
+        .args(["check", "examples/bitwise_not_nil.tn"])
         .output()
         .expect("check command should run");
 
     assert!(
         !output.status.success(),
-        "expected check to fail for unary minus on bool, got status {:?}",
+        "expected check to fail for bitwise not on nil, got status {:?}",
         output.status.code()
     );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("error: [E2001] type mismatch: expected int, found bool"));
+    assert!(stderr.contains(
+        "error: [E2001] type mismatch: `~~~` requires an int operand, found nil; hint: replace `nil` with an int before applying `~~~`"
+    ));
     assert!(
-        stderr.contains("--> examples/unary_minus_bool.tn:3:6"),
+        stderr.contains("--> examples/bitwise_not_nil.tn:3:8"),
         "expected filename:line:col location, got: {stderr}"
     );
-    assert!(stderr.contains("3 |     -true"));
+    assert!(stderr.contains("3 |     ~~~nil"));
 }
 
 #[test]

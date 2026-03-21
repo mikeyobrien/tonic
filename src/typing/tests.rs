@@ -68,6 +68,51 @@ fn infer_types_keeps_not_strictly_boolean() {
 }
 
 #[test]
+fn infer_types_reports_bitwise_bool_operand_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    true &&& 1\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize bitwise bool fixture");
+    let ast = parse_ast(&tokens).expect("parser should build bitwise bool fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject bool bitwise operands");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: `&&&` requires ints on both sides, found bool on the left-hand side; hint: replace the boolean operand with an int value, or use `and`/`or` for boolean logic"
+    );
+}
+
+#[test]
+fn infer_types_reports_range_string_bound_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    1..\"2\"\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize range string fixture");
+    let ast = parse_ast(&tokens).expect("parser should build range string fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject string range bounds");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: `..` requires int bounds, found string on the right-hand side; hint: convert the string bound to an int first, for example `String.to_integer(value)`"
+    );
+}
+
+#[test]
+fn infer_types_reports_bitwise_not_nil_operand_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    ~~~nil\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize bitwise not nil fixture");
+    let ast = parse_ast(&tokens).expect("parser should build bitwise not nil fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject nil for bitwise not");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: `~~~` requires an int operand, found nil; hint: replace `nil` with an int before applying `~~~`"
+    );
+}
+
+#[test]
 fn infer_types_accepts_collection_constructor_builtins() {
     let source =
         "defmodule Demo do\n  def run() do\n    tuple(map(1, 2), keyword(3, 4))\n  end\nend\n";

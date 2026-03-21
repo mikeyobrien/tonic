@@ -130,7 +130,7 @@ pub(super) fn infer_expression_type(
                 crate::parser::UnaryOp::Bang => Ok(Type::Bool),
                 crate::parser::UnaryOp::Plus | crate::parser::UnaryOp::Minus => Ok(Type::Dynamic),
                 crate::parser::UnaryOp::BitwiseNot => {
-                    solver.unify(Type::Int, value_type, Some(value.offset()))?;
+                    require_int_unary_operand("~~~", value_type, value.offset(), solver)?;
                     Ok(Type::Int)
                 }
             }
@@ -169,14 +169,27 @@ pub(super) fn infer_expression_type(
                 | BinaryOp::BitwiseXor
                 | BinaryOp::BitwiseShiftLeft
                 | BinaryOp::BitwiseShiftRight => {
-                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
-                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
+                    let operator = bitwise_binary_operator_symbol(*op);
+                    require_int_binary_operand(
+                        operator,
+                        "left-hand side",
+                        left_type,
+                        left.offset(),
+                        solver,
+                    )?;
+                    require_int_binary_operand(
+                        operator,
+                        "right-hand side",
+                        right_type,
+                        right.offset(),
+                        solver,
+                    )?;
                     Ok(Type::Int)
                 }
                 BinaryOp::PlusPlus | BinaryOp::MinusMinus => Ok(Type::Dynamic),
                 BinaryOp::Range => {
-                    solver.unify(Type::Int, left_type, Some(left.offset()))?;
-                    solver.unify(Type::Int, right_type, Some(right.offset()))?;
+                    require_int_range_bound("left-hand side", left_type, left.offset(), solver)?;
+                    require_int_range_bound("right-hand side", right_type, right.offset(), solver)?;
                     Ok(Type::Dynamic)
                 }
                 BinaryOp::SteppedRange => Ok(Type::Dynamic),
@@ -373,6 +386,73 @@ fn question_requires_result_hint(value: &Expr) -> &'static str {
             "make this expression return `ok(...)` or `err(...)`, or remove the trailing `?`"
         }
         _ => "wrap this value with `ok(...)` or `err(...)`, or remove the trailing `?`",
+    }
+}
+
+fn require_int_unary_operand(
+    operator: &str,
+    value_type: Type,
+    offset: usize,
+    solver: &mut ConstraintSolver,
+) -> Result<(), TypingError> {
+    match solver.resolve(value_type.clone()) {
+        Type::Int | Type::Dynamic | Type::Var(_) => {
+            solver.unify(Type::Int, value_type, Some(offset))
+        }
+        other => Err(TypingError::int_unary_operator_type_mismatch(
+            operator,
+            other.label(),
+            Some(offset),
+        )),
+    }
+}
+
+fn require_int_binary_operand(
+    operator: &str,
+    side: &str,
+    value_type: Type,
+    offset: usize,
+    solver: &mut ConstraintSolver,
+) -> Result<(), TypingError> {
+    match solver.resolve(value_type.clone()) {
+        Type::Int | Type::Dynamic | Type::Var(_) => {
+            solver.unify(Type::Int, value_type, Some(offset))
+        }
+        other => Err(TypingError::int_binary_operator_type_mismatch(
+            operator,
+            side,
+            other.label(),
+            Some(offset),
+        )),
+    }
+}
+
+fn require_int_range_bound(
+    side: &str,
+    value_type: Type,
+    offset: usize,
+    solver: &mut ConstraintSolver,
+) -> Result<(), TypingError> {
+    match solver.resolve(value_type.clone()) {
+        Type::Int | Type::Dynamic | Type::Var(_) => {
+            solver.unify(Type::Int, value_type, Some(offset))
+        }
+        other => Err(TypingError::int_range_bound_type_mismatch(
+            side,
+            other.label(),
+            Some(offset),
+        )),
+    }
+}
+
+fn bitwise_binary_operator_symbol(op: BinaryOp) -> &'static str {
+    match op {
+        BinaryOp::BitwiseAnd => "&&&",
+        BinaryOp::BitwiseOr => "|||",
+        BinaryOp::BitwiseXor => "^^^",
+        BinaryOp::BitwiseShiftLeft => "<<<",
+        BinaryOp::BitwiseShiftRight => ">>>",
+        _ => unreachable!("bitwise_binary_operator_symbol only supports bitwise ops"),
     }
 }
 
