@@ -196,6 +196,45 @@ fn parse_ast_reports_missing_function_end() {
     );
 }
 
+#[test]
+fn parse_ast_reports_missing_module_do() {
+    let tokens = scan_tokens("defmodule Broken\n  def run() do\n    1\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing module do");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0006] missing 'do' to start module 'Broken'; found DEF(def) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after 'defmodule Broken' to begin the module body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_function_do() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run()\n    1\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing function do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0006] missing 'do' to start function 'run'; found INT(1) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains(
+            "hint: add 'do' after the function signature for 'run' to begin the function body"
+        ),
+        "unexpected parser error: {error}"
+    );
+}
+
 fn collect_node_ids(ast: &super::Ast) -> Vec<String> {
     let mut ids = Vec::new();
 

@@ -354,6 +354,68 @@ fn parse_ast_reports_missing_if_end() {
 }
 
 #[test]
+fn parse_ast_reports_missing_if_do() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(flag) do\n    if flag\n      1\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing if do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0006] missing 'do' to start if expression; found INT(1) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after the if condition to begin the then branch"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_case_do() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value\n      1 -> :one\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing case do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0006] missing 'do' to start case expression; found INT(1) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after the case subject to begin the case branches"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_try_do() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    try\n      risky()\n    rescue\n      _ -> :error\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing try do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0006] missing 'do' to start try expression; found IDENT(risky) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after 'try' to begin the protected block"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_unexpected_arrow_outside_branch() {
     let tokens =
         scan_tokens("defmodule Demo do\n  def run() do\n    value -> value + 1\n  end\nend\n")

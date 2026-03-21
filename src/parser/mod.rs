@@ -172,11 +172,45 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub(crate) fn expect_block_do(
+        &mut self,
+        construct: &str,
+        opening_span: Span,
+        hint: impl Into<String>,
+    ) -> Result<(), ParserError> {
+        if self.check(TokenKind::Do) {
+            self.advance();
+            Ok(())
+        } else {
+            Err(self.missing_do_error(construct, opening_span, hint))
+        }
+    }
+
     pub(crate) fn missing_end_error(&self, construct: &str, opening_span: Span) -> ParserError {
         ParserError::at_span(
             format!(
                 "[E0003] unexpected end of file: missing 'end' to close {construct}. \
                  hint: add 'end' to finish {construct}"
+            ),
+            opening_span,
+        )
+    }
+
+    pub(crate) fn missing_do_error(
+        &self,
+        construct: &str,
+        opening_span: Span,
+        hint: impl Into<String>,
+    ) -> ParserError {
+        let found = self
+            .current()
+            .map(|token| token.dump_label())
+            .unwrap_or_else(|| "EOF".to_string());
+
+        ParserError::at_span(
+            format!(
+                "[E0006] missing 'do' to start {construct}; found {found} instead. hint: {}",
+                hint.into()
             ),
             opening_span,
         )

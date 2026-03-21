@@ -16,7 +16,9 @@ impl<'a> Parser<'a> {
             Some(parent) => format!("{parent}.{local_name}"),
             None => local_name,
         };
-        self.expect(TokenKind::Do, "do")?;
+        let construct = format!("module '{name}'");
+        let hint = format!("add 'do' after 'defmodule {name}' to begin the module body");
+        self.expect_block_do(&construct, module_span, hint)?;
 
         let mut forms = Vec::new();
         let mut attributes = Vec::new();
@@ -25,7 +27,6 @@ impl<'a> Parser<'a> {
 
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
-                let construct = format!("module '{name}'");
                 return Err(self.missing_end_error(&construct, module_span));
             }
 
@@ -55,7 +56,6 @@ impl<'a> Parser<'a> {
             return Err(self.expected("module declaration"));
         }
 
-        let construct = format!("module '{name}'");
         self.expect_block_end(&construct, module_span)?;
 
         let mut result = vec![Module::with_id(id, name, forms, attributes, functions)];
@@ -103,9 +103,12 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.expect(TokenKind::Do, "do")?;
-        let body = self.parse_block_body()?;
         let construct = format!("function '{name}'");
+        let hint = format!(
+            "add 'do' after the function signature for '{name}' to begin the function body"
+        );
+        self.expect_block_do(&construct, function_span, hint)?;
+        let body = self.parse_block_body()?;
         self.expect_block_end(&construct, function_span)?;
 
         Ok(Function::with_id(id, name, visibility, params, guard, body))

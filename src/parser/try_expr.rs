@@ -5,7 +5,11 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_try_expression(&mut self) -> Result<Expr, ParserError> {
         let try_span = self.expect_token(TokenKind::Try, "try")?.span();
         let offset = try_span.start();
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "try expression",
+            try_span,
+            "add 'do' after 'try' to begin the protected block",
+        )?;
         let body = self.parse_block_body()?;
 
         let mut rescue = Vec::new();

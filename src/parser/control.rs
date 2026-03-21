@@ -6,7 +6,11 @@ impl<'a> Parser<'a> {
         let if_span = self.expect_token(TokenKind::If, "if")?.span();
         let offset = if_span.start();
         let condition = self.parse_expression()?;
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "if expression",
+            if_span,
+            "add 'do' after the if condition to begin the then branch",
+        )?;
 
         let then_body = self.parse_block_body()?;
         let else_body = if self.match_kind(TokenKind::Else) {
@@ -24,7 +28,11 @@ impl<'a> Parser<'a> {
         let unless_span = self.expect_token(TokenKind::Unless, "unless")?.span();
         let offset = unless_span.start();
         let condition = self.parse_expression()?;
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "unless expression",
+            unless_span,
+            "add 'do' after the unless condition to begin the then branch",
+        )?;
 
         let then_body = self.parse_block_body()?;
         let else_body = if self.match_kind(TokenKind::Else) {
@@ -41,7 +49,11 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_cond_expression(&mut self) -> Result<Expr, ParserError> {
         let cond_span = self.expect_token(TokenKind::Cond, "cond")?.span();
         let offset = cond_span.start();
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "cond expression",
+            cond_span,
+            "add 'do' after 'cond' to begin its branches",
+        )?;
 
         let mut branches = Vec::new();
         while !self.check(TokenKind::End) {
@@ -84,7 +96,11 @@ impl<'a> Parser<'a> {
             break;
         }
 
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "with expression",
+            with_span,
+            "add 'do' after the with clauses to begin the main body",
+        )?;
         let body = self.parse_block_body()?;
 
         let else_branches = if self.match_kind(TokenKind::Else) {
@@ -190,7 +206,11 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "for expression",
+            for_span,
+            "add 'do' after the for clauses to begin the comprehension body",
+        )?;
         let body = if reduce_expr.is_some() {
             self.parse_for_reduce_body(offset, for_span)?
         } else {
@@ -316,7 +336,11 @@ impl<'a> Parser<'a> {
         let case_span = self.expect_token(TokenKind::Case, "case")?.span();
         let offset = case_span.start();
         let subject = self.parse_expression()?;
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "case expression",
+            case_span,
+            "add 'do' after the case subject to begin the case branches",
+        )?;
 
         let mut branches = Vec::new();
         while !self.check(TokenKind::End) {
