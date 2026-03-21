@@ -10,7 +10,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Vec<Module>, ParserError> {
         let id = self.node_ids.next_module();
 
-        self.expect(TokenKind::Defmodule, "defmodule")?;
+        let module_span = self.expect_token(TokenKind::Defmodule, "defmodule")?.span();
         let local_name = self.parse_module_reference("module name")?;
         let name = match parent_name {
             Some(parent) => format!("{parent}.{local_name}"),
@@ -25,7 +25,8 @@ impl<'a> Parser<'a> {
 
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
-                return Err(self.expected("module declaration"));
+                let construct = format!("module '{name}'");
+                return Err(self.missing_end_error(&construct, module_span));
             }
 
             if self.check(TokenKind::Def) || self.check(TokenKind::Defp) {
@@ -54,7 +55,8 @@ impl<'a> Parser<'a> {
             return Err(self.expected("module declaration"));
         }
 
-        self.expect(TokenKind::End, "end")?;
+        let construct = format!("module '{name}'");
+        self.expect_block_end(&construct, module_span)?;
 
         let mut result = vec![Module::with_id(id, name, forms, attributes, functions)];
         result.append(&mut nested_modules);
@@ -64,12 +66,18 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_function(&mut self) -> Result<Function, ParserError> {
         let id = self.node_ids.next_function();
 
-        let visibility = if self.match_kind(TokenKind::Def) {
-            FunctionVisibility::Public
+        let function_span = if self.match_kind(TokenKind::Def) {
+            self.tokens[self.index - 1].span()
         } else if self.match_kind(TokenKind::Defp) {
-            FunctionVisibility::Private
+            self.tokens[self.index - 1].span()
         } else {
             return Err(self.expected("def or defp"));
+        };
+
+        let visibility = match self.tokens[self.index - 1].kind() {
+            TokenKind::Def => FunctionVisibility::Public,
+            TokenKind::Defp => FunctionVisibility::Private,
+            _ => unreachable!("validated def/defp token should determine function visibility"),
         };
 
         let name = self.expect_ident("function name")?;
@@ -97,7 +105,8 @@ impl<'a> Parser<'a> {
 
         self.expect(TokenKind::Do, "do")?;
         let body = self.parse_block_body()?;
-        self.expect(TokenKind::End, "end")?;
+        let construct = format!("function '{name}'");
+        self.expect_block_end(&construct, function_span)?;
 
         Ok(Function::with_id(id, name, visibility, params, guard, body))
     }

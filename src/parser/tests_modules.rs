@@ -164,11 +164,34 @@ fn parse_ast_reports_missing_module_end() {
         .expect("scanner should tokenize parser fixture");
 
     let error = parse_ast(&tokens).expect_err("parser should reject missing end");
+    let message = error.to_string();
 
     assert!(
-        error
-            .to_string()
-            .starts_with("expected module declaration, found EOF"),
+        message
+            .starts_with("[E0003] unexpected end of file: missing 'end' to close module 'Broken'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'end' to finish module 'Broken'"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_function_end() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    1\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing function end");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0003] unexpected end of file: missing 'end' to close function 'run'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'end' to finish function 'run'"),
         "unexpected parser error: {error}"
     );
 }

@@ -3,7 +3,8 @@ use crate::lexer::TokenKind;
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_anonymous_function_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::Fn, "fn")?.span().start();
+        let fn_span = self.expect_token(TokenKind::Fn, "fn")?.span();
+        let offset = fn_span.start();
         let mut clauses = Vec::new();
         let mut expected_arity = None;
 
@@ -37,11 +38,11 @@ impl<'a> Parser<'a> {
             }
 
             if self.is_at_end() {
-                return Err(self.expected("anonymous function clause or end"));
+                return Err(self.missing_end_error("anonymous function", fn_span));
             }
         }
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("anonymous function", fn_span)?;
         self.lower_anonymous_function_clauses(offset, clauses)
     }
 

@@ -333,3 +333,22 @@ fn parse_ast_rejects_non_trailing_default_params() {
         "unexpected parser error: {error}"
     );
 }
+
+#[test]
+fn parse_ast_reports_missing_if_end() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run(flag) do\n    if flag do\n      1\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing if end");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0003] unexpected end of file: missing 'end' to close if expression."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'end' to finish if expression"),
+        "unexpected parser error: {error}"
+    );
+}

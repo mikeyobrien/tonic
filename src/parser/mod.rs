@@ -1,4 +1,4 @@
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::{Span, Token, TokenKind};
 
 mod ast;
 mod canonicalize;
@@ -137,6 +137,31 @@ impl<'a> Parser<'a> {
         ParserError::at_current(
             format!("expected {expected}, found {found}"),
             self.current(),
+        )
+    }
+
+    pub(crate) fn expect_block_end(
+        &mut self,
+        construct: &str,
+        opening_span: Span,
+    ) -> Result<(), ParserError> {
+        if self.check(TokenKind::End) {
+            self.advance();
+            Ok(())
+        } else if self.is_at_end() {
+            Err(self.missing_end_error(construct, opening_span))
+        } else {
+            Err(self.expected("end"))
+        }
+    }
+
+    pub(crate) fn missing_end_error(&self, construct: &str, opening_span: Span) -> ParserError {
+        ParserError::at_span(
+            format!(
+                "[E0003] unexpected end of file: missing 'end' to close {construct}. \
+                 hint: add 'end' to finish {construct}"
+            ),
+            opening_span,
         )
     }
 

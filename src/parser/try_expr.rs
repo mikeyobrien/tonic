@@ -3,7 +3,8 @@ use crate::lexer::TokenKind;
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_try_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::Try, "try")?.span().start();
+        let try_span = self.expect_token(TokenKind::Try, "try")?.span();
+        let offset = try_span.start();
         self.expect(TokenKind::Do, "do")?;
         let body = self.parse_block_body()?;
 
@@ -14,7 +15,7 @@ impl<'a> Parser<'a> {
                 && !self.check(TokenKind::End)
             {
                 if self.is_at_end() {
-                    return Err(self.expected("rescue branch, catch branch, after block, or end"));
+                    return Err(self.missing_end_error("try expression", try_span));
                 }
                 rescue.push(self.parse_rescue_branch()?);
             }
@@ -24,7 +25,7 @@ impl<'a> Parser<'a> {
         if self.match_kind(TokenKind::Catch) {
             while !self.check(TokenKind::After) && !self.check(TokenKind::End) {
                 if self.is_at_end() {
-                    return Err(self.expected("catch branch, after block, or end"));
+                    return Err(self.missing_end_error("try expression", try_span));
                 }
                 catch.push(self.parse_case_branch()?);
             }
@@ -43,7 +44,7 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("try expression", try_span)?;
 
         Ok(Expr::try_expr(
             self.node_ids.next_expr(),

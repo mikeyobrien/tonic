@@ -453,6 +453,13 @@ impl ParserError {
         }
     }
 
+    pub(crate) fn at_span(message: impl Into<String>, span: Span) -> Self {
+        Self {
+            message: message.into(),
+            span: Some(span),
+        }
+    }
+
     pub fn offset(&self) -> Option<usize> {
         self.span.map(|span| span.start())
     }
