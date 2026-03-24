@@ -182,7 +182,10 @@ pub(crate) fn cmp_int(
     offset: usize,
 ) -> Result<RuntimeValue, NativeRuntimeError> {
     // Eq, NotEq, StrictEq, and StrictNotEq compare polymorphically without coercion
-    if matches!(kind, CmpKind::Eq | CmpKind::NotEq | CmpKind::StrictEq | CmpKind::StrictNotEq) {
+    if matches!(
+        kind,
+        CmpKind::Eq | CmpKind::NotEq | CmpKind::StrictEq | CmpKind::StrictNotEq
+    ) {
         let equal = left == right;
         return Ok(RuntimeValue::Bool(match kind {
             CmpKind::Eq | CmpKind::StrictEq => equal,

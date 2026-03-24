@@ -171,7 +171,9 @@ fn host_enum_shuffle(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
         .subsec_nanos() as u64;
     for i in (1..list.len()).rev() {
         // Simple LCG for pseudo-random numbers
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let j = (seed >> 33) as usize % (i + 1);
         list.swap(i, j);
     }
