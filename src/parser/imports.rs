@@ -44,7 +44,7 @@ impl<'a> Parser<'a> {
 
     /// Parse `{Child1, Child2}` after base module prefix, producing one Alias per child.
     fn parse_multi_alias(&mut self, base: String) -> Result<Vec<ModuleForm>, ParserError> {
-        self.expect(TokenKind::LBrace, "{")?;
+        let opening_span = self.expect_token(TokenKind::LBrace, "{")?.span();
 
         let mut forms = Vec::new();
 
@@ -63,10 +63,39 @@ impl<'a> Parser<'a> {
                 }
                 continue;
             }
+
+            if !self.check(TokenKind::RBrace) && self.current_starts_missing_alias_child_comma() {
+                return Err(self.missing_comma_error(
+                    "alias child list",
+                    format!(
+                        "separate alias children with commas, for example `alias {base}.{{Bar, Baz}}`"
+                    ),
+                ));
+            }
+
             break;
         }
 
-        self.expect(TokenKind::RBrace, "}")?;
+        if !self.check(TokenKind::RBrace) && self.current_starts_module_item_boundary() {
+            return Err(self.unclosed_delimiter_error(
+                "alias child list",
+                "}",
+                opening_span,
+                format!(
+                    "add '}}' to close the alias child list, for example `alias {base}.{{Bar, Baz}}`"
+                ),
+            ));
+        }
+
+        self.expect_closing_delimiter(
+            TokenKind::RBrace,
+            "}",
+            "alias child list",
+            opening_span,
+            format!(
+                "add '}}' to close the alias child list, for example `alias {base}.{{Bar, Baz}}`"
+            ),
+        )?;
         Ok(forms)
     }
 
@@ -116,7 +145,7 @@ impl<'a> Parser<'a> {
         &mut self,
         option_name: &str,
     ) -> Result<Vec<ImportFunctionSpec>, ParserError> {
-        self.expect(TokenKind::LBracket, "[")?;
+        let opening_span = self.expect_token(TokenKind::LBracket, "[")?.span();
 
         let mut entries = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -151,13 +180,65 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            if !self.check(TokenKind::RBracket) && self.current_starts_missing_keyword_entry_comma()
+            {
+                return Err(self.missing_comma_error(
+                    &format!("import {option_name} filter list"),
+                    format!(
+                        "separate import {option_name} entries with commas, for example `import Enum, {option_name}: [map: 2, reduce: 3]`"
+                    ),
+                ));
+            }
+
             break;
         }
 
-        self.expect(TokenKind::RBracket, "]")
-            .map_err(|_| self.invalid_import_filter_shape(option_name))?;
+        if !self.check(TokenKind::RBracket) && self.current_starts_module_item_boundary() {
+            return Err(self.unclosed_delimiter_error(
+                &format!("import {option_name} filter list"),
+                "]",
+                opening_span,
+                format!(
+                    "add ']' to close the import {option_name} filter list, for example `import Enum, {option_name}: [map: 2]`"
+                ),
+            ));
+        }
+
+        self.expect_closing_delimiter(
+            TokenKind::RBracket,
+            "]",
+            &format!("import {option_name} filter list"),
+            opening_span,
+            format!(
+                "add ']' to close the import {option_name} filter list, for example `import Enum, {option_name}: [map: 2]`"
+            ),
+        )?;
 
         Ok(entries)
+    }
+
+    fn current_starts_module_item_boundary(&self) -> bool {
+        self.current().is_some_and(|token| {
+            matches!(
+                token.kind(),
+                TokenKind::Def
+                    | TokenKind::Defp
+                    | TokenKind::Defmodule
+                    | TokenKind::At
+                    | TokenKind::End
+                    | TokenKind::Eof
+            ) || (token.kind() == TokenKind::Ident
+                && matches!(
+                    token.lexeme(),
+                    "alias"
+                        | "import"
+                        | "require"
+                        | "use"
+                        | "defstruct"
+                        | "defprotocol"
+                        | "defimpl"
+                ))
+        })
     }
 
     fn invalid_import_filter_shape(&self, option_name: &str) -> ParserError {

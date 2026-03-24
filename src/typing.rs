@@ -129,6 +129,9 @@ impl ConstraintSolver {
             | (Type::Bool, Type::Bool)
             | (Type::Nil, Type::Nil)
             | (Type::String, Type::String) => Ok(()),
+            (Type::Bool, found_ty) => {
+                Err(TypingError::bool_type_mismatch(found_ty.label(), offset))
+            }
             (expected_ty, found_ty) => Err(TypingError::type_mismatch(
                 expected_ty.label(),
                 found_ty.label(),

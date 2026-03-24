@@ -185,12 +185,240 @@ fn test_command_surfaces_rich_source_diagnostics_for_frontend_errors() {
 
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(stderr.contains("expected map fat arrow `=>`, found INT(2)"));
+    assert!(stderr.contains("[E0008] missing '=>' in map entry; found INT(2) instead."));
+    assert!(stderr.contains("hint: write `%{key => value}` for computed keys"));
     assert!(
         stderr.contains("invalid_test.tn:3:"),
         "expected filename:line:col location, got: {stderr}"
     );
     assert!(stderr.contains("3 |     %{1 2}"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_call_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-call-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    tuple 1 2\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in call arguments; found INT(2) instead."));
+    assert!(stderr.contains("hint: separate call arguments with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     tuple 1 2"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_unclosed_call_delimiters() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-unclosed-call-delimiter",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    Math.add(1, 2\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0002] unclosed delimiter: call argument list is missing ')'."));
+    assert!(stderr.contains("hint: add ')' to close the call arguments"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:13"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     Math.add(1, 2"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_with_clause_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-with-clause-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    with ok <- ok(1)\n         value <- ok + 1 do\n      value\n    end\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in with clauses; found IDENT(value) instead."));
+    assert!(stderr.contains("hint: separate with clauses with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:4:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("4 |          value <- ok + 1 do"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_alias_child_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-alias-child-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  alias Math.{Add Sub}\n\n  def test_bad() do\n    Add.value()\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in alias child list; found IDENT(Sub) instead."));
+    assert!(stderr.contains("hint: separate alias children with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:2:"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("2 |   alias Math.{Add Sub}"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_unclosed_structured_raise_arguments() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-unclosed-structured-raise-arguments",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    raise(RuntimeError, message: \"oops\"\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("[E0002] unclosed delimiter: structured raise arguments is missing ')'.")
+    );
+    assert!(stderr.contains("hint: add ')' to close the structured raise arguments"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:10"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     raise(RuntimeError, message: \"oops\""));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_keyword_list_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-keyword-list-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    [message: \"oops\" detail: 1]\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in keyword list; found IDENT(detail) instead."));
+    assert!(stderr.contains("hint: separate keyword entries with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:22"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     [message: \"oops\" detail: 1]"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_unclosed_list_patterns() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-unclosed-list-pattern",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad(value) do\n    case value do\n      [head, tail -> head\n    end\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0002] unclosed delimiter: list pattern is missing ']'."));
+    assert!(stderr.contains("hint: add ']' to close the list pattern"));
+    assert!(
+        stderr.contains("invalid_test.tn:4:7"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("4 |       [head, tail -> head"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_missing_bitstring_commas() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-missing-bitstring-comma",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad() do\n    <<1 2>>\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0010] missing ',' in bitstring literal; found INT(2) instead."));
+    assert!(stderr.contains("hint: separate bitstring elements with commas"));
+    assert!(
+        stderr.contains("invalid_test.tn:3:9"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("3 |     <<1 2>>"));
+}
+
+#[test]
+fn test_command_surfaces_rich_source_diagnostics_for_unclosed_bitstring_patterns() {
+    let fixture_root = write_single_test_file(
+        "test-rich-diag-unclosed-bitstring-pattern",
+        "invalid_test.tn",
+        "defmodule InvalidTest do\n  def test_bad(value) do\n    case value do\n      <<left, right -> left\n    end\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("[E0002] unclosed delimiter: bitstring pattern is missing '>>'."));
+    assert!(stderr.contains("hint: add '>>' to close the bitstring pattern"));
+    assert!(
+        stderr.contains("invalid_test.tn:4:7"),
+        "expected filename:line:col location, got: {stderr}"
+    );
+    assert!(stderr.contains("4 |       <<left, right -> left"));
 }
 
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {

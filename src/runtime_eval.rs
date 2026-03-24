@@ -23,7 +23,7 @@ pub(crate) fn evaluate_ops(
                     RuntimeValue::Bool(b) => b.to_string(),
                     RuntimeValue::Nil => String::new(),
                     RuntimeValue::Atom(a) => a,
-                    other => other.render()
+                    other => other.render(),
                 };
                 stack.push(RuntimeValue::String(str_value));
             }

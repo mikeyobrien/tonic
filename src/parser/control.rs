@@ -3,9 +3,14 @@ use crate::lexer::TokenKind;
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_if_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::If, "if")?.span().start();
+        let if_span = self.expect_token(TokenKind::If, "if")?.span();
+        let offset = if_span.start();
         let condition = self.parse_expression()?;
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "if expression",
+            if_span,
+            "add 'do' after the if condition to begin the then branch",
+        )?;
 
         let then_body = self.parse_block_body()?;
         let else_body = if self.match_kind(TokenKind::Else) {
@@ -14,18 +19,20 @@ impl<'a> Parser<'a> {
             Expr::nil(self.node_ids.next_expr(), offset)
         };
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("if expression", if_span)?;
 
         Ok(self.lower_guarded_control_case(offset, condition, then_body, else_body))
     }
 
     pub(super) fn parse_unless_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self
-            .expect_token(TokenKind::Unless, "unless")?
-            .span()
-            .start();
+        let unless_span = self.expect_token(TokenKind::Unless, "unless")?.span();
+        let offset = unless_span.start();
         let condition = self.parse_expression()?;
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "unless expression",
+            unless_span,
+            "add 'do' after the unless condition to begin the then branch",
+        )?;
 
         let then_body = self.parse_block_body()?;
         let else_body = if self.match_kind(TokenKind::Else) {
@@ -34,29 +41,42 @@ impl<'a> Parser<'a> {
             Expr::nil(self.node_ids.next_expr(), offset)
         };
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("unless expression", unless_span)?;
 
         Ok(self.lower_guarded_control_case(offset, condition, else_body, then_body))
     }
 
     pub(super) fn parse_cond_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::Cond, "cond")?.span().start();
-        self.expect(TokenKind::Do, "do")?;
+        let cond_span = self.expect_token(TokenKind::Cond, "cond")?.span();
+        let offset = cond_span.start();
+        self.expect_block_do(
+            "cond expression",
+            cond_span,
+            "add 'do' after 'cond' to begin its branches",
+        )?;
 
         let mut branches = Vec::new();
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
-                return Err(self.expected("cond branch"));
+                return Err(self.missing_end_error("cond expression", cond_span));
             }
 
+            let clause_span = self
+                .current()
+                .expect("cond branch should start with a token")
+                .span();
             let condition = self.parse_expression()?;
-            self.expect(TokenKind::Arrow, "->")?;
+            self.expect_clause_arrow(
+                "cond branch",
+                clause_span,
+                "add '->' after the cond condition before the branch body",
+            )?;
             let body = self.parse_branch_body()?;
             let guard = self.lower_truthy_guard(condition);
             branches.push(CaseBranch::new(Pattern::Wildcard, Some(guard), body));
         }
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("cond expression", cond_span)?;
 
         Ok(Expr::case(
             self.node_ids.next_expr(),
@@ -67,7 +87,8 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_with_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::With, "with")?.span().start();
+        let with_span = self.expect_token(TokenKind::With, "with")?.span();
+        let offset = with_span.start();
         let mut clauses = Vec::new();
 
         loop {
@@ -80,10 +101,21 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            if self.current_starts_missing_with_clause_comma() {
+                return Err(self.missing_comma_error(
+                    "with clauses",
+                    "separate with clauses with commas, for example `with left <- first(), right <- second() do ... end`",
+                ));
+            }
+
             break;
         }
 
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "with expression",
+            with_span,
+            "add 'do' after the with clauses to begin the main body",
+        )?;
         let body = self.parse_block_body()?;
 
         let else_branches = if self.match_kind(TokenKind::Else) {
@@ -91,10 +123,13 @@ impl<'a> Parser<'a> {
 
             while !self.check(TokenKind::End) {
                 if self.is_at_end() {
-                    return Err(self.expected("with else branch"));
+                    return Err(self.missing_end_error("with expression", with_span));
                 }
 
-                branches.push(self.parse_case_branch()?);
+                branches.push(self.parse_case_branch(
+                    "with else clause",
+                    "add '->' after the with else pattern before the fallback body",
+                )?);
             }
 
             branches
@@ -102,13 +137,14 @@ impl<'a> Parser<'a> {
             Vec::new()
         };
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("with expression", with_span)?;
 
         Ok(self.lower_with_expression(offset, clauses, body, else_branches))
     }
 
     pub(super) fn parse_for_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::For, "for")?.span().start();
+        let for_span = self.expect_token(TokenKind::For, "for")?.span();
+        let offset = for_span.start();
 
         let mut generators = Vec::new();
         let mut into_expr = None;
@@ -155,6 +191,12 @@ impl<'a> Parser<'a> {
                 if self.match_kind(TokenKind::Comma) {
                     continue;
                 }
+                if self.current_starts_missing_for_clause_comma() {
+                    return Err(self.missing_comma_error(
+                        "for clauses",
+                        "separate for generators and options with commas, for example `for x <- xs, y <- ys, into: [] do ... end`",
+                    ));
+                }
                 break;
             }
 
@@ -170,6 +212,12 @@ impl<'a> Parser<'a> {
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
+            }
+            if self.current_starts_missing_for_clause_comma() {
+                return Err(self.missing_comma_error(
+                    "for clauses",
+                    "separate for generators and options with commas, for example `for x <- xs, y <- ys, into: [] do ... end`",
+                ));
             }
             break;
         }
@@ -188,13 +236,17 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "for expression",
+            for_span,
+            "add 'do' after the for clauses to begin the comprehension body",
+        )?;
         let body = if reduce_expr.is_some() {
-            self.parse_for_reduce_body(offset)?
+            self.parse_for_reduce_body(offset, for_span)?
         } else {
             self.parse_block_body()?
         };
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("for expression", for_span)?;
 
         Ok(Expr::for_comprehension(
             self.node_ids.next_expr(),
@@ -206,14 +258,21 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_for_reduce_body(&mut self, offset: usize) -> Result<Expr, ParserError> {
+    fn parse_for_reduce_body(
+        &mut self,
+        offset: usize,
+        for_span: crate::lexer::Span,
+    ) -> Result<Expr, ParserError> {
         let mut branches = Vec::new();
 
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
-                return Err(self.expected("for reduce clause"));
+                return Err(self.missing_end_error("for expression", for_span));
             }
-            branches.push(self.parse_case_branch()?);
+            branches.push(self.parse_case_branch(
+                "for reduce clause",
+                "add '->' after the accumulator pattern before the reduce body",
+            )?);
             if self.match_kind(TokenKind::Semicolon) {
                 continue;
             }
@@ -307,20 +366,28 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_case_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::Case, "case")?.span().start();
+        let case_span = self.expect_token(TokenKind::Case, "case")?.span();
+        let offset = case_span.start();
         let subject = self.parse_expression()?;
-        self.expect(TokenKind::Do, "do")?;
+        self.expect_block_do(
+            "case expression",
+            case_span,
+            "add 'do' after the case subject to begin the case branches",
+        )?;
 
         let mut branches = Vec::new();
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
-                return Err(self.expected("case branch"));
+                return Err(self.missing_end_error("case expression", case_span));
             }
 
-            branches.push(self.parse_case_branch()?);
+            branches.push(self.parse_case_branch(
+                "case branch",
+                "add '->' after the case pattern before the branch body",
+            )?);
         }
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("case expression", case_span)?;
 
         Ok(Expr::case(
             self.node_ids.next_expr(),
@@ -330,14 +397,22 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub(super) fn parse_case_branch(&mut self) -> Result<CaseBranch, ParserError> {
+    pub(super) fn parse_case_branch(
+        &mut self,
+        clause: &str,
+        hint: &str,
+    ) -> Result<CaseBranch, ParserError> {
+        let clause_span = self
+            .current()
+            .expect("case-style branch should start with a token")
+            .span();
         let pattern = self.parse_pattern()?;
         let guard = if self.match_kind(TokenKind::When) {
             Some(self.parse_expression()?)
         } else {
             None
         };
-        self.expect(TokenKind::Arrow, "->")?;
+        self.expect_clause_arrow(clause, clause_span, hint)?;
         let body = self.parse_branch_body()?;
 
         Ok(CaseBranch::new(pattern, guard, body))

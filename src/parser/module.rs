@@ -10,13 +10,15 @@ impl<'a> Parser<'a> {
     ) -> Result<Vec<Module>, ParserError> {
         let id = self.node_ids.next_module();
 
-        self.expect(TokenKind::Defmodule, "defmodule")?;
+        let module_span = self.expect_token(TokenKind::Defmodule, "defmodule")?.span();
         let local_name = self.parse_module_reference("module name")?;
         let name = match parent_name {
             Some(parent) => format!("{parent}.{local_name}"),
             None => local_name,
         };
-        self.expect(TokenKind::Do, "do")?;
+        let construct = format!("module '{name}'");
+        let hint = format!("add 'do' after 'defmodule {name}' to begin the module body");
+        self.expect_block_do(&construct, module_span, hint)?;
 
         let mut forms = Vec::new();
         let mut attributes = Vec::new();
@@ -25,7 +27,7 @@ impl<'a> Parser<'a> {
 
         while !self.check(TokenKind::End) {
             if self.is_at_end() {
-                return Err(self.expected("module declaration"));
+                return Err(self.missing_end_error(&construct, module_span));
             }
 
             if self.check(TokenKind::Def) || self.check(TokenKind::Defp) {
@@ -54,7 +56,7 @@ impl<'a> Parser<'a> {
             return Err(self.expected("module declaration"));
         }
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end(&construct, module_span)?;
 
         let mut result = vec![Module::with_id(id, name, forms, attributes, functions)];
         result.append(&mut nested_modules);
@@ -64,18 +66,33 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_function(&mut self) -> Result<Function, ParserError> {
         let id = self.node_ids.next_function();
 
-        let visibility = if self.match_kind(TokenKind::Def) {
-            FunctionVisibility::Public
+        let function_span = if self.match_kind(TokenKind::Def) {
+            self.tokens[self.index - 1].span()
         } else if self.match_kind(TokenKind::Defp) {
-            FunctionVisibility::Private
+            self.tokens[self.index - 1].span()
         } else {
             return Err(self.expected("def or defp"));
         };
 
+        let visibility = match self.tokens[self.index - 1].kind() {
+            TokenKind::Def => FunctionVisibility::Public,
+            TokenKind::Defp => FunctionVisibility::Private,
+            _ => unreachable!("validated def/defp token should determine function visibility"),
+        };
+
         let name = self.expect_ident("function name")?;
-        self.expect(TokenKind::LParen, "(")?;
-        let params = self.parse_params()?;
-        self.expect(TokenKind::RParen, ")")?;
+        let params_opening_span = self.expect_token(TokenKind::LParen, "(")?.span();
+        let params = self.parse_params(name.as_str())?;
+        let params_hint = format!(
+            "add ')' to close the parameter list, for example `def {name}(left, right) do ... end`"
+        );
+        self.expect_closing_delimiter(
+            TokenKind::RParen,
+            ")",
+            "function parameter list",
+            params_opening_span,
+            params_hint,
+        )?;
 
         if self.check(TokenKind::Arrow)
             && self
@@ -95,9 +112,13 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.expect(TokenKind::Do, "do")?;
+        let construct = format!("function '{name}'");
+        let hint = format!(
+            "add 'do' after the function signature for '{name}' to begin the function body"
+        );
+        self.expect_block_do(&construct, function_span, hint)?;
         let body = self.parse_block_body()?;
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end(&construct, function_span)?;
 
         Ok(Function::with_id(id, name, visibility, params, guard, body))
     }
@@ -205,7 +226,7 @@ impl<'a> Parser<'a> {
     fn parse_protocol_signature(&mut self) -> Result<ProtocolFunctionSignature, ParserError> {
         self.expect(TokenKind::Def, "def")?;
         let name = self.expect_ident("protocol function name")?;
-        self.expect(TokenKind::LParen, "(")?;
+        let params_opening_span = self.expect_token(TokenKind::LParen, "(")?.span();
 
         let mut params = Vec::new();
         if !self.check(TokenKind::RParen) {
@@ -214,11 +235,28 @@ impl<'a> Parser<'a> {
                 if self.match_kind(TokenKind::Comma) {
                     continue;
                 }
+                if !self.check(TokenKind::RParen) && self.current_starts_missing_param_comma() {
+                    return Err(self.missing_comma_error(
+                        "protocol parameter list",
+                        format!(
+                            "separate protocol parameters with commas, for example `def {name}(left, right)`"
+                        ),
+                    ));
+                }
                 break;
             }
         }
 
-        self.expect(TokenKind::RParen, ")")?;
+        let params_hint = format!(
+            "add ')' to close the protocol parameter list, for example `def {name}(left, right)`"
+        );
+        self.expect_closing_delimiter(
+            TokenKind::RParen,
+            ")",
+            "protocol parameter list",
+            params_opening_span,
+            params_hint,
+        )?;
 
         if self.check(TokenKind::Do) {
             return Err(ParserError::at_current(
@@ -309,7 +347,10 @@ impl<'a> Parser<'a> {
         Ok(module)
     }
 
-    pub(super) fn parse_params(&mut self) -> Result<Vec<Parameter>, ParserError> {
+    pub(super) fn parse_params(
+        &mut self,
+        function_name: &str,
+    ) -> Result<Vec<Parameter>, ParserError> {
         let mut params = Vec::new();
         let mut saw_default = false;
 
@@ -331,6 +372,15 @@ impl<'a> Parser<'a> {
 
             if self.match_kind(TokenKind::Comma) {
                 continue;
+            }
+
+            if !self.check(TokenKind::RParen) && self.current_starts_missing_param_comma() {
+                return Err(self.missing_comma_error(
+                    "function parameter list",
+                    format!(
+                        "separate parameters with commas, for example `def {function_name}(left, right) do ... end`"
+                    ),
+                ));
             }
 
             break;

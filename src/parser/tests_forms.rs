@@ -2,16 +2,734 @@ use super::{parse_ast, Expr};
 use crate::lexer::scan_tokens;
 
 #[test]
-fn parse_ast_reports_deterministic_map_entry_diagnostics() {
+fn parse_ast_reports_missing_map_entry_fat_arrow_with_repair_hint() {
     let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    %{1 2}\n  end\nend\n")
         .expect("scanner should tokenize parser fixture");
 
     let error = parse_ast(&tokens).expect_err("parser should reject malformed map entries");
+    let message = error.to_string();
 
     assert!(
-        error
-            .to_string()
-            .contains("expected map fat arrow `=>`, found INT(2)"),
+        message.starts_with("[E0008] missing '=>' in map entry; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: write `%{key => value}` for computed keys"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{name: value}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_map_pattern_fat_arrow_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %{1 payload} -> payload\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject malformed map patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0008] missing '=>' in map pattern entry; found IDENT(payload) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: write `%{key => pattern}` for computed keys"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{name: pattern}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_parenthesized_call_arg_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    Math.add(1 2)\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject call arguments without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in call arguments; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate call arguments with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`Math.add(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_no_paren_call_arg_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    tuple 1 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens)
+        .expect_err("parser should reject no-paren call arguments without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in call arguments; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate call arguments with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`tuple(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_structured_raise_keyword_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    raise(RuntimeError, message: \"oops\" detail: 1)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens)
+        .expect_err("parser should reject structured raise keyword arguments without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in structured raise arguments; found IDENT(detail) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate structured raise keyword arguments with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`raise(RuntimeError, message: \"oops\", detail: info)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_structured_raise_arguments_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    raise(RuntimeError, message: \"oops\"\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens)
+        .expect_err("parser should reject unclosed structured raise argument lists");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0002] unclosed delimiter: structured raise arguments is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the structured raise arguments"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`raise(RuntimeError, message: \"oops\")`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_list_literal_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    [1 2]\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject list literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in list literal; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate list elements with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[left, right]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_keyword_list_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    [message: \"oops\" detail: 1]\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject keyword lists without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in keyword list; found IDENT(detail) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate keyword entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[message: \"oops\", detail: info]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_map_literal_comma_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    %{foo: 1 bar: 2}\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject map literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in map literal; found IDENT(bar) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate map entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{foo: 1, bar: 2}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_struct_literal_field_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(user) do\n    %User{name: user age: user}\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject struct literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in struct literal; found IDENT(age) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate struct fields with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%User{name: name, age: age}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_tuple_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      {left right} -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject tuple patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in tuple pattern; found IDENT(right) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate tuple pattern items with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`{left, right}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_list_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      [head tail] -> head\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject list patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in list pattern; found IDENT(tail) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate list pattern items with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[head, tail]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_map_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %{left: left right: right} -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject map patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in map pattern; found IDENT(right) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate map pattern entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{left: left, right: right}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_struct_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %User{name: name age: age} -> name\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject struct patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in struct pattern; found IDENT(age) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate struct pattern fields with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%User{name: name, age: age}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_keyword_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    [message: \"oops\", detail: 1\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed keyword lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: keyword list is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the keyword list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[message: \"oops\", detail: info]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_map_literal_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    %{foo: 1, bar: 2\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed map literals");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: map literal is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the map literal"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{foo: 1, bar: 2}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_list_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      [head, tail -> head\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed list patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: list pattern is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the list pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`[head, tail] -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_map_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %{left: left, right: right -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed map patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: map pattern is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the map pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%{left: left, right: right} -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_struct_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      %User{name: name, age: age -> name\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed struct patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: struct pattern is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the struct pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`%User{name: name, age: age} -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_bitstring_literal_comma_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    <<1 2>>\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject bitstring literals without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in bitstring literal; found INT(2) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate bitstring elements with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>>`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_bitstring_pattern_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      <<left right>> -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject bitstring patterns without commas");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0010] missing ',' in bitstring pattern; found IDENT(right) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate bitstring pattern elements with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>>`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_grouped_expression_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    (1 + 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed grouped expressions");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: grouped expression is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the grouped expression"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`(left + right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_parenthesized_call_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    Math.add(1, 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed call argument lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: call argument list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the call arguments"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`Math.add(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_invocation_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    (&(&1 + 1)).(2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed invocation arguments");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: invocation argument list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the invocation arguments"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`callback.(value)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_capture_expression_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    &(&1 + 1\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed capture expressions");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: capture expression is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the capture expression"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`&(&1 + 1)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_index_access_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run(value) do\n    value[0\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed index access");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: index access is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the index access"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`value[index]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_bitstring_literal_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    <<1, 2\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed bitstring literals");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: bitstring literal is missing '>>'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '>>' to close the bitstring literal"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>>`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_bitstring_pattern_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value do\n      <<left, right -> left\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed bitstring patterns");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: bitstring pattern is missing '>>'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '>>' to close the bitstring pattern"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`<<left, right>> -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_with_clause_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    with ok <- ok(1)\n         value <- ok + 1 do\n      value\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject with clauses without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in with clauses; found IDENT(value) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate with clauses with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`with left <- first(), right <- second() do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_for_generator_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2)\n        y <- list(3, 4) do\n      {x, y}\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject for generators without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in for clauses; found IDENT(y) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate for generators and options with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`for x <- xs, y <- ys, into: [] do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_for_option_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), into: []\n        reduce: 0 do\n      acc -> acc + x\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject for options without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in for clauses; found IDENT(reduce) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate for generators and options with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`for x <- xs, y <- ys, into: [] do ... end`"),
         "unexpected parser error: {error}"
     );
 }
@@ -182,6 +900,90 @@ fn parse_ast_supports_named_function_capture_shorthand() {
 }
 
 #[test]
+fn parse_ast_reports_missing_named_capture_arity_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    &Math.add\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing capture arity");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0009] missing '/arity' in named function capture `&Math.add`."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: write `&Math.add/arity`, for example `&Math.add/2`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_empty_capture_expression_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    &()\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject empty capture expressions");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0009] empty capture expression `&()`."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: wrap an expression that uses placeholders"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`&(expr_with_&1)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_invalid_capture_placeholder_zero_with_repair_hint() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    (&0)\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject &0 capture placeholders");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0009] invalid capture placeholder `&0`."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: capture placeholders start at `&1`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_anonymous_function_clause_arity_mismatch_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    fn value -> value; left, right -> left + right end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject fn clause arity mismatches");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0009] anonymous function clause arity mismatch: the first clause takes 1 parameter, but this clause takes 2 parameters."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: make every clause in the same 'fn' use the same arity"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`value -> ...`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_supports_multi_clause_anonymous_functions_with_guards() {
     let tokens = scan_tokens(
         "defmodule Demo do\n  def run() do\n    (fn {:ok, value} when is_integer(value) -> value; {:ok, _} -> -1; _ -> 0 end).({:ok, 4})\n  end\nend\n",
@@ -332,4 +1134,294 @@ fn parse_ast_rejects_non_trailing_default_params() {
             .starts_with("default parameters must be trailing at offset"),
         "unexpected parser error: {error}"
     );
+}
+
+#[test]
+fn parse_ast_reports_missing_if_end() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run(flag) do\n    if flag do\n      1\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing if end");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0003] unexpected end of file: missing 'end' to close if expression."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'end' to finish if expression"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_if_do() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(flag) do\n    if flag\n      1\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing if do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0006] missing 'do' to start if expression; found INT(1) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after the if condition to begin the then branch"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_case_do() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    case value\n      1 -> :one\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing case do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0006] missing 'do' to start case expression; found INT(1) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after the case subject to begin the case branches"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_try_do() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    try\n      risky()\n    rescue\n      _ -> :error\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing try do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0006] missing 'do' to start try expression; found IDENT(risky) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after 'try' to begin the protected block"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_arrow_in_case_style_clauses() {
+    let cases = [
+        (
+            "case branch",
+            "defmodule Demo do\n  def run(value) do\n    case value do\n      :ok value\n    end\n  end\nend\n",
+            "[E0007] missing '->' in case branch; found IDENT(value) instead.",
+            "add '->' after the case pattern before the branch body",
+        ),
+        (
+            "with else clause",
+            "defmodule Demo do\n  def run(result) do\n    with value <- result do\n      value\n    else\n      :error 0\n    end\n  end\nend\n",
+            "[E0007] missing '->' in with else clause; found INT(0) instead.",
+            "add '->' after the with else pattern before the fallback body",
+        ),
+        (
+            "for reduce clause",
+            "defmodule Demo do\n  def run() do\n    for x <- list(1, 2), reduce: 0 do\n      acc acc + x\n    end\n  end\nend\n",
+            "[E0007] missing '->' in for reduce clause; found IDENT(acc) instead.",
+            "add '->' after the accumulator pattern before the reduce body",
+        ),
+        (
+            "try catch clause",
+            "defmodule Demo do\n  def run() do\n    try do\n      risky()\n    catch\n      :throw :fallback\n    end\n  end\nend\n",
+            "[E0007] missing '->' in try catch clause; found ATOM(fallback) instead.",
+            "add '->' after the catch pattern before the clause body",
+        ),
+    ];
+
+    for (clause, source, prefix, hint) in cases {
+        let tokens = scan_tokens(source).expect("scanner should tokenize parser fixture");
+        let error = parse_ast(&tokens).expect_err("parser should reject missing clause arrow");
+        let message = error.to_string();
+
+        assert!(
+            message.starts_with(prefix),
+            "unexpected parser error for {clause}: {error}"
+        );
+        assert!(
+            message.contains(hint),
+            "unexpected parser error for {clause}: {error}"
+        );
+    }
+}
+
+#[test]
+fn parse_ast_reports_missing_arrow_in_cond_branch() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run(value) do\n    cond do\n      value > 2 4\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing cond arrow");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0007] missing '->' in cond branch; found INT(4) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '->' after the cond condition before the branch body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_arrow_in_try_rescue_clause() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def run() do\n    try do\n      risky()\n    rescue\n      Demo.Error :error\n    end\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing rescue arrow");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0007] missing '->' in try rescue clause; found ATOM(error) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '->' after the rescue pattern before the clause body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_arrow_in_anonymous_function_clause() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    fn value value + 1 end\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing anonymous fn arrow");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0007] missing '->' in anonymous function clause; found IDENT(value) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message
+            .contains("hint: add '->' between the anonymous function parameters and clause body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unexpected_arrow_outside_branch() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run() do\n    value -> value + 1\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject bare arrow outside branch");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0004] unexpected '->' outside a valid branch."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: use 'fn ... -> ... end' for anonymous functions"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("case/cond/with/for/try"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_stray_clause_keywords_outside_valid_blocks() {
+    let cases = [
+        (
+            "else",
+            "defmodule Demo do\n  def run() do\n    else\n  end\nend\n",
+            "[E0005] unexpected 'else' without a matching block.",
+            "move 'else' inside an 'if', 'unless', or 'with' expression",
+        ),
+        (
+            "rescue",
+            "defmodule Demo do\n  def run() do\n    rescue\n  end\nend\n",
+            "[E0005] unexpected 'rescue' without a matching 'try'.",
+            "move 'rescue' inside a 'try ... end' expression",
+        ),
+        (
+            "catch",
+            "defmodule Demo do\n  def run() do\n    catch\n  end\nend\n",
+            "[E0005] unexpected 'catch' without a matching 'try'.",
+            "move 'catch' inside a 'try ... end' expression",
+        ),
+        (
+            "after",
+            "defmodule Demo do\n  def run() do\n    after\n  end\nend\n",
+            "[E0005] unexpected 'after' without a matching 'try'.",
+            "move 'after' inside a 'try ... end' expression",
+        ),
+    ];
+
+    for (keyword, source, prefix, hint) in cases {
+        let tokens = scan_tokens(source).expect("scanner should tokenize parser fixture");
+        let error = parse_ast(&tokens).expect_err("parser should reject stray block keyword");
+        let message = error.to_string();
+
+        assert!(
+            message.starts_with(prefix),
+            "unexpected parser error for {keyword}: {error}"
+        );
+        assert!(
+            message.contains(hint),
+            "unexpected parser error for {keyword}: {error}"
+        );
+    }
+}
+
+#[test]
+fn parse_ast_reports_stray_block_boundary_keywords() {
+    let cases = [
+        (
+            "end",
+            "defmodule Demo do\n  def run() do\n    end\n  end\nend\n",
+            "[E0005] unexpected 'end' without an opening block.",
+            "remove the extra 'end'",
+        ),
+        (
+            "do",
+            "defmodule Demo do\n  def run() do\n    do\n  end\nend\n",
+            "[E0005] unexpected 'do' without a block header.",
+            "put 'do' after a block opener like 'def', 'if', 'case', 'cond', 'with', 'for', or 'try'",
+        ),
+    ];
+
+    for (keyword, source, prefix, hint) in cases {
+        let tokens = scan_tokens(source).expect("scanner should tokenize parser fixture");
+        let error = parse_ast(&tokens).expect_err("parser should reject stray block keyword");
+        let message = error.to_string();
+
+        assert!(
+            message.starts_with(prefix),
+            "unexpected parser error for {keyword}: {error}"
+        );
+        assert!(
+            message.contains(hint),
+            "unexpected parser error for {keyword}: {error}"
+        );
+    }
 }

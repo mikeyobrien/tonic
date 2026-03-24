@@ -247,7 +247,10 @@ pub(crate) fn evaluate_builtin_call(
                 },
                 (RuntimeValue::Tuple(_, _), _) => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::BadArg,
-                    format!("elem index must be an integer, found {}", runtime_value_kind(&index)),
+                    format!(
+                        "elem index must be an integer, found {}",
+                        runtime_value_kind(&index)
+                    ),
                     offset,
                 )),
                 _ => Err(NativeRuntimeError::at_offset(
@@ -263,7 +266,10 @@ pub(crate) fn evaluate_builtin_call(
                 RuntimeValue::Tuple(_, _) => Ok(RuntimeValue::Int(2)),
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::BadArg,
-                    format!("tuple_size expects a tuple, found {}", runtime_value_kind(&arg)),
+                    format!(
+                        "tuple_size expects a tuple, found {}",
+                        runtime_value_kind(&arg)
+                    ),
                     offset,
                 )),
             }
@@ -300,7 +306,11 @@ pub(crate) fn evaluate_builtin_call(
                 }
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::BadArg,
-                    format!("max expects two numbers, found {} and {}", runtime_value_kind(&a), runtime_value_kind(&b)),
+                    format!(
+                        "max expects two numbers, found {} and {}",
+                        runtime_value_kind(&a),
+                        runtime_value_kind(&b)
+                    ),
                     offset,
                 )),
             }
@@ -324,7 +334,11 @@ pub(crate) fn evaluate_builtin_call(
                 }
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::BadArg,
-                    format!("min expects two numbers, found {} and {}", runtime_value_kind(&a), runtime_value_kind(&b)),
+                    format!(
+                        "min expects two numbers, found {} and {}",
+                        runtime_value_kind(&a),
+                        runtime_value_kind(&b)
+                    ),
                     offset,
                 )),
             }
@@ -374,7 +388,10 @@ pub(crate) fn evaluate_builtin_call(
             if args.len() != 3 {
                 return Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::ArityMismatch,
-                    format!("arity mismatch for put_elem: expected 3 args, found {}", args.len()),
+                    format!(
+                        "arity mismatch for put_elem: expected 3 args, found {}",
+                        args.len()
+                    ),
                     offset,
                 ));
             }
@@ -393,12 +410,18 @@ pub(crate) fn evaluate_builtin_call(
                 },
                 (RuntimeValue::Tuple(_, _), _) => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::BadArg,
-                    format!("put_elem index must be an integer, found {}", runtime_value_kind(&index)),
+                    format!(
+                        "put_elem index must be an integer, found {}",
+                        runtime_value_kind(&index)
+                    ),
                     offset,
                 )),
                 _ => Err(NativeRuntimeError::at_offset(
                     NativeRuntimeErrorCode::BadArg,
-                    format!("put_elem expects a tuple, found {}", runtime_value_kind(&tuple)),
+                    format!(
+                        "put_elem expects a tuple, found {}",
+                        runtime_value_kind(&tuple)
+                    ),
                     offset,
                 )),
             }

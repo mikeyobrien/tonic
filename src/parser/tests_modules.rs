@@ -159,16 +159,277 @@ fn parse_ast_rejects_malformed_import_filter_options() {
 }
 
 #[test]
+fn parse_ast_reports_missing_alias_child_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  alias Math.{Add Sub}\n\n  def run() do\n    Add.value()\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject alias child lists without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0010] missing ',' in alias child list; found IDENT(Sub) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate alias children with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`alias Math.{Bar, Baz}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_alias_child_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  alias Math.{Add, Sub\n\n  def run() do\n    Add.value()\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed alias child lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: alias child list is missing '}'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add '}' to close the alias child list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`alias Math.{Bar, Baz}`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_import_filter_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  import Enum, only: [map: 2 reduce: 3]\n\n  def run() do\n    map([1], fn value -> value end)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject import filters without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in import only filter list; found IDENT(reduce) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate import only entries with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`import Enum, only: [map: 2, reduce: 3]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_import_filter_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  import Enum, only: [map: 2\n\n  def run() do\n    map([1], fn value -> value end)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed import filter lists");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: import only filter list is missing ']'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ']' to close the import only filter list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`import Enum, only: [map: 2]`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_function_param_comma_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run(left right) do\n    left + right\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject function params without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in function parameter list; found IDENT(right) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate parameters with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def run(left, right) do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_protocol_param_comma_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  defprotocol Size do\n    def size(left right)\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error =
+        parse_ast(&tokens).expect_err("parser should reject protocol params without commas");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with(
+            "[E0010] missing ',' in protocol parameter list; found IDENT(right) instead."
+        ),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: separate protocol parameters with commas"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def size(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_function_param_list_with_repair_hint() {
+    let tokens =
+        scan_tokens("defmodule Demo do\n  def run(left, right do\n    left + right\n  end\nend\n")
+            .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed function params");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: function parameter list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the parameter list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def run(left, right) do ... end`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_unclosed_protocol_param_list_with_repair_hint() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  defprotocol Size do\n    def size(left, right\n  end\nend\n",
+    )
+    .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject unclosed protocol params");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0002] unclosed delimiter: protocol parameter list is missing ')'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add ')' to close the protocol parameter list"),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("`def size(left, right)`"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
 fn parse_ast_reports_missing_module_end() {
     let tokens = scan_tokens("defmodule Broken do\n  def one() do\n    1\n  end\n")
         .expect("scanner should tokenize parser fixture");
 
     let error = parse_ast(&tokens).expect_err("parser should reject missing end");
+    let message = error.to_string();
 
     assert!(
-        error
-            .to_string()
-            .starts_with("expected module declaration, found EOF"),
+        message
+            .starts_with("[E0003] unexpected end of file: missing 'end' to close module 'Broken'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'end' to finish module 'Broken'"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_function_end() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run() do\n    1\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing function end");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0003] unexpected end of file: missing 'end' to close function 'run'."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'end' to finish function 'run'"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_module_do() {
+    let tokens = scan_tokens("defmodule Broken\n  def run() do\n    1\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing module do");
+    let message = error.to_string();
+
+    assert!(
+        message
+            .starts_with("[E0006] missing 'do' to start module 'Broken'; found DEF(def) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains("hint: add 'do' after 'defmodule Broken' to begin the module body"),
+        "unexpected parser error: {error}"
+    );
+}
+
+#[test]
+fn parse_ast_reports_missing_function_do() {
+    let tokens = scan_tokens("defmodule Demo do\n  def run()\n    1\n  end\nend\n")
+        .expect("scanner should tokenize parser fixture");
+
+    let error = parse_ast(&tokens).expect_err("parser should reject missing function do");
+    let message = error.to_string();
+
+    assert!(
+        message.starts_with("[E0006] missing 'do' to start function 'run'; found INT(1) instead."),
+        "unexpected parser error: {error}"
+    );
+    assert!(
+        message.contains(
+            "hint: add 'do' after the function signature for 'run' to begin the function body"
+        ),
         "unexpected parser error: {error}"
     );
 }

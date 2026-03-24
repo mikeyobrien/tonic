@@ -484,9 +484,7 @@ fn emit_c_builtin_call(
                     "c backend builtin abs arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_abs({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_abs({rendered_args});\n"));
         }
         "length" => {
             if args.len() != 1 {
@@ -504,9 +502,7 @@ fn emit_c_builtin_call(
                     "c backend builtin hd arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_hd({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_hd({rendered_args});\n"));
         }
         "tl" => {
             if args.len() != 1 {
@@ -514,9 +510,7 @@ fn emit_c_builtin_call(
                     "c backend builtin tl arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_tl({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_tl({rendered_args});\n"));
         }
         "elem" => {
             if args.len() != 2 {
@@ -524,9 +518,7 @@ fn emit_c_builtin_call(
                     "c backend builtin elem arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_elem({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_elem({rendered_args});\n"));
         }
         "tuple_size" => {
             if args.len() != 1 {
@@ -554,9 +546,7 @@ fn emit_c_builtin_call(
                     "c backend builtin max arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_max({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_max({rendered_args});\n"));
         }
         "min" => {
             if args.len() != 2 {
@@ -564,9 +554,7 @@ fn emit_c_builtin_call(
                     "c backend builtin min arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_min({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_min({rendered_args});\n"));
         }
         "round" => {
             if args.len() != 1 {
@@ -574,9 +562,7 @@ fn emit_c_builtin_call(
                     "c backend builtin round arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_round({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_round({rendered_args});\n"));
         }
         "trunc" => {
             if args.len() != 1 {
@@ -584,9 +570,7 @@ fn emit_c_builtin_call(
                     "c backend builtin trunc arity mismatch in function {function_name} at offset {offset}"
                 )));
             }
-            out.push_str(&format!(
-                "  v{dest} = tn_runtime_trunc({rendered_args});\n"
-            ));
+            out.push_str(&format!("  v{dest} = tn_runtime_trunc({rendered_args});\n"));
         }
         "map_size" => {
             if args.len() != 1 {

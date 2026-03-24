@@ -16,6 +16,7 @@
 - LLMs will try Elixir patterns that Tonic doesn't support
 - Error messages should say "Tonic does not support X, use Y instead"
 - Catalog the most common failure modes from example app development
+- Preserve permissive `dynamic` arithmetic typing while enriching E2001 output: route actionable operator hints through the diagnostic layer for concrete non-numeric operands, but keep `dynamic` operands accepted so diagnostic work does not change inference behavior.
 
 ### 4. Stdlib completeness push (from PROMPT.md)
 - Complete the IO, List, Map, Enum module exposure

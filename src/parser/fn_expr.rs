@@ -3,27 +3,27 @@ use crate::lexer::TokenKind;
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_anonymous_function_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::Fn, "fn")?.span().start();
+        let fn_span = self.expect_token(TokenKind::Fn, "fn")?.span();
+        let offset = fn_span.start();
         let mut clauses = Vec::new();
         let mut expected_arity = None;
 
         loop {
-            let clause = self.parse_anonymous_function_clause()?;
+            let (clause_span, patterns, guard, body) = self.parse_anonymous_function_clause()?;
+            let clause_arity = patterns.len();
             if let Some(arity) = expected_arity {
-                if arity != clause.0.len() {
-                    return Err(ParserError::at_current(
-                        format!(
-                            "anonymous function clause arity mismatch: expected {arity}, found {}",
-                            clause.0.len()
-                        ),
-                        self.current(),
+                if arity != clause_arity {
+                    return Err(self.anonymous_function_clause_arity_mismatch_error(
+                        clause_span,
+                        arity,
+                        clause_arity,
                     ));
                 }
             } else {
-                expected_arity = Some(clause.0.len());
+                expected_arity = Some(clause_arity);
             }
 
-            clauses.push(clause);
+            clauses.push((patterns, guard, body));
 
             if self.match_kind(TokenKind::Semicolon) {
                 if self.check(TokenKind::End) {
@@ -37,17 +37,21 @@ impl<'a> Parser<'a> {
             }
 
             if self.is_at_end() {
-                return Err(self.expected("anonymous function clause or end"));
+                return Err(self.missing_end_error("anonymous function", fn_span));
             }
         }
 
-        self.expect(TokenKind::End, "end")?;
+        self.expect_block_end("anonymous function", fn_span)?;
         self.lower_anonymous_function_clauses(offset, clauses)
     }
 
     fn parse_anonymous_function_clause(
         &mut self,
-    ) -> Result<(Vec<Pattern>, Option<Expr>, Expr), ParserError> {
+    ) -> Result<(Span, Vec<Pattern>, Option<Expr>, Expr), ParserError> {
+        let clause_span = self
+            .current()
+            .expect("anonymous function clause should start with a token")
+            .span();
         let mut patterns = Vec::new();
 
         if !self.check(TokenKind::Arrow) {
@@ -66,9 +70,13 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.expect(TokenKind::Arrow, "->")?;
+        self.expect_clause_arrow(
+            "anonymous function clause",
+            clause_span,
+            "add '->' between the anonymous function parameters and clause body",
+        )?;
         let body = self.parse_branch_body()?;
-        Ok((patterns, guard, body))
+        Ok((clause_span, patterns, guard, body))
     }
 
     fn lower_anonymous_function_clauses(
@@ -146,7 +154,11 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_capture_expression(&mut self) -> Result<Expr, ParserError> {
         let offset = self.expect_token(TokenKind::Ampersand, "&")?.span().start();
-        self.expect(TokenKind::LParen, "(")?;
+        let opening_span = self.expect_token(TokenKind::LParen, "(")?.span();
+
+        if self.check(TokenKind::RParen) {
+            return Err(self.empty_capture_expression_error(offset));
+        }
 
         self.capture_param_max_stack.push(0);
         let body = self.parse_expression()?;
@@ -155,7 +167,13 @@ impl<'a> Parser<'a> {
             .pop()
             .expect("capture placeholder scope should exist");
 
-        self.expect(TokenKind::RParen, ")")?;
+        self.expect_closing_delimiter(
+            TokenKind::RParen,
+            ")",
+            "capture expression",
+            opening_span,
+            "add ')' to close the capture expression, for example `&(&1 + 1)`",
+        )?;
 
         if max_capture_index == 0 {
             return Err(ParserError::at_current(
@@ -184,7 +202,10 @@ impl<'a> Parser<'a> {
             segments.push(self.expect_ident("captured module or function segment")?);
         }
 
-        self.expect(TokenKind::Slash, "/ in function capture")?;
+        let target = segments.join(".");
+        if !self.match_kind(TokenKind::Slash) {
+            return Err(self.missing_named_capture_arity_error(offset, &target));
+        }
 
         let arity = self
             .expect_token(TokenKind::Integer, "function capture arity")?
@@ -309,13 +330,22 @@ impl<'a> Parser<'a> {
         }
 
         if self.match_kind(TokenKind::LParen) {
-            let args = self.parse_call_args()?;
-            self.expect(TokenKind::RParen, ")")?;
+            let opening_span = self.tokens[self.index - 1].span();
+            let args = self.parse_call_args(Some(callee.as_str()))?;
+            let call_hint =
+                format!("add ')' to close the call arguments, for example `{callee}(left, right)`");
+            self.expect_closing_delimiter(
+                TokenKind::RParen,
+                ")",
+                "call argument list",
+                opening_span,
+                call_hint,
+            )?;
             return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
         }
 
         if self.current_starts_no_paren_call_arg(callee_end) {
-            let args = self.parse_no_paren_call_args()?;
+            let args = self.parse_no_paren_call_args(callee.as_str())?;
             return Ok(Expr::call(self.node_ids.next_expr(), offset, callee, args));
         }
 

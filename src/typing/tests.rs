@@ -22,8 +22,8 @@ fn infer_types_accepts_dynamic_operands_for_arithmetic() {
     let tokens = scan_tokens(source).expect("scanner should tokenize dynamic arithmetic fixture");
     let ast = parse_ast(&tokens).expect("parser should build dynamic arithmetic fixture ast");
 
-    let summary = infer_types(&ast)
-        .expect("type inference should accept dynamic operands for arithmetic");
+    let summary =
+        infer_types(&ast).expect("type inference should accept dynamic operands for arithmetic");
 
     assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
 }
@@ -61,7 +61,55 @@ fn infer_types_keeps_not_strictly_boolean() {
     let error = infer_types(&ast).expect_err("type inference should reject not on non-boolean");
 
     assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
-    assert_eq!(error.message(), "type mismatch: expected bool, found int");
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected bool, found int; hint: use a boolean expression here, for example `value != 0` or `is_nil(value)`"
+    );
+}
+
+#[test]
+fn infer_types_reports_bitwise_bool_operand_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    true &&& 1\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize bitwise bool fixture");
+    let ast = parse_ast(&tokens).expect("parser should build bitwise bool fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject bool bitwise operands");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: `&&&` requires ints on both sides, found bool on the left-hand side; hint: replace the boolean operand with an int value, or use `and`/`or` for boolean logic"
+    );
+}
+
+#[test]
+fn infer_types_reports_range_string_bound_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    1..\"2\"\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize range string fixture");
+    let ast = parse_ast(&tokens).expect("parser should build range string fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject string range bounds");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: `..` requires int bounds, found string on the right-hand side; hint: convert the string bound to an int first, for example `String.to_integer(value)`"
+    );
+}
+
+#[test]
+fn infer_types_reports_bitwise_not_nil_operand_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    ~~~nil\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize bitwise not nil fixture");
+    let ast = parse_ast(&tokens).expect("parser should build bitwise not nil fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject nil for bitwise not");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: `~~~` requires an int operand, found nil; hint: replace `nil` with an int before applying `~~~`"
+    );
 }
 
 #[test]
@@ -112,10 +160,43 @@ fn infer_types_rejects_guard_builtin_arity_mismatch() {
 
     let error = infer_types(&ast).expect_err("type inference should reject guard arity mismatch");
 
-    assert_eq!(error.code(), None);
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
     assert_eq!(
         error.message(),
-        "arity mismatch for is_integer: expected 1 args, found 2"
+        "arity mismatch for is_integer: expected 1 arg, found 2; hint: call `is_integer/1`"
+    );
+}
+
+#[test]
+fn infer_types_reports_user_defined_arity_ranges_with_defaults() {
+    let source = "defmodule Demo do\n  def join(left, right \\\\ 0) do\n    left + right\n  end\n\n  def run() do\n    join()\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize default arity mismatch fixture");
+    let ast = parse_ast(&tokens).expect("parser should build default arity mismatch fixture ast");
+
+    let error = infer_types(&ast)
+        .expect_err("type inference should reject calls outside accepted default arities");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
+    assert_eq!(
+        error.message(),
+        "arity mismatch for Demo.join: expected 1..2 args, found 0; hint: use one of the accepted arities: `Demo.join/1` or `Demo.join/2`"
+    );
+}
+
+#[test]
+fn infer_types_reports_builtin_arity_hints() {
+    let source = "defmodule Demo do\n  def run() do\n    ok(1, 2)\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize builtin arity mismatch fixture");
+    let ast = parse_ast(&tokens).expect("parser should build builtin arity mismatch fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject builtin arity mismatch");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::ArityMismatch));
+    assert_eq!(
+        error.message(),
+        "arity mismatch for ok: expected 1 arg, found 2; hint: call `ok/1`"
     );
 }
 
@@ -155,7 +236,10 @@ fn infer_types_rejects_host_call_with_non_atom_key() {
     let error = infer_types(&ast).expect_err("type inference should reject non-atom host keys");
 
     assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
-    assert_eq!(error.message(), "type mismatch: expected atom, found int");
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected atom, found int; hint: pass an atom key as the first argument, for example `:sum_ints`"
+    );
 }
 
 #[test]
@@ -220,7 +304,7 @@ fn infer_types_reports_non_exhaustive_case_without_wildcard_branch() {
 
     assert_eq!(
         error.to_string(),
-        "[E3002] non-exhaustive case expression: missing wildcard branch at offset 37"
+        "[E3002] non-exhaustive case expression: missing wildcard branch; hint: add a catch-all branch such as `_ -> ...` to handle any remaining values at offset 37"
     );
 }
 
@@ -233,7 +317,27 @@ fn infer_types_requires_boolean_case_guard_expressions() {
     let error = infer_types(&ast).expect_err("type inference should reject non-boolean guards");
 
     assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
-    assert_eq!(error.message(), "type mismatch: expected bool, found int");
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected bool, found int; hint: use a boolean expression here, for example `value != 0` or `is_nil(value)`"
+    );
+}
+
+#[test]
+fn infer_types_requires_boolean_function_guard_expressions() {
+    let source = "defmodule Demo do\n  def choose(value) when 1 do\n    value\n  end\nend\n";
+    let tokens =
+        scan_tokens(source).expect("scanner should tokenize function guard typing fixture");
+    let ast = parse_ast(&tokens).expect("parser should build function guard typing fixture ast");
+
+    let error =
+        infer_types(&ast).expect_err("type inference should reject non-boolean function guards");
+
+    assert_eq!(error.code(), Some(TypingDiagnosticCode::TypeMismatch));
+    assert_eq!(
+        error.message(),
+        "type mismatch: expected bool, found int; hint: use a boolean expression here, for example `value != 0` or `is_nil(value)`"
+    );
 }
 
 #[test]
@@ -246,6 +350,24 @@ fn infer_types_accepts_match_operator_with_pattern_bindings() {
         infer_types(&ast).expect("type inference should accept match operator expressions");
 
     assert_eq!(summary.signature("Demo.run"), Some("fn() -> dynamic"));
+}
+
+#[test]
+fn infer_types_reports_literal_question_operand_with_wrap_hint() {
+    let source = "defmodule Demo do\n  def run() do\n    1?\n  end\nend\n";
+    let tokens = scan_tokens(source).expect("scanner should tokenize literal question fixture");
+    let ast = parse_ast(&tokens).expect("parser should build literal question fixture ast");
+
+    let error = infer_types(&ast).expect_err("type inference should reject question on int");
+
+    assert_eq!(
+        error.code(),
+        Some(TypingDiagnosticCode::QuestionRequiresResult)
+    );
+    assert_eq!(
+        error.message(),
+        "? operator requires Result value, found int; hint: wrap this value with `ok(...)` or `err(...)`, or remove the trailing `?`"
+    );
 }
 
 #[test]
@@ -266,7 +388,7 @@ fn infer_types_harmonizes_result_and_match_diagnostics() {
     );
     assert_eq!(
         question_error.message(),
-        "? operator requires Result value, found int"
+        "? operator requires Result value, found int; hint: make this expression return `ok(...)` or `err(...)`, or remove the trailing `?`"
     );
 
     let case_source = "defmodule Demo do\n  def run() do\n    case value() do\n      :ok -> 1\n    end\n  end\n\n  def value() do\n    1\n  end\nend\n";
@@ -284,6 +406,6 @@ fn infer_types_harmonizes_result_and_match_diagnostics() {
     );
     assert_eq!(
         case_error.message(),
-        "non-exhaustive case expression: missing wildcard branch"
+        "non-exhaustive case expression: missing wildcard branch; hint: add a catch-all branch such as `_ -> ...` to handle any remaining values"
     );
 }

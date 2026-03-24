@@ -42,7 +42,8 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_bitstring_literal_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::LtLt, "<<")?.span().start();
+        let opening_span = self.expect_token(TokenKind::LtLt, "<<")?.span();
+        let offset = opening_span.start();
 
         let mut items = Vec::new();
         if !self.check(TokenKind::GtGt) {
@@ -53,23 +54,47 @@ impl<'a> Parser<'a> {
                     continue;
                 }
 
+                if !self.check(TokenKind::GtGt)
+                    && self.current_starts_missing_bitstring_item_comma()
+                {
+                    return Err(self.missing_comma_error(
+                        "bitstring literal",
+                        "separate bitstring elements with commas, for example `<<left, right>>`",
+                    ));
+                }
+
                 break;
             }
         }
 
-        self.expect(TokenKind::GtGt, ">>")?;
+        self.expect_closing_delimiter(
+            TokenKind::GtGt,
+            ">>",
+            "bitstring literal",
+            opening_span,
+            "add '>>' to close the bitstring literal, for example `<<left, right>>`",
+        )?;
 
         Ok(Expr::bitstring(self.node_ids.next_expr(), offset, items))
     }
 
     pub(super) fn parse_tuple_literal_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::LBrace, "{")?.span().start();
-        let items = self.parse_expression_items(TokenKind::RBrace, "}")?;
+        let opening_span = self.expect_token(TokenKind::LBrace, "{")?.span();
+        let offset = opening_span.start();
+        let items = self.parse_expression_items(
+            TokenKind::RBrace,
+            "}",
+            "tuple literal",
+            opening_span,
+            "separate tuple elements with commas, for example `{left, right}`",
+            "add '}' to close the tuple literal, for example `{left, right}`",
+        )?;
         Ok(Expr::tuple(self.node_ids.next_expr(), offset, items))
     }
 
     pub(super) fn parse_list_or_keyword_literal_expression(&mut self) -> Result<Expr, ParserError> {
-        let offset = self.expect_token(TokenKind::LBracket, "[")?.span().start();
+        let opening_span = self.expect_token(TokenKind::LBracket, "[")?.span();
+        let offset = opening_span.start();
 
         if self.check(TokenKind::RBracket) {
             self.advance();
@@ -77,11 +102,26 @@ impl<'a> Parser<'a> {
         }
 
         if self.starts_keyword_literal_entry() {
-            let entries = self.parse_label_entries(TokenKind::RBracket, "keyword key")?;
+            let entries = self.parse_label_entries(
+                TokenKind::RBracket,
+                "]",
+                "keyword key",
+                "keyword list",
+                opening_span,
+                "separate keyword entries with commas, for example `[message: \"oops\", detail: info]`",
+                "add ']' to close the keyword list, for example `[message: \"oops\", detail: info]`",
+            )?;
             return Ok(Expr::keyword(self.node_ids.next_expr(), offset, entries));
         }
 
-        let items = self.parse_expression_items(TokenKind::RBracket, "]")?;
+        let items = self.parse_expression_items(
+            TokenKind::RBracket,
+            "]",
+            "list literal",
+            opening_span,
+            "separate list elements with commas, for example `[left, right]`",
+            "add ']' to close the list literal, for example `[left, right]`",
+        )?;
         Ok(Expr::list(self.node_ids.next_expr(), offset, items))
     }
 
@@ -99,21 +139,29 @@ impl<'a> Parser<'a> {
         &mut self,
         offset: usize,
     ) -> Result<Expr, ParserError> {
-        self.expect(TokenKind::LBrace, "{")?;
+        let opening_span = self.expect_token(TokenKind::LBrace, "{")?.span();
 
         if self.match_kind(TokenKind::RBrace) {
             return Ok(Expr::map(self.node_ids.next_expr(), offset, Vec::new()));
         }
 
         if self.starts_keyword_literal_entry() {
-            let entries = self.parse_map_entries_after_first()?;
+            let entries = self.parse_map_entries_after_first(opening_span)?;
             return Ok(Expr::map(self.node_ids.next_expr(), offset, entries));
         }
 
         let first_key = self.parse_expression()?;
 
         if self.match_kind(TokenKind::Pipe) {
-            let entries = self.parse_label_entries(TokenKind::RBrace, "map update key")?;
+            let entries = self.parse_label_entries(
+                TokenKind::RBrace,
+                "}",
+                "map update key",
+                "map update",
+                opening_span,
+                "separate map update fields with commas, for example `%{base | left: value, right: other}`",
+                "add '}' to close the map update, for example `%{base | left: value, right: other}`",
+            )?;
             return Ok(Expr::map_update(
                 self.node_ids.next_expr(),
                 offset,
@@ -128,14 +176,27 @@ impl<'a> Parser<'a> {
             entries.push(self.parse_map_entry()?);
         }
 
-        self.expect(TokenKind::RBrace, "}")?;
+        if !self.check(TokenKind::RBrace) && self.current_starts_missing_map_entry_comma() {
+            return Err(self.missing_comma_error(
+                "map literal",
+                "separate map entries with commas, for example `%{foo: 1, bar: 2}` or `%{left => right, other => next}`",
+            ));
+        }
+
+        self.expect_closing_delimiter(
+            TokenKind::RBrace,
+            "}",
+            "map literal",
+            opening_span,
+            "add '}' to close the map literal, for example `%{foo: 1, bar: 2}`",
+        )?;
 
         Ok(Expr::map(self.node_ids.next_expr(), offset, entries))
     }
 
     fn parse_struct_literal_expression(&mut self, offset: usize) -> Result<Expr, ParserError> {
         let module = self.parse_module_reference("struct module")?;
-        self.expect(TokenKind::LBrace, "{")?;
+        let opening_span = self.expect_token(TokenKind::LBrace, "{")?.span();
 
         if self.match_kind(TokenKind::RBrace) {
             return Ok(Expr::struct_literal(
@@ -147,7 +208,15 @@ impl<'a> Parser<'a> {
         }
 
         if self.starts_keyword_literal_entry() {
-            let entries = self.parse_label_entries(TokenKind::RBrace, "struct field")?;
+            let entries = self.parse_label_entries(
+                TokenKind::RBrace,
+                "}",
+                "struct field",
+                "struct literal",
+                opening_span,
+                "separate struct fields with commas, for example `%User{name: name, age: age}`",
+                "add '}' to close the struct literal, for example `%User{name: name, age: age}`",
+            )?;
             return Ok(Expr::struct_literal(
                 self.node_ids.next_expr(),
                 offset,
@@ -158,7 +227,15 @@ impl<'a> Parser<'a> {
 
         let base = self.parse_expression()?;
         self.expect(TokenKind::Pipe, "|")?;
-        let updates = self.parse_label_entries(TokenKind::RBrace, "struct update field")?;
+        let updates = self.parse_label_entries(
+            TokenKind::RBrace,
+            "}",
+            "struct update field",
+            "struct update",
+            opening_span,
+            "separate struct update fields with commas, for example `%User{record | name: value, age: other}`",
+            "add '}' to close the struct update, for example `%User{record | name: value, age: other}`",
+        )?;
 
         Ok(Expr::struct_update(
             self.node_ids.next_expr(),
@@ -176,14 +253,30 @@ impl<'a> Parser<'a> {
                 .is_some_and(|token| token.kind() == TokenKind::Colon)
     }
 
-    fn parse_map_entries_after_first(&mut self) -> Result<Vec<MapExprEntry>, ParserError> {
+    fn parse_map_entries_after_first(
+        &mut self,
+        opening_span: crate::lexer::Span,
+    ) -> Result<Vec<MapExprEntry>, ParserError> {
         let mut entries = vec![self.parse_map_entry_from_label()?];
 
         while self.match_kind(TokenKind::Comma) {
             entries.push(self.parse_map_entry()?);
         }
 
-        self.expect(TokenKind::RBrace, "}")?;
+        if !self.check(TokenKind::RBrace) && self.current_starts_missing_map_entry_comma() {
+            return Err(self.missing_comma_error(
+                "map literal",
+                "separate map entries with commas, for example `%{foo: 1, bar: 2}` or `%{left => right, other => next}`",
+            ));
+        }
+
+        self.expect_closing_delimiter(
+            TokenKind::RBrace,
+            "}",
+            "map literal",
+            opening_span,
+            "add '}' to close the map literal, for example `%{foo: 1, bar: 2}`",
+        )?;
         Ok(entries)
     }
 
@@ -215,7 +308,13 @@ impl<'a> Parser<'a> {
         &mut self,
         key: Expr,
     ) -> Result<MapExprEntry, ParserError> {
-        self.expect(TokenKind::FatArrow, "map fat arrow `=>`")?;
+        if !self.match_kind(TokenKind::FatArrow) {
+            return Err(self.missing_map_fat_arrow_error(
+                "map entry",
+                "write `%{key => value}` for computed keys, or use `%{name: value}` when the key is an atom label",
+            ));
+        }
+
         let value = self.parse_expression()?;
         Ok(MapExprEntry { key, value })
     }
@@ -223,7 +322,12 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_label_entries(
         &mut self,
         closing: TokenKind,
+        expected_closing: &str,
         expected_key: &str,
+        construct: &str,
+        opening_span: crate::lexer::Span,
+        missing_comma_hint: &str,
+        unclosed_hint: &str,
     ) -> Result<Vec<LabelExprEntry>, ParserError> {
         let mut entries = Vec::new();
 
@@ -237,10 +341,33 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            if !self.check(closing) {
+                if self.current_starts_missing_keyword_entry_comma() {
+                    return Err(self.missing_comma_error(construct, missing_comma_hint));
+                }
+
+                if self.check(TokenKind::Colon)
+                    && self.index > 0
+                    && self.tokens[self.index - 1].kind() == TokenKind::Ident
+                {
+                    return Err(self.missing_comma_error_at_token(
+                        construct,
+                        &self.tokens[self.index - 1],
+                        missing_comma_hint,
+                    ));
+                }
+            }
+
             break;
         }
 
-        self.expect(closing, "literal terminator")?;
+        self.expect_closing_delimiter(
+            closing,
+            expected_closing,
+            construct,
+            opening_span,
+            unclosed_hint,
+        )?;
         Ok(entries)
     }
 
@@ -248,6 +375,10 @@ impl<'a> Parser<'a> {
         &mut self,
         closing: TokenKind,
         expected_closing: &str,
+        construct: &str,
+        opening_span: crate::lexer::Span,
+        missing_comma_hint: &str,
+        unclosed_hint: &str,
     ) -> Result<Vec<Expr>, ParserError> {
         let mut items = Vec::new();
 
@@ -263,10 +394,20 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
+            if !self.check(closing) && self.current_starts_missing_expression_item_comma() {
+                return Err(self.missing_comma_error(construct, missing_comma_hint));
+            }
+
             break;
         }
 
-        self.expect(closing, expected_closing)?;
+        self.expect_closing_delimiter(
+            closing,
+            expected_closing,
+            construct,
+            opening_span,
+            unclosed_hint,
+        )?;
         Ok(items)
     }
 }
