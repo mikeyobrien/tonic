@@ -30,17 +30,41 @@ impl ReplClient {
     }
 
     fn request(&mut self, value: Value) -> Value {
-        serde_json::to_writer(&mut self.writer, &value).expect("request should serialize");
-        self.writer
-            .write_all(b"\n")
-            .expect("request newline should write");
-        self.writer.flush().expect("request should flush");
+        self.write_request(value);
 
         let mut line = String::new();
         self.reader
             .read_line(&mut line)
             .expect("response line should read");
         serde_json::from_str(line.trim()).expect("response should parse")
+    }
+
+    fn request_frames(&mut self, value: Value) -> Vec<Value> {
+        self.write_request(value);
+
+        let mut frames = Vec::new();
+        loop {
+            let mut line = String::new();
+            self.reader
+                .read_line(&mut line)
+                .expect("response frame should read");
+            let frame: Value =
+                serde_json::from_str(line.trim()).expect("response frame should parse");
+            let done = frame.get("done").and_then(Value::as_bool).unwrap_or(false);
+            let is_stream = frame.get("status").and_then(Value::as_str) == Some("stream");
+            frames.push(frame);
+            if done || !is_stream {
+                return frames;
+            }
+        }
+    }
+
+    fn write_request(&mut self, value: Value) {
+        serde_json::to_writer(&mut self.writer, &value).expect("request should serialize");
+        self.writer
+            .write_all(b"\n")
+            .expect("request newline should write");
+        self.writer.flush().expect("request should flush");
     }
 }
 
@@ -182,7 +206,7 @@ fn remote_repl_server_describe_reports_capabilities() {
     );
     assert_eq!(
         describe["describe"]["ops"]["eval"]["optional"],
-        json!(["session", "stdin"])
+        json!(["id", "session", "stdin"])
     );
     assert_eq!(
         describe["describe"]["ops"]["load-file"]["requires"],
@@ -190,7 +214,20 @@ fn remote_repl_server_describe_reports_capabilities() {
     );
     assert_eq!(
         describe["describe"]["ops"]["load-file"]["optional"],
-        json!(["session", "stdin"])
+        json!(["id", "session", "stdin"])
+    );
+    assert_eq!(
+        describe["describe"]["ops"]["describe"]["optional"],
+        json!(["id"])
+    );
+    assert_eq!(describe["describe"]["streaming"]["request_ids"], true);
+    assert_eq!(
+        describe["describe"]["streaming"]["stdout_stderr_frames"],
+        true
+    );
+    assert_eq!(
+        describe["describe"]["streaming"]["terminal_done_response"],
+        true
     );
     assert!(describe["describe"]["ops"]["describe"].is_object());
 }
@@ -271,6 +308,134 @@ fn remote_repl_server_returns_captured_stdout_and_stderr_for_eval_and_load_file(
     assert!(load_stderr.contains("\"event\":\"remote_load\""));
     assert!(load_stderr.contains("\"level\":\"warn\""));
     assert!(load_stderr.contains("\"path\":\"fixture\""));
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn remote_repl_server_streams_stdout_stderr_frames_for_id_addressed_connection_requests() {
+    let server = spawn_repl_server();
+    let mut client = ReplClient::connect(&server.addr);
+
+    let eval_frames = client.request_frames(json!({
+        "op": "eval",
+        "id": "req-eval-1",
+        "code": "case host_call(:io_puts, \"hello\") do\n  _ -> host_call(:sys_log, \"info\", \"remote_eval\", %{source: \"repl\"})\nend"
+    }));
+    assert_eq!(eval_frames.len(), 3);
+    assert_eq!(eval_frames[0]["status"], "stream");
+    assert_eq!(eval_frames[0]["id"], "req-eval-1");
+    assert_eq!(eval_frames[0]["stream"], "stdout");
+    assert_eq!(eval_frames[0]["text"], "hello\n");
+    assert_eq!(eval_frames[1]["stream"], "stderr");
+    assert!(eval_frames[1]["text"]
+        .as_str()
+        .expect("stderr frame should be text")
+        .contains("\"event\":\"remote_eval\""));
+    let eval_done = &eval_frames[2];
+    assert_eq!(eval_done["status"], "ok");
+    assert_eq!(eval_done["id"], "req-eval-1");
+    assert_eq!(eval_done["done"], true);
+    assert_eq!(eval_done["value"], "true");
+    assert_eq!(eval_done["value_type"], "bool");
+    assert!(eval_done.get("stdout").is_none() || eval_done["stdout"].is_null());
+    assert!(eval_done.get("stderr").is_none() || eval_done["stderr"].is_null());
+
+    let file_path = unique_temp_file("repl-server-stream-output");
+    std::fs::write(
+        &file_path,
+        "case host_call(:io_puts, \"loaded\") do\n  _ -> host_call(:sys_log, \"warn\", \"remote_load\", %{path: \"fixture\"})\nend\n",
+    )
+    .expect("streaming fixture should be writable");
+
+    let load_frames = client.request_frames(json!({
+        "op": "load-file",
+        "id": "req-load-1",
+        "path": file_path.display().to_string()
+    }));
+    assert_eq!(load_frames.len(), 3);
+    assert_eq!(load_frames[0]["stream"], "stdout");
+    assert_eq!(load_frames[0]["text"], "loaded\n");
+    assert_eq!(load_frames[1]["stream"], "stderr");
+    assert!(load_frames[1]["text"]
+        .as_str()
+        .expect("stderr frame should be text")
+        .contains("\"event\":\"remote_load\""));
+    let load_done = &load_frames[2];
+    assert_eq!(load_done["status"], "ok");
+    assert_eq!(load_done["id"], "req-load-1");
+    assert_eq!(load_done["done"], true);
+    assert_eq!(load_done["value"], "true");
+    assert_eq!(load_done["value_type"], "bool");
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn remote_repl_server_streams_stdout_stderr_frames_for_id_addressed_logical_sessions() {
+    let server = spawn_repl_server();
+
+    let session_id = {
+        let mut client = ReplClient::connect(&server.addr);
+        let cloned = client.request(json!({ "op": "clone" }));
+        assert_eq!(cloned["status"], "ok");
+        cloned["session"]
+            .as_str()
+            .expect("clone should return a session id")
+            .to_string()
+    };
+
+    let mut resumed_client = ReplClient::connect(&server.addr);
+    let eval_frames = resumed_client.request_frames(json!({
+        "op": "eval",
+        "id": "req-shared-eval",
+        "session": session_id.clone(),
+        "code": "case host_call(:io_puts, \"shared\") do\n  _ -> host_call(:sys_log, \"info\", \"shared_eval\", %{scope: \"logical\"})\nend"
+    }));
+    assert_eq!(eval_frames.len(), 3);
+    assert_eq!(eval_frames[0]["session"], session_id);
+    assert_eq!(eval_frames[0]["stream"], "stdout");
+    assert_eq!(eval_frames[0]["text"], "shared\n");
+    assert_eq!(eval_frames[1]["session"], session_id);
+    assert_eq!(eval_frames[1]["stream"], "stderr");
+    assert!(eval_frames[1]["text"]
+        .as_str()
+        .expect("stderr frame should be text")
+        .contains("\"event\":\"shared_eval\""));
+    let eval_done = &eval_frames[2];
+    assert_eq!(eval_done["status"], "ok");
+    assert_eq!(eval_done["id"], "req-shared-eval");
+    assert_eq!(eval_done["done"], true);
+    assert_eq!(eval_done["session"], session_id);
+
+    let file_path = unique_temp_file("repl-server-stream-shared-output");
+    std::fs::write(
+        &file_path,
+        "case host_call(:io_puts, \"shared-load\") do\n  _ -> host_call(:sys_log, \"warn\", \"shared_load\", %{scope: \"logical\"})\nend\n",
+    )
+    .expect("logical streaming fixture should be writable");
+
+    let load_frames = resumed_client.request_frames(json!({
+        "op": "load-file",
+        "id": "req-shared-load",
+        "session": session_id.clone(),
+        "path": file_path.display().to_string()
+    }));
+    assert_eq!(load_frames.len(), 3);
+    assert_eq!(load_frames[0]["session"], session_id);
+    assert_eq!(load_frames[0]["stream"], "stdout");
+    assert_eq!(load_frames[0]["text"], "shared-load\n");
+    assert_eq!(load_frames[1]["session"], session_id);
+    assert_eq!(load_frames[1]["stream"], "stderr");
+    assert!(load_frames[1]["text"]
+        .as_str()
+        .expect("stderr frame should be text")
+        .contains("\"event\":\"shared_load\""));
+    let load_done = &load_frames[2];
+    assert_eq!(load_done["status"], "ok");
+    assert_eq!(load_done["id"], "req-shared-load");
+    assert_eq!(load_done["done"], true);
+    assert_eq!(load_done["session"], session_id);
 
     let _ = std::fs::remove_file(file_path);
 }

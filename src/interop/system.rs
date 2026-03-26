@@ -365,8 +365,7 @@ fn append_structured_log_line(serialized: &str) -> Result<(), HostError> {
         return Ok(());
     }
 
-    write_host_stderr(serialized)?;
-    write_host_stderr("\n")?;
+    write_host_stderr(&format!("{serialized}\n"))?;
     Ok(())
 }
 

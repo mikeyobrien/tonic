@@ -51,11 +51,23 @@ pub(crate) struct CapturedHostOutput {
     pub stderr: String,
 }
 
-#[derive(Clone, Copy)]
-enum HostOutputStream {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostOutputStream {
     Stdout,
     Stderr,
 }
+
+impl HostOutputStream {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+        }
+    }
+}
+
+pub(crate) type HostOutputForwarder =
+    Box<dyn FnMut(HostOutputStream, &str) -> Result<(), HostError>>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct ScopedHostInput {
@@ -99,6 +111,7 @@ impl ScopedHostInput {
 
 thread_local! {
     static HOST_OUTPUT_CAPTURE_STACK: RefCell<Vec<CapturedHostOutput>> = const { RefCell::new(Vec::new()) };
+    static HOST_OUTPUT_FORWARDER_STACK: RefCell<Vec<HostOutputForwarder>> = RefCell::new(Vec::new());
     static HOST_INPUT_CAPTURE_STACK: RefCell<Vec<ScopedHostInput>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -106,7 +119,22 @@ pub(crate) fn capture_host_output_with_stdin<T>(
     stdin: Option<&str>,
     f: impl FnOnce() -> T,
 ) -> (T, CapturedHostOutput) {
+    capture_host_output_with_stdin_and_forward(stdin, None, f)
+}
+
+pub(crate) fn capture_host_output_with_stdin_and_forward<T>(
+    stdin: Option<&str>,
+    forward: Option<HostOutputForwarder>,
+    f: impl FnOnce() -> T,
+) -> (T, CapturedHostOutput) {
     HOST_OUTPUT_CAPTURE_STACK.with(|stack| stack.borrow_mut().push(CapturedHostOutput::default()));
+
+    let forward_pushed = if let Some(forward) = forward {
+        HOST_OUTPUT_FORWARDER_STACK.with(|stack| stack.borrow_mut().push(forward));
+        true
+    } else {
+        false
+    };
 
     let stdin_pushed = if let Some(stdin) = stdin {
         HOST_INPUT_CAPTURE_STACK.with(|stack| stack.borrow_mut().push(ScopedHostInput::new(stdin)));
@@ -119,6 +147,10 @@ pub(crate) fn capture_host_output_with_stdin<T>(
 
     if stdin_pushed {
         let _ = HOST_INPUT_CAPTURE_STACK.with(|stack| stack.borrow_mut().pop());
+    }
+
+    if forward_pushed {
+        let _ = HOST_OUTPUT_FORWARDER_STACK.with(|stack| stack.borrow_mut().pop());
     }
 
     let output = HOST_OUTPUT_CAPTURE_STACK
@@ -143,6 +175,23 @@ fn capture_host_stream(stream: HostOutputStream, text: &str) -> bool {
     })
 }
 
+fn forward_host_stream(stream: HostOutputStream, text: &str) -> Result<bool, HostError> {
+    HOST_OUTPUT_FORWARDER_STACK.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        let Some(forwarder) = stack.last_mut() else {
+            return Ok(false);
+        };
+
+        forwarder(stream, text)?;
+        Ok(true)
+    })
+}
+
+fn has_host_output_sink() -> bool {
+    HOST_OUTPUT_CAPTURE_STACK.with(|stack| !stack.borrow().is_empty())
+        || HOST_OUTPUT_FORWARDER_STACK.with(|stack| !stack.borrow().is_empty())
+}
+
 fn try_read_scoped_host_input<T>(f: impl FnOnce(&mut ScopedHostInput) -> T) -> Option<T> {
     HOST_INPUT_CAPTURE_STACK.with(|stack| {
         let mut stack = stack.borrow_mut();
@@ -152,7 +201,9 @@ fn try_read_scoped_host_input<T>(f: impl FnOnce(&mut ScopedHostInput) -> T) -> O
 }
 
 fn write_host_stream(stream: HostOutputStream, text: &str) -> Result<(), HostError> {
-    if capture_host_stream(stream, text) {
+    let captured = capture_host_stream(stream, text);
+    let forwarded = forward_host_stream(stream, text)?;
+    if captured || forwarded {
         return Ok(());
     }
 
@@ -169,7 +220,7 @@ fn write_host_stream(stream: HostOutputStream, text: &str) -> Result<(), HostErr
 }
 
 pub(super) fn flush_host_stdout() -> std::io::Result<()> {
-    if HOST_OUTPUT_CAPTURE_STACK.with(|stack| !stack.borrow().is_empty()) {
+    if has_host_output_sink() {
         return Ok(());
     }
 

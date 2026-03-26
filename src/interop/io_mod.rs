@@ -61,8 +61,7 @@ fn value_to_string(value: &RuntimeValue) -> String {
 fn host_io_puts(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("IO.puts", args, 1)?;
     let s = value_to_string(&args[0]);
-    write_host_stdout(&s)?;
-    write_host_stdout("\n")?;
+    write_host_stdout(&format!("{s}\n"))?;
     Ok(RuntimeValue::Nil)
 }
 
@@ -74,8 +73,7 @@ fn host_io_inspect(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     }
 
     let value = args[0].clone();
-    write_host_stderr(&value.render())?;
-    write_host_stderr("\n")?;
+    write_host_stderr(&format!("{}\n", value.render()))?;
     Ok(value)
 }
 

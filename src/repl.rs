@@ -1,4 +1,7 @@
-use crate::interop::{capture_host_output_with_stdin, CapturedHostOutput};
+use crate::interop::{
+    capture_host_output_with_stdin, capture_host_output_with_stdin_and_forward, CapturedHostOutput,
+    HostError, HostOutputForwarder, HostOutputStream,
+};
 use crate::ir::{lower_ast_to_ir, IrFunction, IrProgram};
 use crate::lexer::scan_tokens;
 use crate::observability::ObservabilityRun;
@@ -62,6 +65,8 @@ enum ReadResult {
 struct ServerRequest {
     op: String,
     #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
     session: Option<String>,
     #[serde(default)]
     code: Option<String>,
@@ -75,6 +80,7 @@ struct ServerRequest {
 struct ServerDescribe {
     ops: std::collections::BTreeMap<&'static str, ServerOpInfo>,
     sessions: ServerSessionInfo,
+    streaming: ServerStreamingInfo,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,8 +100,29 @@ struct ServerSessionInfo {
 }
 
 #[derive(Debug, Serialize)]
+struct ServerStreamingInfo {
+    request_ids: bool,
+    stdout_stderr_frames: bool,
+    terminal_done_response: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+struct ServerStreamFrame {
+    status: &'static str,
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session: Option<String>,
+    stream: &'static str,
+    text: String,
+}
+
+#[derive(Debug, Serialize)]
 struct ServerResponse {
     status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    done: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -112,6 +139,29 @@ struct ServerResponse {
     describe: Option<ServerDescribe>,
 }
 
+type ReplServerWriter = Arc<Mutex<TcpStream>>;
+
+trait ServerStreamSink: Send + Sync {
+    fn send(&self, frame: &ServerStreamFrame) -> Result<(), String>;
+}
+
+struct TcpServerStreamSink {
+    writer: ReplServerWriter,
+}
+
+impl TcpServerStreamSink {
+    fn new(writer: ReplServerWriter) -> Self {
+        Self { writer }
+    }
+}
+
+impl ServerStreamSink for TcpServerStreamSink {
+    fn send(&self, frame: &ServerStreamFrame) -> Result<(), String> {
+        write_json_line(&self.writer, frame)
+            .map_err(|err| format!("could not write repl stream frame: {err}"))
+    }
+}
+
 impl ServerDescribe {
     fn supported() -> Self {
         let mut ops = std::collections::BTreeMap::new();
@@ -119,7 +169,7 @@ impl ServerDescribe {
             "clear",
             ServerOpInfo {
                 requires: vec![],
-                optional: vec!["session"],
+                optional: vec!["id", "session"],
                 doc: "Reset a session's accumulated environment.",
             },
         );
@@ -127,7 +177,7 @@ impl ServerDescribe {
             "clone",
             ServerOpInfo {
                 requires: vec![],
-                optional: vec!["session"],
+                optional: vec!["id", "session"],
                 doc: "Create a logical session id from the current or named session.",
             },
         );
@@ -135,7 +185,7 @@ impl ServerDescribe {
             "close",
             ServerOpInfo {
                 requires: vec!["session"],
-                optional: vec![],
+                optional: vec!["id"],
                 doc: "Close a logical session id and release its state.",
             },
         );
@@ -143,7 +193,7 @@ impl ServerDescribe {
             "describe",
             ServerOpInfo {
                 requires: vec![],
-                optional: vec![],
+                optional: vec!["id"],
                 doc: "Report server capabilities and session semantics.",
             },
         );
@@ -151,7 +201,7 @@ impl ServerDescribe {
             "eval",
             ServerOpInfo {
                 requires: vec!["code"],
-                optional: vec!["session", "stdin"],
+                optional: vec!["id", "session", "stdin"],
                 doc: "Evaluate code in the current or named session.",
             },
         );
@@ -159,7 +209,7 @@ impl ServerDescribe {
             "load-file",
             ServerOpInfo {
                 requires: vec!["path"],
-                optional: vec!["session", "stdin"],
+                optional: vec!["id", "session", "stdin"],
                 doc: "Load and evaluate a file in the current or named session.",
             },
         );
@@ -173,6 +223,28 @@ impl ServerDescribe {
                 clone_op: "clone",
                 close_op: "close",
             },
+            streaming: ServerStreamingInfo {
+                request_ids: true,
+                stdout_stderr_frames: true,
+                terminal_done_response: true,
+            },
+        }
+    }
+}
+
+impl ServerStreamFrame {
+    fn new(
+        id: impl Into<String>,
+        session: Option<String>,
+        stream: HostOutputStream,
+        text: &str,
+    ) -> Self {
+        Self {
+            status: "stream",
+            id: id.into(),
+            session,
+            stream: stream.as_str(),
+            text: text.to_string(),
         }
     }
 }
@@ -181,6 +253,8 @@ impl ServerResponse {
     fn ok_value(value: &RuntimeValue) -> Self {
         Self {
             status: "ok",
+            id: None,
+            done: None,
             session: None,
             value: Some(value.render()),
             value_type: Some(value_type_label(value).to_string()),
@@ -194,6 +268,8 @@ impl ServerResponse {
     fn ok_message(message: impl Into<String>) -> Self {
         Self {
             status: "ok",
+            id: None,
+            done: None,
             session: None,
             value: None,
             value_type: None,
@@ -207,6 +283,8 @@ impl ServerResponse {
     fn ok_describe() -> Self {
         Self {
             status: "ok",
+            id: None,
+            done: None,
             session: None,
             value: None,
             value_type: None,
@@ -220,6 +298,8 @@ impl ServerResponse {
     fn error(message: impl Into<String>) -> Self {
         Self {
             status: "error",
+            id: None,
+            done: None,
             session: None,
             value: None,
             value_type: None,
@@ -228,6 +308,14 @@ impl ServerResponse {
             message: Some(message.into()),
             describe: None,
         }
+    }
+
+    fn with_request_id(mut self, id: Option<&str>) -> Self {
+        if let Some(id) = id {
+            self.id = Some(id.to_string());
+            self.done = Some(true);
+        }
+        self
     }
 
     fn with_session(mut self, session: impl Into<String>) -> Self {
@@ -780,6 +868,15 @@ fn run_repl_server(listen_addr: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn write_json_line<T: Serialize>(writer: &ReplServerWriter, value: &T) -> std::io::Result<()> {
+    let mut writer = writer
+        .lock()
+        .map_err(|_| std::io::Error::other("repl writer is unavailable"))?;
+    serde_json::to_writer(&mut *writer, value).map_err(std::io::Error::other)?;
+    writer.write_all(b"\n")?;
+    writer.flush()
+}
+
 fn handle_repl_client(
     stream: TcpStream,
     shared_sessions: Arc<SharedReplSessions>,
@@ -788,7 +885,9 @@ fn handle_repl_client(
         .try_clone()
         .map_err(|err| format!("could not clone repl client stream: {err}"))?;
     let mut reader = BufReader::new(reader_stream);
-    let mut writer = stream;
+    let writer = Arc::new(Mutex::new(stream));
+    let stream_sink: Arc<dyn ServerStreamSink> =
+        Arc::new(TcpServerStreamSink::new(Arc::clone(&writer)));
     let mut connection_session = ReplSession::default();
     let mut line = String::new();
 
@@ -807,13 +906,16 @@ fn handle_repl_client(
         }
 
         let response = match serde_json::from_str::<ServerRequest>(request_line) {
-            Ok(request) => {
-                handle_server_request(&shared_sessions, &mut connection_session, request)
-            }
+            Ok(request) => handle_server_request(
+                &shared_sessions,
+                &mut connection_session,
+                Some(Arc::clone(&stream_sink)),
+                request,
+            ),
             Err(err) => ServerResponse::error(format!("invalid request JSON: {err}")),
         };
 
-        write_server_response(&mut writer, &response)
+        write_server_response(&writer, &response)
             .map_err(|err| format!("could not write repl response: {err}"))?;
     }
 }
@@ -821,17 +923,21 @@ fn handle_repl_client(
 fn handle_server_request(
     shared_sessions: &SharedReplSessions,
     connection_session: &mut ReplSession,
+    stream_sink: Option<Arc<dyn ServerStreamSink>>,
     request: ServerRequest,
 ) -> ServerResponse {
-    match request.op.as_str() {
+    let request_id = request.id.clone();
+    let response = match request.op.as_str() {
         "describe" => ServerResponse::ok_describe(),
-        "eval" => handle_session_eval(shared_sessions, connection_session, &request),
+        "eval" => handle_session_eval(shared_sessions, connection_session, stream_sink, &request),
         "clear" => handle_session_clear(
             shared_sessions,
             connection_session,
             request.session.as_deref(),
         ),
-        "load-file" => handle_session_load_file(shared_sessions, connection_session, &request),
+        "load-file" => {
+            handle_session_load_file(shared_sessions, connection_session, stream_sink, &request)
+        }
         "clone" => match request.session.as_deref() {
             Some(session_id) => match shared_sessions.clone_named_session(session_id) {
                 Ok(new_session_id) => {
@@ -856,16 +962,47 @@ fn handle_server_request(
         other => ServerResponse::error(format!(
             "unknown op '{other}' (expected describe, eval, clear, load-file, clone, or close)"
         )),
-    }
+    };
+
+    response.with_request_id(request_id.as_deref())
+}
+
+fn request_output_forwarder(
+    sink: Option<Arc<dyn ServerStreamSink>>,
+    request_id: Option<&str>,
+    session: Option<&str>,
+) -> Option<HostOutputForwarder> {
+    let sink = sink?;
+    let request_id = request_id?.to_string();
+    let session = session.map(ToOwned::to_owned);
+    Some(Box::new(move |stream, text| {
+        let frame = ServerStreamFrame::new(request_id.clone(), session.clone(), stream, text);
+        sink.send(&frame).map_err(HostError::new)
+    }))
 }
 
 fn response_from_captured_eval(
     result: Result<RuntimeValue, String>,
     output: CapturedHostOutput,
+    streamed: bool,
 ) -> ServerResponse {
     match result {
-        Ok(value) => ServerResponse::ok_value(&value).with_output(output),
-        Err(err) => ServerResponse::error(err).with_output(output),
+        Ok(value) => {
+            let response = ServerResponse::ok_value(&value);
+            if streamed {
+                response
+            } else {
+                response.with_output(output)
+            }
+        }
+        Err(err) => {
+            let response = ServerResponse::error(err);
+            if streamed {
+                response
+            } else {
+                response.with_output(output)
+            }
+        }
     }
 }
 
@@ -873,39 +1010,65 @@ fn capture_session_eval(
     session: &mut ReplSession,
     code: &str,
     stdin: Option<&str>,
+    forward: Option<HostOutputForwarder>,
 ) -> (Result<RuntimeValue, String>, CapturedHostOutput) {
-    capture_host_output_with_stdin(stdin, || session.eval_source(code))
+    match forward {
+        Some(forward) => capture_host_output_with_stdin_and_forward(stdin, Some(forward), || {
+            session.eval_source(code)
+        }),
+        None => capture_host_output_with_stdin(stdin, || session.eval_source(code)),
+    }
 }
 
 fn capture_session_load_file(
     session: &mut ReplSession,
     path: &str,
     stdin: Option<&str>,
+    forward: Option<HostOutputForwarder>,
 ) -> (Result<RuntimeValue, String>, CapturedHostOutput) {
-    capture_host_output_with_stdin(stdin, || session.load_file(path))
+    match forward {
+        Some(forward) => capture_host_output_with_stdin_and_forward(stdin, Some(forward), || {
+            session.load_file(path)
+        }),
+        None => capture_host_output_with_stdin(stdin, || session.load_file(path)),
+    }
 }
 
 fn handle_session_eval(
     shared_sessions: &SharedReplSessions,
     connection_session: &mut ReplSession,
+    stream_sink: Option<Arc<dyn ServerStreamSink>>,
     request: &ServerRequest,
 ) -> ServerResponse {
+    let streamed = request.id.is_some() && stream_sink.is_some();
     match request.code.as_deref() {
         Some(code) => match request.session.as_deref() {
             Some(session_id) => {
                 match shared_sessions.with_named_session(session_id, |session| {
-                    capture_session_eval(session, code, request.stdin.as_deref())
+                    capture_session_eval(
+                        session,
+                        code,
+                        request.stdin.as_deref(),
+                        request_output_forwarder(
+                            stream_sink.clone(),
+                            request.id.as_deref(),
+                            Some(session_id),
+                        ),
+                    )
                 }) {
-                    Ok((result, output)) => {
-                        response_from_captured_eval(result, output).with_session(session_id)
-                    }
+                    Ok((result, output)) => response_from_captured_eval(result, output, streamed)
+                        .with_session(session_id),
                     Err(err) => ServerResponse::error(err).with_session(session_id),
                 }
             }
             None => {
-                let (result, output) =
-                    capture_session_eval(connection_session, code, request.stdin.as_deref());
-                response_from_captured_eval(result, output)
+                let (result, output) = capture_session_eval(
+                    connection_session,
+                    code,
+                    request.stdin.as_deref(),
+                    request_output_forwarder(stream_sink, request.id.as_deref(), None),
+                );
+                response_from_captured_eval(result, output, streamed)
             }
         },
         None => ServerResponse::error("missing 'code' for eval request"),
@@ -935,40 +1098,80 @@ fn handle_session_clear(
 fn handle_session_load_file(
     shared_sessions: &SharedReplSessions,
     connection_session: &mut ReplSession,
+    stream_sink: Option<Arc<dyn ServerStreamSink>>,
     request: &ServerRequest,
 ) -> ServerResponse {
+    let streamed = request.id.is_some() && stream_sink.is_some();
     match request.path.as_deref() {
         Some(path) => match request.session.as_deref() {
             Some(session_id) => {
                 match shared_sessions.with_named_session(session_id, |session| {
-                    capture_session_load_file(session, path, request.stdin.as_deref())
+                    capture_session_load_file(
+                        session,
+                        path,
+                        request.stdin.as_deref(),
+                        request_output_forwarder(
+                            stream_sink.clone(),
+                            request.id.as_deref(),
+                            Some(session_id),
+                        ),
+                    )
                 }) {
-                    Ok((result, output)) => {
-                        response_from_captured_eval(result, output).with_session(session_id)
-                    }
+                    Ok((result, output)) => response_from_captured_eval(result, output, streamed)
+                        .with_session(session_id),
                     Err(err) => ServerResponse::error(err).with_session(session_id),
                 }
             }
             None => {
-                let (result, output) =
-                    capture_session_load_file(connection_session, path, request.stdin.as_deref());
-                response_from_captured_eval(result, output)
+                let (result, output) = capture_session_load_file(
+                    connection_session,
+                    path,
+                    request.stdin.as_deref(),
+                    request_output_forwarder(stream_sink, request.id.as_deref(), None),
+                );
+                response_from_captured_eval(result, output, streamed)
             }
         },
         None => ServerResponse::error("missing 'path' for load-file request"),
     }
 }
 
-fn write_server_response(writer: &mut TcpStream, response: &ServerResponse) -> std::io::Result<()> {
-    serde_json::to_writer(&mut *writer, response)
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
-    writer.write_all(b"\n")?;
-    writer.flush()
+fn write_server_response(
+    writer: &ReplServerWriter,
+    response: &ServerResponse,
+) -> std::io::Result<()> {
+    write_json_line(writer, response)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct CollectingServerStreamSink {
+        frames: Mutex<Vec<ServerStreamFrame>>,
+    }
+
+    impl CollectingServerStreamSink {
+        fn take(&self) -> Vec<ServerStreamFrame> {
+            std::mem::take(
+                &mut *self
+                    .frames
+                    .lock()
+                    .expect("stream frame lock should succeed"),
+            )
+        }
+    }
+
+    impl ServerStreamSink for CollectingServerStreamSink {
+        fn send(&self, frame: &ServerStreamFrame) -> Result<(), String> {
+            self.frames
+                .lock()
+                .expect("stream frame lock should succeed")
+                .push(frame.clone());
+            Ok(())
+        }
+    }
 
     #[test]
     fn needs_continuation_detects_open_brace() {
@@ -1082,8 +1285,10 @@ mod tests {
         let describe = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "describe".to_string(),
+                id: None,
                 session: None,
                 code: None,
                 path: None,
@@ -1101,13 +1306,20 @@ mod tests {
         assert_eq!(describe_body.sessions.clone_op, "clone");
         assert_eq!(describe_body.sessions.close_op, "close");
         assert!(describe_body.ops.contains_key("describe"));
+        assert_eq!(describe_body.ops["describe"].optional, vec!["id"]);
         assert!(describe_body.ops.contains_key("eval"));
-        assert_eq!(describe_body.ops["eval"].optional, vec!["session", "stdin"]);
+        assert_eq!(
+            describe_body.ops["eval"].optional,
+            vec!["id", "session", "stdin"]
+        );
         assert!(describe_body.ops.contains_key("load-file"));
         assert_eq!(
             describe_body.ops["load-file"].optional,
-            vec!["session", "stdin"]
+            vec!["id", "session", "stdin"]
         );
+        assert!(describe_body.streaming.request_ids);
+        assert!(describe_body.streaming.stdout_stderr_frames);
+        assert!(describe_body.streaming.terminal_done_response);
     }
 
     #[test]
@@ -1117,8 +1329,10 @@ mod tests {
         let eval = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: None,
                 code: Some("1 + 2".to_string()),
                 path: None,
@@ -1146,8 +1360,10 @@ mod tests {
         let load_file = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "load-file".to_string(),
+                id: None,
                 session: None,
                 code: None,
                 path: Some(temp_path.display().to_string()),
@@ -1160,8 +1376,10 @@ mod tests {
         let persisted = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: None,
                 code: Some("Helpers.double(6)".to_string()),
                 path: None,
@@ -1174,8 +1392,10 @@ mod tests {
         let clear = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "clear".to_string(),
+                id: None,
                 session: None,
                 code: None,
                 path: None,
@@ -1188,8 +1408,10 @@ mod tests {
         let missing = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: None,
                 code: Some("Helpers.double(6)".to_string()),
                 path: None,
@@ -1209,8 +1431,10 @@ mod tests {
         let eval = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: None,
                 code: Some(
                     "tuple(host_call(:io_gets, \"prompt> \"), host_call(:sys_read_stdin))"
@@ -1242,8 +1466,10 @@ mod tests {
         let loaded = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "load-file".to_string(),
+                id: None,
                 session: None,
                 code: None,
                 path: Some(temp_path.display().to_string()),
@@ -1265,8 +1491,10 @@ mod tests {
         let response = handle_server_request(
             &shared_sessions,
             &mut session,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: None,
                 code: Some(
                     "case host_call(:io_puts, \"hello\") do\n  _ -> host_call(:sys_log, \"info\", \"remote_eval\", %{source: \"repl\"})\nend"
@@ -1291,14 +1519,135 @@ mod tests {
     }
 
     #[test]
+    fn handle_server_request_streams_output_frames_for_id_addressed_eval() {
+        let shared_sessions = SharedReplSessions::default();
+        let mut session = ReplSession::default();
+        let collecting_sink = Arc::new(CollectingServerStreamSink::default());
+        let stream_sink: Arc<dyn ServerStreamSink> = collecting_sink.clone();
+
+        let response = handle_server_request(
+            &shared_sessions,
+            &mut session,
+            Some(stream_sink),
+            ServerRequest {
+                op: "eval".to_string(),
+                id: Some("req-eval-1".to_string()),
+                session: None,
+                code: Some(
+                    "case host_call(:io_puts, \"hello\") do\n  _ -> host_call(:sys_log, \"info\", \"remote_eval\", %{source: \"repl\"})\nend"
+                        .to_string(),
+                ),
+                path: None,
+                stdin: None,
+            },
+        );
+
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.id.as_deref(), Some("req-eval-1"));
+        assert_eq!(response.done, Some(true));
+        assert_eq!(response.value.as_deref(), Some("true"));
+        assert_eq!(response.value_type.as_deref(), Some("bool"));
+        assert!(response.stdout.is_none());
+        assert!(response.stderr.is_none());
+
+        let frames = collecting_sink.take();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0].status, "stream");
+        assert_eq!(frames[0].id, "req-eval-1");
+        assert_eq!(frames[0].session, None);
+        assert_eq!(frames[0].stream, "stdout");
+        assert_eq!(frames[0].text, "hello\n");
+        assert_eq!(frames[1].stream, "stderr");
+        assert!(frames[1].text.contains("\"event\":\"remote_eval\""));
+        assert!(frames[1].text.ends_with('\n'));
+    }
+
+    #[test]
+    fn handle_server_request_streams_output_frames_for_id_addressed_logical_session_load_file() {
+        let shared_sessions = SharedReplSessions::default();
+        let mut first_connection = ReplSession::default();
+        let cloned = handle_server_request(
+            &shared_sessions,
+            &mut first_connection,
+            None,
+            ServerRequest {
+                op: "clone".to_string(),
+                id: None,
+                session: None,
+                code: None,
+                path: None,
+                stdin: None,
+            },
+        );
+        let session_id = cloned
+            .session
+            .clone()
+            .expect("clone should return a logical session id");
+
+        let temp_path = std::env::temp_dir().join(format!(
+            "tonic-repl-stream-load-file-{}-{}.tn",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(
+            &temp_path,
+            "case host_call(:io_puts, \"loaded\") do\n  _ -> host_call(:sys_log, \"warn\", \"remote_load\", %{path: \"fixture\"})\nend\n",
+        )
+        .expect("streaming fixture should be writable");
+
+        let collecting_sink = Arc::new(CollectingServerStreamSink::default());
+        let stream_sink: Arc<dyn ServerStreamSink> = collecting_sink.clone();
+        let mut second_connection = ReplSession::default();
+        let response = handle_server_request(
+            &shared_sessions,
+            &mut second_connection,
+            Some(stream_sink),
+            ServerRequest {
+                op: "load-file".to_string(),
+                id: Some("req-load-1".to_string()),
+                session: Some(session_id.clone()),
+                code: None,
+                path: Some(temp_path.display().to_string()),
+                stdin: None,
+            },
+        );
+
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.id.as_deref(), Some("req-load-1"));
+        assert_eq!(response.done, Some(true));
+        assert_eq!(response.session.as_deref(), Some(session_id.as_str()));
+        assert_eq!(response.value.as_deref(), Some("true"));
+        assert_eq!(response.value_type.as_deref(), Some("bool"));
+        assert!(response.stdout.is_none());
+        assert!(response.stderr.is_none());
+
+        let frames = collecting_sink.take();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0].id, "req-load-1");
+        assert_eq!(frames[0].session.as_deref(), Some(session_id.as_str()));
+        assert_eq!(frames[0].stream, "stdout");
+        assert_eq!(frames[0].text, "loaded\n");
+        assert_eq!(frames[1].stream, "stderr");
+        assert!(frames[1].text.contains("\"event\":\"remote_load\""));
+        assert!(frames[1].text.ends_with('\n'));
+
+        let _ = std::fs::remove_file(temp_path);
+    }
+
+    #[test]
     fn handle_server_request_named_sessions_accept_request_scoped_stdin() {
         let shared_sessions = SharedReplSessions::default();
         let mut first_connection = ReplSession::default();
         let cloned = handle_server_request(
             &shared_sessions,
             &mut first_connection,
+            None,
             ServerRequest {
                 op: "clone".to_string(),
+                id: None,
                 session: None,
                 code: None,
                 path: None,
@@ -1315,8 +1664,10 @@ mod tests {
         let resumed = handle_server_request(
             &shared_sessions,
             &mut second_connection,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: Some(session_id.clone()),
                 code: Some(
                     "tuple(host_call(:io_gets, \"shared> \"), host_call(:sys_read_stdin))"
@@ -1343,8 +1694,10 @@ mod tests {
         let define = handle_server_request(
             &shared_sessions,
             &mut first_connection,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: None,
                 code: Some("defmodule Helpers do\n  def double(x) do x * 2 end\nend".to_string()),
                 path: None,
@@ -1356,8 +1709,10 @@ mod tests {
         let cloned = handle_server_request(
             &shared_sessions,
             &mut first_connection,
+            None,
             ServerRequest {
                 op: "clone".to_string(),
+                id: None,
                 session: None,
                 code: None,
                 path: None,
@@ -1374,8 +1729,10 @@ mod tests {
         let resumed = handle_server_request(
             &shared_sessions,
             &mut second_connection,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: Some(session_id.clone()),
                 code: Some("Helpers.double(7)".to_string()),
                 path: None,
@@ -1389,8 +1746,10 @@ mod tests {
         let closed = handle_server_request(
             &shared_sessions,
             &mut second_connection,
+            None,
             ServerRequest {
                 op: "close".to_string(),
+                id: None,
                 session: Some(session_id.clone()),
                 code: None,
                 path: None,
@@ -1403,8 +1762,10 @@ mod tests {
         let missing = handle_server_request(
             &shared_sessions,
             &mut second_connection,
+            None,
             ServerRequest {
                 op: "eval".to_string(),
+                id: None,
                 session: Some(session_id.clone()),
                 code: Some("Helpers.double(7)".to_string()),
                 path: None,

@@ -80,7 +80,7 @@ Bootstrap Clojure-style remote development by reusing Tonic's existing REPL eval
 ### Metrics
 
 - **Primary**: Focused REPL server acceptance checks green
-- **Current Best**: 24 focused REPL tests green (run 24, segment 1)
+- **Current Best**: 28 focused REPL tests green (run 25, segment 1)
 - **Secondary**: `autoresearch.checks.sh` pass, judge pass
 
 ### Benchmark Commands
@@ -96,3 +96,4 @@ cargo test --quiet --bin tonic repl::tests:: && cargo test --quiet --test repl_s
 - **Run 22 (KEEP, metric=18, judge=8/10)**: Added a `describe` op that reports supported remote REPL ops plus logical-session semantics, and expanded focused unit + TCP integration coverage for advertised capabilities. Hypothesis: confirmed — capability discovery is a small but high-leverage step toward editor-friendly nREPL workflows because clients can now introspect the server before driving sessions.
 - **Run 23 (KEEP, metric=20, judge=8/10)**: Routed host-side stdout/stderr through a scoped interop capture sink and surfaced captured output in remote `eval` / `load-file` responses, with focused unit and TCP integration coverage. Hypothesis: confirmed — returning request-scoped output makes the remote REPL materially closer to editor-driven nREPL workflows because clients can now observe emitted text without scraping server logs.
 - **Run 24 (KEEP, metric=24, judge=8/10)**: Added request-scoped stdin plumbing for remote `eval` / `load-file`, threading optional JSON `stdin` through scoped interop input capture and focused unit + TCP integration coverage for connection-local and logical sessions. Hypothesis: confirmed — request-local stdin closes a major interactivity gap for editor-driven remote REPL workflows without widening scope beyond the existing session/capture substrate.
+- **Run 25 (KEEP, metric=28, judge=8/10)**: Added optional request ids plus streamed stdout/stderr frames for remote `eval` / `load-file`, echoing ids in terminal responses and covering connection-local and logical-session streaming. Hypothesis: confirmed — request-addressable stream frames make the remote REPL materially closer to nREPL-style editor workflows by letting clients correlate asynchronous output with a specific in-flight evaluation without widening scope beyond the existing session/capture substrate.
