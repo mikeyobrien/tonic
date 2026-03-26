@@ -159,6 +159,39 @@ fn remote_repl_server_load_file_makes_definitions_available() {
 }
 
 #[test]
+fn remote_repl_server_describe_reports_capabilities() {
+    let server = spawn_repl_server();
+    let mut client = ReplClient::connect(&server.addr);
+
+    let describe = client.request(json!({ "op": "describe" }));
+    assert_eq!(describe["status"], "ok");
+    assert_eq!(
+        describe["describe"]["sessions"]["default_session"],
+        "connection"
+    );
+    assert_eq!(describe["describe"]["sessions"]["logical_sessions"], true);
+    assert_eq!(
+        describe["describe"]["sessions"]["reconnectable_sessions"],
+        true
+    );
+    assert_eq!(describe["describe"]["sessions"]["clone_op"], "clone");
+    assert_eq!(describe["describe"]["sessions"]["close_op"], "close");
+    assert_eq!(
+        describe["describe"]["ops"]["eval"]["requires"],
+        json!(["code"])
+    );
+    assert_eq!(
+        describe["describe"]["ops"]["eval"]["optional"],
+        json!(["session"])
+    );
+    assert_eq!(
+        describe["describe"]["ops"]["load-file"]["requires"],
+        json!(["path"])
+    );
+    assert!(describe["describe"]["ops"]["describe"].is_object());
+}
+
+#[test]
 fn remote_repl_server_logical_sessions_survive_reconnects_and_support_clone_close() {
     let server = spawn_repl_server();
 

@@ -69,6 +69,28 @@ struct ServerRequest {
 }
 
 #[derive(Debug, Serialize)]
+struct ServerDescribe {
+    ops: std::collections::BTreeMap<&'static str, ServerOpInfo>,
+    sessions: ServerSessionInfo,
+}
+
+#[derive(Debug, Serialize)]
+struct ServerOpInfo {
+    requires: Vec<&'static str>,
+    optional: Vec<&'static str>,
+    doc: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct ServerSessionInfo {
+    default_session: &'static str,
+    logical_sessions: bool,
+    reconnectable_sessions: bool,
+    clone_op: &'static str,
+    close_op: &'static str,
+}
+
+#[derive(Debug, Serialize)]
 struct ServerResponse {
     status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,6 +101,73 @@ struct ServerResponse {
     value_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    describe: Option<ServerDescribe>,
+}
+
+impl ServerDescribe {
+    fn supported() -> Self {
+        let mut ops = std::collections::BTreeMap::new();
+        ops.insert(
+            "clear",
+            ServerOpInfo {
+                requires: vec![],
+                optional: vec!["session"],
+                doc: "Reset a session's accumulated environment.",
+            },
+        );
+        ops.insert(
+            "clone",
+            ServerOpInfo {
+                requires: vec![],
+                optional: vec!["session"],
+                doc: "Create a logical session id from the current or named session.",
+            },
+        );
+        ops.insert(
+            "close",
+            ServerOpInfo {
+                requires: vec!["session"],
+                optional: vec![],
+                doc: "Close a logical session id and release its state.",
+            },
+        );
+        ops.insert(
+            "describe",
+            ServerOpInfo {
+                requires: vec![],
+                optional: vec![],
+                doc: "Report server capabilities and session semantics.",
+            },
+        );
+        ops.insert(
+            "eval",
+            ServerOpInfo {
+                requires: vec!["code"],
+                optional: vec!["session"],
+                doc: "Evaluate code in the current or named session.",
+            },
+        );
+        ops.insert(
+            "load-file",
+            ServerOpInfo {
+                requires: vec!["path"],
+                optional: vec!["session"],
+                doc: "Load and evaluate a file in the current or named session.",
+            },
+        );
+
+        Self {
+            ops,
+            sessions: ServerSessionInfo {
+                default_session: "connection",
+                logical_sessions: true,
+                reconnectable_sessions: true,
+                clone_op: "clone",
+                close_op: "close",
+            },
+        }
+    }
 }
 
 impl ServerResponse {
@@ -89,6 +178,7 @@ impl ServerResponse {
             value: Some(value.render()),
             value_type: Some(value_type_label(value).to_string()),
             message: None,
+            describe: None,
         }
     }
 
@@ -99,6 +189,18 @@ impl ServerResponse {
             value: None,
             value_type: None,
             message: Some(message.into()),
+            describe: None,
+        }
+    }
+
+    fn ok_describe() -> Self {
+        Self {
+            status: "ok",
+            session: None,
+            value: None,
+            value_type: None,
+            message: None,
+            describe: Some(ServerDescribe::supported()),
         }
     }
 
@@ -109,6 +211,7 @@ impl ServerResponse {
             value: None,
             value_type: None,
             message: Some(message.into()),
+            describe: None,
         }
     }
 
@@ -681,6 +784,7 @@ fn handle_server_request(
     request: ServerRequest,
 ) -> ServerResponse {
     match request.op.as_str() {
+        "describe" => ServerResponse::ok_describe(),
         "eval" => handle_session_eval(shared_sessions, connection_session, &request),
         "clear" => handle_session_clear(
             shared_sessions,
@@ -710,7 +814,7 @@ fn handle_server_request(
             None => ServerResponse::error("missing 'session' for close request"),
         },
         other => ServerResponse::error(format!(
-            "unknown op '{other}' (expected eval, clear, load-file, clone, or close)"
+            "unknown op '{other}' (expected describe, eval, clear, load-file, clone, or close)"
         )),
     }
 }
@@ -893,6 +997,35 @@ mod tests {
             .eval_source("Helpers.double(5)")
             .expect_err("helper should not be available after clear");
         assert!(error.contains("Helpers"));
+    }
+
+    #[test]
+    fn handle_server_request_describe_reports_supported_ops_and_session_semantics() {
+        let shared_sessions = SharedReplSessions::default();
+        let mut session = ReplSession::default();
+        let describe = handle_server_request(
+            &shared_sessions,
+            &mut session,
+            ServerRequest {
+                op: "describe".to_string(),
+                session: None,
+                code: None,
+                path: None,
+            },
+        );
+
+        assert_eq!(describe.status, "ok");
+        let describe_body = describe
+            .describe
+            .expect("describe op should return capabilities");
+        assert_eq!(describe_body.sessions.default_session, "connection");
+        assert!(describe_body.sessions.logical_sessions);
+        assert!(describe_body.sessions.reconnectable_sessions);
+        assert_eq!(describe_body.sessions.clone_op, "clone");
+        assert_eq!(describe_body.sessions.close_op, "close");
+        assert!(describe_body.ops.contains_key("describe"));
+        assert!(describe_body.ops.contains_key("eval"));
+        assert!(describe_body.ops.contains_key("load-file"));
     }
 
     #[test]
