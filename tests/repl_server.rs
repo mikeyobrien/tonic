@@ -182,13 +182,52 @@ fn remote_repl_server_describe_reports_capabilities() {
     );
     assert_eq!(
         describe["describe"]["ops"]["eval"]["optional"],
-        json!(["session"])
+        json!(["session", "stdin"])
     );
     assert_eq!(
         describe["describe"]["ops"]["load-file"]["requires"],
         json!(["path"])
     );
+    assert_eq!(
+        describe["describe"]["ops"]["load-file"]["optional"],
+        json!(["session", "stdin"])
+    );
     assert!(describe["describe"]["ops"]["describe"].is_object());
+}
+
+#[test]
+fn remote_repl_server_accepts_request_scoped_stdin_for_eval_and_load_file() {
+    let server = spawn_repl_server();
+    let mut client = ReplClient::connect(&server.addr);
+
+    let eval = client.request(json!({
+        "op": "eval",
+        "code": "tuple(host_call(:io_gets, \"prompt> \"), host_call(:sys_read_stdin))",
+        "stdin": "typed line\nrest"
+    }));
+    assert_eq!(eval["status"], "ok");
+    assert_eq!(eval["value"], "{\"typed line\", \"rest\"}");
+    assert_eq!(eval["value_type"], "{_, _}");
+    assert_eq!(eval["stdout"], "prompt> ");
+
+    let file_path = unique_temp_file("repl-server-stdin");
+    std::fs::write(
+        &file_path,
+        "tuple(host_call(:io_gets, \"file> \"), host_call(:sys_read_stdin))\n",
+    )
+    .expect("stdin fixture should be writable");
+
+    let loaded = client.request(json!({
+        "op": "load-file",
+        "path": file_path.display().to_string(),
+        "stdin": "file line\ntail"
+    }));
+    assert_eq!(loaded["status"], "ok");
+    assert_eq!(loaded["value"], "{\"file line\", \"tail\"}");
+    assert_eq!(loaded["value_type"], "{_, _}");
+    assert_eq!(loaded["stdout"], "file> ");
+
+    let _ = std::fs::remove_file(file_path);
 }
 
 #[test]
@@ -234,6 +273,48 @@ fn remote_repl_server_returns_captured_stdout_and_stderr_for_eval_and_load_file(
     assert!(load_stderr.contains("\"path\":\"fixture\""));
 
     let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
+fn remote_repl_server_logical_sessions_accept_request_scoped_stdin_after_reconnect() {
+    let server = spawn_repl_server();
+
+    let session_id = {
+        let mut client = ReplClient::connect(&server.addr);
+        let define = client.request(json!({
+            "op": "eval",
+            "code": "defmodule Sticky do\n  def value() do 41 end\nend"
+        }));
+        assert_eq!(define["status"], "ok");
+
+        let cloned = client.request(json!({ "op": "clone" }));
+        assert_eq!(cloned["status"], "ok");
+        cloned["session"]
+            .as_str()
+            .expect("clone should return a session id")
+            .to_string()
+    };
+
+    let mut resumed_client = ReplClient::connect(&server.addr);
+    let resumed = resumed_client.request(json!({
+        "op": "eval",
+        "session": session_id.clone(),
+        "code": "Sticky.value() + 1"
+    }));
+    assert_eq!(resumed["status"], "ok");
+    assert_eq!(resumed["value"], "42");
+
+    let stdin_eval = resumed_client.request(json!({
+        "op": "eval",
+        "session": session_id.clone(),
+        "code": "tuple(host_call(:io_gets, \"shared> \"), host_call(:sys_read_stdin))",
+        "stdin": "shared line\nshared tail"
+    }));
+    assert_eq!(stdin_eval["status"], "ok");
+    assert_eq!(stdin_eval["session"], session_id);
+    assert_eq!(stdin_eval["value"], "{\"shared line\", \"shared tail\"}");
+    assert_eq!(stdin_eval["value_type"], "{_, _}");
+    assert_eq!(stdin_eval["stdout"], "shared> ");
 }
 
 #[test]

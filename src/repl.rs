@@ -1,4 +1,4 @@
-use crate::interop::{capture_host_output, CapturedHostOutput};
+use crate::interop::{capture_host_output_with_stdin, CapturedHostOutput};
 use crate::ir::{lower_ast_to_ir, IrFunction, IrProgram};
 use crate::lexer::scan_tokens;
 use crate::observability::ObservabilityRun;
@@ -67,6 +67,8 @@ struct ServerRequest {
     code: Option<String>,
     #[serde(default)]
     path: Option<String>,
+    #[serde(default)]
+    stdin: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,7 +151,7 @@ impl ServerDescribe {
             "eval",
             ServerOpInfo {
                 requires: vec!["code"],
-                optional: vec!["session"],
+                optional: vec!["session", "stdin"],
                 doc: "Evaluate code in the current or named session.",
             },
         );
@@ -157,7 +159,7 @@ impl ServerDescribe {
             "load-file",
             ServerOpInfo {
                 requires: vec!["path"],
-                optional: vec!["session"],
+                optional: vec!["session", "stdin"],
                 doc: "Load and evaluate a file in the current or named session.",
             },
         );
@@ -870,15 +872,17 @@ fn response_from_captured_eval(
 fn capture_session_eval(
     session: &mut ReplSession,
     code: &str,
+    stdin: Option<&str>,
 ) -> (Result<RuntimeValue, String>, CapturedHostOutput) {
-    capture_host_output(|| session.eval_source(code))
+    capture_host_output_with_stdin(stdin, || session.eval_source(code))
 }
 
 fn capture_session_load_file(
     session: &mut ReplSession,
     path: &str,
+    stdin: Option<&str>,
 ) -> (Result<RuntimeValue, String>, CapturedHostOutput) {
-    capture_host_output(|| session.load_file(path))
+    capture_host_output_with_stdin(stdin, || session.load_file(path))
 }
 
 fn handle_session_eval(
@@ -889,9 +893,9 @@ fn handle_session_eval(
     match request.code.as_deref() {
         Some(code) => match request.session.as_deref() {
             Some(session_id) => {
-                match shared_sessions
-                    .with_named_session(session_id, |session| capture_session_eval(session, code))
-                {
+                match shared_sessions.with_named_session(session_id, |session| {
+                    capture_session_eval(session, code, request.stdin.as_deref())
+                }) {
                     Ok((result, output)) => {
                         response_from_captured_eval(result, output).with_session(session_id)
                     }
@@ -899,7 +903,8 @@ fn handle_session_eval(
                 }
             }
             None => {
-                let (result, output) = capture_session_eval(connection_session, code);
+                let (result, output) =
+                    capture_session_eval(connection_session, code, request.stdin.as_deref());
                 response_from_captured_eval(result, output)
             }
         },
@@ -936,7 +941,7 @@ fn handle_session_load_file(
         Some(path) => match request.session.as_deref() {
             Some(session_id) => {
                 match shared_sessions.with_named_session(session_id, |session| {
-                    capture_session_load_file(session, path)
+                    capture_session_load_file(session, path, request.stdin.as_deref())
                 }) {
                     Ok((result, output)) => {
                         response_from_captured_eval(result, output).with_session(session_id)
@@ -945,7 +950,8 @@ fn handle_session_load_file(
                 }
             }
             None => {
-                let (result, output) = capture_session_load_file(connection_session, path);
+                let (result, output) =
+                    capture_session_load_file(connection_session, path, request.stdin.as_deref());
                 response_from_captured_eval(result, output)
             }
         },
@@ -1081,6 +1087,7 @@ mod tests {
                 session: None,
                 code: None,
                 path: None,
+                stdin: None,
             },
         );
 
@@ -1095,7 +1102,12 @@ mod tests {
         assert_eq!(describe_body.sessions.close_op, "close");
         assert!(describe_body.ops.contains_key("describe"));
         assert!(describe_body.ops.contains_key("eval"));
+        assert_eq!(describe_body.ops["eval"].optional, vec!["session", "stdin"]);
         assert!(describe_body.ops.contains_key("load-file"));
+        assert_eq!(
+            describe_body.ops["load-file"].optional,
+            vec!["session", "stdin"]
+        );
     }
 
     #[test]
@@ -1110,6 +1122,7 @@ mod tests {
                 session: None,
                 code: Some("1 + 2".to_string()),
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(eval.status, "ok");
@@ -1138,6 +1151,7 @@ mod tests {
                 session: None,
                 code: None,
                 path: Some(temp_path.display().to_string()),
+                stdin: None,
             },
         );
         assert_eq!(load_file.status, "ok");
@@ -1151,6 +1165,7 @@ mod tests {
                 session: None,
                 code: Some("Helpers.double(6)".to_string()),
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(persisted.status, "ok");
@@ -1164,6 +1179,7 @@ mod tests {
                 session: None,
                 code: None,
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(clear.status, "ok");
@@ -1177,9 +1193,67 @@ mod tests {
                 session: None,
                 code: Some("Helpers.double(6)".to_string()),
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(missing.status, "error");
+
+        let _ = std::fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn handle_server_request_accepts_request_scoped_stdin_for_eval_and_load_file() {
+        let shared_sessions = SharedReplSessions::default();
+        let mut session = ReplSession::default();
+
+        let eval = handle_server_request(
+            &shared_sessions,
+            &mut session,
+            ServerRequest {
+                op: "eval".to_string(),
+                session: None,
+                code: Some(
+                    "tuple(host_call(:io_gets, \"prompt> \"), host_call(:sys_read_stdin))"
+                        .to_string(),
+                ),
+                path: None,
+                stdin: Some("typed line\nrest".to_string()),
+            },
+        );
+        assert_eq!(eval.status, "ok");
+        assert_eq!(eval.value.as_deref(), Some("{\"typed line\", \"rest\"}"));
+        assert_eq!(eval.value_type.as_deref(), Some("{_, _}"));
+        assert_eq!(eval.stdout.as_deref(), Some("prompt> "));
+
+        let temp_path = std::env::temp_dir().join(format!(
+            "tonic-repl-stdin-load-file-{}-{}.tn",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(
+            &temp_path,
+            "tuple(host_call(:io_gets, \"file> \"), host_call(:sys_read_stdin))\n",
+        )
+        .expect("stdin fixture should be writable");
+
+        let loaded = handle_server_request(
+            &shared_sessions,
+            &mut session,
+            ServerRequest {
+                op: "load-file".to_string(),
+                session: None,
+                code: None,
+                path: Some(temp_path.display().to_string()),
+                stdin: Some("file line\ntail".to_string()),
+            },
+        );
+        assert_eq!(loaded.status, "ok");
+        assert_eq!(loaded.value.as_deref(), Some("{\"file line\", \"tail\"}"));
+        assert_eq!(loaded.value_type.as_deref(), Some("{_, _}"));
+        assert_eq!(loaded.stdout.as_deref(), Some("file> "));
 
         let _ = std::fs::remove_file(temp_path);
     }
@@ -1199,6 +1273,7 @@ mod tests {
                         .to_string(),
                 ),
                 path: None,
+                stdin: None,
             },
         );
 
@@ -1216,6 +1291,52 @@ mod tests {
     }
 
     #[test]
+    fn handle_server_request_named_sessions_accept_request_scoped_stdin() {
+        let shared_sessions = SharedReplSessions::default();
+        let mut first_connection = ReplSession::default();
+        let cloned = handle_server_request(
+            &shared_sessions,
+            &mut first_connection,
+            ServerRequest {
+                op: "clone".to_string(),
+                session: None,
+                code: None,
+                path: None,
+                stdin: None,
+            },
+        );
+        assert_eq!(cloned.status, "ok");
+        let session_id = cloned
+            .session
+            .clone()
+            .expect("clone should return a logical session id");
+
+        let mut second_connection = ReplSession::default();
+        let resumed = handle_server_request(
+            &shared_sessions,
+            &mut second_connection,
+            ServerRequest {
+                op: "eval".to_string(),
+                session: Some(session_id.clone()),
+                code: Some(
+                    "tuple(host_call(:io_gets, \"shared> \"), host_call(:sys_read_stdin))"
+                        .to_string(),
+                ),
+                path: None,
+                stdin: Some("shared line\nshared tail".to_string()),
+            },
+        );
+        assert_eq!(resumed.status, "ok");
+        assert_eq!(resumed.session.as_deref(), Some(session_id.as_str()));
+        assert_eq!(
+            resumed.value.as_deref(),
+            Some("{\"shared line\", \"shared tail\"}")
+        );
+        assert_eq!(resumed.value_type.as_deref(), Some("{_, _}"));
+        assert_eq!(resumed.stdout.as_deref(), Some("shared> "));
+    }
+
+    #[test]
     fn handle_server_request_supports_logical_sessions_across_connections() {
         let shared_sessions = SharedReplSessions::default();
         let mut first_connection = ReplSession::default();
@@ -1227,6 +1348,7 @@ mod tests {
                 session: None,
                 code: Some("defmodule Helpers do\n  def double(x) do x * 2 end\nend".to_string()),
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(define.status, "ok");
@@ -1239,6 +1361,7 @@ mod tests {
                 session: None,
                 code: None,
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(cloned.status, "ok");
@@ -1256,6 +1379,7 @@ mod tests {
                 session: Some(session_id.clone()),
                 code: Some("Helpers.double(7)".to_string()),
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(resumed.status, "ok");
@@ -1270,6 +1394,7 @@ mod tests {
                 session: Some(session_id.clone()),
                 code: None,
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(closed.status, "ok");
@@ -1283,6 +1408,7 @@ mod tests {
                 session: Some(session_id.clone()),
                 code: Some("Helpers.double(7)".to_string()),
                 path: None,
+                stdin: None,
             },
         );
         assert_eq!(missing.status, "error");

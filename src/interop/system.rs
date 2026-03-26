@@ -1,4 +1,4 @@
-use super::{host_value_kind, write_host_stderr, HostError, HostRegistry};
+use super::{host_value_kind, read_host_stdin_to_end, write_host_stderr, HostError, HostRegistry};
 use crate::runtime::RuntimeValue;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};

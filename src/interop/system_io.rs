@@ -258,14 +258,10 @@ pub(super) fn host_sys_read_text(args: &[RuntimeValue]) -> Result<RuntimeValue, 
 pub(super) fn host_sys_read_stdin(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("sys_read_stdin", args, 0)?;
 
-    let mut buffer = Vec::new();
-    std::io::stdin()
-        .read_to_end(&mut buffer)
+    let stdin = read_host_stdin_to_end()
         .map_err(|error| HostError::new(format!("sys_read_stdin failed: {error}")))?;
 
-    Ok(RuntimeValue::String(
-        String::from_utf8_lossy(&buffer).into_owned(),
-    ))
+    Ok(RuntimeValue::String(stdin))
 }
 
 pub(super) fn host_sys_http_request(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {

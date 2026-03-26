@@ -6,7 +6,7 @@
 use crate::runtime::RuntimeValue;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::sync::{LazyLock, Mutex};
 
 mod enum_mod;
@@ -57,13 +57,70 @@ enum HostOutputStream {
     Stderr,
 }
 
-thread_local! {
-    static HOST_OUTPUT_CAPTURE_STACK: RefCell<Vec<CapturedHostOutput>> = const { RefCell::new(Vec::new()) };
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct ScopedHostInput {
+    stdin: String,
+    cursor: usize,
 }
 
-pub(crate) fn capture_host_output<T>(f: impl FnOnce() -> T) -> (T, CapturedHostOutput) {
+impl ScopedHostInput {
+    fn new(stdin: impl Into<String>) -> Self {
+        Self {
+            stdin: stdin.into(),
+            cursor: 0,
+        }
+    }
+
+    fn read_line(&mut self) -> String {
+        if self.cursor >= self.stdin.len() {
+            return String::new();
+        }
+
+        let remaining = &self.stdin[self.cursor..];
+        let line_end = remaining
+            .find('\n')
+            .map(|offset| self.cursor + offset + 1)
+            .unwrap_or(self.stdin.len());
+        let line = self.stdin[self.cursor..line_end].to_string();
+        self.cursor = line_end;
+        line
+    }
+
+    fn read_to_end(&mut self) -> String {
+        if self.cursor >= self.stdin.len() {
+            return String::new();
+        }
+
+        let remaining = self.stdin[self.cursor..].to_string();
+        self.cursor = self.stdin.len();
+        remaining
+    }
+}
+
+thread_local! {
+    static HOST_OUTPUT_CAPTURE_STACK: RefCell<Vec<CapturedHostOutput>> = const { RefCell::new(Vec::new()) };
+    static HOST_INPUT_CAPTURE_STACK: RefCell<Vec<ScopedHostInput>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) fn capture_host_output_with_stdin<T>(
+    stdin: Option<&str>,
+    f: impl FnOnce() -> T,
+) -> (T, CapturedHostOutput) {
     HOST_OUTPUT_CAPTURE_STACK.with(|stack| stack.borrow_mut().push(CapturedHostOutput::default()));
+
+    let stdin_pushed = if let Some(stdin) = stdin {
+        HOST_INPUT_CAPTURE_STACK.with(|stack| stack.borrow_mut().push(ScopedHostInput::new(stdin)));
+        true
+    } else {
+        false
+    };
+
     let result = f();
+
+    if stdin_pushed {
+        let _ = HOST_INPUT_CAPTURE_STACK.with(|stack| stack.borrow_mut().pop());
+    }
+
     let output = HOST_OUTPUT_CAPTURE_STACK
         .with(|stack| stack.borrow_mut().pop())
         .unwrap_or_default();
@@ -86,6 +143,14 @@ fn capture_host_stream(stream: HostOutputStream, text: &str) -> bool {
     })
 }
 
+fn try_read_scoped_host_input<T>(f: impl FnOnce(&mut ScopedHostInput) -> T) -> Option<T> {
+    HOST_INPUT_CAPTURE_STACK.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        let input = stack.last_mut()?;
+        Some(f(input))
+    })
+}
+
 fn write_host_stream(stream: HostOutputStream, text: &str) -> Result<(), HostError> {
     if capture_host_stream(stream, text) {
         return Ok(());
@@ -101,6 +166,34 @@ fn write_host_stream(stream: HostOutputStream, text: &str) -> Result<(), HostErr
             .write_all(text.as_bytes())
             .map_err(|error| HostError::new(format!("failed to write stderr sink: {error}"))),
     }
+}
+
+pub(super) fn flush_host_stdout() -> std::io::Result<()> {
+    if HOST_OUTPUT_CAPTURE_STACK.with(|stack| !stack.borrow().is_empty()) {
+        return Ok(());
+    }
+
+    std::io::stdout().flush()
+}
+
+pub(super) fn read_host_stdin_line() -> std::io::Result<String> {
+    if let Some(line) = try_read_scoped_host_input(|input| input.read_line()) {
+        return Ok(line);
+    }
+
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line)?;
+    Ok(line)
+}
+
+pub(super) fn read_host_stdin_to_end() -> std::io::Result<String> {
+    if let Some(stdin) = try_read_scoped_host_input(|input| input.read_to_end()) {
+        return Ok(stdin);
+    }
+
+    let mut buffer = Vec::new();
+    std::io::stdin().read_to_end(&mut buffer)?;
+    Ok(String::from_utf8_lossy(&buffer).into_owned())
 }
 
 pub(super) fn write_host_stdout(text: &str) -> Result<(), HostError> {

@@ -1,6 +1,8 @@
-use super::{host_value_kind, write_host_stderr, write_host_stdout, HostError, HostRegistry};
+use super::{
+    flush_host_stdout, host_value_kind, read_host_stdin_line, write_host_stderr, write_host_stdout,
+    HostError, HostRegistry,
+};
 use crate::runtime::RuntimeValue;
-use std::io::Write;
 
 fn expect_exact_args(
     function: &str,
@@ -81,15 +83,12 @@ fn host_io_gets(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("IO.gets", args, 1)?;
     let prompt = expect_string_arg("IO.gets", args, 0)?;
 
-    print!("{prompt}");
-    std::io::stdout()
-        .flush()
-        .map_err(|e| HostError::new(format!("IO.gets failed to flush stdout: {e}")))?;
+    write_host_stdout(&prompt)?;
+    flush_host_stdout()
+        .map_err(|error| HostError::new(format!("IO.gets failed to flush stdout: {error}")))?;
 
-    let mut line = String::new();
-    std::io::stdin()
-        .read_line(&mut line)
-        .map_err(|e| HostError::new(format!("IO.gets failed to read line: {e}")))?;
+    let mut line = read_host_stdin_line()
+        .map_err(|error| HostError::new(format!("IO.gets failed to read line: {error}")))?;
 
     // Strip trailing newline like Elixir does
     if line.ends_with('\n') {
