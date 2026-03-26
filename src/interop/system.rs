@@ -1,4 +1,4 @@
-use super::{host_value_kind, HostError, HostRegistry};
+use super::{host_value_kind, write_host_stderr, HostError, HostRegistry};
 use crate::runtime::RuntimeValue;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -365,9 +365,9 @@ fn append_structured_log_line(serialized: &str) -> Result<(), HostError> {
         return Ok(());
     }
 
-    let mut stderr = std::io::stderr().lock();
-    writeln!(stderr, "{serialized}")
-        .map_err(|error| HostError::new(format!("sys_log failed to write stderr sink: {error}")))
+    write_host_stderr(serialized)?;
+    write_host_stderr("\n")?;
+    Ok(())
 }
 
 fn unix_timestamp_ms() -> i64 {

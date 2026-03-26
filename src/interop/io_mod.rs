@@ -1,4 +1,4 @@
-use super::{host_value_kind, HostError, HostRegistry};
+use super::{host_value_kind, write_host_stderr, write_host_stdout, HostError, HostRegistry};
 use crate::runtime::RuntimeValue;
 use std::io::Write;
 
@@ -59,7 +59,8 @@ fn value_to_string(value: &RuntimeValue) -> String {
 fn host_io_puts(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("IO.puts", args, 1)?;
     let s = value_to_string(&args[0]);
-    println!("{s}");
+    write_host_stdout(&s)?;
+    write_host_stdout("\n")?;
     Ok(RuntimeValue::Nil)
 }
 
@@ -71,7 +72,8 @@ fn host_io_inspect(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     }
 
     let value = args[0].clone();
-    eprintln!("{}", value.render());
+    write_host_stderr(&value.render())?;
+    write_host_stderr("\n")?;
     Ok(value)
 }
 

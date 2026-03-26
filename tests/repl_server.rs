@@ -192,6 +192,51 @@ fn remote_repl_server_describe_reports_capabilities() {
 }
 
 #[test]
+fn remote_repl_server_returns_captured_stdout_and_stderr_for_eval_and_load_file() {
+    let server = spawn_repl_server();
+    let mut client = ReplClient::connect(&server.addr);
+
+    let eval = client.request(json!({
+        "op": "eval",
+        "code": "case host_call(:io_puts, \"hello\") do\n  _ -> host_call(:sys_log, \"info\", \"remote_eval\", %{source: \"repl\"})\nend"
+    }));
+    assert_eq!(eval["status"], "ok");
+    assert_eq!(eval["value"], "true");
+    assert_eq!(eval["value_type"], "bool");
+    assert_eq!(eval["stdout"], "hello\n");
+    let eval_stderr = eval["stderr"]
+        .as_str()
+        .expect("eval should capture System.log stderr output");
+    assert!(eval_stderr.contains("\"event\":\"remote_eval\""));
+    assert!(eval_stderr.contains("\"level\":\"info\""));
+    assert!(eval_stderr.contains("\"source\":\"repl\""));
+
+    let file_path = unique_temp_file("repl-server-output");
+    std::fs::write(
+        &file_path,
+        "case host_call(:io_puts, \"loaded\") do\n  _ -> host_call(:sys_log, \"warn\", \"remote_load\", %{path: \"fixture\"})\nend\n",
+    )
+    .expect("fixture file should be writable");
+
+    let loaded = client.request(json!({
+        "op": "load-file",
+        "path": file_path.display().to_string()
+    }));
+    assert_eq!(loaded["status"], "ok");
+    assert_eq!(loaded["value"], "true");
+    assert_eq!(loaded["value_type"], "bool");
+    assert_eq!(loaded["stdout"], "loaded\n");
+    let load_stderr = loaded["stderr"]
+        .as_str()
+        .expect("load-file should capture System.log stderr output");
+    assert!(load_stderr.contains("\"event\":\"remote_load\""));
+    assert!(load_stderr.contains("\"level\":\"warn\""));
+    assert!(load_stderr.contains("\"path\":\"fixture\""));
+
+    let _ = std::fs::remove_file(file_path);
+}
+
+#[test]
 fn remote_repl_server_logical_sessions_survive_reconnects_and_support_clone_close() {
     let server = spawn_repl_server();
 

@@ -1,3 +1,4 @@
+use crate::interop::{capture_host_output, CapturedHostOutput};
 use crate::ir::{lower_ast_to_ir, IrFunction, IrProgram};
 use crate::lexer::scan_tokens;
 use crate::observability::ObservabilityRun;
@@ -100,6 +101,10 @@ struct ServerResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     value_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    stdout: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stderr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     describe: Option<ServerDescribe>,
@@ -177,6 +182,8 @@ impl ServerResponse {
             session: None,
             value: Some(value.render()),
             value_type: Some(value_type_label(value).to_string()),
+            stdout: None,
+            stderr: None,
             message: None,
             describe: None,
         }
@@ -188,6 +195,8 @@ impl ServerResponse {
             session: None,
             value: None,
             value_type: None,
+            stdout: None,
+            stderr: None,
             message: Some(message.into()),
             describe: None,
         }
@@ -199,6 +208,8 @@ impl ServerResponse {
             session: None,
             value: None,
             value_type: None,
+            stdout: None,
+            stderr: None,
             message: None,
             describe: Some(ServerDescribe::supported()),
         }
@@ -210,6 +221,8 @@ impl ServerResponse {
             session: None,
             value: None,
             value_type: None,
+            stdout: None,
+            stderr: None,
             message: Some(message.into()),
             describe: None,
         }
@@ -217,6 +230,16 @@ impl ServerResponse {
 
     fn with_session(mut self, session: impl Into<String>) -> Self {
         self.session = Some(session.into());
+        self
+    }
+
+    fn with_output(mut self, output: CapturedHostOutput) -> Self {
+        if !output.stdout.is_empty() {
+            self.stdout = Some(output.stdout);
+        }
+        if !output.stderr.is_empty() {
+            self.stderr = Some(output.stderr);
+        }
         self
     }
 }
@@ -264,6 +287,21 @@ impl SharedReplSessions {
             .get_mut(session_id)
             .ok_or_else(|| format!("unknown session '{session_id}'"))?;
         f(session)
+    }
+
+    fn with_named_session<T>(
+        &self,
+        session_id: &str,
+        f: impl FnOnce(&mut ReplSession) -> T,
+    ) -> Result<T, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "repl session registry is unavailable".to_string())?;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| format!("unknown session '{session_id}'"))?;
+        Ok(f(session))
     }
 
     fn close_session(&self, session_id: &str) -> Result<(), String> {
@@ -819,6 +857,30 @@ fn handle_server_request(
     }
 }
 
+fn response_from_captured_eval(
+    result: Result<RuntimeValue, String>,
+    output: CapturedHostOutput,
+) -> ServerResponse {
+    match result {
+        Ok(value) => ServerResponse::ok_value(&value).with_output(output),
+        Err(err) => ServerResponse::error(err).with_output(output),
+    }
+}
+
+fn capture_session_eval(
+    session: &mut ReplSession,
+    code: &str,
+) -> (Result<RuntimeValue, String>, CapturedHostOutput) {
+    capture_host_output(|| session.eval_source(code))
+}
+
+fn capture_session_load_file(
+    session: &mut ReplSession,
+    path: &str,
+) -> (Result<RuntimeValue, String>, CapturedHostOutput) {
+    capture_host_output(|| session.load_file(path))
+}
+
 fn handle_session_eval(
     shared_sessions: &SharedReplSessions,
     connection_session: &mut ReplSession,
@@ -826,16 +888,20 @@ fn handle_session_eval(
 ) -> ServerResponse {
     match request.code.as_deref() {
         Some(code) => match request.session.as_deref() {
-            Some(session_id) => match shared_sessions
-                .with_session(session_id, |session| session.eval_source(code))
-            {
-                Ok(value) => ServerResponse::ok_value(&value).with_session(session_id),
-                Err(err) => ServerResponse::error(err).with_session(session_id),
-            },
-            None => match connection_session.eval_source(code) {
-                Ok(value) => ServerResponse::ok_value(&value),
-                Err(err) => ServerResponse::error(err),
-            },
+            Some(session_id) => {
+                match shared_sessions
+                    .with_named_session(session_id, |session| capture_session_eval(session, code))
+                {
+                    Ok((result, output)) => {
+                        response_from_captured_eval(result, output).with_session(session_id)
+                    }
+                    Err(err) => ServerResponse::error(err).with_session(session_id),
+                }
+            }
+            None => {
+                let (result, output) = capture_session_eval(connection_session, code);
+                response_from_captured_eval(result, output)
+            }
         },
         None => ServerResponse::error("missing 'code' for eval request"),
     }
@@ -869,15 +935,19 @@ fn handle_session_load_file(
     match request.path.as_deref() {
         Some(path) => match request.session.as_deref() {
             Some(session_id) => {
-                match shared_sessions.with_session(session_id, |session| session.load_file(path)) {
-                    Ok(value) => ServerResponse::ok_value(&value).with_session(session_id),
+                match shared_sessions.with_named_session(session_id, |session| {
+                    capture_session_load_file(session, path)
+                }) {
+                    Ok((result, output)) => {
+                        response_from_captured_eval(result, output).with_session(session_id)
+                    }
                     Err(err) => ServerResponse::error(err).with_session(session_id),
                 }
             }
-            None => match connection_session.load_file(path) {
-                Ok(value) => ServerResponse::ok_value(&value),
-                Err(err) => ServerResponse::error(err),
-            },
+            None => {
+                let (result, output) = capture_session_load_file(connection_session, path);
+                response_from_captured_eval(result, output)
+            }
         },
         None => ServerResponse::error("missing 'path' for load-file request"),
     }
@@ -1112,6 +1182,37 @@ mod tests {
         assert_eq!(missing.status, "error");
 
         let _ = std::fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn handle_server_request_returns_captured_stdout_and_stderr() {
+        let shared_sessions = SharedReplSessions::default();
+        let mut session = ReplSession::default();
+        let response = handle_server_request(
+            &shared_sessions,
+            &mut session,
+            ServerRequest {
+                op: "eval".to_string(),
+                session: None,
+                code: Some(
+                    "case host_call(:io_puts, \"hello\") do\n  _ -> host_call(:sys_log, \"info\", \"remote_eval\", %{source: \"repl\"})\nend"
+                        .to_string(),
+                ),
+                path: None,
+            },
+        );
+
+        assert_eq!(response.status, "ok");
+        assert_eq!(response.value.as_deref(), Some("true"));
+        assert_eq!(response.value_type.as_deref(), Some("bool"));
+        assert_eq!(response.stdout.as_deref(), Some("hello\n"));
+        let stderr = response
+            .stderr
+            .as_deref()
+            .expect("System.log output should be captured on stderr");
+        assert!(stderr.contains("\"event\":\"remote_eval\""));
+        assert!(stderr.contains("\"level\":\"info\""));
+        assert!(stderr.contains("\"source\":\"repl\""));
     }
 
     #[test]

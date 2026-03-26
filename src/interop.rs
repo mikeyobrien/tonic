@@ -4,7 +4,9 @@
 //! v1 uses a static registry model (no dynamic plugin loading).
 
 use crate::runtime::RuntimeValue;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::{LazyLock, Mutex};
 
 mod enum_mod;
@@ -42,6 +44,72 @@ impl std::fmt::Display for HostError {
 }
 
 impl std::error::Error for HostError {}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct CapturedHostOutput {
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Clone, Copy)]
+enum HostOutputStream {
+    Stdout,
+    Stderr,
+}
+
+thread_local! {
+    static HOST_OUTPUT_CAPTURE_STACK: RefCell<Vec<CapturedHostOutput>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) fn capture_host_output<T>(f: impl FnOnce() -> T) -> (T, CapturedHostOutput) {
+    HOST_OUTPUT_CAPTURE_STACK.with(|stack| stack.borrow_mut().push(CapturedHostOutput::default()));
+    let result = f();
+    let output = HOST_OUTPUT_CAPTURE_STACK
+        .with(|stack| stack.borrow_mut().pop())
+        .unwrap_or_default();
+    (result, output)
+}
+
+fn capture_host_stream(stream: HostOutputStream, text: &str) -> bool {
+    HOST_OUTPUT_CAPTURE_STACK.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        let Some(output) = stack.last_mut() else {
+            return false;
+        };
+
+        match stream {
+            HostOutputStream::Stdout => output.stdout.push_str(text),
+            HostOutputStream::Stderr => output.stderr.push_str(text),
+        }
+
+        true
+    })
+}
+
+fn write_host_stream(stream: HostOutputStream, text: &str) -> Result<(), HostError> {
+    if capture_host_stream(stream, text) {
+        return Ok(());
+    }
+
+    match stream {
+        HostOutputStream::Stdout => std::io::stdout()
+            .lock()
+            .write_all(text.as_bytes())
+            .map_err(|error| HostError::new(format!("failed to write stdout sink: {error}"))),
+        HostOutputStream::Stderr => std::io::stderr()
+            .lock()
+            .write_all(text.as_bytes())
+            .map_err(|error| HostError::new(format!("failed to write stderr sink: {error}"))),
+    }
+}
+
+pub(super) fn write_host_stdout(text: &str) -> Result<(), HostError> {
+    write_host_stream(HostOutputStream::Stdout, text)
+}
+
+pub(super) fn write_host_stderr(text: &str) -> Result<(), HostError> {
+    write_host_stream(HostOutputStream::Stderr, text)
+}
 
 pub(super) fn host_value_kind(value: &RuntimeValue) -> &'static str {
     match value {

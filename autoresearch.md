@@ -80,7 +80,7 @@ Bootstrap Clojure-style remote development by reusing Tonic's existing REPL eval
 ### Metrics
 
 - **Primary**: Focused REPL server acceptance checks green
-- **Current Best**: 18 focused REPL tests green (run 22, segment 1)
+- **Current Best**: 20 focused REPL tests green (run 23, segment 1)
 - **Secondary**: `autoresearch.checks.sh` pass, judge pass
 
 ### Benchmark Commands
@@ -94,3 +94,4 @@ cargo test --quiet --bin tonic repl::tests:: && cargo test --quiet --test repl_s
 - **Run 20 (KEEP, metric=14, judge=8/10)**: Extracted shared `ReplSession` state and added `tonic repl --listen <addr>` with newline-delimited JSON `eval` / `clear` / `load-file` requests, per-connection session isolation, and focused REPL server coverage. Hypothesis: confirmed — a reusable session core plus a minimal remote transport is a solid first substrate for nREPL-style development even before richer protocol features land.
 - **Run 21 (KEEP, metric=16, judge=8/10)**: Added server-wide logical REPL session ids with session-addressed `eval` / `clear` / `load-file` plus `clone` / `close` lifecycle ops, and expanded focused unit + integration coverage for reconnect, clone, and close behavior. Hypothesis: confirmed — logical sessions that survive TCP reconnects materially improve the remote REPL substrate toward real nREPL-style workflows without blowing up the transport or evaluator core.
 - **Run 22 (KEEP, metric=18, judge=8/10)**: Added a `describe` op that reports supported remote REPL ops plus logical-session semantics, and expanded focused unit + TCP integration coverage for advertised capabilities. Hypothesis: confirmed — capability discovery is a small but high-leverage step toward editor-friendly nREPL workflows because clients can now introspect the server before driving sessions.
+- **Run 23 (KEEP, metric=20, judge=8/10)**: Routed host-side stdout/stderr through a scoped interop capture sink and surfaced captured output in remote `eval` / `load-file` responses, with focused unit and TCP integration coverage. Hypothesis: confirmed — returning request-scoped output makes the remote REPL materially closer to editor-driven nREPL workflows because clients can now observe emitted text without scraping server logs.
