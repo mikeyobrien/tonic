@@ -70,3 +70,25 @@ done
 - **Run 17 (KEEP, metric=138/138)**: Added parser-side E0010/E0002 bitstring missing-comma and unclosed-delimiter diagnostics for bitstring literals and patterns, then expanded representative parser + CLI coverage for those failures. Hypothesis: confirmed — bitstring-specific separator and closing-delimiter diagnostics help LLMs repair `<<...>>` mistakes in one shot instead of chasing bare `expected >>` parser errors.
 - **Run 18 (KEEP, metric=152/152)**: Extended parser-side E0010/E0002 diagnostics to alias child lists, import filter lists, and structured `raise(...)` keyword arguments, then expanded representative parser + CLI coverage for those failures. Hypothesis: confirmed — alias/import/raise list diagnostics help LLMs repair common separator and missing-closer mistakes in one shot instead of chasing bare delimiter or generic import-shape parser errors.
 - **Run 19 (KEEP, metric=166/166)**: Extended parser-side E0010/E0002 diagnostics to remaining tuple/list/keyword/map/struct literals and patterns, then expanded representative parser + CLI coverage for those failures. Hypothesis: confirmed — construct-specific container separator and closing-delimiter diagnostics help LLMs repair common literal/pattern mistakes in one shot instead of chasing legacy generic parser errors.
+
+## Segment 1 — nREPL bootstrap
+
+### Objective
+
+Bootstrap Clojure-style remote development by reusing Tonic's existing REPL evaluator behind a remotely drivable persistent session.
+
+### Metrics
+
+- **Primary**: Focused REPL server acceptance checks green
+- **Current Best**: 14 focused REPL tests green (run 20, segment 1)
+- **Secondary**: `autoresearch.checks.sh` pass, judge pass
+
+### Benchmark Commands
+
+```bash
+cargo test --quiet --bin tonic repl::tests:: && cargo test --quiet --test repl_server
+```
+
+### What's Been Tried
+
+- **Run 20 (KEEP, metric=14, judge=8/10)**: Extracted shared `ReplSession` state and added `tonic repl --listen <addr>` with newline-delimited JSON `eval` / `clear` / `load-file` requests, per-connection session isolation, and focused REPL server coverage. Hypothesis: confirmed — a reusable session core plus a minimal remote transport is a solid first substrate for nREPL-style development even before richer protocol features land.
