@@ -157,3 +157,70 @@ fn remote_repl_server_load_file_makes_definitions_available() {
 
     let _ = std::fs::remove_file(module_path);
 }
+
+#[test]
+fn remote_repl_server_logical_sessions_survive_reconnects_and_support_clone_close() {
+    let server = spawn_repl_server();
+
+    let session_id = {
+        let mut client = ReplClient::connect(&server.addr);
+        let define = client.request(json!({
+            "op": "eval",
+            "code": "defmodule Sticky do\n  def value() do 41 end\nend"
+        }));
+        assert_eq!(define["status"], "ok");
+
+        let cloned = client.request(json!({ "op": "clone" }));
+        assert_eq!(cloned["status"], "ok");
+        cloned["session"]
+            .as_str()
+            .expect("clone should return a session id")
+            .to_string()
+    };
+
+    let mut resumed_client = ReplClient::connect(&server.addr);
+    let resumed = resumed_client.request(json!({
+        "op": "eval",
+        "session": session_id.clone(),
+        "code": "Sticky.value() + 1"
+    }));
+    assert_eq!(resumed["status"], "ok");
+    assert_eq!(resumed["session"], session_id);
+    assert_eq!(resumed["value"], "42");
+    assert_eq!(resumed["value_type"], "int");
+
+    let cloned_again = resumed_client.request(json!({
+        "op": "clone",
+        "session": session_id.clone()
+    }));
+    assert_eq!(cloned_again["status"], "ok");
+    let cloned_session_id = cloned_again["session"]
+        .as_str()
+        .expect("clone should return a second session id")
+        .to_string();
+    assert_ne!(cloned_session_id, session_id);
+
+    let closed = resumed_client.request(json!({
+        "op": "close",
+        "session": session_id.clone()
+    }));
+    assert_eq!(closed["status"], "ok");
+    assert_eq!(closed["message"], "session closed");
+    assert_eq!(closed["session"], session_id);
+
+    let closed_eval = resumed_client.request(json!({
+        "op": "eval",
+        "session": session_id.clone(),
+        "code": "Sticky.value()"
+    }));
+    assert_eq!(closed_eval["status"], "error");
+    assert_eq!(closed_eval["session"], session_id);
+
+    let cloned_eval = resumed_client.request(json!({
+        "op": "eval",
+        "session": cloned_session_id,
+        "code": "Sticky.value()"
+    }));
+    assert_eq!(cloned_eval["status"], "ok");
+    assert_eq!(cloned_eval["value"], "41");
+}

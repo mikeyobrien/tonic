@@ -10,6 +10,8 @@ use rustyline::DefaultEditor;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 const WELCOME: &str = concat!(
     "Tonic v",
@@ -25,10 +27,16 @@ const REPL_FN: &str = "Repl.__repl_entry__";
 // Tokens that indicate a block is open and more lines are expected.
 const BLOCK_OPENERS: &[&str] = &["do", "fn", "->", "(", "[", "{", "\\"];
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct ReplSession {
     accumulated_functions: Vec<IrFunction>,
     external_modules: ExternalModules,
+}
+
+#[derive(Default)]
+struct SharedReplSessions {
+    sessions: Mutex<std::collections::HashMap<String, ReplSession>>,
+    next_session_id: AtomicU64,
 }
 
 struct ReplTypeInfo {
@@ -53,6 +61,8 @@ enum ReadResult {
 struct ServerRequest {
     op: String,
     #[serde(default)]
+    session: Option<String>,
+    #[serde(default)]
     code: Option<String>,
     #[serde(default)]
     path: Option<String>,
@@ -61,6 +71,8 @@ struct ServerRequest {
 #[derive(Debug, Serialize)]
 struct ServerResponse {
     status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -73,6 +85,7 @@ impl ServerResponse {
     fn ok_value(value: &RuntimeValue) -> Self {
         Self {
             status: "ok",
+            session: None,
             value: Some(value.render()),
             value_type: Some(value_type_label(value).to_string()),
             message: None,
@@ -82,6 +95,7 @@ impl ServerResponse {
     fn ok_message(message: impl Into<String>) -> Self {
         Self {
             status: "ok",
+            session: None,
             value: None,
             value_type: None,
             message: Some(message.into()),
@@ -91,9 +105,73 @@ impl ServerResponse {
     fn error(message: impl Into<String>) -> Self {
         Self {
             status: "error",
+            session: None,
             value: None,
             value_type: None,
             message: Some(message.into()),
+        }
+    }
+
+    fn with_session(mut self, session: impl Into<String>) -> Self {
+        self.session = Some(session.into());
+        self
+    }
+}
+
+impl SharedReplSessions {
+    fn next_session_id(&self) -> String {
+        let next = self.next_session_id.fetch_add(1, Ordering::Relaxed) + 1;
+        format!("session-{next}")
+    }
+
+    fn clone_session(&self, source: &ReplSession) -> Result<String, String> {
+        let session_id = self.next_session_id();
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "repl session registry is unavailable".to_string())?;
+        sessions.insert(session_id.clone(), source.clone());
+        Ok(session_id)
+    }
+
+    fn clone_named_session(&self, session_id: &str) -> Result<String, String> {
+        let source = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|_| "repl session registry is unavailable".to_string())?;
+            sessions
+                .get(session_id)
+                .cloned()
+                .ok_or_else(|| format!("unknown session '{session_id}'"))?
+        };
+        self.clone_session(&source)
+    }
+
+    fn with_session<T>(
+        &self,
+        session_id: &str,
+        f: impl FnOnce(&mut ReplSession) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "repl session registry is unavailable".to_string())?;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| format!("unknown session '{session_id}'"))?;
+        f(session)
+    }
+
+    fn close_session(&self, session_id: &str) -> Result<(), String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| "repl session registry is unavailable".to_string())?;
+        if sessions.remove(session_id).is_some() {
+            Ok(())
+        } else {
+            Err(format!("unknown session '{session_id}'"))
         }
     }
 }
@@ -535,6 +613,7 @@ fn run_repl_server(listen_addr: &str) -> Result<(), String> {
     let bound_addr = listener
         .local_addr()
         .map_err(|err| format!("could not inspect bound REPL address: {err}"))?;
+    let shared_sessions = Arc::new(SharedReplSessions::default());
 
     println!("Tonic REPL server listening on {bound_addr}");
     std::io::stdout()
@@ -544,8 +623,9 @@ fn run_repl_server(listen_addr: &str) -> Result<(), String> {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let shared_sessions = Arc::clone(&shared_sessions);
                 std::thread::spawn(move || {
-                    if let Err(err) = handle_repl_client(stream) {
+                    if let Err(err) = handle_repl_client(stream, shared_sessions) {
                         eprintln!("warning: repl client session ended with error: {err}");
                     }
                 });
@@ -557,13 +637,16 @@ fn run_repl_server(listen_addr: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn handle_repl_client(stream: TcpStream) -> Result<(), String> {
+fn handle_repl_client(
+    stream: TcpStream,
+    shared_sessions: Arc<SharedReplSessions>,
+) -> Result<(), String> {
     let reader_stream = stream
         .try_clone()
         .map_err(|err| format!("could not clone repl client stream: {err}"))?;
     let mut reader = BufReader::new(reader_stream);
     let mut writer = stream;
-    let mut session = ReplSession::default();
+    let mut connection_session = ReplSession::default();
     let mut line = String::new();
 
     loop {
@@ -581,7 +664,9 @@ fn handle_repl_client(stream: TcpStream) -> Result<(), String> {
         }
 
         let response = match serde_json::from_str::<ServerRequest>(request_line) {
-            Ok(request) => handle_server_request(&mut session, request),
+            Ok(request) => {
+                handle_server_request(&shared_sessions, &mut connection_session, request)
+            }
             Err(err) => ServerResponse::error(format!("invalid request JSON: {err}")),
         };
 
@@ -590,29 +675,107 @@ fn handle_repl_client(stream: TcpStream) -> Result<(), String> {
     }
 }
 
-fn handle_server_request(session: &mut ReplSession, request: ServerRequest) -> ServerResponse {
+fn handle_server_request(
+    shared_sessions: &SharedReplSessions,
+    connection_session: &mut ReplSession,
+    request: ServerRequest,
+) -> ServerResponse {
     match request.op.as_str() {
-        "eval" => match request.code.as_deref() {
-            Some(code) => match session.eval_source(code) {
-                Ok(value) => ServerResponse::ok_value(&value),
+        "eval" => handle_session_eval(shared_sessions, connection_session, &request),
+        "clear" => handle_session_clear(
+            shared_sessions,
+            connection_session,
+            request.session.as_deref(),
+        ),
+        "load-file" => handle_session_load_file(shared_sessions, connection_session, &request),
+        "clone" => match request.session.as_deref() {
+            Some(session_id) => match shared_sessions.clone_named_session(session_id) {
+                Ok(new_session_id) => {
+                    ServerResponse::ok_message("session cloned").with_session(new_session_id)
+                }
+                Err(err) => ServerResponse::error(err).with_session(session_id),
+            },
+            None => match shared_sessions.clone_session(connection_session) {
+                Ok(new_session_id) => {
+                    ServerResponse::ok_message("session cloned").with_session(new_session_id)
+                }
                 Err(err) => ServerResponse::error(err),
             },
-            None => ServerResponse::error("missing 'code' for eval request"),
         },
-        "clear" => {
-            session.clear();
-            ServerResponse::ok_message("environment cleared")
-        }
-        "load-file" => match request.path.as_deref() {
-            Some(path) => match session.load_file(path) {
-                Ok(value) => ServerResponse::ok_value(&value),
-                Err(err) => ServerResponse::error(err),
+        "close" => match request.session.as_deref() {
+            Some(session_id) => match shared_sessions.close_session(session_id) {
+                Ok(()) => ServerResponse::ok_message("session closed").with_session(session_id),
+                Err(err) => ServerResponse::error(err).with_session(session_id),
             },
-            None => ServerResponse::error("missing 'path' for load-file request"),
+            None => ServerResponse::error("missing 'session' for close request"),
         },
         other => ServerResponse::error(format!(
-            "unknown op '{other}' (expected eval, clear, or load-file)"
+            "unknown op '{other}' (expected eval, clear, load-file, clone, or close)"
         )),
+    }
+}
+
+fn handle_session_eval(
+    shared_sessions: &SharedReplSessions,
+    connection_session: &mut ReplSession,
+    request: &ServerRequest,
+) -> ServerResponse {
+    match request.code.as_deref() {
+        Some(code) => match request.session.as_deref() {
+            Some(session_id) => match shared_sessions
+                .with_session(session_id, |session| session.eval_source(code))
+            {
+                Ok(value) => ServerResponse::ok_value(&value).with_session(session_id),
+                Err(err) => ServerResponse::error(err).with_session(session_id),
+            },
+            None => match connection_session.eval_source(code) {
+                Ok(value) => ServerResponse::ok_value(&value),
+                Err(err) => ServerResponse::error(err),
+            },
+        },
+        None => ServerResponse::error("missing 'code' for eval request"),
+    }
+}
+
+fn handle_session_clear(
+    shared_sessions: &SharedReplSessions,
+    connection_session: &mut ReplSession,
+    session_id: Option<&str>,
+) -> ServerResponse {
+    match session_id {
+        Some(session_id) => match shared_sessions.with_session(session_id, |session| {
+            session.clear();
+            Ok(())
+        }) {
+            Ok(()) => ServerResponse::ok_message("environment cleared").with_session(session_id),
+            Err(err) => ServerResponse::error(err).with_session(session_id),
+        },
+        None => {
+            connection_session.clear();
+            ServerResponse::ok_message("environment cleared")
+        }
+    }
+}
+
+fn handle_session_load_file(
+    shared_sessions: &SharedReplSessions,
+    connection_session: &mut ReplSession,
+    request: &ServerRequest,
+) -> ServerResponse {
+    match request.path.as_deref() {
+        Some(path) => match request.session.as_deref() {
+            Some(session_id) => {
+                match shared_sessions.with_session(session_id, |session| session.load_file(path)) {
+                    Ok(value) => ServerResponse::ok_value(&value).with_session(session_id),
+                    Err(err) => ServerResponse::error(err).with_session(session_id),
+                }
+            }
+            None => match connection_session.load_file(path) {
+                Ok(value) => ServerResponse::ok_value(&value),
+                Err(err) => ServerResponse::error(err),
+            },
+        },
+        None => ServerResponse::error("missing 'path' for load-file request"),
     }
 }
 
@@ -734,11 +897,14 @@ mod tests {
 
     #[test]
     fn handle_server_request_supports_eval_clear_and_load_file() {
+        let shared_sessions = SharedReplSessions::default();
         let mut session = ReplSession::default();
         let eval = handle_server_request(
+            &shared_sessions,
             &mut session,
             ServerRequest {
                 op: "eval".to_string(),
+                session: None,
                 code: Some("1 + 2".to_string()),
                 path: None,
             },
@@ -762,9 +928,11 @@ mod tests {
         .expect("temp file should be writable");
 
         let load_file = handle_server_request(
+            &shared_sessions,
             &mut session,
             ServerRequest {
                 op: "load-file".to_string(),
+                session: None,
                 code: None,
                 path: Some(temp_path.display().to_string()),
             },
@@ -773,9 +941,11 @@ mod tests {
         assert_eq!(load_file.value_type.as_deref(), Some("nil"));
 
         let persisted = handle_server_request(
+            &shared_sessions,
             &mut session,
             ServerRequest {
                 op: "eval".to_string(),
+                session: None,
                 code: Some("Helpers.double(6)".to_string()),
                 path: None,
             },
@@ -784,9 +954,11 @@ mod tests {
         assert_eq!(persisted.value.as_deref(), Some("12"));
 
         let clear = handle_server_request(
+            &shared_sessions,
             &mut session,
             ServerRequest {
                 op: "clear".to_string(),
+                session: None,
                 code: None,
                 path: None,
             },
@@ -795,9 +967,11 @@ mod tests {
         assert_eq!(clear.message.as_deref(), Some("environment cleared"));
 
         let missing = handle_server_request(
+            &shared_sessions,
             &mut session,
             ServerRequest {
                 op: "eval".to_string(),
+                session: None,
                 code: Some("Helpers.double(6)".to_string()),
                 path: None,
             },
@@ -805,5 +979,79 @@ mod tests {
         assert_eq!(missing.status, "error");
 
         let _ = std::fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn handle_server_request_supports_logical_sessions_across_connections() {
+        let shared_sessions = SharedReplSessions::default();
+        let mut first_connection = ReplSession::default();
+        let define = handle_server_request(
+            &shared_sessions,
+            &mut first_connection,
+            ServerRequest {
+                op: "eval".to_string(),
+                session: None,
+                code: Some("defmodule Helpers do\n  def double(x) do x * 2 end\nend".to_string()),
+                path: None,
+            },
+        );
+        assert_eq!(define.status, "ok");
+
+        let cloned = handle_server_request(
+            &shared_sessions,
+            &mut first_connection,
+            ServerRequest {
+                op: "clone".to_string(),
+                session: None,
+                code: None,
+                path: None,
+            },
+        );
+        assert_eq!(cloned.status, "ok");
+        let session_id = cloned
+            .session
+            .clone()
+            .expect("clone should return a logical session id");
+
+        let mut second_connection = ReplSession::default();
+        let resumed = handle_server_request(
+            &shared_sessions,
+            &mut second_connection,
+            ServerRequest {
+                op: "eval".to_string(),
+                session: Some(session_id.clone()),
+                code: Some("Helpers.double(7)".to_string()),
+                path: None,
+            },
+        );
+        assert_eq!(resumed.status, "ok");
+        assert_eq!(resumed.value.as_deref(), Some("14"));
+        assert_eq!(resumed.session.as_deref(), Some(session_id.as_str()));
+
+        let closed = handle_server_request(
+            &shared_sessions,
+            &mut second_connection,
+            ServerRequest {
+                op: "close".to_string(),
+                session: Some(session_id.clone()),
+                code: None,
+                path: None,
+            },
+        );
+        assert_eq!(closed.status, "ok");
+        assert_eq!(closed.message.as_deref(), Some("session closed"));
+
+        let missing = handle_server_request(
+            &shared_sessions,
+            &mut second_connection,
+            ServerRequest {
+                op: "eval".to_string(),
+                session: Some(session_id.clone()),
+                code: Some("Helpers.double(7)".to_string()),
+                path: None,
+            },
+        );
+        assert_eq!(missing.status, "error");
+        assert_eq!(missing.session.as_deref(), Some(session_id.as_str()));
     }
 }
