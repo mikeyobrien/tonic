@@ -27,6 +27,17 @@ fn as_keyword(v: &RuntimeValue) -> Option<&Vec<(RuntimeValue, RuntimeValue)>> {
     }
 }
 
+/// Parse a list of strings from a keyword key (e.g. `conflicts_with: ["foo", "bar"]`).
+fn parse_string_list(flag_kw: &[(RuntimeValue, RuntimeValue)], key: &str) -> Vec<String> {
+    match kw_get(flag_kw, key) {
+        Some(RuntimeValue::List(items)) => items
+            .iter()
+            .filter_map(|v| as_str(v).map(|s| s.to_string()))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Parse choices from a flag keyword list — expects `choices: ["a", "b", "c"]`.
 fn parse_choices(flag_kw: &[(RuntimeValue, RuntimeValue)]) -> Vec<String> {
     match kw_get(flag_kw, "choices") {
@@ -67,6 +78,8 @@ struct FlagSpec {
     env: Option<String>,
     multi: bool,
     hidden: bool,
+    conflicts_with: Vec<String>,
+    requires: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +181,8 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 .map(|s| s.to_string());
             let multi = matches!(kw_get(flag_kw, "multi"), Some(RuntimeValue::Bool(true)));
             let hidden = matches!(kw_get(flag_kw, "hidden"), Some(RuntimeValue::Bool(true)));
+            let conflicts_with = parse_string_list(flag_kw, "conflicts_with");
+            let requires = parse_string_list(flag_kw, "requires");
 
             flags.push(FlagSpec {
                 name: flag_name.to_string(),
@@ -180,6 +195,8 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 env,
                 multi,
                 hidden,
+                conflicts_with,
+                requires,
             });
         }
     }
@@ -281,6 +298,8 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                     let multi = matches!(kw_get(flag_kw, "multi"), Some(RuntimeValue::Bool(true)));
                     let hidden =
                         matches!(kw_get(flag_kw, "hidden"), Some(RuntimeValue::Bool(true)));
+                    let conflicts_with = parse_string_list(flag_kw, "conflicts_with");
+                    let requires = parse_string_list(flag_kw, "requires");
 
                     cmd_flags.push(FlagSpec {
                         name: flag_name.to_string(),
@@ -293,6 +312,8 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                         env,
                         multi,
                         hidden,
+                        conflicts_with,
+                        requires,
                     });
                 }
             }
@@ -540,15 +561,36 @@ fn generate_command_help(spec: &CliSpec, cmd: &SubcommandSpec) -> String {
 }
 
 /// Parse argv for a subcommand context (after the subcommand name has been consumed).
-fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> RuntimeValue {
+/// `global_parsed_flags` are the root-level flags already parsed before the subcommand name.
+fn do_parse_command(
+    spec: &CliSpec,
+    cmd: &SubcommandSpec,
+    argv: &[String],
+    global_parsed_flags: Option<&[(String, RuntimeValue)]>,
+) -> RuntimeValue {
     let mut positional: Vec<String> = Vec::new();
+    let mut passthrough: Vec<RuntimeValue> = Vec::new();
     let mut output_json = false;
     let mut i = 0;
+    let mut after_separator = false;
 
     let mut parsed_flags = init_parsed_flags(&cmd.flags);
 
     while i < argv.len() {
         let arg = &argv[i];
+
+        // After --, collect everything as passthrough
+        if after_separator {
+            passthrough.push(RuntimeValue::String(arg.clone()));
+            i += 1;
+            continue;
+        }
+
+        if arg == "--" {
+            after_separator = true;
+            i += 1;
+            continue;
+        }
 
         if arg == "--help" || arg == "-h" {
             let help = generate_command_help(spec, cmd);
@@ -560,6 +602,42 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
 
         if arg == "--output-json" {
             output_json = true;
+            i += 1;
+            continue;
+        }
+
+        // Try --flag=value equals syntax
+        if let Some((eq_name, eq_val)) = split_equals(arg) {
+            // Check --no-<flag>=... (shouldn't happen for booleans, but handle)
+            if let Some(stripped) = eq_name.strip_prefix("no-") {
+                if let Some(fspec) = cmd.flags.iter().find(|f| f.name == stripped) {
+                    if fspec.flag_type == FlagType::Boolean {
+                        set_flag_value(
+                            &mut parsed_flags,
+                            stripped,
+                            RuntimeValue::Bool(false),
+                            false,
+                        );
+                        i += 1;
+                        continue;
+                    }
+                }
+            }
+            if let Some(fspec) = cmd.flags.iter().find(|f| f.name == eq_name) {
+                match &fspec.flag_type {
+                    FlagType::Boolean => {
+                        set_flag_value(&mut parsed_flags, eq_name, RuntimeValue::Bool(true), false);
+                    }
+                    _ => match parse_flag_value(fspec, eq_val) {
+                        Ok(val) => {
+                            set_flag_value(&mut parsed_flags, eq_name, val, fspec.multi);
+                        }
+                        Err(msg) => return error_tuple(msg),
+                    },
+                }
+            } else {
+                return error_tuple(format!("unknown flag --{eq_name}"));
+            }
             i += 1;
             continue;
         }
@@ -673,6 +751,11 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
         }
     }
 
+    // Validate conflicts and requires
+    if let Err(msg) = validate_flag_relations(&cmd.flags, &parsed_flags) {
+        return error_tuple(msg);
+    }
+
     // Map positional args
     let mut arg_values: Vec<(RuntimeValue, RuntimeValue)> = Vec::new();
     for (idx, aspec) in cmd.args.iter().enumerate() {
@@ -688,16 +771,29 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
         }
     }
 
-    let rest_args: Vec<RuntimeValue> = positional
+    // Combine positional overflow + passthrough into rest
+    let mut rest_args: Vec<RuntimeValue> = positional
         .iter()
         .skip(cmd.args.len())
         .map(|s| RuntimeValue::String(s.clone()))
         .collect();
+    rest_args.extend(passthrough);
 
     let mut flag_values: Vec<(RuntimeValue, RuntimeValue)> = Vec::new();
     for (name, val) in &parsed_flags {
         flag_values.push((RuntimeValue::Atom(name.clone()), val.clone()));
     }
+
+    // Build global flags map
+    let global_flags_map = if let Some(gf) = global_parsed_flags {
+        let entries: Vec<(RuntimeValue, RuntimeValue)> = gf
+            .iter()
+            .map(|(n, v)| (RuntimeValue::Atom(n.clone()), v.clone()))
+            .collect();
+        RuntimeValue::Map(entries)
+    } else {
+        RuntimeValue::Map(vec![])
+    };
 
     let result = RuntimeValue::Map(vec![
         (
@@ -719,6 +815,10 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
         (
             RuntimeValue::Atom("output_json".to_string()),
             RuntimeValue::Bool(output_json),
+        ),
+        (
+            RuntimeValue::Atom("global_flags".to_string()),
+            global_flags_map,
         ),
     ]);
 
@@ -796,13 +896,28 @@ fn apply_env_fallback(
 fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
     let mut flag_values: Vec<(RuntimeValue, RuntimeValue)> = Vec::new();
     let mut positional: Vec<String> = Vec::new();
+    let mut passthrough: Vec<RuntimeValue> = Vec::new();
     let mut output_json = false;
     let mut i = 0;
+    let mut after_separator = false;
 
     let mut parsed_flags = init_parsed_flags(&spec.flags);
 
     while i < argv.len() {
         let arg = &argv[i];
+
+        // After --, collect everything as passthrough
+        if after_separator {
+            passthrough.push(RuntimeValue::String(arg.clone()));
+            i += 1;
+            continue;
+        }
+
+        if arg == "--" {
+            after_separator = true;
+            i += 1;
+            continue;
+        }
 
         if arg == "--help" || arg == "-h" {
             let help = generate_help(spec);
@@ -822,6 +937,41 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
 
         if arg == "--output-json" {
             output_json = true;
+            i += 1;
+            continue;
+        }
+
+        // Try --flag=value equals syntax
+        if let Some((eq_name, eq_val)) = split_equals(arg) {
+            if let Some(stripped) = eq_name.strip_prefix("no-") {
+                if let Some(fspec) = spec.flags.iter().find(|f| f.name == stripped) {
+                    if fspec.flag_type == FlagType::Boolean {
+                        set_flag_value(
+                            &mut parsed_flags,
+                            stripped,
+                            RuntimeValue::Bool(false),
+                            false,
+                        );
+                        i += 1;
+                        continue;
+                    }
+                }
+            }
+            if let Some(fspec) = spec.flags.iter().find(|f| f.name == eq_name) {
+                match &fspec.flag_type {
+                    FlagType::Boolean => {
+                        set_flag_value(&mut parsed_flags, eq_name, RuntimeValue::Bool(true), false);
+                    }
+                    _ => match parse_flag_value(fspec, eq_val) {
+                        Ok(val) => {
+                            set_flag_value(&mut parsed_flags, eq_name, val, fspec.multi);
+                        }
+                        Err(msg) => return error_tuple(msg),
+                    },
+                }
+            } else {
+                return error_tuple(format!("unknown flag --{eq_name}"));
+            }
             i += 1;
             continue;
         }
@@ -921,8 +1071,8 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
                 .iter()
                 .find(|c| c.name == *arg || c.aliases.iter().any(|a| a == arg.as_str()))
             {
-                // Dispatch remaining argv to subcommand parser
-                return do_parse_command(spec, cmd, &argv[i + 1..]);
+                // Pass global flags (root-level parsed flags) to subcommand
+                return do_parse_command(spec, cmd, &argv[i + 1..], Some(&parsed_flags));
             }
         }
 
@@ -970,6 +1120,11 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
         }
     }
 
+    // Validate conflicts and requires
+    if let Err(msg) = validate_flag_relations(&spec.flags, &parsed_flags) {
+        return error_tuple(msg);
+    }
+
     // Map positional args to arg specs
     let mut arg_values: Vec<(RuntimeValue, RuntimeValue)> = Vec::new();
     for (idx, aspec) in spec.args.iter().enumerate() {
@@ -985,12 +1140,13 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
         }
     }
 
-    // Collect extra positional args
-    let rest_args: Vec<RuntimeValue> = positional
+    // Combine extra positional args + passthrough into rest
+    let mut rest_args: Vec<RuntimeValue> = positional
         .iter()
         .skip(spec.args.len())
         .map(|s| RuntimeValue::String(s.clone()))
         .collect();
+    rest_args.extend(passthrough);
 
     // Build flags map
     for (name, val) in &parsed_flags {
@@ -1053,6 +1209,68 @@ fn parse_flag_value(fspec: &FlagSpec, raw: &str) -> Result<RuntimeValue, String>
 /// Convert a raw env string to a RuntimeValue using the flag's type, then validate choices.
 fn parse_env_value(fspec: &FlagSpec, raw: &str) -> Result<RuntimeValue, String> {
     parse_flag_value(fspec, raw)
+}
+
+/// Validate conflicts_with and requires constraints after parsing.
+fn validate_flag_relations(
+    flags: &[FlagSpec],
+    parsed_flags: &[(String, RuntimeValue)],
+) -> Result<(), String> {
+    // Track which flags were explicitly set (not at their default)
+    let was_set = |name: &str, fspec: &FlagSpec| -> bool {
+        if let Some((_, val)) = parsed_flags.iter().find(|(n, _)| n == name) {
+            if fspec.multi {
+                !matches!(val, RuntimeValue::List(items) if items.is_empty())
+            } else if fspec.flag_type == FlagType::Boolean {
+                *val != fspec.default
+            } else {
+                *val != RuntimeValue::Nil && *val != fspec.default
+            }
+        } else {
+            false
+        }
+    };
+
+    for fspec in flags {
+        if !was_set(&fspec.name, fspec) {
+            continue;
+        }
+        // Check conflicts
+        for conflict in &fspec.conflicts_with {
+            if let Some(other) = flags.iter().find(|f| f.name == *conflict) {
+                if was_set(conflict, other) {
+                    return Err(format!(
+                        "flags --{} and --{} are mutually exclusive",
+                        fspec.name, conflict
+                    ));
+                }
+            }
+        }
+        // Check requires
+        for req in &fspec.requires {
+            if let Some(other) = flags.iter().find(|f| f.name == *req) {
+                if !was_set(req, other) {
+                    return Err(format!("--{} requires --{}", fspec.name, req));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Try to split a `--flag=value` argument. Returns Some((flag_name, value)) or None.
+fn split_equals(arg: &str) -> Option<(&str, &str)> {
+    if arg.starts_with("--") {
+        let rest = &arg[2..];
+        if let Some(eq_pos) = rest.find('=') {
+            let name = &rest[..eq_pos];
+            let value = &rest[eq_pos + 1..];
+            if !name.is_empty() {
+                return Some((name, value));
+            }
+        }
+    }
+    None
 }
 
 fn error_tuple(msg: String) -> RuntimeValue {
@@ -2444,5 +2662,320 @@ mod tests {
         let msg = extract_error_msg(&result);
         assert!(msg.contains("tag"));
         assert!(msg.contains("missing"));
+    }
+
+    // === Run 54: Equals syntax, pass-through, global flags, conflicts, requires ===
+
+    #[test]
+    fn cli_module_equals_syntax_string_flag() {
+        let spec = make_spec();
+        let result = host_cli_parse(&[spec, argv(&["--output=out.txt", "input.txt"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "output"), s("out.txt"));
+    }
+
+    #[test]
+    fn cli_module_equals_syntax_empty_value() {
+        let spec = make_spec();
+        let result = host_cli_parse(&[spec, argv(&["--output=", "input.txt"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "output"), s(""));
+    }
+
+    #[test]
+    fn cli_module_equals_syntax_integer() {
+        let spec = make_spec();
+        let result = host_cli_parse(&[spec, argv(&["--count=42", "input.txt"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "count"), int(42));
+    }
+
+    #[test]
+    fn cli_module_equals_syntax_alongside_space() {
+        // --count=10 and --output value should both work in the same invocation
+        let spec = make_spec();
+        let result = host_cli_parse(&[
+            spec,
+            argv(&["--count=10", "--output", "f.txt", "input.txt"]),
+        ])
+        .unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "count"), int(10));
+        assert_eq!(*get_map_field(flags, "output"), s("f.txt"));
+    }
+
+    #[test]
+    fn cli_module_passthrough_args_collected_in_rest() {
+        let spec = make_spec();
+        let result =
+            host_cli_parse(&[spec, argv(&["input.txt", "--", "--arg1", "--arg2"])]).unwrap();
+        let data = extract_ok(&result);
+        let rest = get_map_field(data, "rest");
+        assert_eq!(*rest, list(vec![s("--arg1"), s("--arg2")]));
+    }
+
+    #[test]
+    fn cli_module_passthrough_empty() {
+        let spec = make_spec();
+        let result = host_cli_parse(&[spec, argv(&["input.txt", "--"])]).unwrap();
+        let data = extract_ok(&result);
+        let rest = get_map_field(data, "rest");
+        assert_eq!(*rest, list(vec![]));
+    }
+
+    #[test]
+    fn cli_module_passthrough_in_subcommand() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![("run", kw(vec![("description", s("Run something"))]))]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["run", "--", "--extra", "value"])]).unwrap();
+        let data = extract_ok(&result);
+        let rest = get_map_field(data, "rest");
+        assert_eq!(*rest, list(vec![s("--extra"), s("value")]));
+    }
+
+    #[test]
+    fn cli_module_passthrough_flags_not_parsed() {
+        let spec = make_spec();
+        let result = host_cli_parse(&[
+            spec,
+            argv(&["input.txt", "--", "--verbose", "--count", "5"]),
+        ])
+        .unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        // --verbose after -- should NOT be parsed as flag
+        assert_eq!(*get_map_field(flags, "verbose"), RuntimeValue::Bool(false));
+        let rest = get_map_field(data, "rest");
+        assert_eq!(*rest, list(vec![s("--verbose"), s("--count"), s("5")]));
+    }
+
+    #[test]
+    fn cli_module_global_flags_in_subcommand() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "verbose",
+                    kw(vec![("type", atom("boolean")), ("short", s("v"))]),
+                )]),
+            ),
+            (
+                "commands",
+                kw(vec![(
+                    "deploy",
+                    kw(vec![
+                        ("description", s("Deploy")),
+                        (
+                            "flags",
+                            kw(vec![("target", kw(vec![("type", atom("string"))]))]),
+                        ),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result =
+            host_cli_parse(&[spec, argv(&["--verbose", "deploy", "--target", "prod"])]).unwrap();
+        let data = extract_ok(&result);
+        assert_eq!(*get_map_field(data, "command"), s("deploy"));
+        // Subcommand-specific flags
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "target"), s("prod"));
+        // Global flags from root
+        let global = get_map_field(data, "global_flags");
+        assert_eq!(*get_map_field(global, "verbose"), RuntimeValue::Bool(true));
+    }
+
+    #[test]
+    fn cli_module_global_help_still_shows_root() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            ("version", s("1.0.0")),
+            (
+                "flags",
+                kw(vec![("verbose", kw(vec![("type", atom("boolean"))]))]),
+            ),
+            (
+                "commands",
+                kw(vec![("deploy", kw(vec![("description", s("Deploy"))]))]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--help"])]).unwrap();
+        match &result {
+            RuntimeValue::Tuple(tag, val) => {
+                assert_eq!(**tag, atom("help"));
+                if let RuntimeValue::String(text) = val.as_ref() {
+                    assert!(text.contains("COMMANDS:"));
+                    assert!(text.contains("deploy"));
+                } else {
+                    panic!("expected help text");
+                }
+            }
+            _ => panic!("expected help tuple"),
+        }
+    }
+
+    #[test]
+    fn cli_module_conflicts_with_error() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "verbose",
+                        kw(vec![
+                            ("type", atom("boolean")),
+                            ("conflicts_with", list(vec![s("quiet")])),
+                        ]),
+                    ),
+                    ("quiet", kw(vec![("type", atom("boolean"))])),
+                ]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--verbose", "--quiet"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("mutually exclusive"));
+        assert!(msg.contains("verbose"));
+        assert!(msg.contains("quiet"));
+    }
+
+    #[test]
+    fn cli_module_conflicts_with_one_alone_ok() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "verbose",
+                        kw(vec![
+                            ("type", atom("boolean")),
+                            ("conflicts_with", list(vec![s("quiet")])),
+                        ]),
+                    ),
+                    ("quiet", kw(vec![("type", atom("boolean"))])),
+                ]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--verbose"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "verbose"), RuntimeValue::Bool(true));
+        assert_eq!(*get_map_field(flags, "quiet"), RuntimeValue::Bool(false));
+    }
+
+    #[test]
+    fn cli_module_requires_missing_dependency_error() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "output",
+                        kw(vec![
+                            ("type", atom("string")),
+                            ("requires", list(vec![s("format")])),
+                        ]),
+                    ),
+                    ("format", kw(vec![("type", atom("string"))])),
+                ]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--output", "file.txt"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("--output requires --format"));
+    }
+
+    #[test]
+    fn cli_module_requires_both_present_ok() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "output",
+                        kw(vec![
+                            ("type", atom("string")),
+                            ("requires", list(vec![s("format")])),
+                        ]),
+                    ),
+                    ("format", kw(vec![("type", atom("string"))])),
+                ]),
+            ),
+        ]);
+        let result =
+            host_cli_parse(&[spec, argv(&["--output", "file.txt", "--format", "csv"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "output"), s("file.txt"));
+        assert_eq!(*get_map_field(flags, "format"), s("csv"));
+    }
+
+    #[test]
+    fn cli_module_equals_syntax_in_subcommand() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![(
+                    "deploy",
+                    kw(vec![
+                        ("description", s("Deploy")),
+                        (
+                            "flags",
+                            kw(vec![("target", kw(vec![("type", atom("string"))]))]),
+                        ),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["deploy", "--target=prod"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "target"), s("prod"));
+    }
+
+    #[test]
+    fn cli_module_conflicts_in_subcommand() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![(
+                    "deploy",
+                    kw(vec![
+                        ("description", s("Deploy")),
+                        (
+                            "flags",
+                            kw(vec![
+                                (
+                                    "json",
+                                    kw(vec![
+                                        ("type", atom("boolean")),
+                                        ("conflicts_with", list(vec![s("text")])),
+                                    ]),
+                                ),
+                                ("text", kw(vec![("type", atom("boolean"))])),
+                            ]),
+                        ),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["deploy", "--json", "--text"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("mutually exclusive"));
     }
 }

@@ -266,7 +266,7 @@ end
 ### Metrics
 
 - **Primary**: Focused CLI module acceptance checks green
-- **Current Best**: 61 (run 53)
+- **Current Best**: 77 (run 54)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -298,3 +298,4 @@ cargo test --quiet cli_module 2>&1 | tail -5
 - **Run 51 (KEEP, metric=32)**: Added subcommand support to CLI module — `commands:` key in spec with per-command flags/args, root --help lists commands, `myapp cmd --help` shows command-specific help, unknown/missing command errors with available commands list, --output-json inheritance in subcommand context, plus 12 focused unit tests (total 32). Hypothesis: confirmed — subcommands are essential for any non-trivial CLI tool, following cobra/clap/Click patterns of hierarchical command trees.
 - **Run 52 (KEEP, metric=48)**: Added flag choices constraint (`choices:` validates against allowed values), environment variable fallback (`env:` reads from env when flag not on argv), and multi-value flags (`multi: true` collects repeated `--flag val` into a list), with all three features composable (env+choices, multi+choices), shown in help text, and type-coerced consistently — plus 16 focused unit tests (total 48). Hypothesis: confirmed — choices, env fallback, and multi-value flags are production CLI essentials found in Click/clap/cobra, completing the flag validation surface.
 - **Run 53 (KEEP, metric=61)**: Added required flags (`required: true` with missing-flag errors), negatable booleans (`--no-X` auto-generated for boolean flags with `--[no-]` help display), hidden flags/commands (`hidden: true` omitted from help but still functional), and command aliases (`aliases:` for subcommand shorthand routing with help display) — plus 13 focused unit tests (total 61). Hypothesis: confirmed — required flags, negatable booleans, hidden items, and command aliases are production polish features found in clap/cobra/Click that complete the CLI module's flag and command surface.
+- **Run 54 (KEEP, metric=77)**: Added `--flag=value` equals syntax parsing, `--` pass-through separator (collected into `result.rest`), global flags for subcommands (`result.global_flags` separate from subcommand-specific flags), mutually exclusive flags (`conflicts_with:` produces error when both provided), and flag dependencies (`requires:` produces error when dependency missing) — plus 16 focused unit tests (total 77). Hypothesis: confirmed — equals syntax, pass-through args, global flags, and flag conflicts/dependencies are production CLI essentials found in clap/cobra that complete the parsing surface.
