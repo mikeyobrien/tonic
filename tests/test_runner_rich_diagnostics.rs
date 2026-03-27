@@ -29,6 +29,7 @@ fn test_project_root_discovers_and_runs_test_files() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -58,6 +59,7 @@ fn test_returns_non_zero_and_deterministic_summary_when_failures_exist() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -89,6 +91,7 @@ fn test_file_target_mode_executes_tests_from_explicit_file_path() {
     let file_path = fixture_root.join("manual_suite.tn");
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", file_path.to_str().expect("utf8 file path")])
         .output()
         .expect("test command should execute");
@@ -112,6 +115,7 @@ fn test_supports_machine_readable_json_output() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--format", "json"])
         .output()
         .expect("test command should execute");
@@ -188,6 +192,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_frontend_errors() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -213,6 +218,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_call_commas() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -238,6 +244,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_unclosed_call_delimiters() 
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -263,6 +270,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_with_clause_commas(
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -288,6 +296,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_alias_child_commas(
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -313,6 +322,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_unclosed_structured_raise_a
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -340,6 +350,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_keyword_list_commas
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -365,6 +376,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_unclosed_list_patterns() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -390,6 +402,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_missing_bitstring_commas() 
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -415,6 +428,7 @@ fn test_command_surfaces_rich_source_diagnostics_for_unclosed_bitstring_patterns
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -441,6 +455,7 @@ fn test_assert_equal_renders_expected_vs_actual_on_failure() {
     );
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
         .args(["test", &fixture_root.display().to_string()])
         .output()
         .expect("test command should execute");
@@ -474,6 +489,7 @@ fn test_assert_renders_truthy_failure() {
     );
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
         .args(["test", &fixture_root.display().to_string()])
         .output()
         .expect("test command should execute");
@@ -503,6 +519,7 @@ fn test_refute_renders_falsy_failure() {
     );
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
         .args(["test", &fixture_root.display().to_string()])
         .output()
         .expect("test command should execute");
@@ -532,6 +549,7 @@ fn test_assert_not_equal_renders_failure() {
     );
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
         .args(["test", &fixture_root.display().to_string()])
         .output()
         .expect("test command should execute");
@@ -561,6 +579,7 @@ fn test_assert_equal_with_custom_message() {
     );
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
         .args(["test", &fixture_root.display().to_string()])
         .output()
         .expect("test command should execute");
@@ -621,6 +640,7 @@ fn test_filter_runs_only_matching_tests() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--filter", "beta"])
         .output()
         .expect("test command should execute");
@@ -661,6 +681,7 @@ fn test_filter_no_matches_reports_zero_tests() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--filter", "nonexistent"])
         .output()
         .expect("test command should execute");
@@ -687,6 +708,7 @@ fn test_filter_with_json_output() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--filter", "one", "--format", "json"])
         .output()
         .expect("test command should execute");
@@ -726,6 +748,7 @@ fn test_failure_summary_section_appears_for_mixed_pass_fail() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -762,6 +785,7 @@ fn test_failure_summary_section_absent_when_all_pass() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "."])
         .output()
         .expect("test command should execute");
@@ -785,6 +809,7 @@ fn test_json_output_includes_failures_array() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--format", "json"])
         .output()
         .expect("test command should execute");
@@ -823,6 +848,7 @@ fn test_list_flag_shows_test_names_without_running() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--list"])
         .output()
         .expect("test command should execute");
@@ -859,6 +885,7 @@ fn test_list_flag_json_output() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--list", "--format", "json"])
         .output()
         .expect("test command should execute");
@@ -883,6 +910,7 @@ fn test_list_flag_with_filter() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", ".", "--list", "--filter", "alpha"])
         .output()
         .expect("test command should execute");
@@ -923,6 +951,7 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "contains_test.tn"])
         .output()
         .expect("test command should execute");
@@ -969,6 +998,7 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "list_contains_test.tn"])
         .output()
         .expect("test command should execute");
@@ -1005,6 +1035,7 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "delta_test.tn"])
         .output()
         .expect("test command should execute");
@@ -1043,6 +1074,7 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "delta_json_test.tn", "--format", "json"])
         .output()
         .expect("test command should execute");
@@ -1090,6 +1122,7 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "fail_fast_test.tn", "--fail-fast"])
         .output()
         .expect("test command should execute");
@@ -1145,6 +1178,7 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args(["test", "all_pass_test.tn", "--fail-fast"])
         .output()
         .expect("test command should execute");
@@ -1180,6 +1214,7 @@ end
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
         .args([
             "test",
             "fail_fast_json_test.tn",
@@ -1203,4 +1238,121 @@ end
     assert_eq!(json["passed"], 1);
     assert_eq!(json["failed"], 1);
     assert_eq!(json["total"], 2);
+}
+
+// ── ANSI color tests ──────────────────────────────────────────────────────
+
+#[test]
+fn test_text_output_includes_ansi_colors() {
+    let fixture_root = write_single_test_file(
+        "test-ansi-colors",
+        "color_test.tn",
+        "defmodule ColorTest do
+  def test_pass() do
+    :ok
+  end
+
+  def test_fail() do
+    err(:boom)
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        // Deliberately NOT setting NO_COLOR so ANSI codes appear
+        .args(["test", "color_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    // Green for passing tests
+    assert!(
+        stdout.contains("\x1b[32mok\x1b[0m"),
+        "passing test should have green ANSI code, got:\n{stdout}"
+    );
+    // Red for failing tests
+    assert!(
+        stdout.contains("\x1b[31mFAILED\x1b[0m"),
+        "failing test should have red ANSI code, got:\n{stdout}"
+    );
+    // Bold+red for Failures: header
+    assert!(
+        stdout.contains("\x1b[1m\x1b[31mFailures:\x1b[0m"),
+        "Failures header should have bold+red ANSI code, got:\n{stdout}"
+    );
+    // Summary line should have red (since there are failures)
+    assert!(
+        stdout.contains("\x1b[31mFAILED\x1b[0m. "),
+        "summary should have red status, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_no_color_env_strips_ansi_codes() {
+    let fixture_root = write_single_test_file(
+        "test-no-color",
+        "nocolor_test.tn",
+        "defmodule NoColorTest do
+  def test_pass() do
+    :ok
+  end
+
+  def test_fail() do
+    err(:boom)
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "nocolor_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        !stdout.contains("\x1b["),
+        "NO_COLOR should strip all ANSI escape codes, got:\n{stdout}"
+    );
+    // Verify content is still there
+    assert!(stdout.contains("test NoColorTest.test_pass ... ok ("));
+    assert!(stdout.contains("test NoColorTest.test_fail ... FAILED ("));
+    assert!(stdout.contains("Failures:"));
+}
+
+#[test]
+fn test_json_output_never_includes_ansi_codes() {
+    let fixture_root = write_single_test_file(
+        "test-json-no-ansi",
+        "json_ansi_test.tn",
+        "defmodule JsonAnsiTest do
+  def test_pass() do
+    :ok
+  end
+
+  def test_fail() do
+    err(:boom)
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        // Deliberately NOT setting NO_COLOR — JSON should still be clean
+        .args(["test", "json_ansi_test.tn", "--format", "json"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        !stdout.contains("\x1b["),
+        "JSON output should never contain ANSI codes, got:\n{stdout}"
+    );
+    let json: Value = serde_json::from_str(&stdout).expect("should parse valid JSON");
+    assert_eq!(json["status"], "failed");
 }

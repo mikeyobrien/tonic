@@ -54,16 +54,23 @@ impl TestRunReport {
     }
 
     pub fn render_text(&self) -> Vec<String> {
+        let color = AnsiColor::from_env();
         let mut lines = Vec::new();
 
         for result in &self.results {
             let duration = format_duration(result.duration);
             match result.status {
                 TestCaseStatus::Passed => {
-                    lines.push(format!("test {} ... ok ({duration})", result.id));
+                    lines.push(format!(
+                        "test {} ... {}ok{} ({duration})",
+                        result.id, color.green, color.reset
+                    ));
                 }
                 TestCaseStatus::Failed => {
-                    lines.push(format!("test {} ... FAILED ({duration})", result.id));
+                    lines.push(format!(
+                        "test {} ... {}FAILED{} ({duration})",
+                        result.id, color.red, color.reset
+                    ));
                     if let Some(error) = &result.error {
                         lines.push(format!("  error: {error}"));
                     }
@@ -80,7 +87,10 @@ impl TestRunReport {
 
         if !failures.is_empty() {
             lines.push(String::new());
-            lines.push("Failures:".to_string());
+            lines.push(format!(
+                "{}{}Failures:{}",
+                color.bold, color.red, color.reset
+            ));
             lines.push(String::new());
             for (i, result) in failures.iter().enumerate() {
                 lines.push(format!("  {}. {}", i + 1, result.id));
@@ -93,11 +103,16 @@ impl TestRunReport {
             }
         }
 
-        let status = if self.succeeded() { "ok" } else { "FAILED" };
+        let (status, status_color) = if self.succeeded() {
+            ("ok", color.green)
+        } else {
+            ("FAILED", color.red)
+        };
         let total_duration = format_duration(self.duration);
         lines.push(format!(
-            "test result: {status}. {} passed; {} failed; {} total; finished in {total_duration}",
-            self.passed, self.failed, self.total
+            "test result: {status_color}{status}{reset}. {} passed; {} failed; {} total; finished in {total_duration}",
+            self.passed, self.failed, self.total,
+            reset = color.reset
         ));
 
         lines
@@ -251,6 +266,33 @@ pub fn run(
         duration: run_start.elapsed(),
         results,
     })
+}
+
+struct AnsiColor {
+    green: &'static str,
+    red: &'static str,
+    bold: &'static str,
+    reset: &'static str,
+}
+
+impl AnsiColor {
+    fn from_env() -> Self {
+        if std::env::var("NO_COLOR").is_ok() {
+            Self {
+                green: "",
+                red: "",
+                bold: "",
+                reset: "",
+            }
+        } else {
+            Self {
+                green: "\x1b[32m",
+                red: "\x1b[31m",
+                bold: "\x1b[1m",
+                reset: "\x1b[0m",
+            }
+        }
+    }
 }
 
 fn format_duration(d: Duration) -> String {
