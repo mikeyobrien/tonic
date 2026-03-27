@@ -16,8 +16,9 @@ The normalization rules are the core ergonomics win, and the non-interpolated pa
 - [ ] Add an AST dump regression proving the new syntax still lowers to the existing plain string AST shape.
 - [ ] Add a runtime regression proving `cargo run --bin tonic -- run` produces the dedented result on the live path.
 - [ ] Update `TONIC_REFERENCE.md` to explain raw heredoc vs plain dedented text block, without claiming interpolation support yet.
-- [ ] Save verification output under `logs/`.
-- [ ] Commit the slice before `review.ready` and record the commit hash in `progress.md`.
+- [x] Save verification output under `logs/`.
+- [x] Ensure `.miniloop/context.md`, `.miniloop/plan.md`, `.miniloop/progress.md`, and `.miniloop/logs` resolve before handoff; if root files are canonical, commit the required mirrors/symlinks too.
+- [x] Commit the slice before `review.ready` and record the review-target HEAD commit hash in `progress.md`.
 
 ## Test plan
 1. **Lexer normalization**
@@ -58,6 +59,10 @@ That smoke must hit the changed lexer path directly; CLI evidence is honest proo
 - `context.md`
 - `plan.md`
 - `progress.md`
+- `.miniloop/context.md`
+- `.miniloop/plan.md`
+- `.miniloop/progress.md`
+- `.miniloop/logs`
 - `logs/text_block_lexer.log`
 - `logs/text_block_heredoc_regression.log`
 - `logs/text_block_ast.log`

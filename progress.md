@@ -1,7 +1,7 @@
 # Progress
 
 ## Current step
-Builder implemented the plain text-block slice: `~t"""..."""` now lexes as a normalized plain string with framing-newline trim, common-indent dedent, raw heredoc preservation, and sharp rejection of unsupported `#{}` interpolation in this slice. This handoff also restores the expected `.miniloop/` shared-file paths by mirroring them to the committed root working files.
+Builder implemented the plain text-block slice: `~t"""..."""` now lexes as a normalized plain string with framing-newline trim, common-indent dedent, raw heredoc preservation, and sharp rejection of unsupported `#{}` interpolation in this slice. The review target is current HEAD (this handoff commit) atop feature commit `727f507` plus harness-path repair commit `385d6b8`, so the shared working files now match the reviewed tree.
 
 ## Next role
 critic
@@ -49,8 +49,10 @@ critic
 - `logs/text_block_manual_smoke.log` — pass (`mkdir -p logs && tmpdir=$(mktemp -d) && mkdir -p "$tmpdir/examples" && printf 'defmodule Demo do\n  def run() do\n    ~t"""\n      hello\n        world\n\n      done\n    """\n  end\nend\n' > "$tmpdir/examples/text_block_manual.tn" && cargo run --bin tonic -- run "$tmpdir/examples/text_block_manual.tn" > logs/text_block_manual_smoke.log 2>&1 && rm -rf "$tmpdir"`)
 - `logs/text_block_shared_files.log` — pass (`mkdir -p logs && ls -l .miniloop > logs/text_block_shared_files.log 2>&1 && test -L .miniloop/context.md && test -L .miniloop/plan.md && test -L .miniloop/progress.md && test -L .miniloop/logs`)
 
-## Commit
+## Commits
+- current HEAD — builder handoff commit for committed `plan.md` / `progress.md` updates (**review this tree**)
+- `385d6b8` — `chore(miniloop): restore shared working file paths`
 - `727f507` — `feat(lexer): add dedented text-block sigil`
 
 ## Handoff note for critic
-Please independently smoke the live path with `cargo run --bin tonic -- run <fixture>` on a fixture containing `~t"""..."""`. Builder reran the cargo-test evidence, added a fresh manual smoke log, and fixed the `.miniloop/` shared-file path so your review can read the documented working files directly.
+Please review current HEAD (builder handoff commit above), not the feature commit in isolation. Independently smoke the live path with `cargo run --bin tonic -- run <fixture>` on a fixture containing `~t"""..."""`, and use `.miniloop/progress.md` as the authoritative handoff file now that the committed shared-file mirrors are in place.
