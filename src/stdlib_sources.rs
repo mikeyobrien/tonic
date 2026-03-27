@@ -28,6 +28,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Store", OPTIONAL_STDLIB_STORE_SOURCE),
     ("Bitwise", OPTIONAL_STDLIB_BITWISE_SOURCE),
     ("Hex", OPTIONAL_STDLIB_HEX_SOURCE),
+    ("Access", OPTIONAL_STDLIB_ACCESS_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -935,3 +936,6 @@ const OPTIONAL_STDLIB_BITWISE_SOURCE: &str =
 
 const OPTIONAL_STDLIB_HEX_SOURCE: &str =
     "defmodule Hex do\n  def encode(binary) do\n    host_call(:hex_encode, binary)\n  end\n\n  def decode(hex_string) do\n    host_call(:hex_decode, hex_string)\n  end\n\n  def encode_upper(binary) do\n    host_call(:hex_encode_upper, binary)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_ACCESS_SOURCE: &str =
+    "defmodule Access do\n  def get_in(data, path) do\n    host_call(:access_get_in, data, path)\n  end\n\n  def put_in(data, path, value) do\n    host_call(:access_put_in, data, path, value)\n  end\n\n  def fetch(data, key) do\n    host_call(:access_fetch, data, key)\n  end\n\n  def keys(map) do\n    host_call(:access_keys, map)\n  end\nend\n";

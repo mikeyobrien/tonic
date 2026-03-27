@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{LazyLock, Mutex};
 
+mod access_mod;
 mod base64_mod;
 mod bitwise_mod;
 mod crypto_mod;
@@ -439,6 +440,7 @@ impl HostRegistry {
         store_mod::register_store_host_functions(self);
         bitwise_mod::register_bitwise_host_functions(self);
         hex_mod::register_hex_host_functions(self);
+        access_mod::register_access_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
