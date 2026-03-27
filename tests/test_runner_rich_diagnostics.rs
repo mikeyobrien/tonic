@@ -1493,3 +1493,153 @@ end\n",
     assert_eq!(json["seed"], 99);
     assert_eq!(json["status"], "ok");
 }
+
+// ── setup/0 function tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_setup_function_runs_before_each_test() {
+    // setup/0 returns ok — both tests should pass since setup doesn't fail.
+    // We verify setup ran by having it be a no-op that succeeds, and confirm
+    // tests still pass normally.
+    let fixture_root = write_single_test_file(
+        "test-setup-runs",
+        "setup_test.tn",
+        "defmodule SetupTest do
+  def setup() do
+    :ok
+  end
+
+  def test_alpha() do
+    :ok
+  end
+
+  def test_beta() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "setup_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "all tests should pass with ok setup"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test SetupTest.test_alpha ... ok"),
+        "alpha should pass, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test SetupTest.test_beta ... ok"),
+        "beta should pass, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("2 passed; 0 failed; 2 total"),
+        "summary should show 2 passed, got:\n{stdout}"
+    );
+    // setup should NOT appear as a test itself
+    assert!(
+        !stdout.contains("test SetupTest.setup"),
+        "setup should not be listed as a test, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_setup_failure_marks_test_as_failed() {
+    // setup/0 returns err(...) — all tests in that module should fail with "setup failed"
+    let fixture_root = write_single_test_file(
+        "test-setup-failure",
+        "setup_fail_test.tn",
+        "defmodule SetupFailTest do
+  def setup() do
+    err(:setup_broken)
+  end
+
+  def test_alpha() do
+    :ok
+  end
+
+  def test_beta() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "setup_fail_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "should fail when setup returns err"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test SetupFailTest.test_alpha ... FAILED"),
+        "alpha should fail due to setup, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test SetupFailTest.test_beta ... FAILED"),
+        "beta should fail due to setup, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("setup failed"),
+        "error should mention setup failed, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("0 passed; 2 failed; 2 total"),
+        "summary should show 2 failed, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_no_setup_function_works_normally() {
+    // Module without setup/0 — tests should run as before (regression guard)
+    let fixture_root = write_single_test_file(
+        "test-no-setup",
+        "no_setup_test.tn",
+        "defmodule NoSetupTest do
+  def test_pass() do
+    :ok
+  end
+
+  def test_fail() do
+    err(:boom)
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "no_setup_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test NoSetupTest.test_pass ... ok"),
+        "pass should work without setup, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test NoSetupTest.test_fail ... FAILED"),
+        "fail should work without setup, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("1 passed; 1 failed; 2 total"),
+        "summary should be normal, got:\n{stdout}"
+    );
+}

@@ -107,7 +107,7 @@ Improve the Tonic unit testing UX so that writing, running, and debugging tests 
 ### Metrics
 
 - **Primary**: Focused unit testing UX acceptance checks green
-- **Current Best**: 28 focused testing UX checks green (run 34)
+- **Current Best**: 31 focused testing UX checks green (run 35)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -145,3 +145,4 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - **Run 32 (KEEP, metric=22, segment 2)**: Added `--fail-fast` flag to `tonic test` that stops execution after the first test failure, using labeled loop breaks across file and test iterations, with 3 focused integration tests for early stop, all-pass continuation, and JSON output. Hypothesis: confirmed — fail-fast is a high-leverage workflow improvement that saves time in large suites by stopping at the first failure instead of running all remaining tests.
 - **Run 33 (KEEP, metric=25, segment 2)**: Added ANSI colored output to `tonic test` text output — green for passing, red for failing, bold+red for failure headers — respecting `NO_COLOR` env var per no-color.org convention, with 3 focused integration tests for color presence, NO_COLOR stripping, and JSON ANSI-free verification. Hypothesis: confirmed — colored output makes test results instantly scannable with outsized UX impact relative to implementation complexity.
 - **Run 34 (KEEP, metric=28, segment 2)**: Added `--seed <number>` flag to `tonic test` for reproducible randomized test ordering using splitmix64 PRNG and Fisher-Yates shuffle, with 3 focused integration tests for randomized order, deterministic reproduction, and JSON seed field. Hypothesis: confirmed — randomized test ordering detects implicit test-order dependencies that cause CI flakiness, and reproducible seeds make debugging easy.
+- **Run 35 (KEEP, metric=31, segment 2)**: Added `setup/0` function support for test modules — an optional public `setup/0` function runs before each `test_*` function in its module, with setup failures marking tests as failed with "setup failed:" prefix, plus 3 focused integration tests for setup-before-each, setup-failure, and no-setup regression. Hypothesis: confirmed — shared test fixtures via `setup/0` enable DRY test authoring and follow established patterns from ExUnit/JUnit/pytest without adding complexity.

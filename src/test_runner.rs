@@ -6,6 +6,7 @@ use crate::resolver::resolve_ast;
 use crate::runtime::{evaluate_named_function, RuntimeValue};
 use crate::typing::infer_types;
 use serde_json::json;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -160,6 +161,7 @@ pub enum TestRunnerError {
 struct TestSuite {
     tests: Vec<String>,
     ir: IrProgram,
+    setup_modules: HashSet<String>,
 }
 
 pub fn list_tests(path: &str, filter: Option<&str>) -> Result<Vec<String>, TestRunnerError> {
@@ -201,6 +203,7 @@ pub fn run(
 
     // Collect all (test_name, ir) pairs, then optionally shuffle.
     let mut test_cases: Vec<(String, IrProgram)> = Vec::new();
+    let mut setup_modules: HashSet<String> = HashSet::new();
 
     for file in test_files {
         let source = std::fs::read_to_string(&file).map_err(|error| {
@@ -211,6 +214,7 @@ pub fn run(
         })?;
 
         let suite = compile_suite(&file, &source)?;
+        setup_modules.extend(suite.setup_modules.into_iter());
 
         for test_name in suite.tests {
             if let Some(pattern) = filter {
@@ -231,6 +235,42 @@ pub fn run(
 
     for (test_name, ir) in &test_cases {
         let test_start = Instant::now();
+
+        // Run setup/0 if the test's module has one.
+        let module_name = test_name.split('.').next().unwrap_or("");
+        if setup_modules.contains(module_name) {
+            let setup_fn = format!("{module_name}.setup");
+            match evaluate_named_function(ir, &setup_fn) {
+                Ok(RuntimeValue::ResultErr(reason)) => {
+                    let error = format!("setup failed: {}", format_assertion_failure(&reason));
+                    results.push(TestCaseResult {
+                        id: test_name.clone(),
+                        status: TestCaseStatus::Failed,
+                        error: Some(error),
+                        duration: test_start.elapsed(),
+                    });
+                    if fail_fast {
+                        break;
+                    }
+                    continue;
+                }
+                Err(error) => {
+                    let error = format!("setup failed: {error}");
+                    results.push(TestCaseResult {
+                        id: test_name.clone(),
+                        status: TestCaseStatus::Failed,
+                        error: Some(error),
+                        duration: test_start.elapsed(),
+                    });
+                    if fail_fast {
+                        break;
+                    }
+                    continue;
+                }
+                Ok(_) => {} // setup succeeded, proceed to test
+            }
+        }
+
         match evaluate_named_function(ir, test_name) {
             Ok(RuntimeValue::ResultErr(reason)) => {
                 let error = format_assertion_failure(&reason);
@@ -542,22 +582,26 @@ fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError
         offset: error.offset(),
     })?;
 
-    let mut tests = ast
-        .modules
-        .iter()
-        .flat_map(|module| {
-            module
-                .functions
-                .iter()
-                .filter(|function| {
-                    !function.is_private()
-                        && function.params.is_empty()
-                        && function.name.starts_with("test_")
-                })
-                .map(|function| format!("{}.{}", module.name, function.name))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+    let mut tests = Vec::new();
+    let mut setup_modules = HashSet::new();
+
+    for module in &ast.modules {
+        let has_setup = module.functions.iter().any(|function| {
+            !function.is_private() && function.params.is_empty() && function.name == "setup"
+        });
+        if has_setup {
+            setup_modules.insert(module.name.clone());
+        }
+
+        for function in &module.functions {
+            if !function.is_private()
+                && function.params.is_empty()
+                && function.name.starts_with("test_")
+            {
+                tests.push(format!("{}.{}", module.name, function.name));
+            }
+        }
+    }
     tests.sort();
 
     resolve_ast(&ast).map_err(|error| TestRunnerError::SourceDiagnostic {
@@ -576,5 +620,9 @@ fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError
 
     let ir = lower_ast_to_ir(&ast).map_err(|error| TestRunnerError::Failure(error.to_string()))?;
 
-    Ok(TestSuite { tests, ir })
+    Ok(TestSuite {
+        tests,
+        ir,
+        setup_modules,
+    })
 }
