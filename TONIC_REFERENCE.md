@@ -74,6 +74,31 @@ IO.puts("map: #{%{a: 1}}")          # => map: %{a => 1}
 IO.puts("tuple: #{{:ok, 42}}")      # => tuple: {:ok, 42}
 ```
 
+## Multiline Strings
+
+Use raw heredocs when you want exact content preservation:
+
+```elixir
+raw = """line one
+  line two
+"""
+```
+
+Use `~t"""..."""` for source-indented text blocks. Tonic trims one optional newline after the opener, trims one optional newline before the closer, and removes the minimum common indentation across non-blank lines.
+
+```elixir
+help = ~t"""
+  Usage:
+    tonic run <path>
+
+  Prints the dedented text exactly as shown here.
+"""
+```
+
+The example above produces `"Usage:\n  tonic run <path>\n\nPrints the dedented text exactly as shown here."`.
+
+`~t"""..."""` currently supports plain text plus standard escapes. `#{}` interpolation is not supported in text blocks yet.
+
 ## String Concatenation
 
 Use `<>` to join strings. Both sides must be strings.

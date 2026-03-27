@@ -90,3 +90,33 @@ fn run_executes_heredoc_literals_and_preserves_newlines() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert_eq!(stdout, "\"hello\nworld\"\n");
 }
+
+#[test]
+fn run_executes_text_block_literals_with_trimmed_dedent_contract() {
+    let fixture_root = common::unique_fixture_root("run-primitives-text-block");
+    let src_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+
+    fs::write(
+        src_dir.join("text_block_primitives.tn"),
+        "defmodule Demo do\n  def run() do\n    ~t\"\"\"\n      hello\n        world\n\n      done\n    \"\"\"\n  end\nend\n",
+    )
+    .expect("fixture setup should write source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "examples/text_block_primitives.tn"])
+        .output()
+        .expect("run command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected successful run invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert_eq!(stdout, "\"hello\n  world\n\ndone\"\n");
+}

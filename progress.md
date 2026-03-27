@@ -1,69 +1,49 @@
 # Progress
 
 ## Current step
-Builder implemented slice 5 from baseline commit `44cd087`: `src/formatter/to_doc.rs` now renders AST `case` expressions, branch guards, and the current parser-covered pattern family so lowered control forms format on the library-only path.
+Builder implemented the plain text-block slice: `~t"""..."""` now lexes as a normalized plain string with framing-newline trim, common-indent dedent, raw heredoc preservation, and sharp rejection of unsupported `#{}` interpolation in this slice.
 
 ## Next role
 critic
 
-## Prior slices
-- Slice 1 comment preservation landed on `e81e939`.
-- Slice 2 algebra engine landed on `aee0387`.
-- Slice 3 AST-to-doc baseline landed on `d790d6c`.
-- Slice 4 collection/data literal + `defstruct` AST rendering landed on `44cd087`.
-
-## Active slice acceptance
-- [x] Render `Expr::Case` on the AST path.
-- [x] Render branch guards as `when` clauses.
-- [x] Render wildcard, bind, pin, literal, tuple, list, map, and struct patterns needed by current parser coverage.
-- [x] Prove lowered `if` / `unless` / `cond` / `with` render deterministically through focused parse -> doc -> render tests.
-- [x] Keep live `tonic fmt` on `src/formatter/engine.rs`.
-- [x] Re-run live-path regression tests so unchanged formatter behavior stays covered.
-- [x] Commit only slice-relevant files plus shared task docs/logs before `review.ready`.
-
-## Builder guardrails
-- Re-read the shared files and touched source before editing.
-- Do not broaden the slice into module attributes/forms, comment reinsertion, `try`/`raise`, interpolation, anonymous functions, bitstrings, config, or runtime wiring.
-- If a helper in `src/formatter/to_doc.rs` becomes generic enough to simplify existing collection/call formatting, refactor it only if the focused tests stay exact and local.
-- There are unrelated dirty files in the repo; do not stage them.
-- Cite the new commit hash in the `review.ready` handoff.
+## Active slice checklist
+- [x] Add plain `~t"""..."""` lexer support
+- [x] Centralize trim/dedent normalization in one helper
+- [x] Add lexer edge-case coverage
+- [x] Add AST dump regression
+- [x] Add runtime regression
+- [x] Preserve raw heredoc behavior
+- [x] Update `TONIC_REFERENCE.md`
+- [x] Save logs under `logs/`
+- [x] Commit before `review.ready`
 
 ## Relevant Issues
 | Issue | Disposition | Notes |
 |---|---|---|
-| AST formatter lacks `case` and pattern rendering, so direct `case` plus lowered `if`/`unless`/`cond`/`with` cannot render | fix-now | This is the concrete slice-5 objective |
-| AST formatter path still is not wired into live `tonic fmt` | fix-next | Keep runtime routing unchanged until the AST path covers more core expression families |
-| AST comment reinsertion still does not exist | deferred | Keep separate until AST coverage is much wider and closer to live use |
-| Module attributes plus alias/import/require/use/protocol/defimpl forms are still unsupported on the AST path | deferred | Different surface; do not mix with case/pattern work |
-| `try`/`rescue`/`catch`/`after`, `raise`, `for`, anonymous functions, interpolation, and bitstrings are still unsupported on the AST path | deferred | Handle in later focused slices |
-| Manual smoke cannot honestly exercise `src/formatter/to_doc.rs` yet | out-of-scope | Critic should use targeted cargo tests for proof and treat CLI runs only as regression coverage |
-| Repo has unrelated dirty changes outside formatter surface | out-of-scope | Commit only formatter-slice files plus shared task docs/logs |
+| Prompt says `.agents/planning`, but the actionable task lives at `.agents/tasks/2026-03-27-text-block-ergonomics/dedented-text-block-sigil.code-task.md` | out-of-scope | Used the task file as the implementation source of truth. |
+| The worktree already contains many unrelated modified/deleted files | out-of-scope | Kept edits scoped to text-block files plus shared working files; do not stage unrelated paths. |
+| `scan_sigil` only understood `~s`, `~r`, and `~w`, so `~t` needed a dedicated recognition/error path | fix-now | Added dedicated `~t"""..."""` handling and explicit rejection of unsupported `~t(...)` spellings. |
+| Interpolated text blocks need a more invasive lexer design because dedent must coexist with the interpolation token stream | fix-next | This slice rejects `~t"""...#{...}..."""` sharply; add interpolation-aware normalization in the follow-up slice. |
+| Self-hosted lexer parity does not yet cover the new syntax | deferred | Keep the Rust lexer path proven first; parity follow-up stays separate. |
 
-## Verification plan
-- `cargo test formatter::to_doc -- --nocapture > logs/formatter_to_doc_control.log 2>&1`
-- `cargo test formatter::algebra -- --nocapture > logs/formatter_algebra.log 2>&1`
-- `cargo test format_source_is_idempotent_with_comments -- --nocapture > logs/formatter_regression.log 2>&1`
-- `cargo test --test fmt_parity_smoke fmt_preserves_comments_and_is_idempotent -- --nocapture > logs/formatter_parity.log 2>&1`
-
-## Builder implementation notes
-- Added `Expr::Case` rendering to `expr_to_doc` with dedicated case/branch helpers and stable indentation for nested case bodies.
-- Added pattern rendering helpers for wildcard, bind, pin, literal, tuple, list, list-cons tail, map, and struct patterns.
-- Added focused AST formatter tests covering direct `case`, nested case bodies, and parser-lowered `if` / `unless` / `cond` / `with` output.
-- Left `src/formatter/mod.rs::format_source` untouched on the token formatter path; there is still no honest manual smoke path for the new AST-only code.
+## Files changed
+- `src/lexer/string_scan.rs`
+- `src/lexer/tests.rs`
+- `tests/check_dump_ast_expressions.rs`
+- `tests/run_primitives_smoke.rs`
+- `TONIC_REFERENCE.md`
+- `context.md`
+- `plan.md`
+- `progress.md`
 
 ## Verification results
-- `logs/formatter_to_doc_control.log` — pass (`cargo test formatter::to_doc -- --nocapture`)
-- `logs/formatter_algebra.log` — pass (`cargo test formatter::algebra -- --nocapture`)
-- `logs/formatter_regression.log` — pass (`cargo test format_source_is_idempotent_with_comments -- --nocapture`)
-- `logs/formatter_parity.log` — pass (`cargo test --test fmt_parity_smoke fmt_preserves_comments_and_is_idempotent -- --nocapture`)
+- `logs/text_block_lexer.log` — pass (`mkdir -p logs && cargo test text_block -- --nocapture > logs/text_block_lexer.log 2>&1`)
+- `logs/text_block_heredoc_regression.log` — pass (`mkdir -p logs && cargo test heredoc -- --nocapture > logs/text_block_heredoc_regression.log 2>&1`)
+- `logs/text_block_ast.log` — pass (`mkdir -p logs && cargo test --test check_dump_ast_expressions check_dump_ast_matches_text_block_literal_contract -- --exact > logs/text_block_ast.log 2>&1`)
+- `logs/text_block_runtime.log` — pass (`mkdir -p logs && cargo test --test run_primitives_smoke run_executes_text_block_literals_with_trimmed_dedent_contract -- --exact > logs/text_block_runtime.log 2>&1`)
 
 ## Commit
-- Slice committed with `feat(formatter): render AST case control forms`; cite the final hash in the builder handoff.
+- `f5891bc` — `feat(lexer): add dedented text-block sigil`
 
-## Planner notes
-- Slice 5 stays library-only by design; there is still no honest CLI/manual smoke path into the new formatter code while `format_source` remains token-driven.
-- The most leverage comes from `Expr::Case` because parser lowering already routes `if`, `unless`, `cond`, and `with` through that AST family.
-- Builder should land the slice as a single commit before handing off.
-
-## Handoff expectation for builder
-Implement the slice above, save the verification outputs under the listed log files, and hand off with exact files changed, exact commands run, and the new commit hash.
+## Handoff note for critic
+Please independently smoke the live path with `cargo run --bin tonic -- run <fixture>` on a fixture containing `~t"""..."""`; the builder only ran the required cargo-test evidence above.

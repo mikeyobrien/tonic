@@ -60,6 +60,39 @@ fn scan_tokens_supports_triple_quoted_heredoc_literals() {
 }
 
 #[test]
+fn scan_tokens_supports_text_block_sigils_with_trimmed_dedent_contract() {
+    let labels = dump_labels("~t\"\"\"\n  hello\n    world\n\n  done\n\"\"\"");
+
+    assert_eq!(labels, ["STRING(hello\n  world\n\ndone)", "EOF"]);
+}
+
+#[test]
+fn scan_tokens_reports_invalid_text_block_sigil_spellings() {
+    let error = scan_tokens("~t(hello)").expect_err("scanner should reject unsupported ~t sigils");
+
+    assert_eq!(error.to_string(), "invalid token '~' at offset 0");
+    assert_eq!(error.span(), Span::new(0, 2));
+}
+
+#[test]
+fn scan_tokens_reports_unterminated_text_block_with_span() {
+    let error = scan_tokens("~t\"\"\"\n  hello")
+        .expect_err("scanner should reject unterminated text blocks");
+
+    assert_eq!(error.to_string(), "unterminated string literal at offset 0");
+    assert_eq!(error.span(), Span::new(0, 13));
+}
+
+#[test]
+fn scan_tokens_rejects_text_block_interpolation_for_now() {
+    let error = scan_tokens("~t\"\"\"hello #{name}\"\"\"")
+        .expect_err("scanner should reject text-block interpolation in this slice");
+
+    assert_eq!(error.to_string(), "invalid token '#' at offset 11");
+    assert_eq!(error.span(), Span::new(11, 12));
+}
+
+#[test]
 fn scan_tokens_supports_atoms_and_operators() {
     let labels = dump_labels(":ok value |> wrap(:ok)\nfn arg -> arg end");
 

@@ -1,56 +1,69 @@
 # Plan
 
 ## Active slice
-Extend `src/formatter/to_doc.rs` over `case` expressions and pattern rendering so the AST formatter can render direct `case` plus parser-lowered `if`/`unless`/`cond`/`with`, while keeping the AST formatter completely off the live `tonic fmt` path.
+Implement plain dedented text blocks: `~t""" ... """` → existing `TokenKind::String` / `Expr::String` / runtime string flow.
 
 ## Why this slice now
-The AST formatter already covers functions, calls, pipes, and collection/data literals, but it still cannot render branching. The parser lowers several surface control forms into `Expr::Case`, so one library-only slice on case/pattern formatting unlocks a large syntax family without mixing in runtime wiring, comments, or unrelated module-form work.
+The normalization rules are the core ergonomics win, and the non-interpolated path is the smallest honest end-to-end slice. It exercises the live compiler/runtime path without taking on the harder interpolation-plus-dedent state machine in the same commit.
 
 ## Builder checklist
-- [x] Re-read `src/formatter/to_doc.rs`, `src/formatter/algebra.rs`, `src/formatter/mod.rs`, `src/parser/ast/mod.rs`, `src/parser/ast/expr_def.rs`, `tests/check_dump_ast_control_forms.rs`, and `tests/check_dump_ast_case_patterns.rs` before editing.
-- [x] Keep `src/formatter/mod.rs::format_source` wired to `engine::format_source_inner` in this slice.
-- [x] Teach `expr_to_doc` to render `Expr::Case`.
-- [x] Add `pattern_to_doc` helpers for wildcard, bind, pin, literal, tuple, list, map, and struct patterns needed by current control-form lowering/tests.
-- [x] Render branch guards as `pattern when guard -> body` when present.
-- [x] Preserve stable indentation for branch bodies, including nested block bodies and nested `case` expressions.
-- [x] Add focused unit tests that parse source, convert to docs, render with chosen widths, and assert exact strings for direct `case` plus lowered `if`/`unless`/`cond`/`with` examples.
-- [x] Keep module attributes/forms, comment reinsertion, `try`/`raise`, `for`, anonymous functions, interpolation, bitstrings, and CLI/config/runtime wiring out of scope.
-- [x] Save command output under `logs/` and do not stage unrelated dirty files.
-- [x] Commit the slice before `review.ready` and cite the commit hash in the handoff.
+- [ ] Re-read `context.md`, `plan.md`, `progress.md`, `src/lexer/string_scan.rs`, `src/lexer/mod.rs`, `src/lexer/tests.rs`, `src/lexer/tests_extended.rs`, `tests/check_dump_ast_expressions.rs`, `tests/run_primitives_smoke.rs`, and `TONIC_REFERENCE.md` before editing.
+- [ ] Add a narrow normalization helper in `src/lexer/string_scan.rs` for text-block trim/dedent behavior.
+- [ ] Extend sigil scanning to recognize `~t"""..."""` only in this slice.
+- [ ] Emit existing `TokenKind::String` with normalized content for non-interpolated text blocks.
+- [ ] Keep raw `"""..."""` heredoc behavior unchanged.
+- [ ] Add focused lexer tests for trim/dedent edge cases and invalid/unterminated `~t` diagnostics.
+- [ ] Add an AST dump regression proving the new syntax still lowers to the existing plain string AST shape.
+- [ ] Add a runtime regression proving `cargo run --bin tonic -- run` produces the dedented result on the live path.
+- [ ] Update `TONIC_REFERENCE.md` to explain raw heredoc vs plain dedented text block, without claiming interpolation support yet.
+- [ ] Save verification output under `logs/`.
+- [ ] Commit the slice before `review.ready` and record the commit hash in `progress.md`.
 
 ## Test plan
-1. **Direct case with patterns and guard**
-   - Parse a `case` using tuple/list/map/struct/literal/pin/wildcard patterns.
-   - Assert exact rendering, including `when` guards.
-2. **Lowered if/unless**
-   - Parse canonical `if` / `unless` source.
-   - Expect AST formatting to round-trip through the lowered `case` representation into stable multi-line output.
-3. **Lowered cond/with**
-   - Parse `cond` and `with` examples from existing parser contracts.
-   - Assert the AST formatter renders the nested case structure deterministically.
-4. **Nested branch bodies**
-   - Parse a `case` branch whose body is a block or nested `case`.
-   - Expect indentation and `end` alignment to stay exact.
-5. **Live-path regression**
-   - Re-run the existing comment/idempotency and CLI parity regression tests to prove the unchanged token formatter still behaves.
-6. **Touched-surface regression**
-   - Re-run `formatter::algebra` after any helper/layout changes.
+1. **Lexer normalization**
+   - `~t"""\n  hello\n  world\n"""` → `STRING(hello\nworld)`
+   - blank lines do not increase dedent
+   - a less-indented non-blank line sets the minimum indent floor
+   - fully blank block normalizes to empty string
+2. **Diagnostics**
+   - unterminated `~t"""` reports the same sharp span style as other string errors
+   - unsupported `~t` spellings fail cleanly instead of being mis-tokenized as some other sigil
+3. **AST shape**
+   - `tonic check --dump-ast` shows the new literal as the existing `{"kind":"string",...}` shape
+4. **Runtime behavior**
+   - `tonic run` prints the dedented string exactly, proving the live path works
+5. **Regression**
+   - existing raw heredoc behavior still preserves newlines exactly
 
 ## Verification commands
-- `cargo test formatter::to_doc -- --nocapture > logs/formatter_to_doc_control.log 2>&1`
-- `cargo test formatter::algebra -- --nocapture > logs/formatter_algebra.log 2>&1`
-- `cargo test format_source_is_idempotent_with_comments -- --nocapture > logs/formatter_regression.log 2>&1`
-- `cargo test --test fmt_parity_smoke fmt_preserves_comments_and_is_idempotent -- --nocapture > logs/formatter_parity.log 2>&1`
+- `mkdir -p logs && cargo test text_block -- --nocapture > logs/text_block_lexer.log 2>&1`
+- `mkdir -p logs && cargo test heredoc -- --nocapture > logs/text_block_heredoc_regression.log 2>&1`
+- `mkdir -p logs && cargo test --test check_dump_ast_expressions check_dump_ast_matches_text_block_literal_contract -- --exact > logs/text_block_ast.log 2>&1`
+- `mkdir -p logs && cargo test --test run_primitives_smoke run_executes_text_block_literals_with_trimmed_dedent_contract -- --exact > logs/text_block_runtime.log 2>&1`
+
+## Critic manual smoke expectation
+This slice has a real manual surface. Critic should independently create or use a fixture containing `~t"""..."""` and run:
+- `cargo run --bin tonic -- run <fixture>`
+
+That smoke must hit the changed lexer path directly; CLI evidence is honest proof for this slice.
 
 ## Expected files
-- `src/formatter/to_doc.rs`
+- `src/lexer/string_scan.rs`
+- `src/lexer/mod.rs` (only if state/plumbing changes are truly needed)
+- `src/lexer/tests.rs`
+- `src/lexer/tests_extended.rs`
+- `tests/check_dump_ast_expressions.rs`
+- `tests/run_primitives_smoke.rs`
+- `TONIC_REFERENCE.md`
 - `context.md`
 - `plan.md`
 - `progress.md`
-- `logs/formatter_to_doc_control.log`
-- `logs/formatter_algebra.log`
-- `logs/formatter_regression.log`
-- `logs/formatter_parity.log`
+- `logs/text_block_lexer.log`
+- `logs/text_block_heredoc_regression.log`
+- `logs/text_block_ast.log`
+- `logs/text_block_runtime.log`
 
-## Critic note
-Unless the builder deliberately rewires `format_source` to use the AST converter — which is out of scope for this slice — there is no honest manual smoke path into `src/formatter/to_doc.rs`. The critic should reject any claim that a CLI run exercised the new case/pattern formatter code.
+## Explicitly deferred to next slice
+- `~t"""...#{...}..."""` interpolation support
+- interpolation-aware dedent rules
+- any self-hosted lexer parity expansion for the new syntax

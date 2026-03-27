@@ -1,45 +1,63 @@
 # Context
 
 ## Objective
-Implement `code-task.formatter.md` incrementally. Slice 1 (`e81e939`) preserved comments in the live token formatter. Slice 2 (`aee0387`) added the standalone Wadler-Lindig algebra engine. Slice 3 (`d790d6c`) added the first library-only AST-to-doc path. Slice 4 (`44cd087`) extended that AST path over collection/data literals and `defstruct`. Slice 5 should add AST rendering for `case` branches and patterns so lowered control forms can format on the library-only path.
+Implement the dedented text-block task incrementally.
 
-## Current repo state
-- `tonic fmt` still routes through `src/formatter/mod.rs` -> `engine::format_source_inner`.
-- `src/formatter/to_doc.rs` now supports module shells, `defstruct`, functions, calls/invokes, pipes, unary/binary ops, blocks, tuple/list/keyword/map/struct literals, map/struct updates, and direct `Expr::Case` rendering.
-- The AST formatter now renders branch guards plus wildcard/bind/pin/literal/tuple/list (including cons-tail), map, and struct patterns, which is enough for current parser-lowered `if`/`unless`/`cond`/`with` coverage.
-- The AST formatter still hard-errors on `Expr::Try`, `Expr::Raise`, `Expr::Fn`, `Expr::For`, interpolated strings, bitstrings, module attributes, and most non-`defstruct` module forms.
-- Focused AST tests now prove deterministic rendering for direct `case` plus lowered control forms without touching CLI wiring.
-- Live formatter behavior is intentionally unchanged; CLI/manual runs remain regression evidence only for this slice.
+### Active slice
+Add a non-interpolated `~t""" ... """` text-block sigil that:
+- trims one optional framing newline after the opener
+- trims one optional framing newline before the closer
+- removes the minimum common indentation across non-blank content lines
+- preserves relative indentation after dedent
+- leaves raw `"""..."""` heredocs unchanged
 
-## Relevant code for slice 5
-- `src/formatter/to_doc.rs` — add case-expression rendering plus pattern-to-doc helpers.
-- `src/formatter/algebra.rs` — existing group/nest/line/soft-line primitives for stable case layout.
-- `src/formatter/mod.rs` — must stay wired to `engine::format_source_inner` in this slice.
-- `src/parser/ast/mod.rs` and `src/parser/ast/expr_def.rs` — `Expr::Case`, `CaseBranch`, and pattern enums.
-- `tests/check_dump_ast_control_forms.rs` — shows how `if`/`unless`/`cond`/`with` lower to nested `case` AST.
-- `tests/check_dump_ast_case_patterns.rs` — concrete tuple/list/map/literal pattern contracts.
-- `tests/run_control_forms_smoke.rs` and `tests/run_case_pin_guard_match_smoke.rs` — semantic reference for the surface forms the AST formatter should eventually cover.
-- `code-task.formatter.md` — source task; slice 5 should still stay library-only and avoid config/runtime wiring.
+Interpolated text blocks (`~t"""...#{...}..."""`) are explicitly **next slice**, not this one.
 
-## Slice 5 scope target
-Implement in this slice:
-- `Expr::Case` rendering with `case <subject> do ... end` structure.
-- Branch rendering with `pattern -> body` plus optional `when` guards.
-- Pattern rendering for wildcard, bind, pin, literal, tuple, list, map, and struct patterns needed by current parser/control-form coverage.
-- Stable formatting for nested case bodies so lowered `if`/`unless`/`cond`/`with` round-trip through the AST formatter.
+## Source task
+- Primary task file: `.agents/tasks/2026-03-27-text-block-ergonomics/dedented-text-block-sigil.code-task.md`
+- The prompt said `.agents/planning`, but the actual implementation brief lives under `.agents/tasks/...`.
 
-Still intentionally deferred:
-- wiring `format_source` / `tonic fmt` to parse ASTs.
-- comment reinsertion in the AST formatter path.
-- module attributes plus alias/import/require/use/protocol/defimpl forms.
-- `try`/`rescue`/`catch`/`after`, `raise`, `for`, anonymous functions, string interpolation, and bitstrings.
-- CLI/config work such as `--line-length` or `.tonic_formatter`.
+## Baseline repo state
+- Baseline commit before this planning pass: `26e491c`
+- The worktree is already dirty in many unrelated files; this slice must avoid touching or staging unrelated paths.
 
-## Verification evidence expected from critic
-- `logs/formatter_to_doc_control.log` — focused AST formatter control-form/pattern tests.
-- `logs/formatter_algebra.log` — algebra regression after any layout helper changes.
-- `logs/formatter_regression.log` — live comment/idempotency regression.
-- `logs/formatter_parity.log` — live CLI parity smoke regression.
+## Existing implementation facts
+- `src/lexer/string_scan.rs`
+  - `scan_string_literal` handles `"..."` and raw heredocs `"""..."""`
+  - interpolation uses the existing token flow: `StringStart` / `StringPart` / `InterpolationStart` / `InterpolationEnd` / `StringEnd`
+  - `scan_sigil` currently supports `~s`, `~r`, and `~w`
+- `src/lexer/mod.rs`
+  - lexer state only distinguishes `Normal` vs `String { is_heredoc, brace_depth }`
+  - `~` dispatch already routes into `string_scan::scan_sigil`
+- `src/parser/expr.rs` and `src/parser/literal.rs`
+  - plain `TokenKind::String` lowers straight to `Expr::String`
+  - interpolated string tokens lower to `Expr::InterpolatedString`
+- `src/ir_lower_expr.rs`
+  - `Expr::String` already lowers to `IrOp::ConstString`
+  - plain text-block literals can therefore reuse the existing runtime path with no new runtime node
+- Existing regression surfaces
+  - lexer unit tests: `src/lexer/tests.rs`, `src/lexer/tests_extended.rs`
+  - AST dump regression: `tests/check_dump_ast_expressions.rs`
+  - runtime regression: `tests/run_primitives_smoke.rs`
+  - user docs: `TONIC_REFERENCE.md`
 
-## Critic constraint
-If the builder keeps `tonic fmt` on `engine::format_source_inner`, there is still no honest manual smoke for the changed code path. CLI/manual runs remain regression evidence only, not proof that `src/formatter/to_doc.rs` executed.
+## Recommended implementation shape for this slice
+1. Extend `scan_sigil` to recognize only the dedicated triple-quoted text-block form: `~t"""..."""`.
+2. Keep the output surface narrow by normalizing the raw text-block contents in the lexer and then emitting an ordinary `TokenKind::String`.
+3. Centralize trim/dedent logic in one helper inside `src/lexer/string_scan.rs` so edge cases are unit-testable without parser/runtime noise.
+4. Keep raw heredoc scanning untouched.
+5. Keep parser, AST, resolver, typing, and lowering changes minimal or zero unless span/diagnostic plumbing truly requires otherwise.
+
+## Edge cases this slice should define and test
+- fully blank block → empty string after framing trim/dedent
+- one content line
+- mixed blank and indented lines
+- a less-indented line setting the common indent floor
+- unterminated `~t"""` block
+- invalid `~t` sigil spellings that are not the supported triple-quoted form
+
+## Intentionally out of scope for this slice
+- interpolation inside `~t` blocks
+- new AST/runtime string node types
+- formatter support
+- self-hosted lexer parity expansion unless it stays tiny and does not widen the slice

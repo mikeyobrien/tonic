@@ -23,6 +23,113 @@ fn process_escape(chars: &[char], idx: &mut usize) -> char {
     }
 }
 
+fn is_blank_text_block_line(line: &str) -> bool {
+    line.chars().all(|ch| matches!(ch, ' ' | '\t'))
+}
+
+fn normalize_text_block(raw: &str) -> String {
+    let mut content = raw;
+    if let Some(stripped) = content.strip_prefix('\n') {
+        content = stripped;
+    }
+    if let Some(stripped) = content.strip_suffix('\n') {
+        content = stripped;
+    } else if let Some((without_last_line, last_line)) = content.rsplit_once('\n') {
+        if is_blank_text_block_line(last_line) {
+            content = without_last_line;
+        }
+    }
+
+    if content.is_empty() {
+        return String::new();
+    }
+
+    let Some(common_indent) = content
+        .split('\n')
+        .filter(|line| !is_blank_text_block_line(line))
+        .map(|line| {
+            line.chars()
+                .take_while(|ch| matches!(ch, ' ' | '\t'))
+                .count()
+        })
+        .min()
+    else {
+        return String::new();
+    };
+
+    let mut normalized = String::new();
+    for (line_idx, line) in content.split('\n').enumerate() {
+        if line_idx > 0 {
+            normalized.push('\n');
+        }
+        if is_blank_text_block_line(line) {
+            continue;
+        }
+        normalized.extend(line.chars().skip(common_indent));
+    }
+
+    normalized
+}
+
+fn scan_text_block_sigil(
+    chars: &[char],
+    idx: &mut usize,
+    tokens: &mut Vec<Token>,
+) -> Result<(), LexerError> {
+    let start = *idx;
+    if chars.get(*idx + 2) != Some(&'"')
+        || chars.get(*idx + 3) != Some(&'"')
+        || chars.get(*idx + 4) != Some(&'"')
+    {
+        return Err(LexerError::invalid_token(
+            '~',
+            Span::new(start, (start + 2).min(chars.len())),
+        ));
+    }
+
+    *idx += 5;
+    let mut literal = String::new();
+    let mut terminated = false;
+
+    while *idx < chars.len() {
+        if chars.get(*idx) == Some(&'"')
+            && chars.get(*idx + 1) == Some(&'"')
+            && chars.get(*idx + 2) == Some(&'"')
+        {
+            terminated = true;
+            *idx += 3;
+            break;
+        }
+
+        if chars.get(*idx) == Some(&'#') && chars.get(*idx + 1) == Some(&'{') {
+            return Err(LexerError::invalid_token('#', Span::new(*idx, *idx + 1)));
+        }
+
+        if chars[*idx] == '\\' {
+            *idx += 1;
+            literal.push(process_escape(chars, idx));
+        } else {
+            literal.push(chars[*idx]);
+            *idx += 1;
+        }
+    }
+
+    if !terminated {
+        return Err(LexerError::unterminated_string(Span::new(
+            start,
+            chars.len(),
+        )));
+    }
+
+    tokens.push(Token::with_lexeme(
+        TokenKind::String,
+        normalize_text_block(&literal),
+        Span::new(start, *idx),
+    ));
+
+    Ok(())
+}
+
 /// Scan a `"..."` or `"""..."""` string literal (or interpolation start) in Normal state.
 ///
 /// Called when the current character is `"`. Handles heredocs, simple strings,
@@ -280,6 +387,10 @@ pub(super) fn scan_sigil(
         return Err(LexerError::invalid_token('~', Span::new(start, start + 1)));
     };
 
+    if sigil_kind == 't' {
+        return scan_text_block_sigil(chars, idx, tokens);
+    }
+
     if !matches!(sigil_kind, 's' | 'r' | 'w') {
         return Err(LexerError::invalid_token('~', Span::new(start, start + 1)));
     }
@@ -350,4 +461,27 @@ pub(super) fn scan_sigil(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_text_block;
+
+    #[test]
+    fn normalize_text_block_trims_framing_newlines_and_common_indent() {
+        let normalized = normalize_text_block("\n    hello\n      world\n    done\n");
+        assert_eq!(normalized, "hello\n  world\ndone");
+    }
+
+    #[test]
+    fn normalize_text_block_ignores_blank_lines_when_computing_indent() {
+        let normalized = normalize_text_block("\n        alpha\n\n          beta\n        gamma\n");
+        assert_eq!(normalized, "alpha\n\n  beta\ngamma");
+    }
+
+    #[test]
+    fn normalize_text_block_returns_empty_string_for_blank_block() {
+        let normalized = normalize_text_block("\n    \n\t\n");
+        assert_eq!(normalized, "");
+    }
 }
