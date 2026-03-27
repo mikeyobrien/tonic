@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use std::sync::{LazyLock, Mutex};
 
 mod base64_mod;
+mod bitwise_mod;
 mod crypto_mod;
 mod csv_mod;
 mod datetime_mod;
@@ -435,6 +436,7 @@ impl HostRegistry {
         logger_mod::register_logger_host_functions(self);
         csv_mod::register_csv_host_functions(self);
         store_mod::register_store_host_functions(self);
+        bitwise_mod::register_bitwise_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);

@@ -26,6 +26,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Logger", OPTIONAL_STDLIB_LOGGER_SOURCE),
     ("Csv", OPTIONAL_STDLIB_CSV_SOURCE),
     ("Store", OPTIONAL_STDLIB_STORE_SOURCE),
+    ("Bitwise", OPTIONAL_STDLIB_BITWISE_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -927,3 +928,6 @@ const OPTIONAL_STDLIB_CSV_SOURCE: &str =
 
 const OPTIONAL_STDLIB_STORE_SOURCE: &str =
     "defmodule Store do\n  def new() do\n    host_call(:store_new)\n  end\n\n  def put(store, key, value) do\n    host_call(:store_put, store, key, value)\n  end\n\n  def get(store, key) do\n    host_call(:store_get, store, key)\n  end\n\n  def get(store, key, default) do\n    host_call(:store_get, store, key, default)\n  end\n\n  def delete(store, key) do\n    host_call(:store_delete, store, key)\n  end\n\n  def has_key?(store, key) do\n    host_call(:store_has_key, store, key)\n  end\n\n  def keys(store) do\n    host_call(:store_keys, store)\n  end\n\n  def values(store) do\n    host_call(:store_values, store)\n  end\n\n  def size(store) do\n    host_call(:store_size, store)\n  end\n\n  def to_list(store) do\n    host_call(:store_to_list, store)\n  end\n\n  def clear(store) do\n    host_call(:store_clear, store)\n  end\n\n  def drop(store) do\n    host_call(:store_drop, store)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_BITWISE_SOURCE: &str =
+    "defmodule Bitwise do\n  def band(a, b) do\n    host_call(:bitwise_band, a, b)\n  end\n\n  def bor(a, b) do\n    host_call(:bitwise_bor, a, b)\n  end\n\n  def bxor(a, b) do\n    host_call(:bitwise_bxor, a, b)\n  end\n\n  def bnot(a) do\n    host_call(:bitwise_bnot, a)\n  end\n\n  def bsl(a, shift) do\n    host_call(:bitwise_bsl, a, shift)\n  end\n\n  def bsr(a, shift) do\n    host_call(:bitwise_bsr, a, shift)\n  end\nend\n";
