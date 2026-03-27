@@ -107,7 +107,7 @@ Improve the Tonic unit testing UX so that writing, running, and debugging tests 
 ### Metrics
 
 - **Primary**: Focused unit testing UX acceptance checks green
-- **Current Best**: 19 focused testing UX checks green (run 31)
+- **Current Best**: 22 focused testing UX checks green (run 32)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -142,3 +142,4 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - **Run 29 (KEEP, metric=12, segment 2)**: Added failure summary section to text output (grouped failures at end with numbered list and full errors) and `failures` array to JSON output, with 3 focused integration tests for mixed pass/fail summary, all-pass no-summary, and JSON failures array. Hypothesis: confirmed — grouping failures at the end of test output makes debugging large suites materially faster by eliminating the need to scroll through passing tests to find failure details.
 - **Run 30 (KEEP, metric=15, segment 2)**: Added `--list` flag to `tonic test` that discovers and compiles tests but skips execution, outputting test names (text: one per line, JSON: `{"tests": [...]}`) with optional `--filter` combination, plus 3 focused integration tests. Hypothesis: confirmed — test discovery without execution is essential for editor/tooling integration and pairs naturally with `--filter` for CI matrix splitting.
 - **Run 31 (KEEP, metric=19, segment 2)**: Added `assert_contains` (string substring + list membership) and `assert_in_delta` (numeric proximity) to the Assert stdlib module, with structured failure rendering and 4 focused integration tests. Hypothesis: confirmed — expanding the assertion vocabulary with contains and delta checks covers the most common test patterns beyond equality, making Tonic tests more expressive without adding complexity.
+- **Run 32 (KEEP, metric=22, segment 2)**: Added `--fail-fast` flag to `tonic test` that stops execution after the first test failure, using labeled loop breaks across file and test iterations, with 3 focused integration tests for early stop, all-pass continuation, and JSON output. Hypothesis: confirmed — fail-fast is a high-leverage workflow improvement that saves time in large suites by stopping at the first failure instead of running all remaining tests.
