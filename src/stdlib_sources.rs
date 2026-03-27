@@ -16,6 +16,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Crypto", OPTIONAL_STDLIB_CRYPTO_SOURCE),
     ("Http", OPTIONAL_STDLIB_HTTP_SOURCE),
     ("Uuid", OPTIONAL_STDLIB_UUID_SOURCE),
+    ("Yaml", OPTIONAL_STDLIB_YAML_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -887,3 +888,6 @@ const OPTIONAL_STDLIB_HTTP_SOURCE: &str =
 
 const OPTIONAL_STDLIB_UUID_SOURCE: &str =
     "defmodule Uuid do\n  def v4() do\n    host_call(:uuid_v4)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_YAML_SOURCE: &str =
+    "defmodule Yaml do\n  def encode(value) do\n    host_call(:yaml_encode, value)\n  end\n\n  def decode(string) do\n    host_call(:yaml_decode, string)\n  end\nend\n";

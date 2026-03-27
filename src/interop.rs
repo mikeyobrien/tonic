@@ -26,6 +26,7 @@ mod system;
 mod toml_mod;
 mod tuple_mod;
 mod uuid_mod;
+mod yaml_mod;
 
 /// Host function signature: takes runtime values, returns result
 pub type HostFn = fn(&[RuntimeValue]) -> Result<RuntimeValue, HostError>;
@@ -415,6 +416,7 @@ impl HostRegistry {
         // Crypto stdlib interop primitives for interpreter-backed Crypto.* calls.
         crypto_mod::register_crypto_host_functions(self);
         uuid_mod::register_uuid_host_functions(self);
+        yaml_mod::register_yaml_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
