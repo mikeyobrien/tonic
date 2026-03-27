@@ -16,6 +16,11 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
 
     let source_path = args[0].clone();
     let mut format = TestOutputFormat::Text;
+    let mut filter: Option<String> = None;
+    let mut list_only = false;
+    let mut fail_fast = false;
+    let mut seed: Option<u64> = None;
+    let mut timeout: Option<u64> = None;
     let mut index = 1;
 
     while index < args.len() {
@@ -40,6 +45,66 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
                 format = parsed;
                 index += 2;
             }
+            "--list" => {
+                list_only = true;
+                index += 1;
+            }
+            "--fail-fast" => {
+                fail_fast = true;
+                index += 1;
+            }
+            "--seed" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --seed",
+                        "usage: tonic test <path> --seed <number>",
+                    )
+                    .emit();
+                };
+
+                let Ok(parsed) = value.parse::<u64>() else {
+                    return CliDiagnostic::usage_with_hint(
+                        format!("invalid seed '{value}' (expected a non-negative integer)"),
+                        "usage: tonic test <path> --seed <number>",
+                    )
+                    .emit();
+                };
+
+                seed = Some(parsed);
+                index += 2;
+            }
+            "--timeout" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --timeout",
+                        "usage: tonic test <path> --timeout <ms>",
+                    )
+                    .emit();
+                };
+
+                let Ok(parsed) = value.parse::<u64>() else {
+                    return CliDiagnostic::usage_with_hint(
+                        format!("invalid timeout '{value}' (expected a non-negative integer in milliseconds)"),
+                        "usage: tonic test <path> --timeout <ms>",
+                    )
+                    .emit();
+                };
+
+                timeout = Some(parsed);
+                index += 2;
+            }
+            "--filter" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --filter",
+                        "usage: tonic test <path> --filter <pattern>",
+                    )
+                    .emit();
+                };
+
+                filter = Some(value.clone());
+                index += 2;
+            }
             other => {
                 return CliDiagnostic::usage_with_hint(
                     format!("unexpected argument '{other}'"),
@@ -60,10 +125,73 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
                 TestOutputFormat::Json => "json",
             },
         );
+        if let Some(ref f) = filter {
+            observed_run.record_metadata("filter", f.clone());
+        }
+    }
+
+    if list_only {
+        let tests = match observe_command_phase_result(&mut observed_run, "test.list_tests", || {
+            test_runner::list_tests(&source_path, filter.as_deref())
+        }) {
+            Ok(tests) => tests,
+            Err(TestRunnerError::Failure(message)) => {
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "test.list_tests",
+                        message,
+                        None,
+                    )),
+                );
+            }
+            Err(TestRunnerError::SourceDiagnostic {
+                message,
+                filename,
+                source,
+                offset,
+            }) => {
+                let source_path = filename.unwrap_or_else(|| source_path.clone());
+                let source_info = observability_error_source(&source_path, &source, offset);
+                let exit_code = CliDiagnostic::failure_with_filename_and_source(
+                    message.clone(),
+                    Some(&source_path),
+                    &source,
+                    offset,
+                )
+                .emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "typing_error",
+                        "test.list_tests",
+                        message,
+                        source_info,
+                    )),
+                );
+            }
+        };
+
+        match format {
+            TestOutputFormat::Text => {
+                for name in &tests {
+                    println!("{name}");
+                }
+            }
+            TestOutputFormat::Json => {
+                println!("{}", serde_json::json!({ "tests": tests }));
+            }
+        }
+
+        return finalize_observed_run(&mut observed_run, EXIT_OK, None);
     }
 
     let report = match observe_command_phase_result(&mut observed_run, "test.run_suite", || {
-        test_runner::run(&source_path)
+        test_runner::run(&source_path, filter.as_deref(), fail_fast, seed, timeout)
     }) {
         Ok(report) => report,
         Err(TestRunnerError::Failure(message)) => {
@@ -115,12 +243,20 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
 
     match format {
         TestOutputFormat::Text => {
+            if let Some(s) = seed {
+                println!("Randomized with seed {s}");
+                println!();
+            }
             for line in report.render_text() {
                 println!("{line}");
             }
         }
         TestOutputFormat::Json => {
-            println!("{}", report.render_json());
+            let mut json = report.render_json();
+            if let Some(s) = seed {
+                json["seed"] = serde_json::json!(s);
+            }
+            println!("{json}");
         }
     }
 

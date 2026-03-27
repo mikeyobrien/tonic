@@ -97,3 +97,58 @@ cargo test --quiet --bin tonic repl::tests:: && cargo test --quiet --test repl_s
 - **Run 23 (KEEP, metric=20, judge=8/10)**: Routed host-side stdout/stderr through a scoped interop capture sink and surfaced captured output in remote `eval` / `load-file` responses, with focused unit and TCP integration coverage. Hypothesis: confirmed — returning request-scoped output makes the remote REPL materially closer to editor-driven nREPL workflows because clients can now observe emitted text without scraping server logs.
 - **Run 24 (KEEP, metric=24, judge=8/10)**: Added request-scoped stdin plumbing for remote `eval` / `load-file`, threading optional JSON `stdin` through scoped interop input capture and focused unit + TCP integration coverage for connection-local and logical sessions. Hypothesis: confirmed — request-local stdin closes a major interactivity gap for editor-driven remote REPL workflows without widening scope beyond the existing session/capture substrate.
 - **Run 25 (KEEP, metric=28, judge=8/10)**: Added optional request ids plus streamed stdout/stderr frames for remote `eval` / `load-file`, echoing ids in terminal responses and covering connection-local and logical-session streaming. Hypothesis: confirmed — request-addressable stream frames make the remote REPL materially closer to nREPL-style editor workflows by letting clients correlate asynchronous output with a specific in-flight evaluation without widening scope beyond the existing session/capture substrate.
+
+## Segment 2 — Unit Testing UX
+
+### Objective
+
+Improve the Tonic unit testing UX so that writing, running, and debugging tests is ergonomic — with built-in assertions, structured failure output, test filtering, and timing.
+
+### Metrics
+
+- **Primary**: Focused unit testing UX acceptance checks green
+- **Current Best**: 46 focused testing UX checks green (run 40)
+- **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
+
+### Benchmark Commands
+
+```bash
+cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_runner_rich_diagnostics
+```
+
+### Files in Scope
+
+- `src/test_runner.rs` — Test discovery, compilation, execution, reporting
+- `src/cmd_test.rs` — CLI argument handling for `tonic test`
+- `src/cmd_deps.rs` — Help text for `tonic test`
+- `src/interop.rs` — Host call dispatch (for assertion builtins)
+- `src/manifest_stdlib.rs` — Stdlib source registry
+- `src/stdlib_sources.rs` — Stdlib module source constants
+- `tests/test_runner_rich_diagnostics.rs` — Integration tests for test runner
+
+### Constraints
+
+- `cargo test` must pass (excluding pre-existing failures)
+- All example apps must pass
+- No new crate dependencies
+- Assertions should use the existing `host_call` interop pattern
+- Test failures must produce actionable output (expected vs actual)
+
+### What's Been Tried
+
+- **Run 26 (KEEP, metric=6, segment 2)**: Added a built-in Assert stdlib module with `assert/1`, `refute/1`, `assert_equal/2`, `assert_not_equal/2` host functions that produce structured `err({:assertion_failed, details})` failures with expected-vs-actual rendering, plus stdlib injection into the test runner and 6 focused integration tests. Hypothesis: confirmed — a built-in assertion library with structured failure output is the essential foundation for ergonomic test authoring in Tonic.
+- **Run 27 (KEEP, metric=9, segment 2)**: Added `--filter <pattern>` to `tonic test` that substring-matches against test names, skipping non-matching tests before execution, with 3 focused integration tests for subset match, no match, and JSON+filter. Hypothesis: confirmed — test filtering is a high-leverage developer workflow improvement that lets authors run a single test during development without waiting for the full suite.
+- **Run 28 (KEEP, metric=9, segment 2)**: Added per-test and total run timing to `tonic test`, displaying durations after each test status in text output (e.g. `test X ... ok (1.23ms)`) and `duration_ms` fields in JSON output, with timing validation integrated into existing JSON and text output test assertions. Hypothesis: confirmed — per-test timing completes the core testing UX feature set (assertions + filtering + timing) and enables performance regression detection without adding complexity.
+- **Run 29 (KEEP, metric=12, segment 2)**: Added failure summary section to text output (grouped failures at end with numbered list and full errors) and `failures` array to JSON output, with 3 focused integration tests for mixed pass/fail summary, all-pass no-summary, and JSON failures array. Hypothesis: confirmed — grouping failures at the end of test output makes debugging large suites materially faster by eliminating the need to scroll through passing tests to find failure details.
+- **Run 30 (KEEP, metric=15, segment 2)**: Added `--list` flag to `tonic test` that discovers and compiles tests but skips execution, outputting test names (text: one per line, JSON: `{"tests": [...]}`) with optional `--filter` combination, plus 3 focused integration tests. Hypothesis: confirmed — test discovery without execution is essential for editor/tooling integration and pairs naturally with `--filter` for CI matrix splitting.
+- **Run 31 (KEEP, metric=19, segment 2)**: Added `assert_contains` (string substring + list membership) and `assert_in_delta` (numeric proximity) to the Assert stdlib module, with structured failure rendering and 4 focused integration tests. Hypothesis: confirmed — expanding the assertion vocabulary with contains and delta checks covers the most common test patterns beyond equality, making Tonic tests more expressive without adding complexity.
+- **Run 32 (KEEP, metric=22, segment 2)**: Added `--fail-fast` flag to `tonic test` that stops execution after the first test failure, using labeled loop breaks across file and test iterations, with 3 focused integration tests for early stop, all-pass continuation, and JSON output. Hypothesis: confirmed — fail-fast is a high-leverage workflow improvement that saves time in large suites by stopping at the first failure instead of running all remaining tests.
+- **Run 33 (KEEP, metric=25, segment 2)**: Added ANSI colored output to `tonic test` text output — green for passing, red for failing, bold+red for failure headers — respecting `NO_COLOR` env var per no-color.org convention, with 3 focused integration tests for color presence, NO_COLOR stripping, and JSON ANSI-free verification. Hypothesis: confirmed — colored output makes test results instantly scannable with outsized UX impact relative to implementation complexity.
+- **Run 34 (KEEP, metric=28, segment 2)**: Added `--seed <number>` flag to `tonic test` for reproducible randomized test ordering using splitmix64 PRNG and Fisher-Yates shuffle, with 3 focused integration tests for randomized order, deterministic reproduction, and JSON seed field. Hypothesis: confirmed — randomized test ordering detects implicit test-order dependencies that cause CI flakiness, and reproducible seeds make debugging easy.
+- **Run 35 (KEEP, metric=31, segment 2)**: Added `setup/0` function support for test modules — an optional public `setup/0` function runs before each `test_*` function in its module, with setup failures marking tests as failed with "setup failed:" prefix, plus 3 focused integration tests for setup-before-each, setup-failure, and no-setup regression. Hypothesis: confirmed — shared test fixtures via `setup/0` enable DRY test authoring and follow established patterns from ExUnit/JUnit/pytest without adding complexity.
+- **Run 36 (KEEP, metric=34, segment 2)**: Added `Assert.skip/0-1` for pending/skipped tests — skip() marks a test as skipped (yellow status, not counted as failure, doesn't trigger --fail-fast), with optional reason string, plus 3 focused integration tests for skip basic, skip with reason, and skip+fail-fast interaction. Hypothesis: confirmed — skip support is essential for WIP tests, known-broken tests, and platform-specific tests, following established patterns from ExUnit/@tag :skip, pytest/@pytest.mark.skip, and JUnit/@Disabled.
+- **Run 37 (KEEP, metric=37, segment 2)**: Added `Assert.assert_raises/1-2` for testing error conditions — pure Tonic implementation using try/rescue with multi-clause private helpers, optional expected error pattern matching via host function, plus 3 focused integration tests for raise-passes, pattern-match, and JSON output. Hypothesis: confirmed — assert_raises is essential for testing error handling paths, following established patterns from ExUnit/assert_raise, pytest/pytest.raises, and JUnit/assertThrows.
+- **Run 38 (KEEP, metric=40, segment 2)**: Added `Assert.assert_match/2-3` for map subset matching — checks if actual map contains all expected key-value pairs, with structured failure rendering showing missing/mismatched keys, falls back to equality for non-maps, plus 3 focused integration tests for subset pass, mismatch fail, and non-map equality. Hypothesis: confirmed — partial map matching is the most common assertion pattern for testing functions that return maps/structs, following established patterns from ExUnit/pattern match, pytest/dict subset, and Jest/expect.objectContaining.
+- **Run 39 (KEEP, metric=43, segment 2)**: Added `--timeout <ms>` flag for per-test execution timeouts — spawns test execution in a thread with `mpsc::recv_timeout`, timeout applies to both setup/0 and test functions, timed-out tests marked as failed with "timed out after Xms" error, plus 3 focused integration tests for timeout-fail, fast-test-passes, and JSON output. Hypothesis: confirmed — per-test timeouts are essential for CI robustness and catching hangs/infinite loops, following established patterns from ExUnit/@tag timeout, pytest/--timeout, and JUnit/@Test(timeout).
+- **Run 40 (KEEP, metric=46, segment 2)**: Added `teardown/0` function support for test modules — runs after each test regardless of outcome (even failures), teardown failures mark passing tests as failed with "teardown failed:" prefix, respects --timeout, plus 3 focused integration tests for teardown-runs, teardown-after-failure, and teardown-failure-marks-failed. Hypothesis: confirmed — teardown is the natural complement to setup/0 for test cleanup, following established patterns from ExUnit/on_exit, pytest/yield fixtures, JUnit/@AfterEach, and Jest/afterEach.
+- **Run 41 (DISCARD, metric=46, segment 2)**: Attempted `Assert.capture_io/1` for testing IO output — added `host_capture_io_start`/`host_capture_io_stop` host functions and stdlib wrapper, but no integration tests were added, leaving the primary metric unchanged at 46. Hypothesis: incomplete — the implementation was missing tests, so the metric did not improve.

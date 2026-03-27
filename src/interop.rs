@@ -4,11 +4,12 @@
 //! v1 uses a static registry model (no dynamic plugin loading).
 
 use crate::runtime::RuntimeValue;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{LazyLock, Mutex};
 
+mod assert_mod;
 mod enum_mod;
 mod float_mod;
 mod http_server;
@@ -113,6 +114,7 @@ thread_local! {
     static HOST_OUTPUT_CAPTURE_STACK: RefCell<Vec<CapturedHostOutput>> = const { RefCell::new(Vec::new()) };
     static HOST_OUTPUT_FORWARDER_STACK: RefCell<Vec<HostOutputForwarder>> = RefCell::new(Vec::new());
     static HOST_INPUT_CAPTURE_STACK: RefCell<Vec<ScopedHostInput>> = const { RefCell::new(Vec::new()) };
+    static HOST_STDOUT_OBSERVED: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(crate) fn capture_host_output_with_stdin<T>(
@@ -201,6 +203,10 @@ fn try_read_scoped_host_input<T>(f: impl FnOnce(&mut ScopedHostInput) -> T) -> O
 }
 
 fn write_host_stream(stream: HostOutputStream, text: &str) -> Result<(), HostError> {
+    if matches!(stream, HostOutputStream::Stdout) {
+        HOST_STDOUT_OBSERVED.with(|observed| observed.set(true));
+    }
+
     let captured = capture_host_stream(stream, text);
     let forwarded = forward_host_stream(stream, text)?;
     if captured || forwarded {
@@ -249,6 +255,14 @@ pub(super) fn read_host_stdin_to_end() -> std::io::Result<String> {
 
 pub(super) fn write_host_stdout(text: &str) -> Result<(), HostError> {
     write_host_stream(HostOutputStream::Stdout, text)
+}
+
+pub(crate) fn reset_host_stdout_observed() {
+    HOST_STDOUT_OBSERVED.with(|observed| observed.set(false));
+}
+
+pub(crate) fn host_stdout_was_observed() -> bool {
+    HOST_STDOUT_OBSERVED.with(Cell::get)
 }
 
 pub(super) fn write_host_stderr(text: &str) -> Result<(), HostError> {
@@ -379,6 +393,9 @@ impl HostRegistry {
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
+
+        // Assert stdlib interop primitives for test assertion functions.
+        assert_mod::register_assert_host_functions(self);
     }
 }
 

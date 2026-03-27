@@ -46,6 +46,4 @@
 
 ### 9. REPL improvements for interactive LLM use
 ### 10. LSP quality for IDE-assisted LLM coding
-- Add logical REPL session ids that can survive TCP reconnects so editor clients are not forced to pin one socket per long-lived session.
-- Expand the remote REPL transport beyond newline-delimited JSON with richer nREPL-style ops like `describe`, `interrupt`, and stdout/stderr streaming.
 - Use the new request-id and stream-frame substrate to add an `interrupt` op for long-running remote eval/load-file requests.

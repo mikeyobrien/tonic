@@ -1,0 +1,23 @@
+╔══════════════════════════════════════════════════════════════╗
+║                 AUTORESEARCH → TONIC APPS                  ║
+╠══════════════════════════════════════════════════════════════╣
+║ now                                                         ║
+║   88/88 example apps green                                 ║
+║   83 exact-output checks                                   ║
+║    5 pattern-based checks                                  ║
+╠══════════════════════════════════════════════════════════════╣
+║ autoresearch trail                                          ║
+║   verified corpus: 28 -> 83 apps                           ║
+║   new example app folders generated: 55                    ║
+║   plus LLM-first compiler diagnostics on top               ║
+╠══════════════════════════════════════════════════════════════╣
+║ showcase                                                    ║
+║   ✓ brainfuck_interpreter                                  ║
+║   ✓ game_of_life                                            ║
+║   ✓ levenshtein                                             ║
+║   ✓ huffman_coding                                          ║
+║   ✓ calendar                                                ║
+║   ✓ csv_parser                                              ║
+║   ✓ markdown_toc                                            ║
+║   ✓ self_hosted_lexer                                       ║
+╚══════════════════════════════════════════════════════════════╝

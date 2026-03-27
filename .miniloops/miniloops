@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+export MINILOOPS_PROJECT_DIR='.'
+export MINILOOPS_JOURNAL_FILE='./.miniloops/journal.jsonl'
+export MINILOOPS_EVENTS_FILE='./.miniloops/journal.jsonl'
+export MINILOOPS_MEMORY_FILE='./.miniloops/memory.jsonl'
+export MINILOOPS_RUN_ID='run-1'
+export MINILOOPS_COMPLETION_EVENT='task.complete'
+export MINILOOPS_REQUIRED_EVENTS=''
+export MINILOOPS_BIN='./.miniloops/miniloops'
+exec tonic run '/Users/rook/projects/tonic-loops' "$@"

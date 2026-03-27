@@ -558,6 +558,62 @@ rather than parser-ready byte lists.
 - **Documented current contract:** [text-binary-parser-contract.md](text-binary-parser-contract.md)
 - **Polished runtime-text byte parser path:** none today
 
+### 12. Advertised `System.append_text/2` and `String.replace/3` still fail in compiled executables
+
+**Status:** confirmed runtime/stdlib mismatch  
+**Priority:** P1  
+**Current state:** reproduced repo-locally in compiled execution; missing native parity coverage
+
+#### Repo-local reproduction
+
+A small compiled app reproduced both failures outside the interpreter path:
+
+- compiled app using `System.append_text(path, "beta\n")` failed with
+  `error: host error: unknown host function: sys_append_text`
+- compiled app using `String.replace("a'b", "'", "_")` failed with
+  `error: host error: unknown host function: str_replace`
+
+These were reproduced with `tonic check`, `tonic compile`, and then running the
+native executable directly.
+
+#### Why this matters
+
+These are practical app-authoring surfaces for compiled CLIs:
+
+- `System.append_text/2` is already documented and advertised as available
+- `String.replace/3` is already exposed through the injected `String` stdlib
+- downstream apps can pass `tonic check` and `tonic compile`, then fail only at
+  runtime with missing host-function dispatch
+
+That is exactly the kind of native parity trap the gap catalog is meant to
+track.
+
+#### Current support statement
+
+- **Interpreter:** supported
+- **Native compiled runtime:** not supported today for these calls despite the
+  advertised surface
+- **What needs to land:** native host dispatch for `sys_append_text` and
+  `str_replace`, plus compiled-runtime regression coverage so this stops
+  regressing silently
+
+### 13. `tonic run` now suppresses the final evaluated value after user-facing stdout
+
+**Status:** fixed repo-locally  
+**Priority:** P2  
+**Current state:** `tonic run` now behaves like a normal command runner when the app already wrote to stdout
+
+#### Fix summary
+
+A command-style app that calls `IO.puts/1` no longer gets a trailing REPL-style value echo.
+
+Current behavior:
+
+- if the app writes to stdout through `IO.puts/1`/`IO.gets/1` prompts, `tonic run` suppresses the final evaluated value
+- if the app does **not** write to stdout, `tonic run` still prints the final evaluated value as before
+
+That preserves expression-style `tonic run` behavior while making CLI-style apps shell-clean by default.
+
 ## Summary
 
 This pass leaves the profile boundary cleaner: workload-backed `String` and `System` behavior is now the honest core-supported story, `Path` is usable but secondary, and the remaining major limitation is the now-documented text/binary/parser contract rather than missing breadth.
@@ -579,6 +635,9 @@ Confirmed, repo-local fixes landed in this loop:
    symlinks, missing paths, type errors, and empty paths in both runtimes.
    Docs reconciled across `system-stdlib.md`, `runtime-abi.md`, and
    `app-authoring-gaps.md`.
+8. `tonic run` now suppresses the final evaluated value when the app already
+   wrote to stdout, preserving clean CLI stdout while keeping expression-style
+   value printing for apps that do not emit user-facing output.
 
 Still-real application-authoring limitations that remain outside this fix loop:
 
