@@ -25,6 +25,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Regex", OPTIONAL_STDLIB_REGEX_SOURCE),
     ("Logger", OPTIONAL_STDLIB_LOGGER_SOURCE),
     ("Csv", OPTIONAL_STDLIB_CSV_SOURCE),
+    ("Store", OPTIONAL_STDLIB_STORE_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -923,3 +924,6 @@ const OPTIONAL_STDLIB_LOGGER_SOURCE: &str =
 
 const OPTIONAL_STDLIB_CSV_SOURCE: &str =
     "defmodule Csv do\n  def decode(string) do\n    host_call(:csv_decode, string)\n  end\n\n  def encode(rows) do\n    host_call(:csv_encode, rows)\n  end\n\n  def decode_maps(string) do\n    host_call(:csv_decode_maps, string)\n  end\n\n  def encode_maps(headers, maps) do\n    host_call(:csv_encode_maps, headers, maps)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_STORE_SOURCE: &str =
+    "defmodule Store do\n  def new() do\n    host_call(:store_new)\n  end\n\n  def put(store, key, value) do\n    host_call(:store_put, store, key, value)\n  end\n\n  def get(store, key) do\n    host_call(:store_get, store, key)\n  end\n\n  def get(store, key, default) do\n    host_call(:store_get, store, key, default)\n  end\n\n  def delete(store, key) do\n    host_call(:store_delete, store, key)\n  end\n\n  def has_key?(store, key) do\n    host_call(:store_has_key, store, key)\n  end\n\n  def keys(store) do\n    host_call(:store_keys, store)\n  end\n\n  def values(store) do\n    host_call(:store_values, store)\n  end\n\n  def size(store) do\n    host_call(:store_size, store)\n  end\n\n  def to_list(store) do\n    host_call(:store_to_list, store)\n  end\n\n  def clear(store) do\n    host_call(:store_clear, store)\n  end\n\n  def drop(store) do\n    host_call(:store_drop, store)\n  end\nend\n";

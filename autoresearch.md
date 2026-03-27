@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 224 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random+Logger+Csv tests green + Http wrapper (run 44)
+- **Current Best**: 239 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random+Logger+Csv+Store tests green + Http wrapper (run 45)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -161,3 +161,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 42 (KEEP, metric=207)**: Added `Logger.debug/1`, `Logger.info/1`, `Logger.warn/1`, `Logger.error/1`, `Logger.set_level/1`, `Logger.get_level/0` as host-backed stdlib functions with global AtomicU8 log level filtering and stderr output, with 15 focused unit tests. Hypothesis: confirmed — structured logging with level filtering replaces ad-hoc `IO.puts("[verbose]...")` patterns seen in tonic-loops apps.
 - **Run 43 (DISCARD, metric=207)**: Attempted pure Tonic `Keyword` module with get/fetch/put/put_new/delete/has_key?/keys/values/merge/take/drop/to_map/keyword? — 13 functions operating on `[{atom, value}]` lists. No new focused Rust tests since it's entirely pure Tonic. Hypothesis: refuted — while the module adds useful functionality, the primary metric (focused test count) didn't improve, and pure Tonic wrappers need focused integration tests to count toward the metric.
 - **Run 44 (KEEP, metric=224)**: Added `Csv.decode/1`, `Csv.encode/1`, `Csv.decode_maps/1`, `Csv.encode_maps/2` as host-backed stdlib functions with RFC 4180-compliant pure Rust parser/encoder (no new crate), handling quoted fields, escaped quotes, multiline fields, CRLF/LF, and auto-quoting on encode, with 17 focused unit tests. Hypothesis: confirmed — a Rust-backed Csv module provides reliable CSV parsing and encoding for any Tonic app doing data processing, reporting, or ETL.
+- **Run 45 (KEEP, metric=239)**: Added `Store.new/0`, `Store.put/3`, `Store.get/2-3`, `Store.delete/2`, `Store.has_key?/2`, `Store.keys/1`, `Store.values/1`, `Store.size/1`, `Store.to_list/1`, `Store.clear/1`, `Store.drop/1` as host-backed stdlib functions using a global Mutex<HashMap> store, with 15 focused unit tests. Hypothesis: confirmed — an in-memory key-value Store module provides essential mutable state for any Tonic app needing caches, counters, accumulators, or session state beyond environment variables.

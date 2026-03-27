@@ -28,6 +28,7 @@ mod path_mod;
 mod random_mod;
 mod regex_mod;
 mod shell_mod;
+mod store_mod;
 mod string_mod;
 mod system;
 mod toml_mod;
@@ -433,6 +434,7 @@ impl HostRegistry {
         regex_mod::register_regex_host_functions(self);
         logger_mod::register_logger_host_functions(self);
         csv_mod::register_csv_host_functions(self);
+        store_mod::register_store_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
