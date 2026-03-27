@@ -1784,3 +1784,121 @@ end
         "summary should show all 3 tests, got:\n{stdout}"
     );
 }
+
+// ── assert_raises tests ────────────────────────────────────────────────────
+
+#[test]
+fn test_assert_raises_passes_when_function_raises() {
+    let fixture_root = write_single_test_file(
+        "test-assert-raises-pass",
+        "raises_test.tn",
+        "defmodule RaisesTest do\n  def test_raises_pass() do\n    Assert.assert_raises(fn -> raise \"boom\" end)\n  end\n\n  def test_no_raise_fails() do\n    Assert.assert_raises(fn -> 42 end)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test RaisesTest.test_raises_pass ... ok"),
+        "raising function should pass, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test RaisesTest.test_no_raise_fails ... FAILED"),
+        "non-raising function should fail, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("expected function to raise, but it returned normally"),
+        "failure message should explain no raise, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("1 passed; 1 failed"),
+        "summary should show 1 pass and 1 fail, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_assert_raises_with_pattern_match() {
+    let fixture_root = write_single_test_file(
+        "test-assert-raises-pattern",
+        "raises_pattern_test.tn",
+        "defmodule RaisesPatternTest do\n  def test_matching_pattern() do\n    Assert.assert_raises(fn -> raise \"invalid argument\" end, \"invalid\")\n  end\n\n  def test_non_matching_pattern() do\n    Assert.assert_raises(fn -> raise \"something else\" end, \"invalid\")\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test RaisesPatternTest.test_matching_pattern ... ok"),
+        "matching pattern should pass, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test RaisesPatternTest.test_non_matching_pattern ... FAILED"),
+        "non-matching pattern should fail, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("expected raise matching"),
+        "failure should mention expected pattern, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_assert_raises_json_output() {
+    let fixture_root = write_single_test_file(
+        "test-assert-raises-json",
+        "raises_json_test.tn",
+        "defmodule RaisesJsonTest do\n  def test_raises_ok() do\n    Assert.assert_raises(fn -> raise \"kaboom\" end)\n  end\n\n  def test_raises_fail() do\n    Assert.assert_raises(fn -> :safe end)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args([
+            "test",
+            &fixture_root.display().to_string(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let json: Value = serde_json::from_str(&stdout).expect("output should be valid JSON");
+
+    assert_eq!(json["passed"], 1, "JSON should show 1 passed");
+    assert_eq!(json["failed"], 1, "JSON should show 1 failed");
+
+    let results = json["results"]
+        .as_array()
+        .expect("results should be an array");
+    let passed = results
+        .iter()
+        .find(|r| r["status"] == "passed")
+        .expect("should have a passed result");
+    assert!(
+        passed["id"].as_str().unwrap().contains("test_raises_ok"),
+        "passed test should be test_raises_ok"
+    );
+
+    let failed = results
+        .iter()
+        .find(|r| r["status"] == "failed")
+        .expect("should have a failed result");
+    assert!(
+        failed["id"].as_str().unwrap().contains("test_raises_fail"),
+        "failed test should be test_raises_fail"
+    );
+    assert!(
+        failed["error"]
+            .as_str()
+            .unwrap()
+            .contains("expected function to raise"),
+        "failed error should mention no raise"
+    );
+}

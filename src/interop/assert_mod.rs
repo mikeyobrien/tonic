@@ -261,6 +261,46 @@ fn host_skip(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     ))))
 }
 
+/// Check if a raised error message matches the expected pattern.
+/// Used by Assert.assert_raises/2 — the try/rescue is handled in Tonic,
+/// this host function just does the string comparison.
+fn host_assert_raises_check(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    if args.len() != 2 {
+        return Err(HostError::new(
+            "assert_raises_check expects 2 arguments (raised_message, expected_pattern)",
+        ));
+    }
+    let raised_msg = match &args[0] {
+        RuntimeValue::String(s) => s.as_str(),
+        _ => {
+            return Err(HostError::new(
+                "assert_raises_check: first argument must be a string",
+            ))
+        }
+    };
+    let expected = match &args[1] {
+        RuntimeValue::String(s) => s.as_str(),
+        _ => {
+            return Err(HostError::new(
+                "assert_raises_check: second argument must be a string",
+            ))
+        }
+    };
+
+    if raised_msg.contains(expected) {
+        Ok(RuntimeValue::Atom("ok".to_string()))
+    } else {
+        let message = format!("expected raise matching \"{expected}\", got: {raised_msg}");
+        Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
+            Box::new(RuntimeValue::Atom("assertion_failed".to_string())),
+            Box::new(RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("assert_raises".to_string())),
+                Box::new(RuntimeValue::String(message)),
+            )),
+        ))))
+    }
+}
+
 pub fn register_assert_host_functions(registry: &HostRegistry) {
     registry.register("assert", host_assert);
     registry.register("refute", host_refute);
@@ -269,4 +309,5 @@ pub fn register_assert_host_functions(registry: &HostRegistry) {
     registry.register("assert_contains", host_assert_contains);
     registry.register("assert_in_delta", host_assert_in_delta);
     registry.register("skip", host_skip);
+    registry.register("assert_raises_check", host_assert_raises_check);
 }
