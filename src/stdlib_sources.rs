@@ -19,6 +19,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Yaml", OPTIONAL_STDLIB_YAML_SOURCE),
     ("Env", OPTIONAL_STDLIB_ENV_SOURCE),
     ("Url", OPTIONAL_STDLIB_URL_SOURCE),
+    ("File", OPTIONAL_STDLIB_FILE_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -899,3 +900,6 @@ const OPTIONAL_STDLIB_URL_SOURCE: &str =
 
 const OPTIONAL_STDLIB_ENV_SOURCE: &str =
     "defmodule Env do\n  def get(key) do\n    System.env(key)\n  end\n\n  def get(key, default) do\n    case System.env(key) do\n      nil -> default\n      value -> value\n    end\n  end\n\n  def fetch!(key) do\n    case System.env(key) do\n      nil -> raise \"environment variable #{key} is not set\"\n      value -> value\n    end\n  end\n\n  def set(key, value) do\n    host_call(:env_set, key, value)\n  end\n\n  def delete(key) do\n    host_call(:env_delete, key)\n  end\n\n  def all() do\n    host_call(:env_all)\n  end\n\n  def has_key(key) do\n    host_call(:env_has_key, key)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_FILE_SOURCE: &str =
+    "defmodule File do\n  def read(path) do\n    System.read_text(path)\n  end\n\n  def write(path, content) do\n    System.write_text(path, content)\n  end\n\n  def write_atomic(path, content) do\n    System.write_text_atomic(path, content)\n  end\n\n  def append(path, content) do\n    System.append_text(path, content)\n  end\n\n  def exists?(path) do\n    System.path_exists(path)\n  end\n\n  def ls(path) do\n    System.list_dir(path)\n  end\n\n  def ls_r(path) do\n    System.list_files_recursive(path)\n  end\n\n  def is_dir?(path) do\n    System.is_dir(path)\n  end\n\n  def mkdir_p(path) do\n    System.ensure_dir(path)\n  end\n\n  def rm_rf(path) do\n    System.remove_tree(path)\n  end\n\n  def cp(source, destination) do\n    host_call(:file_cp, source, destination)\n  end\n\n  def rename(source, destination) do\n    host_call(:file_rename, source, destination)\n  end\n\n  def stat(path) do\n    host_call(:file_stat, path)\n  end\nend\n";

@@ -14,6 +14,7 @@ mod crypto_mod;
 mod datetime_mod;
 mod enum_mod;
 mod env_mod;
+mod file_mod;
 mod float_mod;
 mod http_server;
 mod integer_mod;
@@ -421,6 +422,7 @@ impl HostRegistry {
         yaml_mod::register_yaml_host_functions(self);
         env_mod::register_env_host_functions(self);
         url_mod::register_url_host_functions(self);
+        file_mod::register_file_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
