@@ -7,6 +7,7 @@ use crate::runtime::{evaluate_named_function, RuntimeValue};
 use crate::typing::infer_types;
 use serde_json::json;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TestOutputFormat {
@@ -29,6 +30,7 @@ pub struct TestCaseResult {
     pub id: String,
     pub status: TestCaseStatus,
     pub error: Option<String>,
+    pub duration: Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +44,7 @@ pub struct TestRunReport {
     pub total: usize,
     pub passed: usize,
     pub failed: usize,
+    pub duration: Duration,
     pub results: Vec<TestCaseResult>,
 }
 
@@ -54,12 +57,13 @@ impl TestRunReport {
         let mut lines = Vec::new();
 
         for result in &self.results {
+            let duration = format_duration(result.duration);
             match result.status {
                 TestCaseStatus::Passed => {
-                    lines.push(format!("test {} ... ok", result.id));
+                    lines.push(format!("test {} ... ok ({duration})", result.id));
                 }
                 TestCaseStatus::Failed => {
-                    lines.push(format!("test {} ... FAILED", result.id));
+                    lines.push(format!("test {} ... FAILED ({duration})", result.id));
                     if let Some(error) = &result.error {
                         lines.push(format!("  error: {error}"));
                     }
@@ -68,8 +72,9 @@ impl TestRunReport {
         }
 
         let status = if self.succeeded() { "ok" } else { "FAILED" };
+        let total_duration = format_duration(self.duration);
         lines.push(format!(
-            "test result: {status}. {} passed; {} failed; {} total",
+            "test result: {status}. {} passed; {} failed; {} total; finished in {total_duration}",
             self.passed, self.failed, self.total
         ));
 
@@ -82,6 +87,7 @@ impl TestRunReport {
             "total": self.total,
             "passed": self.passed,
             "failed": self.failed,
+            "duration_ms": duration_ms(self.duration),
             "results": self
                 .results
                 .iter()
@@ -93,6 +99,7 @@ impl TestRunReport {
                             TestCaseStatus::Failed => "failed",
                         },
                         "error": result.error,
+                        "duration_ms": duration_ms(result.duration),
                     })
                 })
                 .collect::<Vec<_>>(),
@@ -120,6 +127,7 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
     let target = Path::new(path);
     let test_files = discover_test_files(target)?;
     let mut results = Vec::new();
+    let run_start = Instant::now();
 
     for file in test_files {
         let source = std::fs::read_to_string(&file).map_err(|error| {
@@ -137,6 +145,7 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
                     continue;
                 }
             }
+            let test_start = Instant::now();
             match evaluate_named_function(&suite.ir, &test_name) {
                 Ok(RuntimeValue::ResultErr(reason)) => {
                     let error = format_assertion_failure(&reason);
@@ -144,6 +153,7 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
                         id: test_name,
                         status: TestCaseStatus::Failed,
                         error: Some(error),
+                        duration: test_start.elapsed(),
                     });
                 }
                 Ok(_) => {
@@ -151,6 +161,7 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
                         id: test_name,
                         status: TestCaseStatus::Passed,
                         error: None,
+                        duration: test_start.elapsed(),
                     });
                 }
                 Err(error) => {
@@ -158,6 +169,7 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
                         id: test_name,
                         status: TestCaseStatus::Failed,
                         error: Some(error.to_string()),
+                        duration: test_start.elapsed(),
                     });
                 }
             }
@@ -174,8 +186,24 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
         total: results.len(),
         passed,
         failed,
+        duration: run_start.elapsed(),
         results,
     })
+}
+
+fn format_duration(d: Duration) -> String {
+    let ms = d.as_secs_f64() * 1000.0;
+    if ms < 1.0 {
+        format!("{:.2}ms", ms)
+    } else if ms < 1000.0 {
+        format!("{:.1}ms", ms)
+    } else {
+        format!("{:.2}s", d.as_secs_f64())
+    }
+}
+
+fn duration_ms(d: Duration) -> f64 {
+    (d.as_secs_f64() * 1000.0 * 100.0).round() / 100.0
 }
 
 fn discover_test_files(path: &Path) -> Result<Vec<PathBuf>, TestRunnerError> {

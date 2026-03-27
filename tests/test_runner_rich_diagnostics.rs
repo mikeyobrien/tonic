@@ -41,10 +41,8 @@ fn test_project_root_discovers_and_runs_test_files() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert_eq!(
-        stdout,
-        "test MathTest.test_add ... ok\ntest result: ok. 1 passed; 0 failed; 1 total\n"
-    );
+    assert!(stdout.contains("test MathTest.test_add ... ok ("));
+    assert!(stdout.contains("test result: ok. 1 passed; 0 failed; 1 total; finished in "));
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert_eq!(stderr, "");
@@ -71,10 +69,10 @@ fn test_returns_non_zero_and_deterministic_summary_when_failures_exist() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert!(stdout.contains("test FailingTest.test_fail ... FAILED"));
+    assert!(stdout.contains("test FailingTest.test_fail ... FAILED ("));
     assert!(stdout.contains("error: runtime returned err(7)"));
-    assert!(stdout.contains("test FailingTest.test_ok ... ok"));
-    assert!(stdout.contains("test result: FAILED. 1 passed; 1 failed; 2 total"));
+    assert!(stdout.contains("test FailingTest.test_ok ... ok ("));
+    assert!(stdout.contains("test result: FAILED. 1 passed; 1 failed; 2 total; finished in "));
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert_eq!(stderr, "");
@@ -100,8 +98,8 @@ fn test_file_target_mode_executes_tests_from_explicit_file_path() {
         "expected explicit file path to pass"
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert!(stdout.contains("test ManualSuite.test_manual_case ... ok"));
-    assert!(stdout.contains("test result: ok. 1 passed; 0 failed; 1 total"));
+    assert!(stdout.contains("test ManualSuite.test_manual_case ... ok ("));
+    assert!(stdout.contains("test result: ok. 1 passed; 0 failed; 1 total; finished in "));
 }
 
 #[test]
@@ -137,6 +135,17 @@ fn test_supports_machine_readable_json_output() {
     assert_eq!(results[1]["id"], "JsonModeTest.test_beta");
     assert_eq!(results[1]["status"], "failed");
     assert_eq!(results[1]["error"], "runtime returned err(:boom)");
+
+    // Per-test and total timing fields should be present
+    assert!(
+        report["duration_ms"].is_number(),
+        "report should include duration_ms, got: {report}"
+    );
+    assert!(
+        results[0]["duration_ms"].is_number(),
+        "each result should include duration_ms, got: {:?}",
+        results[0]
+    );
 }
 
 #[test]
@@ -439,11 +448,11 @@ fn test_assert_equal_renders_expected_vs_actual_on_failure() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(
-        stdout.contains("test AssertTest.test_equal_pass ... ok"),
+        stdout.contains("test AssertTest.test_equal_pass ... ok ("),
         "passing assert_equal should show ok, got: {stdout}"
     );
     assert!(
-        stdout.contains("test AssertTest.test_equal_fail ... FAILED"),
+        stdout.contains("test AssertTest.test_equal_fail ... FAILED ("),
         "failing assert_equal should show FAILED, got: {stdout}"
     );
     assert!(
@@ -472,11 +481,11 @@ fn test_assert_renders_truthy_failure() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(
-        stdout.contains("test AssertTruthyTest.test_assert_true ... ok"),
+        stdout.contains("test AssertTruthyTest.test_assert_true ... ok ("),
         "assert(true) should pass, got: {stdout}"
     );
     assert!(
-        stdout.contains("test AssertTruthyTest.test_assert_false ... FAILED"),
+        stdout.contains("test AssertTruthyTest.test_assert_false ... FAILED ("),
         "assert(false) should fail, got: {stdout}"
     );
     assert!(
@@ -501,11 +510,11 @@ fn test_refute_renders_falsy_failure() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(
-        stdout.contains("test RefuteTest.test_refute_false ... ok"),
+        stdout.contains("test RefuteTest.test_refute_false ... ok ("),
         "refute(false) should pass, got: {stdout}"
     );
     assert!(
-        stdout.contains("test RefuteTest.test_refute_true ... FAILED"),
+        stdout.contains("test RefuteTest.test_refute_true ... FAILED ("),
         "refute(true) should fail, got: {stdout}"
     );
     assert!(
@@ -530,11 +539,11 @@ fn test_assert_not_equal_renders_failure() {
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(
-        stdout.contains("test AssertNeqTest.test_not_equal_pass ... ok"),
+        stdout.contains("test AssertNeqTest.test_not_equal_pass ... ok ("),
         "assert_not_equal(1, 2) should pass, got: {stdout}"
     );
     assert!(
-        stdout.contains("test AssertNeqTest.test_not_equal_fail ... FAILED"),
+        stdout.contains("test AssertNeqTest.test_not_equal_fail ... FAILED ("),
         "assert_not_equal(1, 1) should fail, got: {stdout}"
     );
     assert!(
@@ -625,7 +634,7 @@ fn test_filter_runs_only_matching_tests() {
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(
-        stdout.contains("test FilterTest.test_beta ... ok"),
+        stdout.contains("test FilterTest.test_beta ... ok ("),
         "filtered test should appear, got: {stdout}"
     );
     assert!(
@@ -695,6 +704,14 @@ fn test_filter_with_json_output() {
         .expect("results should be array");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0]["id"], "FilterJsonTest.test_one");
+    assert!(
+        results[0]["duration_ms"].is_number(),
+        "filtered result should include duration_ms"
+    );
+    assert!(
+        report["duration_ms"].is_number(),
+        "filtered report should include duration_ms"
+    );
 }
 
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
