@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 252 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random+Logger+Csv+Store+Bitwise tests green + Http wrapper (run 46)
+- **Current Best**: 264 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random+Logger+Csv+Store+Bitwise+Hex tests green + Http wrapper (run 47)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -163,3 +163,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 44 (KEEP, metric=224)**: Added `Csv.decode/1`, `Csv.encode/1`, `Csv.decode_maps/1`, `Csv.encode_maps/2` as host-backed stdlib functions with RFC 4180-compliant pure Rust parser/encoder (no new crate), handling quoted fields, escaped quotes, multiline fields, CRLF/LF, and auto-quoting on encode, with 17 focused unit tests. Hypothesis: confirmed — a Rust-backed Csv module provides reliable CSV parsing and encoding for any Tonic app doing data processing, reporting, or ETL.
 - **Run 45 (KEEP, metric=239)**: Added `Store.new/0`, `Store.put/3`, `Store.get/2-3`, `Store.delete/2`, `Store.has_key?/2`, `Store.keys/1`, `Store.values/1`, `Store.size/1`, `Store.to_list/1`, `Store.clear/1`, `Store.drop/1` as host-backed stdlib functions using a global Mutex<HashMap> store, with 15 focused unit tests. Hypothesis: confirmed — an in-memory key-value Store module provides essential mutable state for any Tonic app needing caches, counters, accumulators, or session state beyond environment variables.
 - **Run 46 (KEEP, metric=252)**: Added `Bitwise.band/2`, `Bitwise.bor/2`, `Bitwise.bxor/2`, `Bitwise.bnot/1`, `Bitwise.bsl/2`, `Bitwise.bsr/2` as host-backed stdlib functions with i64 native ops and 0..63 shift range validation, plus 13 focused unit tests. Hypothesis: confirmed — a dedicated Bitwise module provides essential bit manipulation for any Tonic app working with flags, permissions, masks, or binary protocols.
+- **Run 47 (KEEP, metric=264)**: Added `Hex.encode/1`, `Hex.decode/1`, `Hex.encode_upper/1` as host-backed stdlib functions with pure Rust byte-to-nibble conversion (no new crate), handling encode/decode round-trips, odd-length and invalid-char errors, plus 12 focused unit tests. Hypothesis: confirmed — a dedicated Hex module complements Crypto (which outputs hex internally) by providing explicit hex encoding/decoding for any Tonic app working with cryptographic hashes, binary protocols, or debug output.

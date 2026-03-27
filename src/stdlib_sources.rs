@@ -27,6 +27,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Csv", OPTIONAL_STDLIB_CSV_SOURCE),
     ("Store", OPTIONAL_STDLIB_STORE_SOURCE),
     ("Bitwise", OPTIONAL_STDLIB_BITWISE_SOURCE),
+    ("Hex", OPTIONAL_STDLIB_HEX_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -931,3 +932,6 @@ const OPTIONAL_STDLIB_STORE_SOURCE: &str =
 
 const OPTIONAL_STDLIB_BITWISE_SOURCE: &str =
     "defmodule Bitwise do\n  def band(a, b) do\n    host_call(:bitwise_band, a, b)\n  end\n\n  def bor(a, b) do\n    host_call(:bitwise_bor, a, b)\n  end\n\n  def bxor(a, b) do\n    host_call(:bitwise_bxor, a, b)\n  end\n\n  def bnot(a) do\n    host_call(:bitwise_bnot, a)\n  end\n\n  def bsl(a, shift) do\n    host_call(:bitwise_bsl, a, shift)\n  end\n\n  def bsr(a, shift) do\n    host_call(:bitwise_bsr, a, shift)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_HEX_SOURCE: &str =
+    "defmodule Hex do\n  def encode(binary) do\n    host_call(:hex_encode, binary)\n  end\n\n  def decode(hex_string) do\n    host_call(:hex_decode, hex_string)\n  end\n\n  def encode_upper(binary) do\n    host_call(:hex_encode_upper, binary)\n  end\nend\n";

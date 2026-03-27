@@ -18,6 +18,7 @@ mod enum_mod;
 mod env_mod;
 mod file_mod;
 mod float_mod;
+mod hex_mod;
 mod http_server;
 mod integer_mod;
 mod io_mod;
@@ -437,6 +438,7 @@ impl HostRegistry {
         csv_mod::register_csv_host_functions(self);
         store_mod::register_store_host_functions(self);
         bitwise_mod::register_bitwise_host_functions(self);
+        hex_mod::register_hex_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
