@@ -21,6 +21,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Url", OPTIONAL_STDLIB_URL_SOURCE),
     ("File", OPTIONAL_STDLIB_FILE_SOURCE),
     ("Math", OPTIONAL_STDLIB_MATH_SOURCE),
+    ("Random", OPTIONAL_STDLIB_RANDOM_SOURCE),
     ("Regex", OPTIONAL_STDLIB_REGEX_SOURCE),
 ];
 
@@ -908,6 +909,9 @@ const OPTIONAL_STDLIB_FILE_SOURCE: &str =
 
 const OPTIONAL_STDLIB_MATH_SOURCE: &str =
     "defmodule Math do\n  def pi() do\n    3.141592653589793\n  end\n\n  def e() do\n    2.718281828459045\n  end\n\n  def pow(base, exponent) do\n    host_call(:math_pow, base, exponent)\n  end\n\n  def sqrt(value) do\n    host_call(:math_sqrt, value)\n  end\n\n  def abs(value) do\n    host_call(:math_abs, value)\n  end\n\n  def min(a, b) do\n    host_call(:math_min, a, b)\n  end\n\n  def max(a, b) do\n    host_call(:math_max, a, b)\n  end\n\n  def log(value) do\n    host_call(:math_log, value)\n  end\n\n  def log2(value) do\n    host_call(:math_log2, value)\n  end\n\n  def log10(value) do\n    host_call(:math_log10, value)\n  end\n\n  def sin(value) do\n    host_call(:math_sin, value)\n  end\n\n  def cos(value) do\n    host_call(:math_cos, value)\n  end\n\n  def tan(value) do\n    host_call(:math_tan, value)\n  end\n\n  def ceil(value) do\n    host_call(:math_ceil, value)\n  end\n\n  def floor(value) do\n    host_call(:math_floor, value)\n  end\n\n  def round(value) do\n    host_call(:math_round, value)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_RANDOM_SOURCE: &str =
+    "defmodule Random do\n  def integer(min, max) do\n    host_call(:random_integer, min, max)\n  end\n\n  def float() do\n    host_call(:random_float)\n  end\n\n  def boolean() do\n    host_call(:random_boolean)\n  end\nend\n";
 
 const OPTIONAL_STDLIB_REGEX_SOURCE: &str =
     "defmodule Regex do\n  def match?(string, pattern) do\n    host_call(:regex_match, string, pattern)\n  end\n\n  def run(string, pattern) do\n    host_call(:regex_run, string, pattern)\n  end\n\n  def scan(string, pattern) do\n    host_call(:regex_scan, string, pattern)\n  end\n\n  def replace(string, pattern, replacement) do\n    host_call(:regex_replace, string, pattern, replacement)\n  end\n\n  def replace_all(string, pattern, replacement) do\n    host_call(:regex_replace_all, string, pattern, replacement)\n  end\n\n  def split(string, pattern) do\n    host_call(:regex_split, string, pattern)\n  end\nend\n";

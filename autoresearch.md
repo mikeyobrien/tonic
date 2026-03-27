@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 181 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex tests green + Http wrapper (run 40)
+- **Current Best**: 192 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random tests green + Http wrapper (run 41)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -157,3 +157,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 38 (KEEP, metric=144)**: Added `File` stdlib module wrapping existing System file operations (read/write/append/exists?/ls/ls_r/is_dir?/mkdir_p/rm_rf) plus 3 new host-backed functions (cp/rename/stat) with 12 focused unit tests. Hypothesis: confirmed — a dedicated File module provides ergonomic, familiar-named file operations that any Tonic app needs, eliminating the need to know System's non-obvious method names.
 - **Run 39 (KEEP, metric=164)**: Added `Math` stdlib module with `pi/0`, `e/0`, `pow/2`, `sqrt/1`, `abs/1`, `min/2`, `max/2`, `log/1`, `log2/1`, `log10/1`, `sin/1`, `cos/1`, `tan/1`, `ceil/1`, `floor/1`, `round/1` as host-backed stdlib functions with 20 focused unit tests. Hypothesis: confirmed — a Rust-backed Math module provides essential mathematical operations for any Tonic app needing computation beyond basic arithmetic, with smart int/float return types and proper validation.
 - **Run 40 (KEEP, metric=181)**: Added `Regex.match?/2`, `Regex.run/2`, `Regex.scan/2`, `Regex.replace/3`, `Regex.replace_all/3`, and `Regex.split/2` as host-backed stdlib functions using the `regex` crate (already a transitive dep), with 17 focused unit tests covering matching, captures, scan, replace with backreferences, split, invalid pattern errors, and edge cases. Hypothesis: confirmed — a Rust-backed Regex module provides essential text pattern matching for any Tonic app needing validation, extraction, or transformation beyond exact string equality.
+- **Run 41 (KEEP, metric=192)**: Added `Random.integer/2`, `Random.float/0`, and `Random.boolean/0` as host-backed stdlib functions using the `rand` crate (already a dependency), with 11 focused unit tests covering integer range bounds, negative ranges, float range, boolean output, and error handling. Hypothesis: confirmed — a dedicated Random module provides ergonomic random number generation for any Tonic app needing randomness without manual conversion from Crypto.random_bytes or Enum.random.
