@@ -13,6 +13,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Shell", OPTIONAL_STDLIB_SHELL_SOURCE),
     ("DateTime", OPTIONAL_STDLIB_DATETIME_SOURCE),
     ("Base64", OPTIONAL_STDLIB_BASE64_SOURCE),
+    ("Crypto", OPTIONAL_STDLIB_CRYPTO_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -875,3 +876,6 @@ const OPTIONAL_STDLIB_DATETIME_SOURCE: &str =
 
 const OPTIONAL_STDLIB_BASE64_SOURCE: &str =
     "defmodule Base64 do\n  def encode(string) do\n    host_call(:base64_encode, string)\n  end\n\n  def decode(string) do\n    host_call(:base64_decode, string)\n  end\n\n  def url_encode(string) do\n    host_call(:base64_url_encode, string)\n  end\n\n  def url_decode(string) do\n    host_call(:base64_url_decode, string)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_CRYPTO_SOURCE: &str =
+    "defmodule Crypto do\n  def sha256(string) do\n    host_call(:crypto_sha256, string)\n  end\n\n  def hmac_sha256(key, message) do\n    host_call(:crypto_hmac_sha256, key, message)\n  end\n\n  def random_bytes(size) do\n    host_call(:crypto_random_bytes, size)\n  end\nend\n";
