@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 283 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random+Logger+Csv+Store+Bitwise+Hex+Access tests green + Http wrapper (run 48)
+- **Current Best**: 311 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random+Logger+Csv+Store+Bitwise+Hex+Access+Integer tests green + Http wrapper (run 49)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -165,3 +165,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 46 (KEEP, metric=252)**: Added `Bitwise.band/2`, `Bitwise.bor/2`, `Bitwise.bxor/2`, `Bitwise.bnot/1`, `Bitwise.bsl/2`, `Bitwise.bsr/2` as host-backed stdlib functions with i64 native ops and 0..63 shift range validation, plus 13 focused unit tests. Hypothesis: confirmed — a dedicated Bitwise module provides essential bit manipulation for any Tonic app working with flags, permissions, masks, or binary protocols.
 - **Run 47 (KEEP, metric=264)**: Added `Hex.encode/1`, `Hex.decode/1`, `Hex.encode_upper/1` as host-backed stdlib functions with pure Rust byte-to-nibble conversion (no new crate), handling encode/decode round-trips, odd-length and invalid-char errors, plus 12 focused unit tests. Hypothesis: confirmed — a dedicated Hex module complements Crypto (which outputs hex internally) by providing explicit hex encoding/decoding for any Tonic app working with cryptographic hashes, binary protocols, or debug output.
 - **Run 48 (KEEP, metric=283)**: Added `Access.get_in/2`, `Access.put_in/3`, `Access.fetch/2`, `Access.keys/1` as host-backed stdlib functions for nested data traversal and manipulation, supporting string/atom keys for maps and integer keys for list indices, with recursive immutable update in put_in, plus 19 focused unit tests. Hypothesis: confirmed — a dedicated Access module eliminates manual nested pattern matching for any Tonic app working with deeply nested JSON/config structures.
+- **Run 49 (KEEP, metric=311)**: Extended existing Integer module with `to_string/2` (base 2-36 conversion), `digits/1`, `undigits/1`, `gcd/2`, `is_even/1`, `is_odd/1`, `pow/2` as host-backed stdlib functions with overflow detection and input validation, bringing Integer to 28 focused unit tests total. Hypothesis: confirmed — a comprehensive Integer module provides essential number-theoretic and formatting operations for any Tonic app needing base conversion, digit manipulation, or integer math.
