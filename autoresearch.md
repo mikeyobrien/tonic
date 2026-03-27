@@ -107,7 +107,7 @@ Improve the Tonic unit testing UX so that writing, running, and debugging tests 
 ### Metrics
 
 - **Primary**: Focused unit testing UX acceptance checks green
-- **Current Best**: 15 focused testing UX checks green (run 30)
+- **Current Best**: 19 focused testing UX checks green (run 31)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -141,3 +141,4 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - **Run 28 (KEEP, metric=9, segment 2)**: Added per-test and total run timing to `tonic test`, displaying durations after each test status in text output (e.g. `test X ... ok (1.23ms)`) and `duration_ms` fields in JSON output, with timing validation integrated into existing JSON and text output test assertions. Hypothesis: confirmed — per-test timing completes the core testing UX feature set (assertions + filtering + timing) and enables performance regression detection without adding complexity.
 - **Run 29 (KEEP, metric=12, segment 2)**: Added failure summary section to text output (grouped failures at end with numbered list and full errors) and `failures` array to JSON output, with 3 focused integration tests for mixed pass/fail summary, all-pass no-summary, and JSON failures array. Hypothesis: confirmed — grouping failures at the end of test output makes debugging large suites materially faster by eliminating the need to scroll through passing tests to find failure details.
 - **Run 30 (KEEP, metric=15, segment 2)**: Added `--list` flag to `tonic test` that discovers and compiles tests but skips execution, outputting test names (text: one per line, JSON: `{"tests": [...]}`) with optional `--filter` combination, plus 3 focused integration tests. Hypothesis: confirmed — test discovery without execution is essential for editor/tooling integration and pairs naturally with `--filter` for CI matrix splitting.
+- **Run 31 (KEEP, metric=19, segment 2)**: Added `assert_contains` (string substring + list membership) and `assert_in_delta` (numeric proximity) to the Assert stdlib module, with structured failure rendering and 4 focused integration tests. Hypothesis: confirmed — expanding the assertion vocabulary with contains and delta checks covers the most common test patterns beyond equality, making Tonic tests more expressive without adding complexity.
