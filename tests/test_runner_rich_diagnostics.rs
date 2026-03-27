@@ -901,3 +901,162 @@ fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> Pat
 
     fixture_root
 }
+
+// ── assert_contains tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_assert_contains_string_pass_and_fail() {
+    let fixture_root = write_single_test_file(
+        "test-assert-contains-string",
+        "contains_test.tn",
+        "defmodule ContainsTest do
+  def test_string_contains_pass() do
+    Assert.assert_contains(\"hello world\", \"world\")
+  end
+
+  def test_string_contains_fail() do
+    Assert.assert_contains(\"hello world\", \"xyz\")
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "contains_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test ContainsTest.test_string_contains_pass ... ok"),
+        "expected pass for string contains, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test ContainsTest.test_string_contains_fail ... FAIL"),
+        "expected fail for missing substring, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("assert_contains failed"),
+        "expected structured assert_contains failure, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("container:"),
+        "expected container field in failure output, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("element:"),
+        "expected element field in failure output, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_assert_contains_list_pass_and_fail() {
+    let fixture_root = write_single_test_file(
+        "test-assert-contains-list",
+        "list_contains_test.tn",
+        "defmodule ListContainsTest do
+  def test_list_contains_pass() do
+    Assert.assert_contains([1, 2, 3], 2)
+  end
+
+  def test_list_contains_fail() do
+    Assert.assert_contains([1, 2, 3], 99)
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "list_contains_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test ListContainsTest.test_list_contains_pass ... ok"),
+        "expected pass for list contains, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test ListContainsTest.test_list_contains_fail ... FAIL"),
+        "expected fail for missing element, got:\n{stdout}"
+    );
+}
+
+// ── assert_in_delta tests ──────────────────────────────────────────────────
+
+#[test]
+fn test_assert_in_delta_pass_and_fail() {
+    let fixture_root = write_single_test_file(
+        "test-assert-in-delta",
+        "delta_test.tn",
+        "defmodule DeltaTest do
+  def test_in_delta_pass() do
+    Assert.assert_in_delta(10, 11, 2)
+  end
+
+  def test_in_delta_fail() do
+    Assert.assert_in_delta(10, 20, 2)
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "delta_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test DeltaTest.test_in_delta_pass ... ok"),
+        "expected pass for values within delta, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test DeltaTest.test_in_delta_fail ... FAIL"),
+        "expected fail for values outside delta, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("assert_in_delta failed"),
+        "expected structured assert_in_delta failure, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("delta:"),
+        "expected delta field in failure output, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_assert_in_delta_json_output() {
+    let fixture_root = write_single_test_file(
+        "test-assert-in-delta-json",
+        "delta_json_test.tn",
+        "defmodule DeltaJsonTest do
+  def test_in_delta_fail() do
+    Assert.assert_in_delta(1, 100, 5, \"too far apart\")
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "delta_json_test.tn", "--format", "json"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let json: Value = serde_json::from_str(&stdout).expect("should parse JSON output");
+    let results = json["results"].as_array().expect("results should be array");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["status"], "failed");
+    let error = results[0]["error"]
+        .as_str()
+        .expect("error should be string");
+    assert!(
+        error.contains("assert_in_delta failed"),
+        "expected assert_in_delta failure in JSON error, got: {error}"
+    );
+}

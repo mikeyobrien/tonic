@@ -135,9 +135,123 @@ fn host_assert_not_equal(args: &[RuntimeValue]) -> Result<RuntimeValue, HostErro
     ))))
 }
 
+/// Assert that a container includes an element.
+/// For strings: checks substring containment. For lists: checks membership.
+fn host_assert_contains(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(HostError::new(
+            "Assert.assert_contains expects 2-3 arguments (container, element, optional message)",
+        ));
+    }
+    let container = &args[0];
+    let element = &args[1];
+
+    let contained = match (container, element) {
+        (RuntimeValue::String(haystack), RuntimeValue::String(needle)) => {
+            haystack.contains(needle.as_str())
+        }
+        (RuntimeValue::List(items), _) => items.contains(element),
+        _ => {
+            return Err(HostError::new(
+                "Assert.assert_contains expects a String or List as the first argument",
+            ));
+        }
+    };
+
+    if contained {
+        return Ok(RuntimeValue::Atom("ok".to_string()));
+    }
+
+    let message = extract_message(args, 2, "element not found in container");
+
+    Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
+        Box::new(RuntimeValue::Atom("assertion_failed".to_string())),
+        Box::new(RuntimeValue::List(vec![
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("type".to_string())),
+                Box::new(RuntimeValue::Atom("assert_contains".to_string())),
+            ),
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("container".to_string())),
+                Box::new(container.clone()),
+            ),
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("element".to_string())),
+                Box::new(element.clone()),
+            ),
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("message".to_string())),
+                Box::new(RuntimeValue::String(message)),
+            ),
+        ])),
+    ))))
+}
+
+/// Extract a numeric value as f64 from Int or Float variants.
+fn extract_f64(val: &RuntimeValue) -> Option<f64> {
+    match val {
+        RuntimeValue::Int(i) => Some(*i as f64),
+        RuntimeValue::Float(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+/// Assert that two numeric values are within delta of each other.
+fn host_assert_in_delta(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    if args.len() < 3 || args.len() > 4 {
+        return Err(HostError::new(
+            "Assert.assert_in_delta expects 3-4 arguments (left, right, delta, optional message)",
+        ));
+    }
+
+    let left_f = extract_f64(&args[0]).ok_or_else(|| {
+        HostError::new("Assert.assert_in_delta: left must be a number (Int or Float)")
+    })?;
+    let right_f = extract_f64(&args[1]).ok_or_else(|| {
+        HostError::new("Assert.assert_in_delta: right must be a number (Int or Float)")
+    })?;
+    let delta_f = extract_f64(&args[2]).ok_or_else(|| {
+        HostError::new("Assert.assert_in_delta: delta must be a number (Int or Float)")
+    })?;
+
+    if (left_f - right_f).abs() <= delta_f {
+        return Ok(RuntimeValue::Atom("ok".to_string()));
+    }
+
+    let message = extract_message(args, 3, "values are not within delta");
+
+    Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
+        Box::new(RuntimeValue::Atom("assertion_failed".to_string())),
+        Box::new(RuntimeValue::List(vec![
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("type".to_string())),
+                Box::new(RuntimeValue::Atom("assert_in_delta".to_string())),
+            ),
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("left".to_string())),
+                Box::new(args[0].clone()),
+            ),
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("right".to_string())),
+                Box::new(args[1].clone()),
+            ),
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("delta".to_string())),
+                Box::new(args[2].clone()),
+            ),
+            RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("message".to_string())),
+                Box::new(RuntimeValue::String(message)),
+            ),
+        ])),
+    ))))
+}
+
 pub fn register_assert_host_functions(registry: &HostRegistry) {
     registry.register("assert", host_assert);
     registry.register("refute", host_refute);
     registry.register("assert_equal", host_assert_equal);
     registry.register("assert_not_equal", host_assert_not_equal);
+    registry.register("assert_contains", host_assert_contains);
+    registry.register("assert_in_delta", host_assert_in_delta);
 }

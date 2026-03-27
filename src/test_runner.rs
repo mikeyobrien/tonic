@@ -353,6 +353,9 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                     let mut kind = "assert_equal";
                     let mut left = None;
                     let mut right = None;
+                    let mut container = None;
+                    let mut element = None;
+                    let mut delta = None;
                     let mut message = None;
 
                     for entry in entries {
@@ -362,6 +365,8 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                                     if let RuntimeValue::Atom(t) = val.as_ref() {
                                         kind = match t.as_str() {
                                             "assert_not_equal" => "assert_not_equal",
+                                            "assert_contains" => "assert_contains",
+                                            "assert_in_delta" => "assert_in_delta",
                                             _ => "assert_equal",
                                         };
                                     }
@@ -371,6 +376,15 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                                 }
                                 RuntimeValue::Atom(k) if k == "right" => {
                                     right = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "container" => {
+                                    container = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "element" => {
+                                    element = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "delta" => {
+                                    delta = Some(val.render());
                                 }
                                 RuntimeValue::Atom(k) if k == "message" => {
                                     if let RuntimeValue::String(s) = val.as_ref() {
@@ -383,11 +397,34 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                     }
 
                     let mut lines = vec![format!("{kind} failed: {}", message.unwrap_or_default())];
-                    if let Some(l) = left {
-                        lines.push(format!("  left:  {l}"));
-                    }
-                    if let Some(r) = right {
-                        lines.push(format!("  right: {r}"));
+                    match kind {
+                        "assert_contains" => {
+                            if let Some(c) = container {
+                                lines.push(format!("  container: {c}"));
+                            }
+                            if let Some(e) = element {
+                                lines.push(format!("  element:   {e}"));
+                            }
+                        }
+                        "assert_in_delta" => {
+                            if let Some(l) = left {
+                                lines.push(format!("  left:  {l}"));
+                            }
+                            if let Some(r) = right {
+                                lines.push(format!("  right: {r}"));
+                            }
+                            if let Some(d) = delta {
+                                lines.push(format!("  delta: {d}"));
+                            }
+                        }
+                        _ => {
+                            if let Some(l) = left {
+                                lines.push(format!("  left:  {l}"));
+                            }
+                            if let Some(r) = right {
+                                lines.push(format!("  right: {r}"));
+                            }
+                        }
                     }
                     lines.join("\n")
                 }
