@@ -1356,3 +1356,140 @@ end
     let json: Value = serde_json::from_str(&stdout).expect("should parse valid JSON");
     assert_eq!(json["status"], "failed");
 }
+
+#[test]
+fn test_seed_randomizes_test_order() {
+    let fixture_root = common::unique_fixture_root("test-runner-seed-randomizes");
+
+    fs::create_dir_all(&fixture_root).expect("fixture setup");
+    // Create enough tests that shuffling with a specific seed will produce a different order
+    fs::write(
+        fixture_root.join("test_order.tn"),
+        "defmodule OrderTest do
+  def test_alpha() do :ok end
+  def test_bravo() do :ok end
+  def test_charlie() do :ok end
+  def test_delta() do :ok end
+  def test_echo() do :ok end
+  def test_foxtrot() do :ok end
+end\n",
+    )
+    .expect("fixture setup");
+
+    // Run without seed (default sorted order)
+    let default_output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "test_order.tn"])
+        .output()
+        .expect("test command should execute");
+    let default_stdout = String::from_utf8(default_output.stdout).expect("utf8");
+
+    // Run with seed
+    let seeded_output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "test_order.tn", "--seed", "42"])
+        .output()
+        .expect("test command should execute");
+    let seeded_stdout = String::from_utf8(seeded_output.stdout).expect("utf8");
+
+    assert!(seeded_output.status.success());
+    assert!(seeded_stdout.contains("Randomized with seed 42"));
+    // The seeded order should differ from default sorted order
+    assert_ne!(
+        default_stdout, seeded_stdout,
+        "seeded output should differ from default sorted output"
+    );
+}
+
+#[test]
+fn test_seed_is_deterministic() {
+    let fixture_root = common::unique_fixture_root("test-runner-seed-deterministic");
+
+    fs::create_dir_all(&fixture_root).expect("fixture setup");
+    fs::write(
+        fixture_root.join("test_det.tn"),
+        "defmodule DetTest do
+  def test_alpha() do :ok end
+  def test_bravo() do :ok end
+  def test_charlie() do :ok end
+  def test_delta() do :ok end
+end\n",
+    )
+    .expect("fixture setup");
+
+    let run1 = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "test_det.tn", "--seed", "12345"])
+        .output()
+        .expect("test command should execute");
+
+    let run2 = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "test_det.tn", "--seed", "12345"])
+        .output()
+        .expect("test command should execute");
+
+    let stdout1 = String::from_utf8(run1.stdout).expect("utf8");
+    let stdout2 = String::from_utf8(run2.stdout).expect("utf8");
+
+    // Strip timing info to compare order only (filter lines with " ... " to exclude "test result:")
+    let order1: Vec<&str> = stdout1
+        .lines()
+        .filter(|l| l.starts_with("test ") && l.contains(" ... "))
+        .collect();
+    let order2: Vec<&str> = stdout2
+        .lines()
+        .filter(|l| l.starts_with("test ") && l.contains(" ... "))
+        .collect();
+
+    assert_eq!(order1.len(), 4);
+    // Compare just the test names (strip timing which varies)
+    let names1: Vec<&str> = order1
+        .iter()
+        .map(|l| l.split(" ... ").next().unwrap())
+        .collect();
+    let names2: Vec<&str> = order2
+        .iter()
+        .map(|l| l.split(" ... ").next().unwrap())
+        .collect();
+    assert_eq!(names1, names2, "same seed should produce same test order");
+}
+
+#[test]
+fn test_seed_json_output() {
+    let fixture_root = common::unique_fixture_root("test-runner-seed-json");
+
+    fs::create_dir_all(&fixture_root).expect("fixture setup");
+    fs::write(
+        fixture_root.join("test_seed_json.tn"),
+        "defmodule SeedJsonTest do
+  def test_one() do :ok end
+  def test_two() do :ok end
+end\n",
+    )
+    .expect("fixture setup");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args([
+            "test",
+            "test_seed_json.tn",
+            "--seed",
+            "99",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("test command should execute");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let json: Value = serde_json::from_str(&stdout).expect("should parse valid JSON");
+    assert_eq!(json["seed"], 99);
+    assert_eq!(json["status"], "ok");
+}

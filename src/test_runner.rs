@@ -194,13 +194,15 @@ pub fn run(
     path: &str,
     filter: Option<&str>,
     fail_fast: bool,
+    seed: Option<u64>,
 ) -> Result<TestRunReport, TestRunnerError> {
     let target = Path::new(path);
     let test_files = discover_test_files(target)?;
-    let mut results = Vec::new();
-    let run_start = Instant::now();
 
-    'outer: for file in test_files {
+    // Collect all (test_name, ir) pairs, then optionally shuffle.
+    let mut test_cases: Vec<(String, IrProgram)> = Vec::new();
+
+    for file in test_files {
         let source = std::fs::read_to_string(&file).map_err(|error| {
             TestRunnerError::Failure(format!(
                 "failed to read source file {}: {error}",
@@ -216,38 +218,49 @@ pub fn run(
                     continue;
                 }
             }
-            let test_start = Instant::now();
-            match evaluate_named_function(&suite.ir, &test_name) {
-                Ok(RuntimeValue::ResultErr(reason)) => {
-                    let error = format_assertion_failure(&reason);
-                    results.push(TestCaseResult {
-                        id: test_name,
-                        status: TestCaseStatus::Failed,
-                        error: Some(error),
-                        duration: test_start.elapsed(),
-                    });
-                    if fail_fast {
-                        break 'outer;
-                    }
+            test_cases.push((test_name, suite.ir.clone()));
+        }
+    }
+
+    if let Some(seed) = seed {
+        shuffle(&mut test_cases, seed);
+    }
+
+    let mut results = Vec::new();
+    let run_start = Instant::now();
+
+    for (test_name, ir) in &test_cases {
+        let test_start = Instant::now();
+        match evaluate_named_function(ir, test_name) {
+            Ok(RuntimeValue::ResultErr(reason)) => {
+                let error = format_assertion_failure(&reason);
+                results.push(TestCaseResult {
+                    id: test_name.clone(),
+                    status: TestCaseStatus::Failed,
+                    error: Some(error),
+                    duration: test_start.elapsed(),
+                });
+                if fail_fast {
+                    break;
                 }
-                Ok(_) => {
-                    results.push(TestCaseResult {
-                        id: test_name,
-                        status: TestCaseStatus::Passed,
-                        error: None,
-                        duration: test_start.elapsed(),
-                    });
-                }
-                Err(error) => {
-                    results.push(TestCaseResult {
-                        id: test_name,
-                        status: TestCaseStatus::Failed,
-                        error: Some(error.to_string()),
-                        duration: test_start.elapsed(),
-                    });
-                    if fail_fast {
-                        break 'outer;
-                    }
+            }
+            Ok(_) => {
+                results.push(TestCaseResult {
+                    id: test_name.clone(),
+                    status: TestCaseStatus::Passed,
+                    error: None,
+                    duration: test_start.elapsed(),
+                });
+            }
+            Err(error) => {
+                results.push(TestCaseResult {
+                    id: test_name.clone(),
+                    status: TestCaseStatus::Failed,
+                    error: Some(error.to_string()),
+                    duration: test_start.elapsed(),
+                });
+                if fail_fast {
+                    break;
                 }
             }
         }
@@ -266,6 +279,24 @@ pub fn run(
         duration: run_start.elapsed(),
         results,
     })
+}
+
+/// Splitmix64 PRNG — simple, fast, dependency-free.
+fn splitmix64(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9e3779b97f4a7c15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+    z ^ (z >> 31)
+}
+
+/// Fisher-Yates shuffle using splitmix64 PRNG.
+fn shuffle<T>(slice: &mut [T], seed: u64) {
+    let mut state = seed;
+    for i in (1..slice.len()).rev() {
+        let j = (splitmix64(&mut state) as usize) % (i + 1);
+        slice.swap(i, j);
+    }
 }
 
 struct AnsiColor {

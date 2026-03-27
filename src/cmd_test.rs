@@ -19,6 +19,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
     let mut filter: Option<String> = None;
     let mut list_only = false;
     let mut fail_fast = false;
+    let mut seed: Option<u64> = None;
     let mut index = 1;
 
     while index < args.len() {
@@ -50,6 +51,26 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
             "--fail-fast" => {
                 fail_fast = true;
                 index += 1;
+            }
+            "--seed" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --seed",
+                        "usage: tonic test <path> --seed <number>",
+                    )
+                    .emit();
+                };
+
+                let Ok(parsed) = value.parse::<u64>() else {
+                    return CliDiagnostic::usage_with_hint(
+                        format!("invalid seed '{value}' (expected a non-negative integer)"),
+                        "usage: tonic test <path> --seed <number>",
+                    )
+                    .emit();
+                };
+
+                seed = Some(parsed);
+                index += 2;
             }
             "--filter" => {
                 let Some(value) = args.get(index + 1) else {
@@ -149,7 +170,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
     }
 
     let report = match observe_command_phase_result(&mut observed_run, "test.run_suite", || {
-        test_runner::run(&source_path, filter.as_deref(), fail_fast)
+        test_runner::run(&source_path, filter.as_deref(), fail_fast, seed)
     }) {
         Ok(report) => report,
         Err(TestRunnerError::Failure(message)) => {
@@ -201,12 +222,20 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
 
     match format {
         TestOutputFormat::Text => {
+            if let Some(s) = seed {
+                println!("Randomized with seed {s}");
+                println!();
+            }
             for line in report.render_text() {
                 println!("{line}");
             }
         }
         TestOutputFormat::Json => {
-            println!("{}", report.render_json());
+            let mut json = report.render_json();
+            if let Some(s) = seed {
+                json["seed"] = serde_json::json!(s);
+            }
+            println!("{json}");
         }
     }
 
