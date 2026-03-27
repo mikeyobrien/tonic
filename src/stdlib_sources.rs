@@ -12,6 +12,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Toml", OPTIONAL_STDLIB_TOML_SOURCE),
     ("Shell", OPTIONAL_STDLIB_SHELL_SOURCE),
     ("DateTime", OPTIONAL_STDLIB_DATETIME_SOURCE),
+    ("Base64", OPTIONAL_STDLIB_BASE64_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -871,3 +872,6 @@ const OPTIONAL_STDLIB_SHELL_SOURCE: &str =
 
 const OPTIONAL_STDLIB_DATETIME_SOURCE: &str =
     "defmodule DateTime do\n  def utc_now() do\n    host_call(:datetime_utc_now)\n  end\n\n  def unix_now() do\n    host_call(:datetime_unix_now)\n  end\n\n  def unix_now_ms() do\n    host_call(:datetime_unix_now_ms)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_BASE64_SOURCE: &str =
+    "defmodule Base64 do\n  def encode(string) do\n    host_call(:base64_encode, string)\n  end\n\n  def decode(string) do\n    host_call(:base64_decode, string)\n  end\n\n  def url_encode(string) do\n    host_call(:base64_url_encode, string)\n  end\n\n  def url_decode(string) do\n    host_call(:base64_url_decode, string)\n  end\nend\n";

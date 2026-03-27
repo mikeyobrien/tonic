@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{LazyLock, Mutex};
 
+mod base64_mod;
 mod datetime_mod;
 mod enum_mod;
 mod float_mod;
@@ -405,6 +406,9 @@ impl HostRegistry {
 
         // DateTime stdlib interop primitives for interpreter-backed DateTime.* calls.
         datetime_mod::register_datetime_host_functions(self);
+
+        // Base64 stdlib interop primitives for interpreter-backed Base64.* calls.
+        base64_mod::register_base64_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
