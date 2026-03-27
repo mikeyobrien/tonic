@@ -107,7 +107,7 @@ Improve the Tonic unit testing UX so that writing, running, and debugging tests 
 ### Metrics
 
 - **Primary**: Focused unit testing UX acceptance checks green
-- **Current Best**: 43 focused testing UX checks green (run 39)
+- **Current Best**: 46 focused testing UX checks green (run 40)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -150,3 +150,4 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - **Run 37 (KEEP, metric=37, segment 2)**: Added `Assert.assert_raises/1-2` for testing error conditions — pure Tonic implementation using try/rescue with multi-clause private helpers, optional expected error pattern matching via host function, plus 3 focused integration tests for raise-passes, pattern-match, and JSON output. Hypothesis: confirmed — assert_raises is essential for testing error handling paths, following established patterns from ExUnit/assert_raise, pytest/pytest.raises, and JUnit/assertThrows.
 - **Run 38 (KEEP, metric=40, segment 2)**: Added `Assert.assert_match/2-3` for map subset matching — checks if actual map contains all expected key-value pairs, with structured failure rendering showing missing/mismatched keys, falls back to equality for non-maps, plus 3 focused integration tests for subset pass, mismatch fail, and non-map equality. Hypothesis: confirmed — partial map matching is the most common assertion pattern for testing functions that return maps/structs, following established patterns from ExUnit/pattern match, pytest/dict subset, and Jest/expect.objectContaining.
 - **Run 39 (KEEP, metric=43, segment 2)**: Added `--timeout <ms>` flag for per-test execution timeouts — spawns test execution in a thread with `mpsc::recv_timeout`, timeout applies to both setup/0 and test functions, timed-out tests marked as failed with "timed out after Xms" error, plus 3 focused integration tests for timeout-fail, fast-test-passes, and JSON output. Hypothesis: confirmed — per-test timeouts are essential for CI robustness and catching hangs/infinite loops, following established patterns from ExUnit/@tag timeout, pytest/--timeout, and JUnit/@Test(timeout).
+- **Run 40 (KEEP, metric=46, segment 2)**: Added `teardown/0` function support for test modules — runs after each test regardless of outcome (even failures), teardown failures mark passing tests as failed with "teardown failed:" prefix, respects --timeout, plus 3 focused integration tests for teardown-runs, teardown-after-failure, and teardown-failure-marks-failed. Hypothesis: confirmed — teardown is the natural complement to setup/0 for test cleanup, following established patterns from ExUnit/on_exit, pytest/yield fixtures, JUnit/@AfterEach, and Jest/afterEach.
