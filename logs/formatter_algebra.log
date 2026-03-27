@@ -1,8 +1,4 @@
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on artifact directory
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
      Running unittests src/bin/benchsuite.rs (target/debug/deps/benchsuite-a272cd8c1e8988a1)
 
 running 0 tests
@@ -19,14 +15,14 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 7 tests
 test formatter::algebra::tests::soft_line_disappears_when_group_stays_flat ... ok
-test formatter::algebra::tests::group_breaks_when_width_is_exceeded ... ok
+test formatter::algebra::tests::concat_and_nil_compose_stably ... ok
 test formatter::algebra::tests::nest_indents_broken_lines ... ok
 test formatter::algebra::tests::flex_break_can_stay_inline_inside_broken_group ... ok
-test formatter::algebra::tests::group_stays_flat_when_content_fits ... ok
-test formatter::algebra::tests::concat_and_nil_compose_stably ... ok
 test formatter::algebra::tests::flex_break_falls_back_to_broken_layout_when_suffix_does_not_fit ... ok
+test formatter::algebra::tests::group_breaks_when_width_is_exceeded ... ok
+test formatter::algebra::tests::group_stays_flat_when_content_fits ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 942 filtered out; finished in 0.00s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 945 filtered out; finished in 0.00s
 
      Running tests/check_anonymous_fn_clause_arity_diagnostics.rs (target/debug/deps/check_anonymous_fn_clause_arity_diagnostics-50b08516ff2de7db)
 
