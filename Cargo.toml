@@ -17,6 +17,7 @@ base64 = "0.22"
 httpdate = "1.0"
 time = { version = "0.3", features = ["formatting"] }
 ed25519-dalek = "2.2"
+regex = "1.12"
 subtle = "2.6"
 rustyline = { version = "14", features = ["derive"] }
 tower-lsp = "0.20"
