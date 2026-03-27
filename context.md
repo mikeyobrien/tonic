@@ -1,41 +1,36 @@
 # Context
 
 ## Objective
-Implement `code-task.formatter.md` incrementally. The current `tonic fmt` is token-driven, strips comments, and has no width-aware wrapping. The first slice should improve correctness without trying to land the full AST/algebra formatter in one step.
+Implement `code-task.formatter.md` incrementally. Slice 1 landed on `e81e939` and fixed comment preservation in the existing token formatter. Slice 2 now adds the standalone algebra foundation needed for the later AST-driven formatter work.
+
+## Current repo state
+- `tonic fmt` still routes through `src/formatter/mod.rs` -> `engine::format_source_inner`.
+- `src/formatter/algebra.rs` now exists as a standalone Wadler-Lindig-style document engine.
+- No AST-to-doc converter exists yet.
+- No width-aware wrapping or `--line-length` CLI support exists yet.
+- Comment preservation from slice 1 remains unchanged and green.
+
+## Slice 2 outcome
+- Added `src/formatter/algebra.rs` with `Doc` variants: `Nil`, `Concat`, `Nest`, `Text`, `Line`, `Group`, `FlexBreak`.
+- Implemented `format(doc, max_width)` with flat-vs-broken group decisions.
+- Implemented `Nest` indentation handling for broken layouts.
+- Implemented `FlexBreak` as a re-evaluated break that can stay inline inside an already-broken group when the remaining suffix still fits.
+- Kept the live formatter path unchanged; `tonic fmt` still uses `src/formatter/engine.rs`.
 
 ## Relevant code
-- `src/formatter/mod.rs` — `format_source` / file traversal / formatter tests
-- `src/formatter/engine.rs` — current token-driven logical-line builder + indentation engine
-- `src/lexer/mod.rs` — scanner currently skips `# ...` comments entirely
-- `src/lexer/types.rs` — token/span types; likely home for comment sidecar type
-- `src/lexer/tests.rs` — current lexer behavior asserts comments are skipped
-- `tests/fmt_parity_smoke.rs` — CLI-level formatter smoke tests
-- `src/parser/*` — future AST-driven formatter work, but not required for the first slice
+- `src/formatter/mod.rs` — module wiring; `format_source` still points at `engine`.
+- `src/formatter/engine.rs` — current live formatter path.
+- `src/formatter/algebra.rs` — new standalone algebra engine plus focused unit tests.
+- `code-task.formatter.md` — source task; this slice covers Task 2 only.
+- `tests/fmt_parity_smoke.rs` and formatter unit tests — regression proof that the live path stayed intact.
 
-## Current behavior
-- `scan_tokens` drops comments before the formatter sees them.
-- `format_source` delegates to the token formatter and returns normalized source unchanged on lex failure.
-- The formatter already preserves one blank line and indentation for `do`/`end`/branch constructs.
+## Constraints still in force
+- Keep exactly one concrete slice active.
+- Do not mix in AST-to-doc conversion, parser threading, config loading, or `--line-length` CLI wiring yet.
+- Because the new module is not on the live CLI path, a CLI/manual smoke can only count as regression coverage for the existing formatter path, not proof that `src/formatter/algebra.rs` was exercised.
+- Only stage formatter slice files plus the shared planning docs for this slice.
 
-## Constraints and planning call
-- The task is much larger than a single safe slice; start with comment preservation on top of the existing formatter.
-- Do not start the Wadler-Lindig / AST printer in the same slice unless comment preservation lands cleanly first.
-- Because the repo is already dirty outside the formatter surface, only touch and later stage formatter-task files.
-
-## First slice target
-Add a comment sidecar in the lexer plus formatter support that preserves:
-- full-line comments
-- trailing comments on code lines
-- a single blank line between logical regions
-- idempotency for comment-bearing files
-
-## Likely design
-1. Extend the lexer with a public comment-aware scan entrypoint (keep `scan_tokens` behavior-compatible for non-formatter callers if possible).
-2. Record comment metadata needed by the formatter: span/line/column/text and whether blank lines precede the comment.
-3. Teach `src/formatter/engine.rs` to merge comment sidecar entries back into logical lines using source positions.
-4. Add unit tests first for lexer comment capture and formatter round-trip behavior, then implement.
-
-## Verification surfaces for slice 1
-- Focused Rust tests for lexer + formatter modules
-- CLI smoke test covering `tonic fmt` on a comment-bearing fixture
-- Idempotency rerun on the formatted comment fixture
+## Verification evidence
+- `logs/formatter_algebra.log` — focused algebra tests
+- `logs/formatter_regression.log` — existing formatter idempotency regression
+- `logs/formatter_parity.log` — existing CLI parity smoke regression

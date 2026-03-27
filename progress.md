@@ -1,54 +1,55 @@
 # Progress
 
 ## Current step
-Builder implementation complete for the **comment-preserving formatter foundation** slice. Lexer comment capture is in place, the token formatter reinserts full-line and trailing comments, and focused verification is green.
+Builder implementation complete for slice 2: the standalone Wadler-Lindig algebra engine is in place, focused verification is green, and the live formatter path remains intentionally unchanged.
 
 ## Next role
 critic
 
 ## Active slice acceptance
-- Preserve full-line `# ...` comments through `format_source`
-- Preserve trailing `# ...` comments on code lines
-- Keep existing indentation/blank-line normalization behavior
-- Keep formatter idempotent on comment-bearing input
-- Cover the behavior with lexer tests, formatter tests, and one CLI smoke
+- Add `src/formatter/algebra.rs` with the task-required `Doc` variants.
+- Implement `format(doc, max_width)` with tested flat/broken group behavior.
+- Prove `Nest` indentation and `FlexBreak` semantics with focused unit tests.
+- Keep `tonic fmt` on the existing token formatter path for now.
+- Re-run at least one existing formatter regression path to show no behavior regression in the live CLI path.
 
 ## Relevant Issues
 | Issue | Disposition | Notes |
 |---|---|---|
-| `tonic fmt` currently deletes comments because `scan_tokens` skips `# ...` | fix-now | Resolved in this slice via lexer comment sidecar + formatter reinsertion |
-| Formatter is still token-driven and not line-length aware | fix-next | Next major slice after comment preservation lands |
-| No Wadler-Lindig algebra engine / AST printer exists yet | fix-next | Required for the full code task, but too large for slice 1 |
-| No `--line-length` / formatter config support | deferred | Wait until algebra-based wrapping exists |
-| Scratchpad referenced missing `src/cmd_fmt.rs`; formatter CLI lives in `src/cmd_test.rs` | out-of-scope | Navigation/documentation confusion only; no repo command implementation was missing for this slice |
-| Repo has unrelated dirty changes outside formatter surface | out-of-scope | Do not modify or stage unrelated files; commit only formatter-task files |
+| New algebra engine is not wired into the live formatter path yet | fix-next | Intentional for this slice; next formatter slices should build AST-to-doc conversion and then switch `format_source` over deliberately |
+| Formatter is still token-driven and not line-length aware | fix-next | The algebra engine is now the prerequisite, but runtime behavior is unchanged |
+| No AST-to-doc conversion exists yet | fix-next | Start only after this algebra slice is reviewed and committed |
+| No `--line-length` / formatter config support | deferred | Wait until AST-driven formatting exists and width handling is live |
+| `cargo run -- fmt <path>` is ambiguous in this workspace; manual smoke needs `cargo run --bin tonic -- fmt <path>` | deferred | Relevant for future live formatter slices, but this slice has no honest manual path into `src/formatter/algebra.rs` |
+| Repo has unrelated dirty changes outside formatter surface | out-of-scope | Do not modify or stage unrelated files; commit only formatter slice files plus shared task docs |
 
 ## Status table
 | Surface | Status | Notes |
 |---|---|---|
-| `src/lexer/mod.rs` / `src/lexer/types.rs` comment model | done | Added `scan_tokens_with_comments`, `Comment`, blank-line metadata, and trailing/full-line distinction |
-| `src/formatter/engine.rs` comment reinsertion | done | Logical lines now track source lines and merge comment sidecars deterministically |
-| `src/lexer/tests.rs` | done | Added explicit comment capture assertions while keeping `scan_tokens` compatibility |
-| `src/formatter/mod.rs` tests | done | Added full-line, trailing-comment, and idempotency coverage |
-| `tests/fmt_parity_smoke.rs` | done | Added CLI smoke + second-pass idempotency for comment-bearing source |
-| Commit | pending | Commit after staging only formatter slice files and task docs |
+| Slice 1 comment preservation | done | Landed on `e81e939` |
+| `src/formatter/algebra.rs` | done | Added standalone algebra engine and focused tests |
+| AST-to-doc conversion | todo | Explicitly not part of this iteration |
+| CLI/config line-length support | todo | Explicitly not part of this iteration |
 
-## Builder notes
-- Implemented files: `src/lexer/mod.rs`, `src/lexer/types.rs`, `src/lexer/tests.rs`, `src/formatter/engine.rs`, `src/formatter/mod.rs`, `tests/fmt_parity_smoke.rs`
-- Task docs updated: `context.md`, `plan.md`, `progress.md`
-- Verification logs captured in `logs/formatter_slice_lexer.log`, `logs/formatter_slice_formatter.log`, `logs/formatter_slice_cli.log`, `logs/formatter_slice_fmt.log`
+## Files changed in this slice
+- `src/formatter/algebra.rs`
+- `src/formatter/mod.rs`
+- `context.md`
+- `plan.md`
+- `progress.md`
 
 ## Verification
-- `cargo fmt --all -- src/lexer/types.rs`
-- `cargo test scan_tokens_with_comments_captures_full_line_and_trailing_comments -- --nocapture`
-- `cargo test format_source_preserves -- --nocapture`
+- `cargo test formatter::algebra -- --nocapture`
+  - log: `logs/formatter_algebra.log`
 - `cargo test format_source_is_idempotent_with_comments -- --nocapture`
-- `cargo test --test fmt_parity_smoke -- --nocapture`
+  - log: `logs/formatter_regression.log`
+- `cargo test --test fmt_parity_smoke fmt_preserves_comments_and_is_idempotent -- --nocapture`
+  - log: `logs/formatter_parity.log`
 
-## Outcome
-- `scan_tokens` remains behavior-compatible for existing callers.
-- Formatter now preserves full-line comments, trailing comments, and blank-line gaps around comment regions.
-- Comment-bearing formatter output is idempotent in both unit and CLI smoke coverage.
+## Builder notes
+- The new algebra module is intentionally standalone and not re-routed into `format_source` yet.
+- `FlexBreak` is implemented as a re-evaluated subdocument: in a broken layout it still probes the remaining suffix and may render flat.
+- Regression coverage proves the live formatter path still behaves as before, but it does **not** exercise the new algebra code path.
 
 ## Commit
-- Committed as `feat(formatter): preserve comments in token formatter` (use `git rev-parse --short HEAD` for the current hash)
+- Landed at current `HEAD` as `feat(formatter): add standalone algebra engine`

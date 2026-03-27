@@ -1,45 +1,51 @@
 # Plan
 
 ## Active slice
-Comment-preserving token formatter foundation.
+Wadler-Lindig algebra engine foundation in `src/formatter/algebra.rs`, isolated from the live formatter path.
 
-## Why this slice first
-It removes the most destructive current behavior (`tonic fmt` deleting comments) while staying small enough to verify. The full AST/algebra formatter remains the next major slice.
+## Why this slice now
+The code task explicitly calls for an algebra engine before AST-to-doc conversion. Keeping it standalone makes the verification honest: the new code is exercised by focused algebra tests, while the unchanged runtime path is covered separately by regression tests.
 
 ## Builder checklist
-- [x] Add/adjust lexer-side comment model in `src/lexer/types.rs` and `src/lexer/mod.rs`
-- [x] Keep existing token scanning callers working, or introduce a narrow comment-aware formatter-only entrypoint
-- [x] Update lexer tests to assert comment capture instead of silent discard
-- [x] Update formatter engine to reinsert full-line and trailing comments deterministically
-- [x] Add formatter unit tests for comment preservation and idempotency
-- [x] Add/extend CLI smoke coverage in `tests/fmt_parity_smoke.rs`
-- [x] Run focused verification commands and save outputs under `logs/`
-- [x] Commit only the formatter slice files once verification passes
+- [x] Add `mod algebra;` in `src/formatter/mod.rs`.
+- [x] Create `src/formatter/algebra.rs`.
+- [x] Implement `Doc` with the task-listed variants: `Nil`, `Concat(Box<Doc>, Box<Doc>)`, `Nest(i32, Box<Doc>)`, `Text(String)`, `Line`, `Group(Box<Doc>)`, `FlexBreak(Box<Doc>)`.
+- [x] Implement `format(doc: &Doc, max_width: usize) -> String`.
+- [x] Keep semantics minimal and explicit:
+  - `Group` tries flat layout first and falls back to broken layout when it does not fit.
+  - `Line` renders as a space in flat mode and as `\n` plus current indentation in broken mode.
+  - `Nest` increases indentation for broken lines only.
+  - `FlexBreak` is re-evaluated inside broken layouts and can stay flat when the remaining suffix fits.
+- [x] Add focused unit tests in `src/formatter/algebra.rs` covering:
+  - flat group when content fits
+  - broken group when width is exceeded
+  - nested indentation after a broken line
+  - concat / nil composition stability
+  - `FlexBreak` partial reflow behavior with exact expected strings
+- [x] Do **not** switch `format_source` to use the algebra engine yet.
+- [x] Do **not** add AST-to-doc conversion, parser threading, config files, or CLI flags in this slice.
+- [x] Run focused verification, save outputs under `logs/`, and commit only the slice files once green.
 
 ## Test plan
-1. **Lexer capture test**
-   - Input: `1 # trailing\n# heading\n2\n`
-   - Expect: numeric tokens still parse; comments are captured with stable positions/text.
-2. **Formatter full-line comment preservation**
-   - Input: unformatted nested block with leading comment
-   - Expect: comment remains, indentation is normalized, trailing newline contract preserved.
-3. **Formatter trailing comment preservation**
-   - Input: `def run() do\n1 # note\nend\n`
-   - Expect: trailing comment remains attached to the `1` line after formatting.
-4. **Formatter idempotency with comments**
-   - Format twice; second pass must equal first.
-5. **CLI smoke**
-   - Run `tonic fmt` on a temp fixture containing comments; file content should retain comments and second pass should be a no-op.
+1. **Flat group stays flat**
+   - Build a small grouped doc that fits within `max_width`.
+   - Expect a single-line rendering with spaces instead of line breaks.
+2. **Broken group wraps when too wide**
+   - Use the same structure with a narrower width.
+   - Expect deterministic line breaks and stable indentation.
+3. **Nested indentation**
+   - Use `Nest` around a broken inner group.
+   - Expect continuation lines to pick up the nested indentation.
+4. **FlexBreak behavior**
+   - Build a grouped doc where the outer group must break, but a later flex break can stay inline.
+   - Expect a mixed rendering that proves `FlexBreak` is not identical to `Line`.
+5. **No live formatter regression**
+   - Re-run one existing formatter regression test and one CLI smoke/parity test to prove the runtime path still works unchanged.
 
 ## Verification commands
-- `cargo test formatter:: lexer::tests::scan_tokens_*comment* -- --nocapture`
-- `cargo test fmt_parity_smoke -- --nocapture`
-- If the focused commands are noisy or insufficient, run the exact affected tests by name and capture output to `logs/`.
+- `cargo test formatter::algebra -- --nocapture`
+- `cargo test format_source_is_idempotent_with_comments -- --nocapture`
+- `cargo test --test fmt_parity_smoke fmt_preserves_comments_and_is_idempotent -- --nocapture`
 
-## Explicit deferrals after slice 1
-- Wadler-Lindig algebra engine (`src/formatter/algebra.rs`)
-- AST-to-doc conversion (`src/formatter/to_doc.rs`)
-- width-aware wrapping / `--line-length`
-- `.tonic_formatter` config
-
-These should become the next slices once comment preservation is green.
+## Critic note
+There is still no honest manual smoke for the changed code path because `tonic fmt` remains wired to `src/formatter/engine.rs`. The critic should treat any CLI/manual formatter run as regression evidence only, not as proof that the new algebra module executed.

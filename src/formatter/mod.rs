@@ -1,3 +1,4 @@
+mod algebra;
 mod engine;
 
 use std::fs;
