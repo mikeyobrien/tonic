@@ -20,6 +20,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Env", OPTIONAL_STDLIB_ENV_SOURCE),
     ("Url", OPTIONAL_STDLIB_URL_SOURCE),
     ("File", OPTIONAL_STDLIB_FILE_SOURCE),
+    ("Math", OPTIONAL_STDLIB_MATH_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -903,3 +904,6 @@ const OPTIONAL_STDLIB_ENV_SOURCE: &str =
 
 const OPTIONAL_STDLIB_FILE_SOURCE: &str =
     "defmodule File do\n  def read(path) do\n    System.read_text(path)\n  end\n\n  def write(path, content) do\n    System.write_text(path, content)\n  end\n\n  def write_atomic(path, content) do\n    System.write_text_atomic(path, content)\n  end\n\n  def append(path, content) do\n    System.append_text(path, content)\n  end\n\n  def exists?(path) do\n    System.path_exists(path)\n  end\n\n  def ls(path) do\n    System.list_dir(path)\n  end\n\n  def ls_r(path) do\n    System.list_files_recursive(path)\n  end\n\n  def is_dir?(path) do\n    System.is_dir(path)\n  end\n\n  def mkdir_p(path) do\n    System.ensure_dir(path)\n  end\n\n  def rm_rf(path) do\n    System.remove_tree(path)\n  end\n\n  def cp(source, destination) do\n    host_call(:file_cp, source, destination)\n  end\n\n  def rename(source, destination) do\n    host_call(:file_rename, source, destination)\n  end\n\n  def stat(path) do\n    host_call(:file_stat, path)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_MATH_SOURCE: &str =
+    "defmodule Math do\n  def pi() do\n    3.141592653589793\n  end\n\n  def e() do\n    2.718281828459045\n  end\n\n  def pow(base, exponent) do\n    host_call(:math_pow, base, exponent)\n  end\n\n  def sqrt(value) do\n    host_call(:math_sqrt, value)\n  end\n\n  def abs(value) do\n    host_call(:math_abs, value)\n  end\n\n  def min(a, b) do\n    host_call(:math_min, a, b)\n  end\n\n  def max(a, b) do\n    host_call(:math_max, a, b)\n  end\n\n  def log(value) do\n    host_call(:math_log, value)\n  end\n\n  def log2(value) do\n    host_call(:math_log2, value)\n  end\n\n  def log10(value) do\n    host_call(:math_log10, value)\n  end\n\n  def sin(value) do\n    host_call(:math_sin, value)\n  end\n\n  def cos(value) do\n    host_call(:math_cos, value)\n  end\n\n  def tan(value) do\n    host_call(:math_tan, value)\n  end\n\n  def ceil(value) do\n    host_call(:math_ceil, value)\n  end\n\n  def floor(value) do\n    host_call(:math_floor, value)\n  end\n\n  def round(value) do\n    host_call(:math_round, value)\n  end\nend\n";

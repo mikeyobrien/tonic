@@ -21,6 +21,7 @@ mod integer_mod;
 mod io_mod;
 mod json_mod;
 mod map_mod;
+mod math_mod;
 mod path_mod;
 mod shell_mod;
 mod string_mod;
@@ -423,6 +424,7 @@ impl HostRegistry {
         env_mod::register_env_host_functions(self);
         url_mod::register_url_host_functions(self);
         file_mod::register_file_host_functions(self);
+        math_mod::register_math_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
