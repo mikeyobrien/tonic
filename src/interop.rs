@@ -19,6 +19,7 @@ mod map_mod;
 mod path_mod;
 mod string_mod;
 mod system;
+mod toml_mod;
 mod tuple_mod;
 
 /// Host function signature: takes runtime values, returns result
@@ -393,6 +394,9 @@ impl HostRegistry {
 
         // JSON stdlib interop primitives for interpreter-backed Json.* calls.
         json_mod::register_json_host_functions(self);
+
+        // TOML stdlib interop primitives for interpreter-backed Toml.* calls.
+        toml_mod::register_toml_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
