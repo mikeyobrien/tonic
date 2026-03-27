@@ -23,6 +23,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Math", OPTIONAL_STDLIB_MATH_SOURCE),
     ("Random", OPTIONAL_STDLIB_RANDOM_SOURCE),
     ("Regex", OPTIONAL_STDLIB_REGEX_SOURCE),
+    ("Logger", OPTIONAL_STDLIB_LOGGER_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -915,3 +916,6 @@ const OPTIONAL_STDLIB_RANDOM_SOURCE: &str =
 
 const OPTIONAL_STDLIB_REGEX_SOURCE: &str =
     "defmodule Regex do\n  def match?(string, pattern) do\n    host_call(:regex_match, string, pattern)\n  end\n\n  def run(string, pattern) do\n    host_call(:regex_run, string, pattern)\n  end\n\n  def scan(string, pattern) do\n    host_call(:regex_scan, string, pattern)\n  end\n\n  def replace(string, pattern, replacement) do\n    host_call(:regex_replace, string, pattern, replacement)\n  end\n\n  def replace_all(string, pattern, replacement) do\n    host_call(:regex_replace_all, string, pattern, replacement)\n  end\n\n  def split(string, pattern) do\n    host_call(:regex_split, string, pattern)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_LOGGER_SOURCE: &str =
+    "defmodule Logger do\n  def debug(msg) do\n    host_call(:logger_debug, msg)\n  end\n\n  def info(msg) do\n    host_call(:logger_info, msg)\n  end\n\n  def warn(msg) do\n    host_call(:logger_warn, msg)\n  end\n\n  def error(msg) do\n    host_call(:logger_error, msg)\n  end\n\n  def set_level(level) do\n    host_call(:logger_set_level, level)\n  end\n\n  def get_level() do\n    host_call(:logger_get_level)\n  end\nend\n";
