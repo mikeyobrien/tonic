@@ -261,6 +261,118 @@ fn host_skip(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     ))))
 }
 
+/// Assert that `actual` contains all key-value pairs from `expected` (map subset matching).
+/// For non-map values, falls back to equality.
+fn host_assert_match(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(HostError::new(
+            "Assert.assert_match expects 2-3 arguments (expected, actual, optional message)",
+        ));
+    }
+    let expected = &args[0];
+    let actual = &args[1];
+
+    match (expected, actual) {
+        (RuntimeValue::Map(expected_entries), RuntimeValue::Map(actual_entries)) => {
+            let mut mismatches = Vec::new();
+            let mut missing = Vec::new();
+
+            for (ek, ev) in expected_entries {
+                match actual_entries.iter().find(|(ak, _)| ak == ek) {
+                    Some((_, av)) if av == ev => {}
+                    Some((_, av)) => {
+                        mismatches.push((ek.clone(), ev.clone(), av.clone()));
+                    }
+                    None => {
+                        missing.push((ek.clone(), ev.clone()));
+                    }
+                }
+            }
+
+            if mismatches.is_empty() && missing.is_empty() {
+                return Ok(RuntimeValue::Atom("ok".to_string()));
+            }
+
+            let message = extract_message(args, 2, "map does not contain expected key-value pairs");
+
+            let mut detail_entries = vec![
+                RuntimeValue::Tuple(
+                    Box::new(RuntimeValue::Atom("type".to_string())),
+                    Box::new(RuntimeValue::Atom("assert_match".to_string())),
+                ),
+                RuntimeValue::Tuple(
+                    Box::new(RuntimeValue::Atom("expected".to_string())),
+                    Box::new(expected.clone()),
+                ),
+                RuntimeValue::Tuple(
+                    Box::new(RuntimeValue::Atom("actual".to_string())),
+                    Box::new(actual.clone()),
+                ),
+                RuntimeValue::Tuple(
+                    Box::new(RuntimeValue::Atom("message".to_string())),
+                    Box::new(RuntimeValue::String(message)),
+                ),
+            ];
+
+            if !missing.is_empty() {
+                detail_entries.push(RuntimeValue::Tuple(
+                    Box::new(RuntimeValue::Atom("missing_keys".to_string())),
+                    Box::new(RuntimeValue::List(
+                        missing.into_iter().map(|(k, _)| k).collect(),
+                    )),
+                ));
+            }
+
+            if !mismatches.is_empty() {
+                let mismatch_list = mismatches
+                    .into_iter()
+                    .map(|(k, expected_v, actual_v)| {
+                        RuntimeValue::List(vec![k, expected_v, actual_v])
+                    })
+                    .collect();
+                detail_entries.push(RuntimeValue::Tuple(
+                    Box::new(RuntimeValue::Atom("mismatched_keys".to_string())),
+                    Box::new(RuntimeValue::List(mismatch_list)),
+                ));
+            }
+
+            Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
+                Box::new(RuntimeValue::Atom("assertion_failed".to_string())),
+                Box::new(RuntimeValue::List(detail_entries)),
+            ))))
+        }
+        _ => {
+            // Non-map: fall back to equality
+            if expected == actual {
+                Ok(RuntimeValue::Atom("ok".to_string()))
+            } else {
+                let message = extract_message(args, 2, "values do not match");
+                Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
+                    Box::new(RuntimeValue::Atom("assertion_failed".to_string())),
+                    Box::new(RuntimeValue::List(vec![
+                        RuntimeValue::Tuple(
+                            Box::new(RuntimeValue::Atom("type".to_string())),
+                            Box::new(RuntimeValue::Atom("assert_match".to_string())),
+                        ),
+                        RuntimeValue::Tuple(
+                            Box::new(RuntimeValue::Atom("expected".to_string())),
+                            Box::new(expected.clone()),
+                        ),
+                        RuntimeValue::Tuple(
+                            Box::new(RuntimeValue::Atom("actual".to_string())),
+                            Box::new(actual.clone()),
+                        ),
+                        RuntimeValue::Tuple(
+                            Box::new(RuntimeValue::Atom("message".to_string())),
+                            Box::new(RuntimeValue::String(message)),
+                        ),
+                    ])),
+                ))))
+            }
+        }
+    }
+}
+
 /// Check if a raised error message matches the expected pattern.
 /// Used by Assert.assert_raises/2 — the try/rescue is handled in Tonic,
 /// this host function just does the string comparison.
@@ -309,5 +421,6 @@ pub fn register_assert_host_functions(registry: &HostRegistry) {
     registry.register("assert_contains", host_assert_contains);
     registry.register("assert_in_delta", host_assert_in_delta);
     registry.register("skip", host_skip);
+    registry.register("assert_match", host_assert_match);
     registry.register("assert_raises_check", host_assert_raises_check);
 }

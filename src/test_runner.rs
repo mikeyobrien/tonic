@@ -536,6 +536,10 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                     let mut container = None;
                     let mut element = None;
                     let mut delta = None;
+                    let mut expected = None;
+                    let mut actual = None;
+                    let mut missing_keys = None;
+                    let mut mismatched_keys = None;
                     let mut message = None;
 
                     for entry in entries {
@@ -547,6 +551,7 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                                             "assert_not_equal" => "assert_not_equal",
                                             "assert_contains" => "assert_contains",
                                             "assert_in_delta" => "assert_in_delta",
+                                            "assert_match" => "assert_match",
                                             _ => "assert_equal",
                                         };
                                     }
@@ -565,6 +570,18 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                                 }
                                 RuntimeValue::Atom(k) if k == "delta" => {
                                     delta = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "expected" => {
+                                    expected = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "actual" => {
+                                    actual = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "missing_keys" => {
+                                    missing_keys = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "mismatched_keys" => {
+                                    mismatched_keys = Some(val.render());
                                 }
                                 RuntimeValue::Atom(k) if k == "message" => {
                                     if let RuntimeValue::String(s) = val.as_ref() {
@@ -595,6 +612,20 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                             }
                             if let Some(d) = delta {
                                 lines.push(format!("  delta: {d}"));
+                            }
+                        }
+                        "assert_match" => {
+                            if let Some(e) = expected {
+                                lines.push(format!("  expected: {e}"));
+                            }
+                            if let Some(a) = actual {
+                                lines.push(format!("  actual:   {a}"));
+                            }
+                            if let Some(m) = missing_keys {
+                                lines.push(format!("  missing keys:    {m}"));
+                            }
+                            if let Some(m) = mismatched_keys {
+                                lines.push(format!("  mismatched keys: {m}"));
                             }
                         }
                         _ => {

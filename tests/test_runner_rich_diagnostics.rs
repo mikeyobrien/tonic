@@ -1902,3 +1902,73 @@ fn test_assert_raises_json_output() {
         "failed error should mention no raise"
     );
 }
+
+// ── assert_match tests ─────────────────────────────────────────────────────
+
+#[test]
+fn test_assert_match_map_subset_passes() {
+    let fixture_root = write_single_test_file(
+        "test-assert-match-subset-pass",
+        "match_pass_test.tn",
+        "defmodule MatchPassTest do\n  def test_subset_match() do\n    Assert.assert_match(%{a: 1}, %{a: 1, b: 2})\n  end\n\n  def test_exact_match() do\n    Assert.assert_match(%{a: 1, b: 2}, %{a: 1, b: 2})\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "subset match should pass, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(stdout.contains("2 passed; 0 failed"));
+}
+
+#[test]
+fn test_assert_match_map_subset_fails_on_mismatch() {
+    let fixture_root = write_single_test_file(
+        "test-assert-match-subset-fail",
+        "match_fail_test.tn",
+        "defmodule MatchFailTest do\n  def test_mismatched_value() do\n    Assert.assert_match(%{a: 2}, %{a: 1, b: 2})\n  end\n\n  def test_missing_key() do\n    Assert.assert_match(%{c: 3}, %{a: 1, b: 2})\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert!(!output.status.success(), "mismatch should fail");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("assert_match failed"),
+        "should mention assert_match in failure output, got: {stdout}"
+    );
+    assert!(stdout.contains("0 passed; 2 failed"));
+}
+
+#[test]
+fn test_assert_match_exact_equality_for_non_maps() {
+    let fixture_root = write_single_test_file(
+        "test-assert-match-non-map",
+        "match_nonmap_test.tn",
+        "defmodule MatchNonmapTest do\n  def test_equal_ints() do\n    Assert.assert_match(42, 42)\n  end\n\n  def test_unequal_ints() do\n    Assert.assert_match(42, 43)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert!(!output.status.success(), "one test should fail");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("1 passed; 1 failed"),
+        "should have 1 pass and 1 fail, got: {stdout}"
+    );
+}
