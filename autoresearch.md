@@ -107,7 +107,7 @@ Improve the Tonic unit testing UX so that writing, running, and debugging tests 
 ### Metrics
 
 - **Primary**: Focused unit testing UX acceptance checks green
-- **Current Best**: 34 focused testing UX checks green (run 36)
+- **Current Best**: 37 focused testing UX checks green (run 37)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -147,3 +147,4 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - **Run 34 (KEEP, metric=28, segment 2)**: Added `--seed <number>` flag to `tonic test` for reproducible randomized test ordering using splitmix64 PRNG and Fisher-Yates shuffle, with 3 focused integration tests for randomized order, deterministic reproduction, and JSON seed field. Hypothesis: confirmed — randomized test ordering detects implicit test-order dependencies that cause CI flakiness, and reproducible seeds make debugging easy.
 - **Run 35 (KEEP, metric=31, segment 2)**: Added `setup/0` function support for test modules — an optional public `setup/0` function runs before each `test_*` function in its module, with setup failures marking tests as failed with "setup failed:" prefix, plus 3 focused integration tests for setup-before-each, setup-failure, and no-setup regression. Hypothesis: confirmed — shared test fixtures via `setup/0` enable DRY test authoring and follow established patterns from ExUnit/JUnit/pytest without adding complexity.
 - **Run 36 (KEEP, metric=34, segment 2)**: Added `Assert.skip/0-1` for pending/skipped tests — skip() marks a test as skipped (yellow status, not counted as failure, doesn't trigger --fail-fast), with optional reason string, plus 3 focused integration tests for skip basic, skip with reason, and skip+fail-fast interaction. Hypothesis: confirmed — skip support is essential for WIP tests, known-broken tests, and platform-specific tests, following established patterns from ExUnit/@tag :skip, pytest/@pytest.mark.skip, and JUnit/@Disabled.
+- **Run 37 (KEEP, metric=37, segment 2)**: Added `Assert.assert_raises/1-2` for testing error conditions — pure Tonic implementation using try/rescue with multi-clause private helpers, optional expected error pattern matching via host function, plus 3 focused integration tests for raise-passes, pattern-match, and JSON output. Hypothesis: confirmed — assert_raises is essential for testing error handling paths, following established patterns from ExUnit/assert_raise, pytest/pytest.raises, and JUnit/assertThrows.
