@@ -1060,3 +1060,147 @@ end
         "expected assert_in_delta failure in JSON error, got: {error}"
     );
 }
+
+// ── --fail-fast tests ──────────────────────────────────────────────────────
+
+#[test]
+fn test_fail_fast_stops_after_first_failure() {
+    let fixture_root = write_single_test_file(
+        "test-fail-fast-stops",
+        "fail_fast_test.tn",
+        "defmodule FailFastTest do
+  def test_alpha() do
+    :ok
+  end
+
+  def test_beta_fail() do
+    err(:boom)
+  end
+
+  def test_gamma() do
+    :ok
+  end
+
+  def test_delta_fail() do
+    err(:bang)
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "fail_fast_test.tn", "--fail-fast"])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1), "should fail");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+
+    // Tests are sorted alphabetically: alpha, beta_fail, delta_fail, gamma
+    // With --fail-fast, only alpha (pass) and beta_fail (fail) should appear
+    assert!(
+        stdout.contains("test FailFastTest.test_alpha ... ok"),
+        "alpha should have run, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test FailFastTest.test_beta_fail ... FAILED"),
+        "beta_fail should have run, got:\n{stdout}"
+    );
+    // delta_fail and gamma should NOT appear because we stopped at beta_fail
+    assert!(
+        !stdout.contains("test_delta_fail"),
+        "delta_fail should not have run with --fail-fast, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("test_gamma"),
+        "gamma should not have run with --fail-fast, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("1 passed; 1 failed; 2 total"),
+        "summary should reflect only executed tests, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_fail_fast_runs_all_when_all_pass() {
+    let fixture_root = write_single_test_file(
+        "test-fail-fast-all-pass",
+        "all_pass_test.tn",
+        "defmodule AllPassTest do
+  def test_one() do
+    :ok
+  end
+
+  def test_two() do
+    :ok
+  end
+
+  def test_three() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "all_pass_test.tn", "--fail-fast"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(output.status.success(), "all tests should pass");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("3 passed; 0 failed; 3 total"),
+        "all three should run when none fail, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_fail_fast_json_output() {
+    let fixture_root = write_single_test_file(
+        "test-fail-fast-json",
+        "fail_fast_json_test.tn",
+        "defmodule FailFastJsonTest do
+  def test_alpha() do
+    :ok
+  end
+
+  def test_beta_fail() do
+    err(:boom)
+  end
+
+  def test_gamma() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args([
+            "test",
+            "fail_fast_json_test.tn",
+            "--fail-fast",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("test command should execute");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let json: Value = serde_json::from_str(&stdout).expect("should parse JSON output");
+    let results = json["results"].as_array().expect("results should be array");
+
+    // Only alpha (pass) and beta_fail (fail) should be in results
+    assert_eq!(
+        results.len(),
+        2,
+        "should have 2 results (stopped at first failure), got: {results:?}"
+    );
+    assert_eq!(json["passed"], 1);
+    assert_eq!(json["failed"], 1);
+    assert_eq!(json["total"], 2);
+}

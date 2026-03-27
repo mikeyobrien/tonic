@@ -18,6 +18,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
     let mut format = TestOutputFormat::Text;
     let mut filter: Option<String> = None;
     let mut list_only = false;
+    let mut fail_fast = false;
     let mut index = 1;
 
     while index < args.len() {
@@ -44,6 +45,10 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
             }
             "--list" => {
                 list_only = true;
+                index += 1;
+            }
+            "--fail-fast" => {
+                fail_fast = true;
                 index += 1;
             }
             "--filter" => {
@@ -144,7 +149,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
     }
 
     let report = match observe_command_phase_result(&mut observed_run, "test.run_suite", || {
-        test_runner::run(&source_path, filter.as_deref())
+        test_runner::run(&source_path, filter.as_deref(), fail_fast)
     }) {
         Ok(report) => report,
         Err(TestRunnerError::Failure(message)) => {

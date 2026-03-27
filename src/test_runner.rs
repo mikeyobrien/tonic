@@ -175,13 +175,17 @@ pub fn list_tests(path: &str, filter: Option<&str>) -> Result<Vec<String>, TestR
     Ok(all_tests)
 }
 
-pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunnerError> {
+pub fn run(
+    path: &str,
+    filter: Option<&str>,
+    fail_fast: bool,
+) -> Result<TestRunReport, TestRunnerError> {
     let target = Path::new(path);
     let test_files = discover_test_files(target)?;
     let mut results = Vec::new();
     let run_start = Instant::now();
 
-    for file in test_files {
+    'outer: for file in test_files {
         let source = std::fs::read_to_string(&file).map_err(|error| {
             TestRunnerError::Failure(format!(
                 "failed to read source file {}: {error}",
@@ -207,6 +211,9 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
                         error: Some(error),
                         duration: test_start.elapsed(),
                     });
+                    if fail_fast {
+                        break 'outer;
+                    }
                 }
                 Ok(_) => {
                     results.push(TestCaseResult {
@@ -223,6 +230,9 @@ pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunner
                         error: Some(error.to_string()),
                         duration: test_start.elapsed(),
                     });
+                    if fail_fast {
+                        break 'outer;
+                    }
                 }
             }
         }
