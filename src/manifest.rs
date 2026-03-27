@@ -191,8 +191,7 @@ struct ProjectSourceAnalysis {
 }
 
 const STDLIB_MODULE_NAMES: &[&str] = &[
-    "System", "String", "Path", "IO", "List", "Map", "Enum", "Integer", "Float", "Tuple",
-    "Assert",
+    "System", "String", "Path", "IO", "List", "Map", "Enum", "Integer", "Float", "Tuple", "Assert",
 ];
 
 fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {

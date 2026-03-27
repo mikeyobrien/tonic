@@ -71,6 +71,28 @@ impl TestRunReport {
             }
         }
 
+        // Failure summary: re-list failed tests with full errors at the end
+        let failures: Vec<&TestCaseResult> = self
+            .results
+            .iter()
+            .filter(|r| r.status == TestCaseStatus::Failed)
+            .collect();
+
+        if !failures.is_empty() {
+            lines.push(String::new());
+            lines.push("Failures:".to_string());
+            lines.push(String::new());
+            for (i, result) in failures.iter().enumerate() {
+                lines.push(format!("  {}. {}", i + 1, result.id));
+                if let Some(error) = &result.error {
+                    for error_line in error.lines() {
+                        lines.push(format!("     {error_line}"));
+                    }
+                }
+                lines.push(String::new());
+            }
+        }
+
         let status = if self.succeeded() { "ok" } else { "FAILED" };
         let total_duration = format_duration(self.duration);
         lines.push(format!(
@@ -82,26 +104,28 @@ impl TestRunReport {
     }
 
     pub fn render_json(&self) -> serde_json::Value {
+        let result_to_json = |result: &TestCaseResult| {
+            json!({
+                "id": result.id,
+                "status": match result.status {
+                    TestCaseStatus::Passed => "passed",
+                    TestCaseStatus::Failed => "failed",
+                },
+                "error": result.error,
+                "duration_ms": duration_ms(result.duration),
+            })
+        };
+
         json!({
             "status": if self.succeeded() { "ok" } else { "failed" },
             "total": self.total,
             "passed": self.passed,
             "failed": self.failed,
             "duration_ms": duration_ms(self.duration),
-            "results": self
-                .results
-                .iter()
-                .map(|result| {
-                    json!({
-                        "id": result.id,
-                        "status": match result.status {
-                            TestCaseStatus::Passed => "passed",
-                            TestCaseStatus::Failed => "failed",
-                        },
-                        "error": result.error,
-                        "duration_ms": duration_ms(result.duration),
-                    })
-                })
+            "results": self.results.iter().map(result_to_json).collect::<Vec<_>>(),
+            "failures": self.results.iter()
+                .filter(|r| r.status == TestCaseStatus::Failed)
+                .map(result_to_json)
                 .collect::<Vec<_>>(),
         })
     }
@@ -281,8 +305,7 @@ fn is_test_file_name(path: &Path) -> bool {
 fn format_assertion_failure(reason: &RuntimeValue) -> String {
     match reason {
         // assert/refute: {:assertion_failed, {:assert|:refute, message}}
-        RuntimeValue::Tuple(tag, details)
-            if matches!(**tag, RuntimeValue::Atom(ref a) if a == "assertion_failed") =>
+        RuntimeValue::Tuple(tag, details) if matches!(**tag, RuntimeValue::Atom(ref a) if a == "assertion_failed") =>
         {
             match details.as_ref() {
                 // Simple assert/refute: {type_atom, message_string}
@@ -331,10 +354,7 @@ fn format_assertion_failure(reason: &RuntimeValue) -> String {
                         }
                     }
 
-                    let mut lines = vec![format!(
-                        "{kind} failed: {}",
-                        message.unwrap_or_default()
-                    )];
+                    let mut lines = vec![format!("{kind} failed: {}", message.unwrap_or_default())];
                     if let Some(l) = left {
                         lines.push(format!("  left:  {l}"));
                     }

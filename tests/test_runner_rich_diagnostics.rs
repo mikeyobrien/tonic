@@ -714,6 +714,103 @@ fn test_filter_with_json_output() {
     );
 }
 
+// --- Failure summary section tests ---
+
+#[test]
+fn test_failure_summary_section_appears_for_mixed_pass_fail() {
+    let fixture_root = write_single_test_file(
+        "test-failure-summary-mixed",
+        "test_summary.tn",
+        "defmodule SummaryTest do\n  def test_good() do\n    1\n  end\n\n  def test_bad() do\n    err(:oops)\n  end\n\n  def test_also_bad() do\n    err(:boom)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+
+    // Failure summary section should be present
+    assert!(
+        stdout.contains("Failures:"),
+        "expected 'Failures:' section header, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("1. SummaryTest.test_also_bad"),
+        "expected numbered failure entry for test_also_bad, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("2. SummaryTest.test_bad"),
+        "expected numbered failure entry for test_bad, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("test result: FAILED. 1 passed; 2 failed; 3 total"),
+        "expected summary line, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_failure_summary_section_absent_when_all_pass() {
+    let fixture_root = write_single_test_file(
+        "test-failure-summary-all-pass",
+        "test_all_pass.tn",
+        "defmodule AllPassTest do\n  def test_one() do\n    1\n  end\n\n  def test_two() do\n    2\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", "."])
+        .output()
+        .expect("test command should execute");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+
+    assert!(
+        !stdout.contains("Failures:"),
+        "no 'Failures:' section when all tests pass, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_json_output_includes_failures_array() {
+    let fixture_root = write_single_test_file(
+        "test-failure-summary-json",
+        "test_json_failures.tn",
+        "defmodule JsonFailuresTest do\n  def test_pass() do\n    1\n  end\n\n  def test_fail() do\n    err(:nope)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", ".", "--format", "json"])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let report: Value = serde_json::from_str(&stdout).expect("json output should parse");
+
+    let failures = report["failures"]
+        .as_array()
+        .expect("failures should be array");
+    assert_eq!(failures.len(), 1, "only one test failed");
+    assert_eq!(failures[0]["id"], "JsonFailuresTest.test_fail");
+    assert_eq!(failures[0]["status"], "failed");
+    assert!(
+        failures[0]["error"].is_string(),
+        "failure entry should include error"
+    );
+
+    // All-pass JSON should have empty failures array
+    let all_results = report["results"]
+        .as_array()
+        .expect("results should be array");
+    assert_eq!(all_results.len(), 2, "all results should still be present");
+}
+
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
 

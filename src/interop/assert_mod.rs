@@ -22,15 +22,15 @@ fn host_assert(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     let message = extract_message(args, 1, "assertion failed: expected truthy value");
 
     match value {
-        RuntimeValue::Bool(false) | RuntimeValue::Nil => Ok(RuntimeValue::ResultErr(Box::new(
-            RuntimeValue::Tuple(
+        RuntimeValue::Bool(false) | RuntimeValue::Nil => {
+            Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
                 Box::new(RuntimeValue::Atom("assertion_failed".to_string())),
                 Box::new(RuntimeValue::Tuple(
                     Box::new(RuntimeValue::Atom("assert".to_string())),
                     Box::new(RuntimeValue::String(message)),
                 )),
-            ),
-        ))),
+            ))))
+        }
         _ => Ok(RuntimeValue::Atom("ok".to_string())),
     }
 }
@@ -46,9 +46,7 @@ fn host_refute(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     let message = extract_message(args, 1, "refute failed: expected falsy value");
 
     match value {
-        RuntimeValue::Bool(false) | RuntimeValue::Nil => {
-            Ok(RuntimeValue::Atom("ok".to_string()))
-        }
+        RuntimeValue::Bool(false) | RuntimeValue::Nil => Ok(RuntimeValue::Atom("ok".to_string())),
         _ => Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
             Box::new(RuntimeValue::Atom("assertion_failed".to_string())),
             Box::new(RuntimeValue::Tuple(
