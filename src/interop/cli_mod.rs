@@ -66,6 +66,7 @@ struct FlagSpec {
     choices: Vec<String>,
     env: Option<String>,
     multi: bool,
+    hidden: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +90,8 @@ struct SubcommandSpec {
     description: String,
     flags: Vec<FlagSpec>,
     args: Vec<ArgSpec>,
+    hidden: bool,
+    aliases: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -164,6 +167,7 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 .and_then(|v| as_str(v))
                 .map(|s| s.to_string());
             let multi = matches!(kw_get(flag_kw, "multi"), Some(RuntimeValue::Bool(true)));
+            let hidden = matches!(kw_get(flag_kw, "hidden"), Some(RuntimeValue::Bool(true)));
 
             flags.push(FlagSpec {
                 name: flag_name.to_string(),
@@ -175,6 +179,7 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 choices,
                 env,
                 multi,
+                hidden,
             });
         }
     }
@@ -274,6 +279,8 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                         .and_then(|v| as_str(v))
                         .map(|s| s.to_string());
                     let multi = matches!(kw_get(flag_kw, "multi"), Some(RuntimeValue::Bool(true)));
+                    let hidden =
+                        matches!(kw_get(flag_kw, "hidden"), Some(RuntimeValue::Bool(true)));
 
                     cmd_flags.push(FlagSpec {
                         name: flag_name.to_string(),
@@ -285,6 +292,7 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                         choices,
                         env,
                         multi,
+                        hidden,
                     });
                 }
             }
@@ -318,11 +326,22 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 }
             }
 
+            let cmd_hidden = matches!(kw_get(cmd_kw, "hidden"), Some(RuntimeValue::Bool(true)));
+            let cmd_aliases = match kw_get(cmd_kw, "aliases") {
+                Some(RuntimeValue::List(items)) => items
+                    .iter()
+                    .filter_map(|v| as_str(v).map(|s| s.to_string()))
+                    .collect(),
+                _ => Vec::new(),
+            };
+
             commands.push(SubcommandSpec {
                 name: cmd_name.to_string(),
                 description: cmd_desc,
                 flags: cmd_flags,
                 args: cmd_args,
+                hidden: cmd_hidden,
+                aliases: cmd_aliases,
             });
         }
     }
@@ -369,12 +388,16 @@ fn generate_help(spec: &CliSpec) -> String {
     }
     lines.push(usage);
 
-    // Commands section
-    if !spec.commands.is_empty() {
+    // Commands section (skip hidden)
+    let visible_cmds: Vec<&SubcommandSpec> = spec.commands.iter().filter(|c| !c.hidden).collect();
+    if !visible_cmds.is_empty() {
         lines.push(String::new());
         lines.push("COMMANDS:".to_string());
-        for cmd in &spec.commands {
+        for cmd in &visible_cmds {
             let mut cmd_line = format!("  {}", cmd.name);
+            if !cmd.aliases.is_empty() {
+                cmd_line.push_str(&format!(" ({})", cmd.aliases.join(", ")));
+            }
             if !cmd.description.is_empty() {
                 let pad = 20usize.saturating_sub(cmd_line.len());
                 cmd_line.push_str(&" ".repeat(pad));
@@ -394,12 +417,14 @@ fn generate_help(spec: &CliSpec) -> String {
         }
     }
 
-    // Flags section (including built-in ones)
+    // Flags section (including built-in ones, skip hidden)
     lines.push(String::new());
     lines.push("OPTIONS:".to_string());
 
     for flag in &spec.flags {
-        lines.push(format_flag_help(flag));
+        if !flag.hidden {
+            lines.push(format_flag_help(flag));
+        }
     }
 
     // Built-in flags
@@ -410,7 +435,7 @@ fn generate_help(spec: &CliSpec) -> String {
     lines.join("\n")
 }
 
-/// Format a single flag's help line, including choices, env, and multi annotations.
+/// Format a single flag's help line, including choices, env, multi, required, and negatable annotations.
 fn format_flag_help(flag: &FlagSpec) -> String {
     let mut flag_str = String::from("  ");
     if let Some(short) = &flag.short {
@@ -418,7 +443,13 @@ fn format_flag_help(flag: &FlagSpec) -> String {
     } else {
         flag_str.push_str("    ");
     }
-    flag_str.push_str(&format!("--{}", flag.name));
+
+    // Boolean flags show --[no-]name
+    if flag.flag_type == FlagType::Boolean {
+        flag_str.push_str(&format!("--[no-]{}", flag.name));
+    } else {
+        flag_str.push_str(&format!("--{}", flag.name));
+    }
 
     let type_hint = match &flag.flag_type {
         FlagType::Boolean => "",
@@ -430,6 +461,9 @@ fn format_flag_help(flag: &FlagSpec) -> String {
 
     // Build description parts
     let mut desc_parts: Vec<String> = Vec::new();
+    if flag.required {
+        desc_parts.push("(required)".to_string());
+    }
     if !flag.doc.is_empty() {
         desc_parts.push(flag.doc.clone());
     }
@@ -488,12 +522,14 @@ fn generate_command_help(spec: &CliSpec, cmd: &SubcommandSpec) -> String {
         }
     }
 
-    // Flags section
+    // Flags section (skip hidden)
     lines.push(String::new());
     lines.push("OPTIONS:".to_string());
 
     for flag in &cmd.flags {
-        lines.push(format_flag_help(flag));
+        if !flag.hidden {
+            lines.push(format_flag_help(flag));
+        }
     }
 
     // Built-in flags
@@ -625,7 +661,12 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
     for fspec in &cmd.flags {
         if fspec.required {
             if let Some((_, val)) = parsed_flags.iter().find(|(n, _)| *n == fspec.name) {
-                if *val == RuntimeValue::Nil {
+                let is_missing = if fspec.multi {
+                    matches!(val, RuntimeValue::List(items) if items.is_empty())
+                } else {
+                    *val == RuntimeValue::Nil
+                };
+                if is_missing {
                     return error_tuple(format!("required flag --{} is missing", fspec.name));
                 }
             }
@@ -875,7 +916,11 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
 
         // Check if this is a subcommand (first positional, before any positional args consumed)
         if !spec.commands.is_empty() && positional.is_empty() {
-            if let Some(cmd) = spec.commands.iter().find(|c| c.name == *arg) {
+            if let Some(cmd) = spec
+                .commands
+                .iter()
+                .find(|c| c.name == *arg || c.aliases.iter().any(|a| a == arg.as_str()))
+            {
                 // Dispatch remaining argv to subcommand parser
                 return do_parse_command(spec, cmd, &argv[i + 1..]);
             }
@@ -913,7 +958,12 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
     for fspec in &spec.flags {
         if fspec.required {
             if let Some((_, val)) = parsed_flags.iter().find(|(n, _)| *n == fspec.name) {
-                if *val == RuntimeValue::Nil {
+                let is_missing = if fspec.multi {
+                    matches!(val, RuntimeValue::List(items) if items.is_empty())
+                } else {
+                    *val == RuntimeValue::Nil
+                };
+                if is_missing {
                     return error_tuple(format!("required flag --{} is missing", fspec.name));
                 }
             }
@@ -1226,7 +1276,7 @@ mod tests {
                 if let RuntimeValue::String(text) = val.as_ref() {
                     assert!(text.contains("myapp"));
                     assert!(text.contains("USAGE:"));
-                    assert!(text.contains("--verbose"));
+                    assert!(text.contains("--[no-]verbose"));
                     assert!(text.contains("--output-json"));
                 } else {
                     panic!("expected help text string");
@@ -1394,7 +1444,7 @@ mod tests {
             assert!(text.contains("A test CLI"));
             assert!(text.contains("USAGE:"));
             assert!(text.contains("<file>"));
-            assert!(text.contains("--verbose"));
+            assert!(text.contains("--[no-]verbose"));
             assert!(text.contains("-v"));
             assert!(text.contains("--output-json"));
             assert!(text.contains("--help"));
@@ -2096,5 +2146,303 @@ mod tests {
         let flags = get_map_field(data, "flags");
         assert_eq!(*get_map_field(flags, "format"), s("csv"));
         std::env::remove_var("TEST_CLI_COMBO_FMT");
+    }
+
+    // --- Run 53: Required flags, Negatable booleans, Hidden items, Command aliases ---
+
+    #[test]
+    fn cli_module_required_flag_provided_ok() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "token",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("required", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--token", "abc123"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "token"), s("abc123"));
+    }
+
+    #[test]
+    fn cli_module_required_flag_env_fallback_satisfies() {
+        std::env::set_var("TEST_CLI_REQ_ENV", "from_env");
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "token",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("required", RuntimeValue::Bool(true)),
+                        ("env", s("TEST_CLI_REQ_ENV")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "token"), s("from_env"));
+        std::env::remove_var("TEST_CLI_REQ_ENV");
+    }
+
+    #[test]
+    fn cli_module_required_flag_default_satisfies() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "name",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("required", RuntimeValue::Bool(true)),
+                        ("default", s("world")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "name"), s("world"));
+    }
+
+    #[test]
+    fn cli_module_required_shown_in_help() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "token",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("required", RuntimeValue::Bool(true)),
+                        ("doc", s("API token")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--help"])]).unwrap();
+        match &result {
+            RuntimeValue::Tuple(_, val) => {
+                if let RuntimeValue::String(text) = val.as_ref() {
+                    assert!(text.contains("(required)"));
+                    assert!(text.contains("API token"));
+                } else {
+                    panic!("expected help text");
+                }
+            }
+            _ => panic!("expected help tuple"),
+        }
+    }
+
+    #[test]
+    fn cli_module_required_in_subcommand() {
+        let spec = make_cmd_spec();
+        // commit requires --message
+        let result = host_cli_parse(&[spec, argv(&["commit", "-m", "hello"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "message"), s("hello"));
+    }
+
+    #[test]
+    fn cli_module_negatable_shown_in_help() {
+        let spec = make_spec();
+        let result = host_cli_format_help(&[spec]).unwrap();
+        if let RuntimeValue::String(text) = result {
+            assert!(text.contains("--[no-]verbose"));
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn cli_module_negatable_in_subcommand() {
+        let spec = make_cmd_spec();
+        let result =
+            host_cli_parse(&[spec, argv(&["clone", "--bare", "--no-bare", "url"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "bare"), RuntimeValue::Bool(false));
+    }
+
+    #[test]
+    fn cli_module_hidden_flag_omitted_from_help_but_parsed() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "verbose",
+                        kw(vec![
+                            ("type", atom("boolean")),
+                            ("doc", s("Verbose output")),
+                        ]),
+                    ),
+                    (
+                        "debug",
+                        kw(vec![
+                            ("type", atom("boolean")),
+                            ("hidden", RuntimeValue::Bool(true)),
+                            ("doc", s("Debug mode")),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]);
+        // Help should not show --debug
+        let help = host_cli_format_help(&[spec.clone()]).unwrap();
+        if let RuntimeValue::String(text) = &help {
+            assert!(text.contains("--[no-]verbose"));
+            assert!(!text.contains("--debug") && !text.contains("Debug mode"));
+        } else {
+            panic!("expected string");
+        }
+        // But parsing should still work
+        let result = host_cli_parse(&[spec, argv(&["--debug"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "debug"), RuntimeValue::Bool(true));
+    }
+
+    #[test]
+    fn cli_module_hidden_command_omitted_from_help_but_dispatched() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![
+                    ("public", kw(vec![("description", s("Public command"))])),
+                    (
+                        "internal",
+                        kw(vec![
+                            ("description", s("Internal command")),
+                            ("hidden", RuntimeValue::Bool(true)),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]);
+        // Help should not show internal
+        let help = host_cli_format_help(&[spec.clone()]).unwrap();
+        if let RuntimeValue::String(text) = &help {
+            assert!(text.contains("public"));
+            assert!(!text.contains("internal"));
+        } else {
+            panic!("expected string");
+        }
+        // But dispatching should still work
+        let result = host_cli_parse(&[spec, argv(&["internal"])]).unwrap();
+        let data = extract_ok(&result);
+        assert_eq!(*get_map_field(data, "command"), s("internal"));
+    }
+
+    #[test]
+    fn cli_module_alias_routes_to_command() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![(
+                    "list",
+                    kw(vec![
+                        ("description", s("List items")),
+                        ("aliases", list(vec![s("ls"), s("l")])),
+                    ]),
+                )]),
+            ),
+        ]);
+        // Using alias "ls"
+        let result = host_cli_parse(&[spec.clone(), argv(&["ls"])]).unwrap();
+        let data = extract_ok(&result);
+        assert_eq!(*get_map_field(data, "command"), s("list"));
+
+        // Using alias "l"
+        let result2 = host_cli_parse(&[spec, argv(&["l"])]).unwrap();
+        let data2 = extract_ok(&result2);
+        assert_eq!(*get_map_field(data2, "command"), s("list"));
+    }
+
+    #[test]
+    fn cli_module_alias_shown_in_help() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![(
+                    "list",
+                    kw(vec![
+                        ("description", s("List items")),
+                        ("aliases", list(vec![s("ls"), s("l")])),
+                    ]),
+                )]),
+            ),
+        ]);
+        let help = host_cli_format_help(&[spec]).unwrap();
+        if let RuntimeValue::String(text) = help {
+            assert!(text.contains("list (ls, l)"));
+            assert!(text.contains("List items"));
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn cli_module_alias_unknown_command_suggests_main_names() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![(
+                    "list",
+                    kw(vec![
+                        ("description", s("List items")),
+                        ("aliases", list(vec![s("ls"), s("l")])),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["foo"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("unknown command 'foo'"));
+        assert!(msg.contains("list"));
+        // Should not suggest aliases as available commands
+        assert!(!msg.contains(", ls") && !msg.contains(", l"));
+    }
+
+    #[test]
+    fn cli_module_required_multi_must_have_value() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "tag",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("multi", RuntimeValue::Bool(true)),
+                        ("required", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ]);
+        // No --tag provided → empty list, but required
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("tag"));
+        assert!(msg.contains("missing"));
     }
 }
