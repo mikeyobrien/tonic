@@ -1,0 +1,24 @@
+╔══════════════════════════════════════════════════════════════╗
+║                  TONIC EXAMPLE VALIDATION                  ║
+╠══════════════════════════════════════════════════════════════╣
+║ branch  autoresearch/llm-first-errors-20260320            ║
+║ commit  de49166                                           ║
+║ status   88/88  apps green   (100.0% pass rate)        ║
+║ exact    83 exact-output checks                              ║
+║ fuzzy     5 pattern-based checks                             ║
+║ time      1.0s total                                       ║
+╠══════════════════════════════════════════════════════════════╣
+║ showcase                                                     ║
+║ ✓ brainfuck_interpreter [exact, 0.0s]                        ║
+║ ✓ game_of_life [exact, 0.1s]                                 ║
+║ ✓ levenshtein [exact, 0.0s]                                  ║
+║ ✓ huffman_coding [exact, 0.0s]                               ║
+║ ✓ calendar [exact, 0.0s]                                     ║
+║ ✓ csv_parser [exact, 0.0s]                                   ║
+║ ✓ markdown_toc [exact, 0.0s]                                 ║
+║ ✓ self_hosted_lexer [exact, 0.0s]                            ║
+╠══════════════════════════════════════════════════════════════╣
+║ result                                                       ║
+║ all example apps passed their verification oracles           ║
+║ autoresearch corpus is still fully green                     ║
+╚══════════════════════════════════════════════════════════════╝

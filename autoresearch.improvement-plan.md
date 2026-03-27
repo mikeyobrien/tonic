@@ -277,7 +277,8 @@ PROMPT.md may have ambiguities or missing details that cause LLM confusion.
 ## Next Steps
 
 1. **Review this plan** - Get feedback on priorities and approach
-2. **Start Phase 1** - Begin with documentation improvements
-3. **Track progress** - Update autoresearch.history.md after each phase
-4. **Measure impact** - Run benchmarks after each phase
+2. **Close native parity regressions first** - fix compiled-runtime support for advertised `System.append_text/2` and `String.replace/3`, then add regression coverage
+3. **Start Phase 1** - Begin with documentation improvements
+4. **Track progress** - Update autoresearch.history.md after each phase
+5. **Measure impact** - Run benchmarks after each phase
 

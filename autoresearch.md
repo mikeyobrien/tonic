@@ -97,3 +97,43 @@ cargo test --quiet --bin tonic repl::tests:: && cargo test --quiet --test repl_s
 - **Run 23 (KEEP, metric=20, judge=8/10)**: Routed host-side stdout/stderr through a scoped interop capture sink and surfaced captured output in remote `eval` / `load-file` responses, with focused unit and TCP integration coverage. Hypothesis: confirmed — returning request-scoped output makes the remote REPL materially closer to editor-driven nREPL workflows because clients can now observe emitted text without scraping server logs.
 - **Run 24 (KEEP, metric=24, judge=8/10)**: Added request-scoped stdin plumbing for remote `eval` / `load-file`, threading optional JSON `stdin` through scoped interop input capture and focused unit + TCP integration coverage for connection-local and logical sessions. Hypothesis: confirmed — request-local stdin closes a major interactivity gap for editor-driven remote REPL workflows without widening scope beyond the existing session/capture substrate.
 - **Run 25 (KEEP, metric=28, judge=8/10)**: Added optional request ids plus streamed stdout/stderr frames for remote `eval` / `load-file`, echoing ids in terminal responses and covering connection-local and logical-session streaming. Hypothesis: confirmed — request-addressable stream frames make the remote REPL materially closer to nREPL-style editor workflows by letting clients correlate asynchronous output with a specific in-flight evaluation without widening scope beyond the existing session/capture substrate.
+
+## Segment 2 — Unit Testing UX
+
+### Objective
+
+Improve the Tonic unit testing UX so that writing, running, and debugging tests is ergonomic — with built-in assertions, structured failure output, test filtering, and timing.
+
+### Metrics
+
+- **Primary**: Focused unit testing UX acceptance checks green
+- **Current Best**: 6 focused assert checks green (run 26)
+- **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
+
+### Benchmark Commands
+
+```bash
+cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_runner_rich_diagnostics
+```
+
+### Files in Scope
+
+- `src/test_runner.rs` — Test discovery, compilation, execution, reporting
+- `src/cmd_test.rs` — CLI argument handling for `tonic test`
+- `src/cmd_deps.rs` — Help text for `tonic test`
+- `src/interop.rs` — Host call dispatch (for assertion builtins)
+- `src/manifest_stdlib.rs` — Stdlib source registry
+- `src/stdlib_sources.rs` — Stdlib module source constants
+- `tests/test_runner_rich_diagnostics.rs` — Integration tests for test runner
+
+### Constraints
+
+- `cargo test` must pass (excluding pre-existing failures)
+- All example apps must pass
+- No new crate dependencies
+- Assertions should use the existing `host_call` interop pattern
+- Test failures must produce actionable output (expected vs actual)
+
+### What's Been Tried
+
+- **Run 26 (KEEP, metric=6, segment 2)**: Added a built-in Assert stdlib module with `assert/1`, `refute/1`, `assert_equal/2`, `assert_not_equal/2` host functions that produce structured `err({:assertion_failed, details})` failures with expected-vs-actual rendering, plus stdlib injection into the test runner and 6 focused integration tests. Hypothesis: confirmed — a built-in assertion library with structured failure output is the essential foundation for ergonomic test authoring in Tonic.

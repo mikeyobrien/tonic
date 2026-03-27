@@ -1,4 +1,5 @@
 use super::*;
+use crate::interop::{host_stdout_was_observed, reset_host_stdout_observed};
 
 pub(super) fn handle_run(args: Vec<String>) -> i32 {
     if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
@@ -97,6 +98,7 @@ pub(super) fn handle_run(args: Vec<String>) -> i32 {
         trace_cache_status(cache_status);
     }
 
+    reset_host_stdout_observed();
     let value = match observe_phase_result(
         &mut profiler,
         &mut observed_run,
@@ -143,7 +145,9 @@ pub(super) fn handle_run(args: Vec<String>) -> i32 {
             )
         }
         other => {
-            println!("{}", other.render());
+            if !host_stdout_was_observed() {
+                println!("{}", other.render());
+            }
             finalize_observed_run(&mut observed_run, EXIT_OK, None)
         }
     }
@@ -216,6 +220,7 @@ pub(super) fn handle_run_native_artifact(
         }
     };
 
+    reset_host_stdout_observed();
     let value =
         match observe_phase_result(profiler, observed_run, "run.evaluate_entrypoint", || {
             evaluate_entrypoint(&ir)
@@ -253,7 +258,9 @@ pub(super) fn handle_run_native_artifact(
             )
         }
         other => {
-            println!("{}", other.render());
+            if !host_stdout_was_observed() {
+                println!("{}", other.render());
+            }
             finalize_observed_run(observed_run, EXIT_OK, None)
         }
     }

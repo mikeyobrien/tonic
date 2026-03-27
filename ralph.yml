@@ -19,7 +19,7 @@ event_loop:
   checkpoint_interval: 5
 
 cli:
-  backend: "pi"
+  backend: "claude"
   prompt_mode: "arg"
 
 core:

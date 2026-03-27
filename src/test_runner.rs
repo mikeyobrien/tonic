@@ -1,5 +1,6 @@
 use crate::ir::{lower_ast_to_ir, IrProgram};
 use crate::lexer::scan_tokens;
+use crate::manifest::inject_optional_stdlib;
 use crate::parser::parse_ast;
 use crate::resolver::resolve_ast;
 use crate::runtime::{evaluate_named_function, RuntimeValue};
@@ -133,10 +134,11 @@ pub fn run(path: &str) -> Result<TestRunReport, TestRunnerError> {
         for test_name in suite.tests {
             match evaluate_named_function(&suite.ir, &test_name) {
                 Ok(RuntimeValue::ResultErr(reason)) => {
+                    let error = format_assertion_failure(&reason);
                     results.push(TestCaseResult {
                         id: test_name,
                         status: TestCaseStatus::Failed,
-                        error: Some(format!("runtime returned err({})", reason.render())),
+                        error: Some(error),
                     });
                 }
                 Ok(_) => {
@@ -241,8 +243,89 @@ fn is_test_file_name(path: &Path) -> bool {
     file_name.starts_with("test_") || file_name.ends_with("_test.tn")
 }
 
+/// Format a structured assertion failure from the Assert module into a human-readable message.
+/// Recognizes the `{:assertion_failed, details}` tuple convention used by Assert host functions.
+fn format_assertion_failure(reason: &RuntimeValue) -> String {
+    match reason {
+        // assert/refute: {:assertion_failed, {:assert|:refute, message}}
+        RuntimeValue::Tuple(tag, details)
+            if matches!(**tag, RuntimeValue::Atom(ref a) if a == "assertion_failed") =>
+        {
+            match details.as_ref() {
+                // Simple assert/refute: {type_atom, message_string}
+                RuntimeValue::Tuple(type_atom, message) => {
+                    let kind = match type_atom.as_ref() {
+                        RuntimeValue::Atom(a) => a.as_str(),
+                        _ => "assert",
+                    };
+                    let msg = match message.as_ref() {
+                        RuntimeValue::String(s) => s.clone(),
+                        other => other.render(),
+                    };
+                    format!("{kind} failed: {msg}")
+                }
+                // assert_equal/assert_not_equal: keyword-list-style details
+                RuntimeValue::List(entries) => {
+                    let mut kind = "assert_equal";
+                    let mut left = None;
+                    let mut right = None;
+                    let mut message = None;
+
+                    for entry in entries {
+                        if let RuntimeValue::Tuple(key, val) = entry {
+                            match key.as_ref() {
+                                RuntimeValue::Atom(k) if k == "type" => {
+                                    if let RuntimeValue::Atom(t) = val.as_ref() {
+                                        kind = match t.as_str() {
+                                            "assert_not_equal" => "assert_not_equal",
+                                            _ => "assert_equal",
+                                        };
+                                    }
+                                }
+                                RuntimeValue::Atom(k) if k == "left" => {
+                                    left = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "right" => {
+                                    right = Some(val.render());
+                                }
+                                RuntimeValue::Atom(k) if k == "message" => {
+                                    if let RuntimeValue::String(s) = val.as_ref() {
+                                        message = Some(s.clone());
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    let mut lines = vec![format!(
+                        "{kind} failed: {}",
+                        message.unwrap_or_default()
+                    )];
+                    if let Some(l) = left {
+                        lines.push(format!("  left:  {l}"));
+                    }
+                    if let Some(r) = right {
+                        lines.push(format!("  right: {r}"));
+                    }
+                    lines.join("\n")
+                }
+                other => format!("assertion failed: {}", other.render()),
+            }
+        }
+        // Not a structured assertion failure — fall back to generic rendering
+        _ => format!("runtime returned err({})", reason.render()),
+    }
+}
+
 fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError> {
     let filename = Some(path.display().to_string());
+
+    // Inject stdlib modules (e.g. Assert) referenced by the test source.
+    let mut enriched_source = source.to_string();
+    inject_optional_stdlib(&mut enriched_source)
+        .map_err(|e| TestRunnerError::Failure(format!("stdlib injection failed: {e}")))?;
+    let source = &enriched_source;
 
     let tokens = scan_tokens(source).map_err(|error| TestRunnerError::SourceDiagnostic {
         message: error.to_string(),

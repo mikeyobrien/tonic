@@ -421,6 +421,185 @@ fn test_command_surfaces_rich_source_diagnostics_for_unclosed_bitstring_patterns
     assert!(stderr.contains("4 |       <<left, right -> left"));
 }
 
+// --- Assert module integration tests ---
+
+#[test]
+fn test_assert_equal_renders_expected_vs_actual_on_failure() {
+    let fixture_root = write_single_test_file(
+        "test-assert-equal-failure",
+        "test_assert.tn",
+        "defmodule AssertTest do\n  def test_equal_pass() do\n    Assert.assert_equal(1, 1)\n  end\n\n  def test_equal_fail() do\n    Assert.assert_equal(1, 2)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test AssertTest.test_equal_pass ... ok"),
+        "passing assert_equal should show ok, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("test AssertTest.test_equal_fail ... FAILED"),
+        "failing assert_equal should show FAILED, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("left:  1"),
+        "failure output should show left value, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("right: 2"),
+        "failure output should show right value, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_assert_renders_truthy_failure() {
+    let fixture_root = write_single_test_file(
+        "test-assert-truthy-failure",
+        "test_assert_truthy.tn",
+        "defmodule AssertTruthyTest do\n  def test_assert_true() do\n    Assert.assert(true)\n  end\n\n  def test_assert_false() do\n    Assert.assert(false)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test AssertTruthyTest.test_assert_true ... ok"),
+        "assert(true) should pass, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("test AssertTruthyTest.test_assert_false ... FAILED"),
+        "assert(false) should fail, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("assert failed:"),
+        "failure output should say 'assert failed:', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_refute_renders_falsy_failure() {
+    let fixture_root = write_single_test_file(
+        "test-refute-falsy-failure",
+        "test_refute.tn",
+        "defmodule RefuteTest do\n  def test_refute_false() do\n    Assert.refute(false)\n  end\n\n  def test_refute_true() do\n    Assert.refute(true)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test RefuteTest.test_refute_false ... ok"),
+        "refute(false) should pass, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("test RefuteTest.test_refute_true ... FAILED"),
+        "refute(true) should fail, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("refute failed:"),
+        "failure output should say 'refute failed:', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_assert_not_equal_renders_failure() {
+    let fixture_root = write_single_test_file(
+        "test-assert-not-equal-failure",
+        "test_assert_neq.tn",
+        "defmodule AssertNeqTest do\n  def test_not_equal_pass() do\n    Assert.assert_not_equal(1, 2)\n  end\n\n  def test_not_equal_fail() do\n    Assert.assert_not_equal(1, 1)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test AssertNeqTest.test_not_equal_pass ... ok"),
+        "assert_not_equal(1, 2) should pass, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("test AssertNeqTest.test_not_equal_fail ... FAILED"),
+        "assert_not_equal(1, 1) should fail, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("assert_not_equal failed:"),
+        "failure output should say 'assert_not_equal failed:', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_assert_equal_with_custom_message() {
+    let fixture_root = write_single_test_file(
+        "test-assert-equal-custom-msg",
+        "test_assert_msg.tn",
+        "defmodule AssertMsgTest do\n  def test_custom_message() do\n    Assert.assert_equal(1, 2, \"expected same value\")\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .args(["test", &fixture_root.display().to_string()])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("expected same value"),
+        "failure output should include custom message, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_assert_json_output_includes_structured_error() {
+    let fixture_root = write_single_test_file(
+        "test-assert-json-output",
+        "test_assert_json.tn",
+        "defmodule AssertJsonTest do\n  def test_fail() do\n    Assert.assert_equal(\"a\", \"b\")\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .args([
+            "test",
+            &fixture_root.display().to_string(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("test command should execute");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let json: Value = serde_json::from_str(stdout.trim()).expect("output should be valid JSON");
+    let results = json["results"].as_array().expect("results should be array");
+    assert_eq!(results.len(), 1);
+    let error = results[0]["error"]
+        .as_str()
+        .expect("error should be string");
+    assert!(
+        error.contains("left:"),
+        "JSON error should include left value, got: {error}"
+    );
+    assert!(
+        error.contains("right:"),
+        "JSON error should include right value, got: {error}"
+    );
+}
+
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
 

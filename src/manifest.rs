@@ -192,6 +192,7 @@ struct ProjectSourceAnalysis {
 
 const STDLIB_MODULE_NAMES: &[&str] = &[
     "System", "String", "Path", "IO", "List", "Map", "Enum", "Integer", "Float", "Tuple",
+    "Assert",
 ];
 
 fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {
@@ -370,7 +371,7 @@ fn expr_references_module(expr: &Expr, module_name: &str) -> bool {
 }
 
 /// Analyze source for stdlib module references and inject any needed stdlib modules.
-fn inject_optional_stdlib(source: &mut String) -> Result<(), String> {
+pub(crate) fn inject_optional_stdlib(source: &mut String) -> Result<(), String> {
     let analysis = analyze_project_source(source)?;
 
     for (module_name, module_source) in STDLIB_SOURCES {
