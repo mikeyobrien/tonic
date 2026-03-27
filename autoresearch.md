@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 88 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml tests green + Http wrapper (run 34)
+- **Current Best**: 102 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env tests green + Http wrapper (run 35)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -151,3 +151,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 32 (KEEP, metric=70)**: Added `Http.get/1-2`, `Http.post/2-3`, `Http.put/2-3`, `Http.patch/2-3`, `Http.delete/1-2`, and `Http.request/4-5` as a pure Tonic wrapper over the existing `sys_http_request` host call. No new focused tests (wraps already-tested infrastructure). Hypothesis: confirmed — an ergonomic Http module eliminates raw `host_call(:sys_http_request, ...)` boilerplate and provides a clean API surface for any Tonic app making HTTP requests.
 - **Run 33 (KEEP, metric=77)**: Added `Uuid.v4/0` as a host-backed stdlib function using the `rand` crate to generate RFC 4122 UUID v4 strings, with 7 focused unit tests covering format, version/variant bits, uniqueness, and error handling. Hypothesis: confirmed — a Rust-backed Uuid module provides reliable identifier generation for any Tonic app needing session ids, request correlation, or entity keys without shelling out to `uuidgen`.
 - **Run 34 (KEEP, metric=88)**: Added `Yaml.encode/1` and `Yaml.decode/1` as host-backed stdlib functions using the `serde_yaml` crate, with Tonic value round-trip support for mappings, sequences, scalars, null, and tagged values, plus 11 focused unit tests. Hypothesis: confirmed — a Rust-backed Yaml module provides reliable YAML serialization for any Tonic app working with Docker, CI, Kubernetes, or other YAML-based configuration formats.
+- **Run 35 (KEEP, metric=102)**: Added `Env.get/1-2`, `Env.fetch!/1`, `Env.set/2`, `Env.delete/1`, `Env.all/0`, and `Env.has_key/1` as host-backed stdlib functions with 14 focused unit tests. Hypothesis: confirmed — a dedicated Env module provides ergonomic environment variable access beyond the single `System.env/1` getter, enabling get-with-default, fetch-or-raise, set, delete, enumerate, and key-existence patterns for any Tonic app needing runtime configuration.

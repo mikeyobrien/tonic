@@ -17,6 +17,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Http", OPTIONAL_STDLIB_HTTP_SOURCE),
     ("Uuid", OPTIONAL_STDLIB_UUID_SOURCE),
     ("Yaml", OPTIONAL_STDLIB_YAML_SOURCE),
+    ("Env", OPTIONAL_STDLIB_ENV_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -891,3 +892,6 @@ const OPTIONAL_STDLIB_UUID_SOURCE: &str =
 
 const OPTIONAL_STDLIB_YAML_SOURCE: &str =
     "defmodule Yaml do\n  def encode(value) do\n    host_call(:yaml_encode, value)\n  end\n\n  def decode(string) do\n    host_call(:yaml_decode, string)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_ENV_SOURCE: &str =
+    "defmodule Env do\n  def get(key) do\n    System.env(key)\n  end\n\n  def get(key, default) do\n    case System.env(key) do\n      nil -> default\n      value -> value\n    end\n  end\n\n  def fetch!(key) do\n    case System.env(key) do\n      nil -> raise \"environment variable #{key} is not set\"\n      value -> value\n    end\n  end\n\n  def set(key, value) do\n    host_call(:env_set, key, value)\n  end\n\n  def delete(key) do\n    host_call(:env_delete, key)\n  end\n\n  def all() do\n    host_call(:env_all)\n  end\n\n  def has_key(key) do\n    host_call(:env_has_key, key)\n  end\nend\n";
