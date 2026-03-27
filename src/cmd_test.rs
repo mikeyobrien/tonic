@@ -20,6 +20,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
     let mut list_only = false;
     let mut fail_fast = false;
     let mut seed: Option<u64> = None;
+    let mut timeout: Option<u64> = None;
     let mut index = 1;
 
     while index < args.len() {
@@ -70,6 +71,26 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
                 };
 
                 seed = Some(parsed);
+                index += 2;
+            }
+            "--timeout" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --timeout",
+                        "usage: tonic test <path> --timeout <ms>",
+                    )
+                    .emit();
+                };
+
+                let Ok(parsed) = value.parse::<u64>() else {
+                    return CliDiagnostic::usage_with_hint(
+                        format!("invalid timeout '{value}' (expected a non-negative integer in milliseconds)"),
+                        "usage: tonic test <path> --timeout <ms>",
+                    )
+                    .emit();
+                };
+
+                timeout = Some(parsed);
                 index += 2;
             }
             "--filter" => {
@@ -170,7 +191,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
     }
 
     let report = match observe_command_phase_result(&mut observed_run, "test.run_suite", || {
-        test_runner::run(&source_path, filter.as_deref(), fail_fast, seed)
+        test_runner::run(&source_path, filter.as_deref(), fail_fast, seed, timeout)
     }) {
         Ok(report) => report,
         Err(TestRunnerError::Failure(message)) => {

@@ -1972,3 +1972,108 @@ fn test_assert_match_exact_equality_for_non_maps() {
         "should have 1 pass and 1 fail, got: {stdout}"
     );
 }
+
+// ── --timeout tests ────────────────────────────────────────────────────────
+
+#[test]
+fn test_timeout_marks_test_as_failed() {
+    let fixture_root = write_single_test_file(
+        "test-timeout-fail",
+        "timeout_test.tn",
+        "defmodule TimeoutTest do\n  def test_slow() do\n    System.sleep_ms(2000)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args([
+            "test",
+            &fixture_root.display().to_string(),
+            "--timeout",
+            "200",
+        ])
+        .output()
+        .expect("test command should execute");
+
+    assert!(!output.status.success(), "timed-out test should fail");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("timed out after 200ms"),
+        "should mention timeout in output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAILED"),
+        "should show FAILED status, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_timeout_does_not_affect_fast_tests() {
+    let fixture_root = write_single_test_file(
+        "test-timeout-fast",
+        "fast_test.tn",
+        "defmodule FastTest do\n  def test_quick() do\n    1 + 1\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args([
+            "test",
+            &fixture_root.display().to_string(),
+            "--timeout",
+            "5000",
+        ])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "fast test with generous timeout should pass, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("1 passed; 0 failed"),
+        "should pass normally, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_timeout_json_output() {
+    let fixture_root = write_single_test_file(
+        "test-timeout-json",
+        "timeout_json_test.tn",
+        "defmodule TimeoutJsonTest do\n  def test_hangs() do\n    System.sleep_ms(2000)\n  end\n\n  def test_ok() do\n    42\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .env("NO_COLOR", "1")
+        .args([
+            "test",
+            &fixture_root.display().to_string(),
+            "--timeout",
+            "200",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("test command should execute");
+
+    assert!(!output.status.success(), "one test should fail");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let json: Value = serde_json::from_str(&stdout).expect("should be valid JSON");
+    assert_eq!(json["status"], "failed");
+    assert_eq!(json["passed"], 1);
+    assert_eq!(json["failed"], 1);
+
+    // Find the timed-out result
+    let results = json["results"].as_array().expect("results should be array");
+    let timed_out = results
+        .iter()
+        .find(|r| r["status"] == "failed")
+        .expect("should have a failed result");
+    let error = timed_out["error"].as_str().expect("should have error");
+    assert!(
+        error.contains("timed out after 200ms"),
+        "JSON error should mention timeout, got: {error}"
+    );
+}

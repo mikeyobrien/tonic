@@ -218,6 +218,7 @@ pub fn run(
     filter: Option<&str>,
     fail_fast: bool,
     seed: Option<u64>,
+    timeout: Option<u64>,
 ) -> Result<TestRunReport, TestRunnerError> {
     let target = Path::new(path);
     let test_files = discover_test_files(target)?;
@@ -254,6 +255,8 @@ pub fn run(
     let mut results = Vec::new();
     let run_start = Instant::now();
 
+    let timeout_duration = timeout.map(Duration::from_millis);
+
     for (test_name, ir) in &test_cases {
         let test_start = Instant::now();
 
@@ -261,8 +264,8 @@ pub fn run(
         let module_name = test_name.split('.').next().unwrap_or("");
         if setup_modules.contains(module_name) {
             let setup_fn = format!("{module_name}.setup");
-            match evaluate_named_function(ir, &setup_fn) {
-                Ok(RuntimeValue::ResultErr(reason)) => {
+            match run_with_timeout(ir, &setup_fn, timeout_duration) {
+                TestExecResult::Ok(RuntimeValue::ResultErr(reason)) => {
                     let error = format!("setup failed: {}", format_assertion_failure(&reason));
                     results.push(TestCaseResult {
                         id: test_name.clone(),
@@ -275,7 +278,7 @@ pub fn run(
                     }
                     continue;
                 }
-                Err(error) => {
+                TestExecResult::Err(error) => {
                     let error = format!("setup failed: {error}");
                     results.push(TestCaseResult {
                         id: test_name.clone(),
@@ -288,12 +291,25 @@ pub fn run(
                     }
                     continue;
                 }
-                Ok(_) => {} // setup succeeded, proceed to test
+                TestExecResult::TimedOut(ms) => {
+                    let error = format!("setup timed out after {ms}ms");
+                    results.push(TestCaseResult {
+                        id: test_name.clone(),
+                        status: TestCaseStatus::Failed,
+                        error: Some(error),
+                        duration: test_start.elapsed(),
+                    });
+                    if fail_fast {
+                        break;
+                    }
+                    continue;
+                }
+                TestExecResult::Ok(_) => {} // setup succeeded, proceed to test
             }
         }
 
-        match evaluate_named_function(ir, test_name) {
-            Ok(RuntimeValue::ResultErr(reason)) => {
+        match run_with_timeout(ir, test_name, timeout_duration) {
+            TestExecResult::Ok(RuntimeValue::ResultErr(reason)) => {
                 if is_test_skipped(&reason) {
                     let skip_reason = extract_skip_reason(&reason);
                     results.push(TestCaseResult {
@@ -316,7 +332,7 @@ pub fn run(
                     }
                 }
             }
-            Ok(_) => {
+            TestExecResult::Ok(_) => {
                 results.push(TestCaseResult {
                     id: test_name.clone(),
                     status: TestCaseStatus::Passed,
@@ -324,11 +340,22 @@ pub fn run(
                     duration: test_start.elapsed(),
                 });
             }
-            Err(error) => {
+            TestExecResult::Err(error) => {
                 results.push(TestCaseResult {
                     id: test_name.clone(),
                     status: TestCaseStatus::Failed,
                     error: Some(error.to_string()),
+                    duration: test_start.elapsed(),
+                });
+                if fail_fast {
+                    break;
+                }
+            }
+            TestExecResult::TimedOut(ms) => {
+                results.push(TestCaseResult {
+                    id: test_name.clone(),
+                    status: TestCaseStatus::Failed,
+                    error: Some(format!("test timed out after {ms}ms")),
                     duration: test_start.elapsed(),
                 });
                 if fail_fast {
@@ -356,6 +383,42 @@ pub fn run(
         duration: run_start.elapsed(),
         results,
     })
+}
+
+/// Result of running a test function, possibly with a timeout.
+enum TestExecResult {
+    Ok(RuntimeValue),
+    Err(String),
+    TimedOut(u64),
+}
+
+/// Run a named function with an optional timeout. When timeout is None, runs directly.
+fn run_with_timeout(ir: &IrProgram, fn_name: &str, timeout: Option<Duration>) -> TestExecResult {
+    match timeout {
+        None => match evaluate_named_function(ir, fn_name) {
+            Ok(val) => TestExecResult::Ok(val),
+            Err(e) => TestExecResult::Err(e.to_string()),
+        },
+        Some(limit) => {
+            let ir = ir.clone();
+            let fn_name = fn_name.to_string();
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let result = evaluate_named_function(&ir, &fn_name);
+                let _ = tx.send(result);
+            });
+            match rx.recv_timeout(limit) {
+                Ok(Ok(val)) => TestExecResult::Ok(val),
+                Ok(Err(e)) => TestExecResult::Err(e.to_string()),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    TestExecResult::TimedOut(limit.as_millis() as u64)
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    TestExecResult::Err("test thread panicked".to_string())
+                }
+            }
+        }
+    }
 }
 
 /// Splitmix64 PRNG — simple, fast, dependency-free.

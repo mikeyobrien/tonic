@@ -275,7 +275,7 @@ pub(super) fn print_check_help() {
 }
 
 pub(super) fn print_test_help() {
-    println!("Usage:\n  tonic test <path> [--list] [--filter <pattern>] [--fail-fast] [--seed <number>] [--format <text|json>]\n\nOptions:\n  --list               List discovered tests without running them\n  --filter <pattern>   Only run tests whose name contains <pattern>\n  --fail-fast          Stop after the first test failure\n  --seed <number>      Randomize test order with a reproducible seed\n  --format <text|json>  Output format (default: text)\n");
+    println!("Usage:\n  tonic test <path> [--list] [--filter <pattern>] [--fail-fast] [--seed <number>] [--timeout <ms>] [--format <text|json>]\n\nOptions:\n  --list               List discovered tests without running them\n  --filter <pattern>   Only run tests whose name contains <pattern>\n  --fail-fast          Stop after the first test failure\n  --seed <number>      Randomize test order with a reproducible seed\n  --timeout <ms>       Per-test timeout in milliseconds\n  --format <text|json>  Output format (default: text)\n");
 }
 
 pub(super) fn print_fmt_help() {
