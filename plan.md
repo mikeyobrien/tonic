@@ -1,51 +1,74 @@
 # Plan
 
 ## Active slice
-Wadler-Lindig algebra engine foundation in `src/formatter/algebra.rs`, isolated from the live formatter path.
+Create `src/formatter/to_doc.rs` as the first AST-to-algebra converter, kept completely off the live `tonic fmt` path.
 
 ## Why this slice now
-The code task explicitly calls for an algebra engine before AST-to-doc conversion. Keeping it standalone makes the verification honest: the new code is exercised by focused algebra tests, while the unchanged runtime path is covered separately by regression tests.
+Task 3 is the bulk of the formatter rewrite. The right next step is not CLI wiring; it is proving that parsed AST nodes can be rendered into the existing algebra with exact, testable output. Keep the supported AST surface intentionally small so failures stay local and the next slice can extend it cleanly.
 
 ## Builder checklist
-- [x] Add `mod algebra;` in `src/formatter/mod.rs`.
-- [x] Create `src/formatter/algebra.rs`.
-- [x] Implement `Doc` with the task-listed variants: `Nil`, `Concat(Box<Doc>, Box<Doc>)`, `Nest(i32, Box<Doc>)`, `Text(String)`, `Line`, `Group(Box<Doc>)`, `FlexBreak(Box<Doc>)`.
-- [x] Implement `format(doc: &Doc, max_width: usize) -> String`.
-- [x] Keep semantics minimal and explicit:
-  - `Group` tries flat layout first and falls back to broken layout when it does not fit.
-  - `Line` renders as a space in flat mode and as `\n` plus current indentation in broken mode.
-  - `Nest` increases indentation for broken lines only.
-  - `FlexBreak` is re-evaluated inside broken layouts and can stay flat when the remaining suffix fits.
-- [x] Add focused unit tests in `src/formatter/algebra.rs` covering:
-  - flat group when content fits
-  - broken group when width is exceeded
-  - nested indentation after a broken line
-  - concat / nil composition stability
-  - `FlexBreak` partial reflow behavior with exact expected strings
-- [x] Do **not** switch `format_source` to use the algebra engine yet.
-- [x] Do **not** add AST-to-doc conversion, parser threading, config files, or CLI flags in this slice.
-- [x] Run focused verification, save outputs under `logs/`, and commit only the slice files once green.
+- [x] Re-read `src/formatter/mod.rs`, `src/formatter/algebra.rs`, `src/parser/mod.rs`, and `src/parser/ast/{mod.rs,expr_def.rs,expr_impl.rs}` before editing; do not chase the nonexistent `src/parser.rs` path from the prior scratchpad.
+- [x] Add `mod to_doc;` in `src/formatter/mod.rs`.
+- [x] Create `src/formatter/to_doc.rs`.
+- [x] Add a pure entrypoint that converts parsed AST/modules/functions into `algebra::Doc` and returns formatted text via `algebra::format` for tests.
+- [x] Support module rendering:
+  - [x] `defmodule <Name> do ... end`
+  - [x] blank line separation between sibling functions
+- [x] Support function rendering:
+  - [x] `def` / `defp`
+  - [x] identifier parameter lists
+  - [x] default args (`\\`)
+  - [x] optional guards (`when ...`)
+- [x] Support only the expression subset needed by focused tests:
+  - [x] variables and literals (`int`, `float`, `bool`, `nil`, `string`)
+  - [x] simple calls / module-qualified calls represented by AST `Call`
+  - [x] blocks (`Expr::Block`)
+  - [x] pipes (`Expr::Pipe`) with one pipe per line when broken
+- [x] Use the algebra engine for width-sensitive layout decisions in function calls and pipe chains.
+- [x] Keep `format_source` and `tonic fmt` wired to `src/formatter/engine.rs` in this slice.
+- [x] Do **not** implement comment reinsertion, parser threading into CLI, config loading, maps/structs, control-flow doc conversion, or non-trivial function-head pattern rendering yet.
+- [x] Add focused unit tests that parse source, convert to docs, render with a chosen width, and assert exact strings.
+- [x] Save test outputs under `logs/` and do not stage unrelated dirty files.
 
 ## Test plan
-1. **Flat group stays flat**
-   - Build a small grouped doc that fits within `max_width`.
-   - Expect a single-line rendering with spaces instead of line breaks.
-2. **Broken group wraps when too wide**
-   - Use the same structure with a narrower width.
-   - Expect deterministic line breaks and stable indentation.
-3. **Nested indentation**
-   - Use `Nest` around a broken inner group.
-   - Expect continuation lines to pick up the nested indentation.
-4. **FlexBreak behavior**
-   - Build a grouped doc where the outer group must break, but a later flex break can stay inline.
-   - Expect a mixed rendering that proves `FlexBreak` is not identical to `Line`.
-5. **No live formatter regression**
-   - Re-run one existing formatter regression test and one CLI smoke/parity test to prove the runtime path still works unchanged.
+1. **Module + function shell**
+   - Parse a module with sibling functions.
+   - Expect canonical `defmodule ... do` / `def ... do` / `end` structure with a blank line between functions.
+2. **Private function with defaults and guard**
+   - Parse a `defp` with a default arg and `when` guard.
+   - Expect exact header rendering.
+3. **Call wrapping**
+   - Parse a function body with a long call.
+   - At wide width, expect a flat single-line call.
+   - At narrow width, expect one-arg-per-line style.
+4. **Pipe chain wrapping**
+   - Parse a pipe chain that exceeds width.
+   - Expect the chain to break before each `|>`.
+5. **Block body formatting**
+   - Parse a function body with multiple expressions.
+   - Expect stable line separation and indentation.
+6. **Live-path regression**
+   - Re-run the existing comment/idempotency and CLI parity regression tests to prove the unchanged token formatter still behaves.
+7. **Touched-surface regression**
+   - Re-run `formatter::algebra` after adding `SoftLine` so the algebra change is covered explicitly.
 
 ## Verification commands
+- `cargo test formatter::to_doc -- --nocapture`
 - `cargo test formatter::algebra -- --nocapture`
 - `cargo test format_source_is_idempotent_with_comments -- --nocapture`
 - `cargo test --test fmt_parity_smoke fmt_preserves_comments_and_is_idempotent -- --nocapture`
 
+## Expected files
+- `src/formatter/mod.rs`
+- `src/formatter/algebra.rs`
+- `src/formatter/to_doc.rs`
+- `context.md`
+- `plan.md`
+- `progress.md`
+- `logs/formatter_to_doc.log`
+- `logs/formatter_algebra.log`
+- `logs/formatter_regression.log`
+- `logs/formatter_parity.log`
+
 ## Critic note
-There is still no honest manual smoke for the changed code path because `tonic fmt` remains wired to `src/formatter/engine.rs`. The critic should treat any CLI/manual formatter run as regression evidence only, not as proof that the new algebra module executed.
+Unless the builder deliberately rewires `format_source` to use the AST converter — which is out of scope for this slice — there is no honest manual smoke path into the new code. The critic should reject any claim that a CLI run exercised `src/formatter/to_doc.rs`.

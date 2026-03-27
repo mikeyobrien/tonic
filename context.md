@@ -1,36 +1,45 @@
 # Context
 
 ## Objective
-Implement `code-task.formatter.md` incrementally. Slice 1 landed on `e81e939` and fixed comment preservation in the existing token formatter. Slice 2 now adds the standalone algebra foundation needed for the later AST-driven formatter work.
+Implement `code-task.formatter.md` incrementally. Slice 1 (`e81e939`) preserved comments in the live token formatter. Slice 2 (`aee0387`) added the standalone Wadler-Lindig algebra engine. Slice 3 now adds the first AST-driven formatter path without switching the CLI over yet.
 
 ## Current repo state
 - `tonic fmt` still routes through `src/formatter/mod.rs` -> `engine::format_source_inner`.
-- `src/formatter/algebra.rs` now exists as a standalone Wadler-Lindig-style document engine.
-- No AST-to-doc converter exists yet.
-- No width-aware wrapping or `--line-length` CLI support exists yet.
-- Comment preservation from slice 1 remains unchanged and green.
+- `src/formatter/algebra.rs` now includes the original group/nest/flex primitives plus `SoftLine`, which the new converter uses to render flat calls as `foo(arg)` and broken calls as one-arg-per-line.
+- `src/formatter/to_doc.rs` now exists as a library-only AST-to-doc converter with a `format_parsed_source` / `format_ast` test entrypoint.
+- The parser AST under `src/parser/ast/` supplies the narrow slice-3 surface already covered here: modules, functions, identifier params/defaults, guards, calls, pipes, blocks, and simple literals.
+- Live formatter behavior is intentionally unchanged; comment preservation and CLI formatting still come from the token formatter.
 
-## Slice 2 outcome
-- Added `src/formatter/algebra.rs` with `Doc` variants: `Nil`, `Concat`, `Nest`, `Text`, `Line`, `Group`, `FlexBreak`.
-- Implemented `format(doc, max_width)` with flat-vs-broken group decisions.
-- Implemented `Nest` indentation handling for broken layouts.
-- Implemented `FlexBreak` as a re-evaluated break that can stay inline inside an already-broken group when the remaining suffix still fits.
-- Kept the live formatter path unchanged; `tonic fmt` still uses `src/formatter/engine.rs`.
+## Relevant code for slice 3
+- `src/formatter/mod.rs` — wires in `to_doc` but keeps `format_source` on `engine`.
+- `src/formatter/algebra.rs` — reusable `Doc` tree and renderer; `SoftLine` was added here to support zero-or-newline call boundaries.
+- `src/formatter/to_doc.rs` — new AST-to-doc converter and focused unit tests.
+- `src/parser/mod.rs` — public `parse_ast` entrypoint; there is still no `src/parser.rs`.
+- `src/parser/ast/mod.rs` — module/function/pattern/shared AST types.
+- `src/parser/ast/expr_def.rs` + `src/parser/ast/expr_impl.rs` — expression variants/accessors consumed by the converter.
+- `code-task.formatter.md` — source task; slice 3 still covers only the first narrow AST-to-doc surface.
 
-## Relevant code
-- `src/formatter/mod.rs` — module wiring; `format_source` still points at `engine`.
-- `src/formatter/engine.rs` — current live formatter path.
-- `src/formatter/algebra.rs` — new standalone algebra engine plus focused unit tests.
-- `code-task.formatter.md` — source task; this slice covers Task 2 only.
-- `tests/fmt_parity_smoke.rs` and formatter unit tests — regression proof that the live path stayed intact.
+## Slice 3 scope shipped
+Implemented in this slice:
+- top-level module rendering
+- `def` / `defp` function headers
+- identifier parameters, including defaults
+- optional function guards
+- simple expression bodies used by focused tests: variables, literals, calls, pipe chains, and blocks
+- width-sensitive call and pipe rendering through the algebra layer
 
-## Constraints still in force
-- Keep exactly one concrete slice active.
-- Do not mix in AST-to-doc conversion, parser threading, config loading, or `--line-length` CLI wiring yet.
-- Because the new module is not on the live CLI path, a CLI/manual smoke can only count as regression coverage for the existing formatter path, not proof that `src/formatter/algebra.rs` was exercised.
-- Only stage formatter slice files plus the shared planning docs for this slice.
+Still intentionally deferred:
+- wiring `format_source` / `tonic fmt` to parse ASTs
+- comment reinsertion in the AST formatter path
+- maps, structs, case/cond/if/unless, try/rescue, comprehensions, anonymous functions
+- non-trivial function-head patterns
+- CLI/config work such as `--line-length` or `.tonic_formatter`
 
-## Verification evidence
-- `logs/formatter_algebra.log` — focused algebra tests
-- `logs/formatter_regression.log` — existing formatter idempotency regression
-- `logs/formatter_parity.log` — existing CLI parity smoke regression
+## Verification evidence expected from critic
+- `logs/formatter_to_doc.log` — focused converter tests
+- `logs/formatter_algebra.log` — algebra regression after adding `SoftLine`
+- `logs/formatter_regression.log` — live comment/idempotency regression
+- `logs/formatter_parity.log` — live CLI parity smoke regression
+
+## Critic constraint
+If the builder keeps `tonic fmt` on `engine::format_source_inner`, there is still no honest manual smoke for the changed code path. CLI/manual runs remain regression evidence only, not proof that `src/formatter/to_doc.rs` executed.

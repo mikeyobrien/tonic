@@ -1,0 +1,1010 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/bin/benchsuite.rs (target/debug/deps/benchsuite-a272cd8c1e8988a1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.00s
+
+     Running unittests src/bin/llvm_catalog_parity.rs (target/debug/deps/llvm_catalog_parity-7705a19f8ef8114b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/tonic-802e7094caf810ca)
+
+running 1 test
+test formatter::tests::format_source_is_idempotent_with_comments ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 944 filtered out; finished in 0.00s
+
+     Running tests/check_anonymous_fn_clause_arity_diagnostics.rs (target/debug/deps/check_anonymous_fn_clause_arity_diagnostics-50b08516ff2de7db)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_arity_mismatch_diagnostics.rs (target/debug/deps/check_arity_mismatch_diagnostics-311f8721ba72fe51)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_capture_diagnostics.rs (target/debug/deps/check_capture_diagnostics-23d57c4d9cc0ecee)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_case_patterns.rs (target/debug/deps/check_dump_ast_case_patterns-573482f596747b24)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_comprehensions.rs (target/debug/deps/check_dump_ast_comprehensions-de3c8b69ce15accb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_control_forms.rs (target/debug/deps/check_dump_ast_control_forms-7a9c258e7d5ff19c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_expressions.rs (target/debug/deps/check_dump_ast_expressions-915cb1bab5f757ee)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_map_update.rs (target/debug/deps/check_dump_ast_map_update-2ad8c2b4ca7b46f9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_module.rs (target/debug/deps/check_dump_ast_module-793d674500af2700)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_module_forms.rs (target/debug/deps/check_dump_ast_module_forms-6636aa6b745bf510)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_pipe_chain.rs (target/debug/deps/check_dump_ast_pipe_chain-18bd89fc5f8a3be1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_protocol_forms.rs (target/debug/deps/check_dump_ast_protocol_forms-8cca30fbf28d1cff)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_string_interpolation.rs (target/debug/deps/check_dump_ast_string_interpolation-03d13551a1c32f16)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_struct_syntax.rs (target/debug/deps/check_dump_ast_struct_syntax-2cca824f18219828)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ast_try_raise.rs (target/debug/deps/check_dump_ast_try_raise-87203f4fea96105d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ir_primitives.rs (target/debug/deps/check_dump_ir_primitives-6185a68887398398)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ir_result_case.rs (target/debug/deps/check_dump_ir_result_case-e0646ae314944f9e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ir_smoke.rs (target/debug/deps/check_dump_ir_smoke-2b952f4dd61f2ba8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ir_source_map.rs (target/debug/deps/check_dump_ir_source_map-213bc8b36610d849)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_ir_string_interpolation.rs (target/debug/deps/check_dump_ir_string_interpolation-30a814a113593110)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_mir_smoke.rs (target/debug/deps/check_dump_mir_smoke-3f0ea966be7c29d1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_mutual_exclusivity_combinations.rs (target/debug/deps/check_dump_mutual_exclusivity_combinations-50b53683a9396edd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/check_dump_tokens.rs (target/debug/deps/check_dump_tokens-9c5c2e8fb6381158)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_tokens_json.rs (target/debug/deps/check_dump_tokens_json-4a2cd0eec70e8df4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_dump_tokens_map_fat_arrow.rs (target/debug/deps/check_dump_tokens_map_fat_arrow-6689d20546c10c44)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_dump_tokens_numeric_literals.rs (target/debug/deps/check_dump_tokens_numeric_literals-c7ba8756cd00ae87)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/check_dump_tokens_ops.rs (target/debug/deps/check_dump_tokens_ops-a527483124827527)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_host_call_typing.rs (target/debug/deps/check_host_call_typing-23389b975091370e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_map_fat_arrow_diagnostics.rs (target/debug/deps/check_map_fat_arrow_diagnostics-e717e386f6886684)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_map_pattern_fat_arrow_diagnostics.rs (target/debug/deps/check_map_pattern_fat_arrow_diagnostics-54bd88b2c2b8f61b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_missing_comma_diagnostics.rs (target/debug/deps/check_missing_comma_diagnostics-98ba61869f20232b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.00s
+
+     Running tests/check_non_exhaustive_case.rs (target/debug/deps/check_non_exhaustive_case-2a6b49c07e1a1137)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_numeric_operand_hint_diagnostics.rs (target/debug/deps/check_numeric_operand_hint_diagnostics-b3a9b4bc3135e7a8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_parser_missing_arrow_diagnostics.rs (target/debug/deps/check_parser_missing_arrow_diagnostics-61d30b53ea2ae820)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_parser_missing_do_diagnostics.rs (target/debug/deps/check_parser_missing_do_diagnostics-472db36678bfec83)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_parser_missing_end_diagnostics.rs (target/debug/deps/check_parser_missing_end_diagnostics-55167e9525b13b3a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_parser_unexpected_arrow_diagnostics.rs (target/debug/deps/check_parser_unexpected_arrow_diagnostics-b70479a88d145abc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_parser_unexpected_block_keyword_diagnostics.rs (target/debug/deps/check_parser_unexpected_block_keyword_diagnostics-17860aa83d792cc6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_protocol_defimpl_diagnostics.rs (target/debug/deps/check_protocol_defimpl_diagnostics-aa4b7ec6e3ba8493)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_resolve_module_reference.rs (target/debug/deps/check_resolve_module_reference-6a1b32bbe6c85563)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/check_result_propagation_requires_result.rs (target/debug/deps/check_result_propagation_requires_result-81469dd1298a6328)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_struct_syntax_diagnostics.rs (target/debug/deps/check_struct_syntax_diagnostics-f763a2431c9e5a71)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_test_fmt_command_paths.rs (target/debug/deps/check_test_fmt_command_paths-4ea83d9b8af589ec)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/check_try_raise_typing.rs (target/debug/deps/check_try_raise_typing-44ccfc865905ecc3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_type_mismatch_hint_diagnostics.rs (target/debug/deps/check_type_mismatch_hint_diagnostics-c1bc64d15589ed25)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/check_unclosed_delimiter_diagnostics.rs (target/debug/deps/check_unclosed_delimiter_diagnostics-4ddbab6e502422fe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running tests/check_undefined_symbol.rs (target/debug/deps/check_undefined_symbol-2b320b2bb4f6e7ef)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/check_undefined_symbol_hints.rs (target/debug/deps/check_undefined_symbol_hints-978f584f37cfa618)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/cli_contract_common.rs (target/debug/deps/cli_contract_common-7aee330b99f0113e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/cli_contract_compile.rs (target/debug/deps/cli_contract_compile-780724f2136849c3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/cli_contract_docs.rs (target/debug/deps/cli_contract_docs-0105bdfa4377c8a0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/cli_contract_run_command.rs (target/debug/deps/cli_contract_run_command-6e1c7e4ada526c02)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/cli_help_smoke.rs (target/debug/deps/cli_help_smoke-6b00e83c7f2479da)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/compile_aot_artifacts_cli.rs (target/debug/deps/compile_aot_artifacts_cli-de17b0b24f94f49d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/compile_catalog_examples.rs (target/debug/deps/compile_catalog_examples-f4f02f033ae1d22b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/compile_dump_mir_smoke.rs (target/debug/deps/compile_dump_mir_smoke-59c26b62116a4979)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/compile_llvm_backend_closures_captures.rs (target/debug/deps/compile_llvm_backend_closures_captures-23caa1fe32a551c1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/compile_llvm_backend_collections_patterns.rs (target/debug/deps/compile_llvm_backend_collections_patterns-766dd58f47cf8d99)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/compile_llvm_backend_control_flow_calls.rs (target/debug/deps/compile_llvm_backend_control_flow_calls-5c291ae1cc93c93c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/compile_llvm_backend_error_semantics.rs (target/debug/deps/compile_llvm_backend_error_semantics-de20a346bc8e94e1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/compile_llvm_backend_host_interop.rs (target/debug/deps/compile_llvm_backend_host_interop-9b3e36a94b706513)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/compile_llvm_backend_mvp.rs (target/debug/deps/compile_llvm_backend_mvp-64b1cf07eb587f3b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/compile_llvm_literals_calls_parity.rs (target/debug/deps/compile_llvm_literals_calls_parity-53a342318cdb9efc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/deps_lockfile_determinism.rs (target/debug/deps/deps_lockfile_determinism-1c2a70b206df2f39)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/deps_manifest_dependency_diagnostics.rs (target/debug/deps/deps_manifest_dependency_diagnostics-2caa055972570f39)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/deps_sync_git_failure_diagnostic.rs (target/debug/deps/deps_sync_git_failure_diagnostic-847fa94730f91358)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/deps_sync_git_local_smoke.rs (target/debug/deps/deps_sync_git_local_smoke-19f884b28719e666)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/differential_backends.rs (target/debug/deps/differential_backends-b3ddcd55533556c1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/fmt_parity_smoke.rs (target/debug/deps/fmt_parity_smoke-450d2b4942aa5f4d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/llvm_catalog_parity_gate_ci_docs.rs (target/debug/deps/llvm_catalog_parity_gate_ci_docs-5575feda74200f3a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/llvm_catalog_parity_harness.rs (target/debug/deps/llvm_catalog_parity_harness-74d590a3dd27f611)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/native_gates_strict_flow.rs (target/debug/deps/native_gates_strict_flow-58f921ef5d5c9171)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/native_optimization_profile_hooks.rs (target/debug/deps/native_optimization_profile_hooks-1f905047ce5e6ec3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/native_regression_policy.rs (target/debug/deps/native_regression_policy-3cfad0e53e6bd102)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/observability_cli_commands.rs (target/debug/deps/observability_cli_commands-d4af33079395880e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/observability_docs.rs (target/debug/deps/observability_docs-9131c78bc077897e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/observability_repl.rs (target/debug/deps/observability_repl-2489e6f8dfd224d7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/observability_run_compile.rs (target/debug/deps/observability_run_compile-d66dd1131e4cb7fb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/release_alpha_readiness.rs (target/debug/deps/release_alpha_readiness-7c45074ce96ef5da)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/repl_server.rs (target/debug/deps/repl_server-1eecc22ef2ecd9b3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/run_anon_fn_capture_smoke.rs (target/debug/deps/run_anon_fn_capture_smoke-73a91819a4d5d4cd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/run_arithmetic_smoke.rs (target/debug/deps/run_arithmetic_smoke-b28eb680bfa80751)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/run_block_expression_smoke.rs (target/debug/deps/run_block_expression_smoke-962a490fc1b86e8e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/run_cache_corruption_recovery_smoke.rs (target/debug/deps/run_cache_corruption_recovery_smoke-aac104d4fa37554c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_cache_hit_smoke.rs (target/debug/deps/run_cache_hit_smoke-09914a8e6c945f2b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_cache_path_conflict_smoke.rs (target/debug/deps/run_cache_path_conflict_smoke-d79a26a1b8863bad)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_cache_permission_denied_smoke.rs (target/debug/deps/run_cache_permission_denied_smoke-27b3bcc073cf3c5e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_case_list_map_smoke.rs (target/debug/deps/run_case_list_map_smoke-9598c8b3c4db5316)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_case_pin_guard_match_smoke.rs (target/debug/deps/run_case_pin_guard_match_smoke-59c22c7519471ed4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/run_collections_smoke.rs (target/debug/deps/run_collections_smoke-3c0a9468779d82e1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_command_stdout_contract.rs (target/debug/deps/run_command_stdout_contract-d4c2d9ea3f7ffbcd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_comprehensions_smoke.rs (target/debug/deps/run_comprehensions_smoke-9304a8d8639a3b20)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/run_control_forms_smoke.rs (target/debug/deps/run_control_forms_smoke-681594abfcffeb9b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_dependency_cache_invalidation.rs (target/debug/deps/run_dependency_cache_invalidation-22fa1f046b3051d2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_dependency_duplicate_module_conflict.rs (target/debug/deps/run_dependency_duplicate_module_conflict-9ebf01205ee0bd61)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_dependency_lockfile_contract.rs (target/debug/deps/run_dependency_lockfile_contract-f178b4a3e01e6196)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_dependency_offline_warm_cache.rs (target/debug/deps/run_dependency_offline_warm_cache-7949767886163a13)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_function_clauses_defaults_defp_smoke.rs (target/debug/deps/run_function_clauses_defaults_defp_smoke-4f3c93f8386dbdff)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/run_function_guard_smoke.rs (target/debug/deps/run_function_guard_smoke-3c51a1507b84f999)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_guard_builtin_parity_smoke.rs (target/debug/deps/run_guard_builtin_parity_smoke-f2f297672963a920)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_import_only_except_semantics_smoke.rs (target/debug/deps/run_import_only_except_semantics_smoke-a2d2dad3cb0f969c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/run_lazy_stdlib_loading_smoke.rs (target/debug/deps/run_lazy_stdlib_loading_smoke-8a26341f8043de83)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/run_logical_smoke.rs (target/debug/deps/run_logical_smoke-4bd25d0f45bea2f7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/run_manifest_validation.rs (target/debug/deps/run_manifest_validation-f266990ee5c26a2c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/run_map_fat_arrow_parity_smoke.rs (target/debug/deps/run_map_fat_arrow_parity_smoke-3233f7ec5ca369d6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_map_update_access_smoke.rs (target/debug/deps/run_map_update_access_smoke-f643f542b5b3222c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_module_forms_attrs_smoke.rs (target/debug/deps/run_module_forms_attrs_smoke-c32d147dce50c3ea)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_module_special_vars_smoke.rs (target/debug/deps/run_module_special_vars_smoke-61b3bfccd6bd7502)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_multi_alias_smoke.rs (target/debug/deps/run_multi_alias_smoke-3f80612143ffeec8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_nested_defmodule_smoke.rs (target/debug/deps/run_nested_defmodule_smoke-e63d669c634cb04e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_operator_parity_phase2_smoke.rs (target/debug/deps/run_operator_parity_phase2_smoke-a72f6f38b2e40e80)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+
+     Running tests/run_parity_examples.rs (target/debug/deps/run_parity_examples-10197b7edd63c187)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_path_dependency_external_cwd.rs (target/debug/deps/run_path_dependency_external_cwd-293cfc05485aa3cc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_pipe_enum_smoke.rs (target/debug/deps/run_pipe_enum_smoke-1f740b52bf32c1ef)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_primitives_smoke.rs (target/debug/deps/run_primitives_smoke-dc803d4a9e093ee8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/run_project_multimodule_smoke.rs (target/debug/deps/run_project_multimodule_smoke-5732258cf0ca7a73)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_protocol_defimpl_smoke.rs (target/debug/deps/run_protocol_defimpl_smoke-859b447b47270eaa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/run_protocol_dispatch_smoke.rs (target/debug/deps/run_protocol_dispatch_smoke-4e096e341699efc5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_result_propagation.rs (target/debug/deps/run_result_propagation-b8639410c600ff49)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_self_hosted_lexer_scaffold_example.rs (target/debug/deps/run_self_hosted_lexer_scaffold_example-23872c62aed47e08)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/run_string_interpolation_smoke.rs (target/debug/deps/run_string_interpolation_smoke-86041d13c5019a08)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_struct_syntax_smoke.rs (target/debug/deps/run_struct_syntax_smoke-65042e6099ce8254)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_syntactic_sugar_smoke.rs (target/debug/deps/run_syntactic_sugar_smoke-3014d75ffc36caf2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests/run_tonicctl_meta_example.rs (target/debug/deps/run_tonicctl_meta_example-6b5ad179a6985638)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/run_translated_fixtures_smoke.rs (target/debug/deps/run_translated_fixtures_smoke-50e364074f4d4e50)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/run_try_raise_smoke.rs (target/debug/deps/run_try_raise_smoke-33c35a243edeb2c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/run_use_require_semantics_smoke.rs (target/debug/deps/run_use_require_semantics_smoke-a2e53c42fec56e79)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_bindings_call_scope.rs (target/debug/deps/runtime_llvm_bindings_call_scope-6f5ba306e2f8fc62)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_closures_bindings_interop.rs (target/debug/deps/runtime_llvm_closures_bindings_interop-08c250d0c58fc475)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_core_values_collections.rs (target/debug/deps/runtime_llvm_core_values_collections-8ac7e11e4ae46c43)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_http_server_smoke.rs (target/debug/deps/runtime_llvm_http_server_smoke-1689bf0a09ce835a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_io_stdlib_smoke.rs (target/debug/deps/runtime_llvm_io_stdlib_smoke-fd9154587d5735df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_map_stdlib_smoke.rs (target/debug/deps/runtime_llvm_map_stdlib_smoke-e64bc0f137e4a65a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_patterns_control_flow.rs (target/debug/deps/runtime_llvm_patterns_control_flow-8ca713a95cddc64d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_results_errors_try.rs (target/debug/deps/runtime_llvm_results_errors_try-35a6f37eee9a1793)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_string_stdlib_smoke.rs (target/debug/deps/runtime_llvm_string_stdlib_smoke-2969b53d68d73620)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_strings_lists_for.rs (target/debug/deps/runtime_llvm_strings_lists_for-37e497e07305acc5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_system_run_repeat.rs (target/debug/deps/runtime_llvm_system_run_repeat-d0183e065fcfe8d1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_llvm_system_stdlib_smoke.rs (target/debug/deps/runtime_llvm_system_stdlib_smoke-ea101984b0cb0a4e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.00s
+
+     Running tests/runtime_memory_bakeoff_guardrails.rs (target/debug/deps/runtime_memory_bakeoff_guardrails-f2d02bcb6405acf2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/runtime_memory_default_mode_smoke.rs (target/debug/deps/runtime_memory_default_mode_smoke-a3f9a9f22281511f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_memory_rc_smoke.rs (target/debug/deps/runtime_memory_rc_smoke-2077a4db6e0451a9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/runtime_memory_root_tracking_smoke.rs (target/debug/deps/runtime_memory_root_tracking_smoke-46ac52e07e8cf0f0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_memory_stats_smoke.rs (target/debug/deps/runtime_memory_stats_smoke-b4e6a4a1a1084547)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/runtime_memory_trace_smoke.rs (target/debug/deps/runtime_memory_trace_smoke-61957e0c354829a2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/runtime_text_parser_contract.rs (target/debug/deps/runtime_text_parser_contract-c63b30d2a33bcb5e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/script_observability.rs (target/debug/deps/script_observability-2058bbd2d30be83c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/self_hosted_lexer_parity.rs (target/debug/deps/self_hosted_lexer_parity-ecb9a4913c7da992)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/system_run_stream_live_output.rs (target/debug/deps/system_run_stream_live_output-5a3cc2b52fe92f63)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/system_run_timeout.rs (target/debug/deps/system_run_timeout-c4755bf295971c68)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/system_stdlib_crypto_smoke.rs (target/debug/deps/system_stdlib_crypto_smoke-41f462d0e5db7dd8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/system_stdlib_http_input_smoke.rs (target/debug/deps/system_stdlib_http_input_smoke-ccb9e91ec763b7d3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.00s
+
+     Running tests/system_stdlib_http_server_accept.rs (target/debug/deps/system_stdlib_http_server_accept-f02d3a2a527866b1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/system_stdlib_http_server_integration.rs (target/debug/deps/system_stdlib_http_server_integration-260075dcf411fe7a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/system_stdlib_http_server_listen.rs (target/debug/deps/system_stdlib_http_server_listen-11c7ca445d990e88)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/system_stdlib_http_server_read.rs (target/debug/deps/system_stdlib_http_server_read-cf7278b7923ccc84)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/system_stdlib_http_server_write.rs (target/debug/deps/system_stdlib_http_server_write-60d2aa39f94496ff)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/test_runner_rich_diagnostics.rs (target/debug/deps/test_runner_rich_diagnostics-2aa09852e885705d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 61 filtered out; finished in 0.00s
+
+     Running tests/verify_auto_mode_json.rs (target/debug/deps/verify_auto_mode_json-ebd6f78165d1c78f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/verify_benchmark_gate_thresholds.rs (target/debug/deps/verify_benchmark_gate_thresholds-df0d439039eebfd1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/verify_feature_parser.rs (target/debug/deps/verify_feature_parser-81f7b08a91217f9d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/verify_manual_evidence_invalid_json.rs (target/debug/deps/verify_manual_evidence_invalid_json-52b12be6e8a58b61)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/verify_manual_evidence_requirements.rs (target/debug/deps/verify_manual_evidence_requirements-62a6ec47ca18fc52)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/verify_missing_acceptance.rs (target/debug/deps/verify_missing_acceptance-7c577058868fe7b3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/verify_mode_tag_filtering.rs (target/debug/deps/verify_mode_tag_filtering-13a24d64f5567ce0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+

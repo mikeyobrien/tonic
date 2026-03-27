@@ -1,5 +1,6 @@
 mod algebra;
 mod engine;
+mod to_doc;
 
 use std::fs;
 use std::path::{Path, PathBuf};
