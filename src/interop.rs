@@ -17,6 +17,7 @@ mod io_mod;
 mod json_mod;
 mod map_mod;
 mod path_mod;
+mod shell_mod;
 mod string_mod;
 mod system;
 mod toml_mod;
@@ -397,6 +398,9 @@ impl HostRegistry {
 
         // TOML stdlib interop primitives for interpreter-backed Toml.* calls.
         toml_mod::register_toml_host_functions(self);
+
+        // Shell stdlib interop primitives for interpreter-backed Shell.* calls.
+        shell_mod::register_shell_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);

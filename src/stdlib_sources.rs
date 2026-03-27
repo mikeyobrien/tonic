@@ -10,6 +10,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Float", OPTIONAL_STDLIB_FLOAT_SOURCE),
     ("Json", OPTIONAL_STDLIB_JSON_SOURCE),
     ("Toml", OPTIONAL_STDLIB_TOML_SOURCE),
+    ("Shell", OPTIONAL_STDLIB_SHELL_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -863,3 +864,6 @@ const OPTIONAL_STDLIB_JSON_SOURCE: &str =
 
 const OPTIONAL_STDLIB_TOML_SOURCE: &str =
     "defmodule Toml do\n  def encode(value) do\n    host_call(:toml_encode, value)\n  end\n\n  def decode(string) do\n    host_call(:toml_decode, string)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_SHELL_SOURCE: &str =
+    "defmodule Shell do\n  def quote(string) do\n    host_call(:shell_quote, string)\n  end\n\n  def join(args) do\n    host_call(:shell_join, args)\n  end\nend\n";
