@@ -16,6 +16,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
 
     let source_path = args[0].clone();
     let mut format = TestOutputFormat::Text;
+    let mut filter: Option<String> = None;
     let mut index = 1;
 
     while index < args.len() {
@@ -40,6 +41,18 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
                 format = parsed;
                 index += 2;
             }
+            "--filter" => {
+                let Some(value) = args.get(index + 1) else {
+                    return CliDiagnostic::usage_with_hint(
+                        "missing value for --filter",
+                        "usage: tonic test <path> --filter <pattern>",
+                    )
+                    .emit();
+                };
+
+                filter = Some(value.clone());
+                index += 2;
+            }
             other => {
                 return CliDiagnostic::usage_with_hint(
                     format!("unexpected argument '{other}'"),
@@ -60,10 +73,13 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
                 TestOutputFormat::Json => "json",
             },
         );
+        if let Some(ref f) = filter {
+            observed_run.record_metadata("filter", f.clone());
+        }
     }
 
     let report = match observe_command_phase_result(&mut observed_run, "test.run_suite", || {
-        test_runner::run(&source_path)
+        test_runner::run(&source_path, filter.as_deref())
     }) {
         Ok(report) => report,
         Err(TestRunnerError::Failure(message)) => {

@@ -600,6 +600,103 @@ fn test_assert_json_output_includes_structured_error() {
     );
 }
 
+// --- --filter integration tests ---
+
+#[test]
+fn test_filter_runs_only_matching_tests() {
+    let fixture_root = write_single_test_file(
+        "test-filter-subset",
+        "test_filter.tn",
+        "defmodule FilterTest do\n  def test_alpha() do\n    1\n  end\n\n  def test_beta() do\n    2\n  end\n\n  def test_gamma() do\n    3\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", ".", "--filter", "beta"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected test command success, got status {:?} with stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test FilterTest.test_beta ... ok"),
+        "filtered test should appear, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("test_alpha"),
+        "non-matching test should be excluded, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("test_gamma"),
+        "non-matching test should be excluded, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("1 passed; 0 failed; 1 total"),
+        "summary should reflect filtered count, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_filter_no_matches_reports_zero_tests() {
+    let fixture_root = write_single_test_file(
+        "test-filter-none",
+        "test_filter_none.tn",
+        "defmodule FilterNoneTest do\n  def test_alpha() do\n    1\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", ".", "--filter", "nonexistent"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "zero tests matching filter should still succeed"
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("0 passed; 0 failed; 0 total"),
+        "summary should show zero tests, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_filter_with_json_output() {
+    let fixture_root = write_single_test_file(
+        "test-filter-json",
+        "test_filter_json.tn",
+        "defmodule FilterJsonTest do\n  def test_one() do\n    1\n  end\n\n  def test_two() do\n    2\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", ".", "--filter", "one", "--format", "json"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let report: Value = serde_json::from_str(&stdout).expect("json output should parse");
+
+    assert_eq!(report["total"], 1);
+    assert_eq!(report["passed"], 1);
+
+    let results = report["results"]
+        .as_array()
+        .expect("results should be array");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["id"], "FilterJsonTest.test_one");
+}
+
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
 

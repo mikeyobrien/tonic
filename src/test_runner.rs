@@ -116,7 +116,7 @@ struct TestSuite {
     ir: IrProgram,
 }
 
-pub fn run(path: &str) -> Result<TestRunReport, TestRunnerError> {
+pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunnerError> {
     let target = Path::new(path);
     let test_files = discover_test_files(target)?;
     let mut results = Vec::new();
@@ -132,6 +132,11 @@ pub fn run(path: &str) -> Result<TestRunReport, TestRunnerError> {
         let suite = compile_suite(&file, &source)?;
 
         for test_name in suite.tests {
+            if let Some(pattern) = filter {
+                if !test_name.contains(pattern) {
+                    continue;
+                }
+            }
             match evaluate_named_function(&suite.ir, &test_name) {
                 Ok(RuntimeValue::ResultErr(reason)) => {
                     let error = format_assertion_failure(&reason);
