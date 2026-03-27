@@ -183,6 +183,7 @@ struct TestSuite {
     tests: Vec<String>,
     ir: IrProgram,
     setup_modules: HashSet<String>,
+    teardown_modules: HashSet<String>,
 }
 
 pub fn list_tests(path: &str, filter: Option<&str>) -> Result<Vec<String>, TestRunnerError> {
@@ -226,6 +227,7 @@ pub fn run(
     // Collect all (test_name, ir) pairs, then optionally shuffle.
     let mut test_cases: Vec<(String, IrProgram)> = Vec::new();
     let mut setup_modules: HashSet<String> = HashSet::new();
+    let mut teardown_modules: HashSet<String> = HashSet::new();
 
     for file in test_files {
         let source = std::fs::read_to_string(&file).map_err(|error| {
@@ -237,6 +239,7 @@ pub fn run(
 
         let suite = compile_suite(&file, &source)?;
         setup_modules.extend(suite.setup_modules.into_iter());
+        teardown_modules.extend(suite.teardown_modules.into_iter());
 
         for test_name in suite.tests {
             if let Some(pattern) = filter {
@@ -308,60 +311,64 @@ pub fn run(
             }
         }
 
-        match run_with_timeout(ir, test_name, timeout_duration) {
+        let (mut status, mut error) = match run_with_timeout(ir, test_name, timeout_duration) {
             TestExecResult::Ok(RuntimeValue::ResultErr(reason)) => {
                 if is_test_skipped(&reason) {
                     let skip_reason = extract_skip_reason(&reason);
-                    results.push(TestCaseResult {
-                        id: test_name.clone(),
-                        status: TestCaseStatus::Skipped,
-                        error: Some(skip_reason),
-                        duration: test_start.elapsed(),
-                    });
-                    // Skipped tests do not trigger --fail-fast
+                    (TestCaseStatus::Skipped, Some(skip_reason))
                 } else {
-                    let error = format_assertion_failure(&reason);
-                    results.push(TestCaseResult {
-                        id: test_name.clone(),
-                        status: TestCaseStatus::Failed,
-                        error: Some(error),
-                        duration: test_start.elapsed(),
-                    });
-                    if fail_fast {
-                        break;
+                    let err = format_assertion_failure(&reason);
+                    (TestCaseStatus::Failed, Some(err))
+                }
+            }
+            TestExecResult::Ok(_) => (TestCaseStatus::Passed, None),
+            TestExecResult::Err(e) => (TestCaseStatus::Failed, Some(e.to_string())),
+            TestExecResult::TimedOut(ms) => (
+                TestCaseStatus::Failed,
+                Some(format!("test timed out after {ms}ms")),
+            ),
+        };
+
+        // Run teardown/0 if the test's module has one (always, regardless of test outcome).
+        if teardown_modules.contains(module_name) {
+            let teardown_fn = format!("{module_name}.teardown");
+            let teardown_err = match run_with_timeout(ir, &teardown_fn, timeout_duration) {
+                TestExecResult::Ok(RuntimeValue::ResultErr(reason)) => Some(format!(
+                    "teardown failed: {}",
+                    format_assertion_failure(&reason)
+                )),
+                TestExecResult::Err(e) => Some(format!("teardown failed: {e}")),
+                TestExecResult::TimedOut(ms) => Some(format!("teardown timed out after {ms}ms")),
+                TestExecResult::Ok(_) => None,
+            };
+            if let Some(td_err) = teardown_err {
+                match status {
+                    TestCaseStatus::Passed => {
+                        status = TestCaseStatus::Failed;
+                        error = Some(td_err);
+                    }
+                    TestCaseStatus::Failed => {
+                        let existing = error.unwrap_or_default();
+                        error = Some(format!("{existing}\n({td_err})"));
+                    }
+                    TestCaseStatus::Skipped => {
+                        // Teardown failure overrides skip — the test has a real problem
+                        status = TestCaseStatus::Failed;
+                        error = Some(td_err);
                     }
                 }
             }
-            TestExecResult::Ok(_) => {
-                results.push(TestCaseResult {
-                    id: test_name.clone(),
-                    status: TestCaseStatus::Passed,
-                    error: None,
-                    duration: test_start.elapsed(),
-                });
-            }
-            TestExecResult::Err(error) => {
-                results.push(TestCaseResult {
-                    id: test_name.clone(),
-                    status: TestCaseStatus::Failed,
-                    error: Some(error.to_string()),
-                    duration: test_start.elapsed(),
-                });
-                if fail_fast {
-                    break;
-                }
-            }
-            TestExecResult::TimedOut(ms) => {
-                results.push(TestCaseResult {
-                    id: test_name.clone(),
-                    status: TestCaseStatus::Failed,
-                    error: Some(format!("test timed out after {ms}ms")),
-                    duration: test_start.elapsed(),
-                });
-                if fail_fast {
-                    break;
-                }
-            }
+        }
+
+        let is_failure = status == TestCaseStatus::Failed;
+        results.push(TestCaseResult {
+            id: test_name.clone(),
+            status,
+            error,
+            duration: test_start.elapsed(),
+        });
+        if is_failure && fail_fast {
+            break;
         }
     }
 
@@ -735,6 +742,7 @@ fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError
 
     let mut tests = Vec::new();
     let mut setup_modules = HashSet::new();
+    let mut teardown_modules = HashSet::new();
 
     for module in &ast.modules {
         let has_setup = module.functions.iter().any(|function| {
@@ -742,6 +750,13 @@ fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError
         });
         if has_setup {
             setup_modules.insert(module.name.clone());
+        }
+
+        let has_teardown = module.functions.iter().any(|function| {
+            !function.is_private() && function.params.is_empty() && function.name == "teardown"
+        });
+        if has_teardown {
+            teardown_modules.insert(module.name.clone());
         }
 
         for function in &module.functions {
@@ -775,5 +790,6 @@ fn compile_suite(path: &Path, source: &str) -> Result<TestSuite, TestRunnerError
         tests,
         ir,
         setup_modules,
+        teardown_modules,
     })
 }

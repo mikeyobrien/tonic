@@ -2077,3 +2077,149 @@ fn test_timeout_json_output() {
         "JSON error should mention timeout, got: {error}"
     );
 }
+
+// ── teardown/0 tests ──────────────────────────────────────────────────────
+
+#[test]
+fn test_teardown_function_runs_after_each_test() {
+    // teardown/0 that succeeds — tests should still pass normally.
+    // Also verifies teardown is NOT listed as a test itself.
+    let fixture_root = write_single_test_file(
+        "test-teardown-runs",
+        "teardown_test.tn",
+        "defmodule TeardownTest do
+  def teardown() do
+    :ok
+  end
+
+  def test_alpha() do
+    :ok
+  end
+
+  def test_beta() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "teardown_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "all tests should pass with ok teardown"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test TeardownTest.test_alpha ... ok"),
+        "alpha should pass, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test TeardownTest.test_beta ... ok"),
+        "beta should pass, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("2 passed; 0 failed; 2 total"),
+        "summary should show 2 passed, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("test TeardownTest.teardown"),
+        "teardown should not be listed as a test, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_teardown_runs_even_after_test_failure() {
+    // Test fails, but teardown still runs (succeeds). The test should still be marked failed
+    // with the original assertion error, not a teardown error.
+    let fixture_root = write_single_test_file(
+        "test-teardown-after-fail",
+        "teardown_after_fail_test.tn",
+        "defmodule TeardownAfterFailTest do
+  def teardown() do
+    :ok
+  end
+
+  def test_fails() do
+    Assert.assert(false, \"intentional failure\")
+  end
+
+  def test_passes() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "teardown_after_fail_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(!output.status.success(), "one test should fail");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test TeardownAfterFailTest.test_fails ... FAILED"),
+        "failing test should be marked FAILED, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test TeardownAfterFailTest.test_passes ... ok"),
+        "passing test should still pass, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("intentional failure"),
+        "original error should be preserved, got:\n{stdout}"
+    );
+    // Teardown succeeded, so no "teardown failed" message
+    assert!(
+        !stdout.contains("teardown failed"),
+        "teardown succeeded so no teardown error, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_teardown_failure_marks_test_as_failed() {
+    // teardown/0 returns err(...) — even passing tests should be marked as failed.
+    let fixture_root = write_single_test_file(
+        "test-teardown-failure",
+        "teardown_failure_test.tn",
+        "defmodule TeardownFailTest do
+  def teardown() do
+    err(:cleanup_broken)
+  end
+
+  def test_alpha() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "teardown_failure_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        !output.status.success(),
+        "should fail when teardown returns err"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test TeardownFailTest.test_alpha ... FAILED"),
+        "test should be marked FAILED due to teardown, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("teardown failed"),
+        "error should mention teardown failed, got:\n{stdout}"
+    );
+}
