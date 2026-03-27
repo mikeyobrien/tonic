@@ -80,6 +80,7 @@ struct FlagSpec {
     hidden: bool,
     conflicts_with: Vec<String>,
     requires: Vec<String>,
+    value_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +88,8 @@ struct ArgSpec {
     name: String,
     doc: String,
     required: bool,
+    arg_type: FlagType,
+    value_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,6 +118,7 @@ struct CliSpec {
     flags: Vec<FlagSpec>,
     args: Vec<ArgSpec>,
     commands: Vec<SubcommandSpec>,
+    examples: Vec<String>,
 }
 
 /// Parse the spec keyword list into a CliSpec struct.
@@ -183,6 +187,9 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
             let hidden = matches!(kw_get(flag_kw, "hidden"), Some(RuntimeValue::Bool(true)));
             let conflicts_with = parse_string_list(flag_kw, "conflicts_with");
             let requires = parse_string_list(flag_kw, "requires");
+            let value_name = kw_get(flag_kw, "value_name")
+                .and_then(|v| as_str(v))
+                .map(|s| s.to_string());
 
             flags.push(FlagSpec {
                 name: flag_name.to_string(),
@@ -197,6 +204,7 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 hidden,
                 conflicts_with,
                 requires,
+                value_name,
             });
         }
     }
@@ -221,11 +229,21 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 Some(RuntimeValue::Bool(true)) => true,
                 _ => false,
             };
+            let arg_type = match kw_get(arg_kw, "type").and_then(|v| as_str(v)) {
+                Some("integer") => FlagType::Integer,
+                Some("float") => FlagType::Float,
+                _ => FlagType::String,
+            };
+            let value_name = kw_get(arg_kw, "value_name")
+                .and_then(|v| as_str(v))
+                .map(|s| s.to_string());
 
             args.push(ArgSpec {
                 name: arg_name.to_string(),
                 doc,
                 required,
+                arg_type,
+                value_name,
             });
         }
     }
@@ -300,6 +318,9 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                         matches!(kw_get(flag_kw, "hidden"), Some(RuntimeValue::Bool(true)));
                     let conflicts_with = parse_string_list(flag_kw, "conflicts_with");
                     let requires = parse_string_list(flag_kw, "requires");
+                    let value_name = kw_get(flag_kw, "value_name")
+                        .and_then(|v| as_str(v))
+                        .map(|s| s.to_string());
 
                     cmd_flags.push(FlagSpec {
                         name: flag_name.to_string(),
@@ -314,6 +335,7 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                         hidden,
                         conflicts_with,
                         requires,
+                        value_name,
                     });
                 }
             }
@@ -338,11 +360,21 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                         .to_string();
                     let required =
                         matches!(kw_get(arg_kw, "required"), Some(RuntimeValue::Bool(true)));
+                    let arg_type = match kw_get(arg_kw, "type").and_then(|v| as_str(v)) {
+                        Some("integer") => FlagType::Integer,
+                        Some("float") => FlagType::Float,
+                        _ => FlagType::String,
+                    };
+                    let value_name = kw_get(arg_kw, "value_name")
+                        .and_then(|v| as_str(v))
+                        .map(|s| s.to_string());
 
                     cmd_args.push(ArgSpec {
                         name: arg_name.to_string(),
                         doc,
                         required,
+                        arg_type,
+                        value_name,
                     });
                 }
             }
@@ -367,6 +399,14 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
         }
     }
 
+    let examples = match kw_get(spec_kw, "examples") {
+        Some(RuntimeValue::List(items)) => items
+            .iter()
+            .filter_map(|v| as_str(v).map(|s| s.to_string()))
+            .collect(),
+        _ => Vec::new(),
+    };
+
     Ok(CliSpec {
         name,
         version,
@@ -374,6 +414,7 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
         flags,
         args,
         commands,
+        examples,
     })
 }
 
@@ -401,10 +442,15 @@ fn generate_help(spec: &CliSpec) -> String {
         usage.push_str(" [OPTIONS]");
     }
     for arg in &spec.args {
+        let display = arg
+            .value_name
+            .as_deref()
+            .unwrap_or(&arg.name)
+            .to_uppercase();
         if arg.required {
-            usage.push_str(&format!(" <{}>", arg.name));
+            usage.push_str(&format!(" <{}>", display));
         } else {
-            usage.push_str(&format!(" [{}]", arg.name));
+            usage.push_str(&format!(" [{}]", display));
         }
     }
     lines.push(usage);
@@ -433,8 +479,13 @@ fn generate_help(spec: &CliSpec) -> String {
         lines.push(String::new());
         lines.push("ARGS:".to_string());
         for arg in &spec.args {
+            let display_name = arg
+                .value_name
+                .as_deref()
+                .unwrap_or(&arg.name)
+                .to_uppercase();
             let req = if arg.required { " (required)" } else { "" };
-            lines.push(format!("  <{}>{}    {}", arg.name, req, arg.doc));
+            lines.push(format!("  <{}>{}    {}", display_name, req, arg.doc));
         }
     }
 
@@ -452,6 +503,15 @@ fn generate_help(spec: &CliSpec) -> String {
     lines.push("      --output-json           Output as JSON".to_string());
     lines.push("  -h, --help                  Show this help".to_string());
     lines.push("      --version               Show version".to_string());
+
+    // Examples section
+    if !spec.examples.is_empty() {
+        lines.push(String::new());
+        lines.push("EXAMPLES:".to_string());
+        for ex in &spec.examples {
+            lines.push(format!("  {}", ex));
+        }
+    }
 
     lines.join("\n")
 }
@@ -472,13 +532,19 @@ fn format_flag_help(flag: &FlagSpec) -> String {
         flag_str.push_str(&format!("--{}", flag.name));
     }
 
-    let type_hint = match &flag.flag_type {
-        FlagType::Boolean => "",
-        FlagType::String => " <string>",
-        FlagType::Integer => " <integer>",
-        FlagType::Float => " <float>",
-    };
-    flag_str.push_str(type_hint);
+    if flag.flag_type != FlagType::Boolean {
+        let hint = if let Some(ref vn) = flag.value_name {
+            format!(" <{}>", vn)
+        } else {
+            match &flag.flag_type {
+                FlagType::String => format!(" <{}>", flag.name.to_uppercase()),
+                FlagType::Integer => format!(" <{}>", flag.name.to_uppercase()),
+                FlagType::Float => format!(" <{}>", flag.name.to_uppercase()),
+                FlagType::Boolean => unreachable!(),
+            }
+        };
+        flag_str.push_str(&hint);
+    }
 
     // Build description parts
     let mut desc_parts: Vec<String> = Vec::new();
@@ -525,10 +591,15 @@ fn generate_command_help(spec: &CliSpec, cmd: &SubcommandSpec) -> String {
         usage.push_str(" [OPTIONS]");
     }
     for arg in &cmd.args {
+        let display = arg
+            .value_name
+            .as_deref()
+            .unwrap_or(&arg.name)
+            .to_uppercase();
         if arg.required {
-            usage.push_str(&format!(" <{}>", arg.name));
+            usage.push_str(&format!(" <{}>", display));
         } else {
-            usage.push_str(&format!(" [{}]", arg.name));
+            usage.push_str(&format!(" [{}]", display));
         }
     }
     lines.push(usage);
@@ -538,8 +609,13 @@ fn generate_command_help(spec: &CliSpec, cmd: &SubcommandSpec) -> String {
         lines.push(String::new());
         lines.push("ARGS:".to_string());
         for arg in &cmd.args {
+            let display_name = arg
+                .value_name
+                .as_deref()
+                .unwrap_or(&arg.name)
+                .to_uppercase();
             let req = if arg.required { " (required)" } else { "" };
-            lines.push(format!("  <{}>{}    {}", arg.name, req, arg.doc));
+            lines.push(format!("  <{}>{}    {}", display_name, req, arg.doc));
         }
     }
 
@@ -690,40 +766,14 @@ fn do_parse_command(
             continue;
         }
 
-        if arg.starts_with('-') && arg.len() == 2 {
-            let short = &arg[1..2];
-            if let Some(fspec) = cmd.flags.iter().find(|f| f.short.as_deref() == Some(short)) {
-                let flag_name = fspec.name.clone();
-                let is_multi = fspec.multi;
-                match &fspec.flag_type {
-                    FlagType::Boolean => {
-                        set_flag_value(
-                            &mut parsed_flags,
-                            &flag_name,
-                            RuntimeValue::Bool(true),
-                            false,
-                        );
-                    }
-                    _ => {
-                        i += 1;
-                        if i >= argv.len() {
-                            return error_tuple(format!(
-                                "flag -{short} (--{flag_name}) requires a value"
-                            ));
-                        }
-                        match parse_flag_value(fspec, &argv[i]) {
-                            Ok(val) => {
-                                set_flag_value(&mut parsed_flags, &flag_name, val, is_multi);
-                            }
-                            Err(msg) => return error_tuple(msg),
-                        }
-                    }
+        if arg.starts_with('-') && arg.len() >= 2 && !arg.starts_with("--") {
+            match parse_combined_short_flags(arg, &cmd.flags, &mut parsed_flags, argv, i) {
+                Ok(extra) => {
+                    i += 1 + extra;
+                    continue;
                 }
-            } else {
-                return error_tuple(format!("unknown flag -{short}"));
+                Err(msg) => return error_tuple(msg),
             }
-            i += 1;
-            continue;
         }
 
         positional.push(arg.clone());
@@ -756,14 +806,16 @@ fn do_parse_command(
         return error_tuple(msg);
     }
 
-    // Map positional args
+    // Map positional args (with type coercion)
     let mut arg_values: Vec<(RuntimeValue, RuntimeValue)> = Vec::new();
     for (idx, aspec) in cmd.args.iter().enumerate() {
         if idx < positional.len() {
-            arg_values.push((
-                RuntimeValue::Atom(aspec.name.clone()),
-                RuntimeValue::String(positional[idx].clone()),
-            ));
+            match coerce_arg_value(aspec, &positional[idx]) {
+                Ok(val) => {
+                    arg_values.push((RuntimeValue::Atom(aspec.name.clone()), val));
+                }
+                Err(msg) => return error_tuple(msg),
+            }
         } else if aspec.required {
             return error_tuple(format!("required argument <{}> is missing", aspec.name));
         } else {
@@ -1024,44 +1076,14 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
             continue;
         }
 
-        if arg.starts_with('-') && arg.len() == 2 {
-            let short = &arg[1..2];
-            if let Some(fspec) = spec
-                .flags
-                .iter()
-                .find(|f| f.short.as_deref() == Some(short))
-            {
-                let flag_name = fspec.name.clone();
-                let is_multi = fspec.multi;
-                match &fspec.flag_type {
-                    FlagType::Boolean => {
-                        set_flag_value(
-                            &mut parsed_flags,
-                            &flag_name,
-                            RuntimeValue::Bool(true),
-                            false,
-                        );
-                    }
-                    _ => {
-                        i += 1;
-                        if i >= argv.len() {
-                            return error_tuple(format!(
-                                "flag -{short} (--{flag_name}) requires a value"
-                            ));
-                        }
-                        match parse_flag_value(fspec, &argv[i]) {
-                            Ok(val) => {
-                                set_flag_value(&mut parsed_flags, &flag_name, val, is_multi);
-                            }
-                            Err(msg) => return error_tuple(msg),
-                        }
-                    }
+        if arg.starts_with('-') && arg.len() >= 2 && !arg.starts_with("--") {
+            match parse_combined_short_flags(arg, &spec.flags, &mut parsed_flags, &argv, i) {
+                Ok(extra) => {
+                    i += 1 + extra;
+                    continue;
                 }
-            } else {
-                return error_tuple(format!("unknown flag -{short}"));
+                Err(msg) => return error_tuple(msg),
             }
-            i += 1;
-            continue;
         }
 
         // Check if this is a subcommand (first positional, before any positional args consumed)
@@ -1125,14 +1147,16 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
         return error_tuple(msg);
     }
 
-    // Map positional args to arg specs
+    // Map positional args to arg specs (with type coercion)
     let mut arg_values: Vec<(RuntimeValue, RuntimeValue)> = Vec::new();
     for (idx, aspec) in spec.args.iter().enumerate() {
         if idx < positional.len() {
-            arg_values.push((
-                RuntimeValue::Atom(aspec.name.clone()),
-                RuntimeValue::String(positional[idx].clone()),
-            ));
+            match coerce_arg_value(aspec, &positional[idx]) {
+                Ok(val) => {
+                    arg_values.push((RuntimeValue::Atom(aspec.name.clone()), val));
+                }
+                Err(msg) => return error_tuple(msg),
+            }
         } else if aspec.required {
             return error_tuple(format!("required argument <{}> is missing", aspec.name));
         } else {
@@ -1177,6 +1201,89 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
         Box::new(RuntimeValue::Atom("ok".to_string())),
         Box::new(result),
     )
+}
+
+/// Coerce a positional argument value to the arg's declared type.
+fn coerce_arg_value(aspec: &ArgSpec, raw: &str) -> Result<RuntimeValue, String> {
+    match &aspec.arg_type {
+        FlagType::String | FlagType::Boolean => Ok(RuntimeValue::String(raw.to_string())),
+        FlagType::Integer => raw.parse::<i64>().map(RuntimeValue::Int).map_err(|_| {
+            format!(
+                "invalid value '{}' for argument <{}>: expected integer",
+                raw, aspec.name
+            )
+        }),
+        FlagType::Float => {
+            if let Ok(i) = raw.parse::<i64>() {
+                Ok(RuntimeValue::Float(format!("{}.0", i)))
+            } else {
+                raw.parse::<f64>()
+                    .map(|_| RuntimeValue::Float(raw.to_string()))
+                    .map_err(|_| {
+                        format!(
+                            "invalid value '{}' for argument <{}>: expected float",
+                            raw, aspec.name
+                        )
+                    })
+            }
+        }
+    }
+}
+
+/// Try to expand combined short flags like `-abc` into individual flags.
+/// Returns Ok(consumed_count) if successfully parsed, Err(error_message) if invalid.
+fn parse_combined_short_flags(
+    arg: &str,
+    flags: &[FlagSpec],
+    parsed_flags: &mut [(String, RuntimeValue)],
+    argv: &[String],
+    current_idx: usize,
+) -> Result<usize, String> {
+    let chars: Vec<char> = arg[1..].chars().collect();
+    // Advance is how many extra argv items we consume (for a trailing value flag)
+    let mut extra_consumed = 0;
+
+    for (ci, &ch) in chars.iter().enumerate() {
+        let ch_str = ch.to_string();
+        if let Some(fspec) = flags.iter().find(|f| f.short.as_deref() == Some(&ch_str)) {
+            if fspec.flag_type == FlagType::Boolean {
+                set_flag_value(parsed_flags, &fspec.name, RuntimeValue::Bool(true), false);
+            } else {
+                // Value flag — must be last in the combined string
+                // Remaining chars after this are the value (e.g. -n5 → value "5")
+                let remaining: String = chars[ci + 1..].iter().collect();
+                if !remaining.is_empty() {
+                    match parse_flag_value(fspec, &remaining) {
+                        Ok(val) => {
+                            set_flag_value(parsed_flags, &fspec.name, val, fspec.multi);
+                        }
+                        Err(msg) => return Err(msg),
+                    }
+                } else {
+                    // No remaining chars — consume next argv
+                    let next = current_idx + 1;
+                    if next >= argv.len() {
+                        return Err(format!(
+                            "flag -{} (--{}) requires a value",
+                            ch_str, fspec.name
+                        ));
+                    }
+                    match parse_flag_value(fspec, &argv[next]) {
+                        Ok(val) => {
+                            set_flag_value(parsed_flags, &fspec.name, val, fspec.multi);
+                            extra_consumed = 1;
+                        }
+                        Err(msg) => return Err(msg),
+                    }
+                }
+                // Value flag consumed rest, stop
+                return Ok(extra_consumed);
+            }
+        } else {
+            return Err(format!("unknown flag -{}", ch_str));
+        }
+    }
+    Ok(extra_consumed)
 }
 
 fn parse_flag_value(fspec: &FlagSpec, raw: &str) -> Result<RuntimeValue, String> {
@@ -1661,7 +1768,7 @@ mod tests {
             assert!(text.contains("myapp v1.0.0"));
             assert!(text.contains("A test CLI"));
             assert!(text.contains("USAGE:"));
-            assert!(text.contains("<file>"));
+            assert!(text.contains("<FILE>"));
             assert!(text.contains("--[no-]verbose"));
             assert!(text.contains("-v"));
             assert!(text.contains("--output-json"));
@@ -1869,7 +1976,7 @@ mod tests {
                     assert!(text.contains("git clone"));
                     assert!(text.contains("Clone a repository"));
                     assert!(text.contains("--depth"));
-                    assert!(text.contains("<url>"));
+                    assert!(text.contains("<URL>"));
                     assert!(text.contains("--output-json"));
                 } else {
                     panic!("expected help text string");
@@ -2977,5 +3084,383 @@ mod tests {
         let result = host_cli_parse(&[spec, argv(&["deploy", "--json", "--text"])]).unwrap();
         let msg = extract_error_msg(&result);
         assert!(msg.contains("mutually exclusive"));
+    }
+
+    // --- Run 55: Combined short flags, typed args, value names, help examples ---
+
+    #[test]
+    fn cli_module_combined_short_flags_abc() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "all",
+                        kw(vec![("type", atom("boolean")), ("short", s("a"))]),
+                    ),
+                    (
+                        "brief",
+                        kw(vec![("type", atom("boolean")), ("short", s("b"))]),
+                    ),
+                    (
+                        "color",
+                        kw(vec![("type", atom("boolean")), ("short", s("c"))]),
+                    ),
+                ]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["-abc"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "all"), RuntimeValue::Bool(true));
+        assert_eq!(*get_map_field(flags, "brief"), RuntimeValue::Bool(true));
+        assert_eq!(*get_map_field(flags, "color"), RuntimeValue::Bool(true));
+    }
+
+    #[test]
+    fn cli_module_combined_short_bool_then_value() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "verbose",
+                        kw(vec![("type", atom("boolean")), ("short", s("v"))]),
+                    ),
+                    (
+                        "count",
+                        kw(vec![("type", atom("integer")), ("short", s("n"))]),
+                    ),
+                ]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["-vn5"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "verbose"), RuntimeValue::Bool(true));
+        assert_eq!(*get_map_field(flags, "count"), int(5));
+    }
+
+    #[test]
+    fn cli_module_combined_short_value_inline() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "count",
+                    kw(vec![("type", atom("integer")), ("short", s("n"))]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["-n5"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "count"), int(5));
+    }
+
+    #[test]
+    fn cli_module_combined_short_invalid_flag_error() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "verbose",
+                    kw(vec![("type", atom("boolean")), ("short", s("v"))]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["-vx"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("unknown flag -x"));
+    }
+
+    #[test]
+    fn cli_module_single_short_flag_still_works() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "verbose",
+                    kw(vec![("type", atom("boolean")), ("short", s("v"))]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["-v"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "verbose"), RuntimeValue::Bool(true));
+    }
+
+    #[test]
+    fn cli_module_typed_arg_integer() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "args",
+                kw(vec![(
+                    "port",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("required", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["8080"])]).unwrap();
+        let data = extract_ok(&result);
+        let args_map = get_map_field(data, "args");
+        assert_eq!(*get_map_field(args_map, "port"), int(8080));
+    }
+
+    #[test]
+    fn cli_module_typed_arg_float() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "args",
+                kw(vec![(
+                    "threshold",
+                    kw(vec![
+                        ("type", atom("float")),
+                        ("required", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["3.14"])]).unwrap();
+        let data = extract_ok(&result);
+        let args_map = get_map_field(data, "args");
+        assert_eq!(
+            *get_map_field(args_map, "threshold"),
+            RuntimeValue::Float("3.14".to_string())
+        );
+    }
+
+    #[test]
+    fn cli_module_typed_arg_integer_invalid() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "args",
+                kw(vec![(
+                    "port",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("required", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["abc"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("invalid value 'abc' for argument <port>"));
+        assert!(msg.contains("expected integer"));
+    }
+
+    #[test]
+    fn cli_module_value_name_custom_in_help() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "output",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("value_name", s("FILE")),
+                        ("doc", s("Output file")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_format_help(&[spec]).unwrap();
+        if let RuntimeValue::String(text) = result {
+            assert!(text.contains("<FILE>"), "should show custom value name");
+            assert!(text.contains("Output file"));
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn cli_module_value_name_default_uppercased() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "output",
+                    kw(vec![("type", atom("string")), ("doc", s("Output file"))]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_format_help(&[spec]).unwrap();
+        if let RuntimeValue::String(text) = result {
+            assert!(
+                text.contains("<OUTPUT>"),
+                "should show uppercased flag name as value name"
+            );
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn cli_module_arg_value_name_in_help() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "args",
+                kw(vec![(
+                    "input",
+                    kw(vec![
+                        ("doc", s("Input file")),
+                        ("required", RuntimeValue::Bool(true)),
+                        ("value_name", s("SOURCE")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_format_help(&[spec]).unwrap();
+        if let RuntimeValue::String(text) = result {
+            assert!(
+                text.contains("<SOURCE>"),
+                "should show custom arg value name"
+            );
+            assert!(text.contains("Input file"));
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn cli_module_examples_in_help() {
+        let spec = kw(vec![
+            ("name", s("myapp")),
+            ("version", s("1.0.0")),
+            (
+                "examples",
+                list(vec![
+                    s("myapp --verbose file.txt"),
+                    s("myapp -n 3 data.csv"),
+                ]),
+            ),
+        ]);
+        let result = host_cli_format_help(&[spec]).unwrap();
+        if let RuntimeValue::String(text) = result {
+            assert!(text.contains("EXAMPLES:"));
+            assert!(text.contains("myapp --verbose file.txt"));
+            assert!(text.contains("myapp -n 3 data.csv"));
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn cli_module_examples_in_subcommand_help() {
+        // Examples are on the root spec, shown when root --help is requested
+        let spec = kw(vec![
+            ("name", s("git")),
+            (
+                "commands",
+                kw(vec![(
+                    "clone",
+                    kw(vec![("description", s("Clone a repo"))]),
+                )]),
+            ),
+            (
+                "examples",
+                list(vec![s("git clone https://example.com/repo")]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--help"])]).unwrap();
+        match &result {
+            RuntimeValue::Tuple(tag, val) => {
+                assert_eq!(**tag, atom("help"));
+                if let RuntimeValue::String(text) = val.as_ref() {
+                    assert!(text.contains("EXAMPLES:"));
+                    assert!(text.contains("git clone https://example.com/repo"));
+                } else {
+                    panic!("expected help text");
+                }
+            }
+            _ => panic!("expected help tuple"),
+        }
+    }
+
+    #[test]
+    fn cli_module_combined_short_flags_in_subcommand() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "commands",
+                kw(vec![(
+                    "run",
+                    kw(vec![
+                        ("description", s("Run it")),
+                        (
+                            "flags",
+                            kw(vec![
+                                (
+                                    "verbose",
+                                    kw(vec![("type", atom("boolean")), ("short", s("v"))]),
+                                ),
+                                (
+                                    "force",
+                                    kw(vec![("type", atom("boolean")), ("short", s("f"))]),
+                                ),
+                            ]),
+                        ),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["run", "-vf"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "verbose"), RuntimeValue::Bool(true));
+        assert_eq!(*get_map_field(flags, "force"), RuntimeValue::Bool(true));
+    }
+
+    #[test]
+    fn cli_module_typed_arg_with_combined_shorts() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![
+                    (
+                        "verbose",
+                        kw(vec![("type", atom("boolean")), ("short", s("v"))]),
+                    ),
+                    (
+                        "force",
+                        kw(vec![("type", atom("boolean")), ("short", s("f"))]),
+                    ),
+                ]),
+            ),
+            (
+                "args",
+                kw(vec![(
+                    "port",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("required", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["-vf", "8080"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "verbose"), RuntimeValue::Bool(true));
+        assert_eq!(*get_map_field(flags, "force"), RuntimeValue::Bool(true));
+        let args_map = get_map_field(data, "args");
+        assert_eq!(*get_map_field(args_map, "port"), int(8080));
     }
 }
