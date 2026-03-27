@@ -14,6 +14,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("DateTime", OPTIONAL_STDLIB_DATETIME_SOURCE),
     ("Base64", OPTIONAL_STDLIB_BASE64_SOURCE),
     ("Crypto", OPTIONAL_STDLIB_CRYPTO_SOURCE),
+    ("Http", OPTIONAL_STDLIB_HTTP_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -879,3 +880,6 @@ const OPTIONAL_STDLIB_BASE64_SOURCE: &str =
 
 const OPTIONAL_STDLIB_CRYPTO_SOURCE: &str =
     "defmodule Crypto do\n  def sha256(string) do\n    host_call(:crypto_sha256, string)\n  end\n\n  def hmac_sha256(key, message) do\n    host_call(:crypto_hmac_sha256, key, message)\n  end\n\n  def random_bytes(size) do\n    host_call(:crypto_random_bytes, size)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_HTTP_SOURCE: &str =
+    "defmodule Http do\n  def get(url) do\n    get(url, [])\n  end\n\n  def get(url, headers) do\n    request(\"GET\", url, headers, \"\")\n  end\n\n  def post(url, body) do\n    post(url, body, [])\n  end\n\n  def post(url, body, headers) do\n    request(\"POST\", url, headers, body)\n  end\n\n  def put(url, body) do\n    put(url, body, [])\n  end\n\n  def put(url, body, headers) do\n    request(\"PUT\", url, headers, body)\n  end\n\n  def patch(url, body) do\n    patch(url, body, [])\n  end\n\n  def patch(url, body, headers) do\n    request(\"PATCH\", url, headers, body)\n  end\n\n  def delete(url) do\n    delete(url, [])\n  end\n\n  def delete(url, headers) do\n    request(\"DELETE\", url, headers, \"\")\n  end\n\n  def request(method, url, headers, body) do\n    request(method, url, headers, body, %{})\n  end\n\n  def request(method, url, headers, body, opts) do\n    host_call(:sys_http_request, method, url, headers, body, opts)\n  end\nend\n";

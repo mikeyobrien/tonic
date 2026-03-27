@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 70 focused Json+Toml+Shell+DateTime+Base64+Crypto tests green (run 31)
+- **Current Best**: 70 focused Json+Toml+Shell+DateTime+Base64+Crypto tests green + Http wrapper (run 32)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -148,3 +148,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 29 (KEEP, metric=45)**: Added `DateTime.utc_now/0`, `DateTime.unix_now/0`, and `DateTime.unix_now_ms/0` as host-backed stdlib functions using the `time` crate, plus 8 focused unit tests. Hypothesis: confirmed — a Rust-backed DateTime module eliminates shell-out `date` calls in tonic-loops memory.tn and provides reliable time access for any Tonic app needing timestamps.
 - **Run 30 (KEEP, metric=57)**: Added `Base64.encode/1`, `Base64.decode/1`, `Base64.url_encode/1`, and `Base64.url_decode/1` as host-backed stdlib functions using the `base64` crate, with standard and URL-safe variants, plus 13 focused unit tests. Hypothesis: confirmed — a Rust-backed Base64 module provides reliable encoding/decoding for any Tonic app needing token handling, binary data interchange, or API payload encoding.
 - **Run 31 (KEEP, metric=70)**: Added `Crypto.sha256/1`, `Crypto.hmac_sha256/2`, and `Crypto.random_bytes/1` as host-backed stdlib functions using sha2, hmac, and rand crates, with known test vector validation, plus 13 focused unit tests. Hypothesis: confirmed — a Rust-backed Crypto module provides reliable hashing, HMAC signing, and random byte generation for any Tonic app needing API authentication, content verification, or token generation.
+- **Run 32 (KEEP, metric=70)**: Added `Http.get/1-2`, `Http.post/2-3`, `Http.put/2-3`, `Http.patch/2-3`, `Http.delete/1-2`, and `Http.request/4-5` as a pure Tonic wrapper over the existing `sys_http_request` host call. No new focused tests (wraps already-tested infrastructure). Hypothesis: confirmed — an ergonomic Http module eliminates raw `host_call(:sys_http_request, ...)` boilerplate and provides a clean API surface for any Tonic app making HTTP requests.
