@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 57 focused Json+Toml+Shell+DateTime+Base64 tests green (run 30)
+- **Current Best**: 70 focused Json+Toml+Shell+DateTime+Base64+Crypto tests green (run 31)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -147,3 +147,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 28 (KEEP, metric=37)**: Added `Shell.quote/1` and `Shell.join/1` as host-backed stdlib functions with POSIX single-quote wrapping, plus 12 focused unit tests. Hypothesis: confirmed — a Rust-backed Shell module eliminates ~40 lines of duplicated shell quoting across 4+ tonic-loops modules and provides safe command construction for any Tonic app that shells out.
 - **Run 29 (KEEP, metric=45)**: Added `DateTime.utc_now/0`, `DateTime.unix_now/0`, and `DateTime.unix_now_ms/0` as host-backed stdlib functions using the `time` crate, plus 8 focused unit tests. Hypothesis: confirmed — a Rust-backed DateTime module eliminates shell-out `date` calls in tonic-loops memory.tn and provides reliable time access for any Tonic app needing timestamps.
 - **Run 30 (KEEP, metric=57)**: Added `Base64.encode/1`, `Base64.decode/1`, `Base64.url_encode/1`, and `Base64.url_decode/1` as host-backed stdlib functions using the `base64` crate, with standard and URL-safe variants, plus 13 focused unit tests. Hypothesis: confirmed — a Rust-backed Base64 module provides reliable encoding/decoding for any Tonic app needing token handling, binary data interchange, or API payload encoding.
+- **Run 31 (KEEP, metric=70)**: Added `Crypto.sha256/1`, `Crypto.hmac_sha256/2`, and `Crypto.random_bytes/1` as host-backed stdlib functions using sha2, hmac, and rand crates, with known test vector validation, plus 13 focused unit tests. Hypothesis: confirmed — a Rust-backed Crypto module provides reliable hashing, HMAC signing, and random byte generation for any Tonic app needing API authentication, content verification, or token generation.
