@@ -59,11 +59,8 @@ pub(crate) fn format_path(path: &str, mode: FormatMode) -> Result<FormatReport, 
 /// Format a Tonic source string.
 ///
 /// Uses a token-driven two-pass approach: lexer tokens are segmented into
-/// logical lines (Pass 1), then indentation is applied (Pass 2).
-///
-/// Known limitation: comments (`# ...`) are stripped by the lexer and
-/// not preserved in the formatted output. This is a known alpha-stage
-/// limitation; comment preservation requires a comment-aware token stream.
+/// logical lines (Pass 1), then indentation is applied (Pass 2), with lexer
+/// comment sidecars merged back into the formatted output.
 ///
 /// If lexing fails (malformed source), the original normalized source is
 /// returned unchanged to avoid corrupting code with syntax errors.
@@ -201,5 +198,33 @@ mod tests {
             already, second,
             "function clauses with blank lines must be idempotent"
         );
+    }
+
+    #[test]
+    fn format_source_preserves_full_line_comments() {
+        let source = "defmodule Demo do\ndef run() do\n# before\nif true do\n1\nend\nend\nend\n";
+
+        assert_eq!(
+            format_source(source),
+            "defmodule Demo do\n  def run() do\n    # before\n    if true do\n      1\n    end\n  end\nend\n"
+        );
+    }
+
+    #[test]
+    fn format_source_preserves_trailing_comments() {
+        let source = "defmodule Demo do\ndef run() do\n1 # note\nend\nend\n";
+
+        assert_eq!(
+            format_source(source),
+            "defmodule Demo do\n  def run() do\n    1 # note\n  end\nend\n"
+        );
+    }
+
+    #[test]
+    fn format_source_is_idempotent_with_comments() {
+        let source = "defmodule Demo do\n  # lead\n  def run() do\n    1 # note\n\n    # after gap\n    2\n  end\nend\n";
+        let first = format_source(source);
+        let second = format_source(&first);
+        assert_eq!(first, second, "comment-bearing format must be idempotent");
     }
 }

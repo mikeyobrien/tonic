@@ -28,6 +28,16 @@ pub struct Token {
     span: Span,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Comment {
+    text: String,
+    span: Span,
+    line: usize,
+    column: usize,
+    blank_lines_before: usize,
+    has_code_before: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Defmodule,
@@ -195,6 +205,51 @@ impl Token {
             }
             _ => self.kind.dump_name().to_string(),
         }
+    }
+}
+
+#[allow(dead_code)]
+impl Comment {
+    pub(super) fn new(
+        text: impl Into<String>,
+        span: Span,
+        line: usize,
+        column: usize,
+        blank_lines_before: usize,
+        has_code_before: bool,
+    ) -> Self {
+        Self {
+            text: text.into(),
+            span,
+            line,
+            column,
+            blank_lines_before,
+            has_code_before,
+        }
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn span(&self) -> Span {
+        self.span
+    }
+
+    pub fn line(&self) -> usize {
+        self.line
+    }
+
+    pub fn column(&self) -> usize {
+        self.column
+    }
+
+    pub fn blank_lines_before(&self) -> usize {
+        self.blank_lines_before
+    }
+
+    pub fn has_code_before(&self) -> bool {
+        self.has_code_before
     }
 }
 

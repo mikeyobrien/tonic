@@ -1,4 +1,4 @@
-use super::{scan_tokens, types::Span};
+use super::{scan_tokens, scan_tokens_with_comments, types::Span};
 
 fn dump_labels(source: &str) -> Vec<String> {
     scan_tokens(source)
@@ -366,6 +366,31 @@ fn scan_tokens_skips_hash_comments() {
     let labels = dump_labels("1 # trailing comment\n2");
 
     assert_eq!(labels, ["INT(1)", "INT(2)", "EOF"]);
+}
+
+#[test]
+fn scan_tokens_with_comments_captures_full_line_and_trailing_comments() {
+    let (tokens, comments) = scan_tokens_with_comments("1 # trailing\n\n  # heading\n2")
+        .expect("scanner should tokenize fixture source");
+
+    let labels: Vec<String> = tokens.into_iter().map(|token| token.dump_label()).collect();
+    assert_eq!(labels, ["INT(1)", "INT(2)", "EOF"]);
+
+    assert_eq!(comments.len(), 2);
+
+    let trailing = &comments[0];
+    assert_eq!(trailing.text(), "# trailing");
+    assert_eq!(trailing.line(), 0);
+    assert_eq!(trailing.column(), 2);
+    assert_eq!(trailing.blank_lines_before(), 0);
+    assert!(trailing.has_code_before());
+
+    let heading = &comments[1];
+    assert_eq!(heading.text(), "# heading");
+    assert_eq!(heading.line(), 2);
+    assert_eq!(heading.column(), 2);
+    assert_eq!(heading.blank_lines_before(), 1);
+    assert!(!heading.has_code_before());
 }
 
 #[test]

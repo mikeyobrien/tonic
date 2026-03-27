@@ -1,21 +1,18 @@
-use crate::lexer::{scan_tokens, Token, TokenKind};
+use crate::lexer::{scan_tokens_with_comments, Comment, Token, TokenKind};
 
 /// Format a Tonic source string using a token-driven approach.
 ///
-/// The lexer is used to scan the source into tokens, then the token
-/// stream is formatted with 2-space indentation.
-///
-/// Known limitation: comments (`# ...`) are stripped by the lexer and
-/// not preserved in the formatted output. This is a known alpha-stage
-/// limitation; comment preservation requires a comment-aware token stream.
+/// The lexer is used to scan the source into tokens plus a comment sidecar,
+/// then the token stream is formatted with 2-space indentation and comments
+/// are merged back onto logical lines.
 ///
 /// If lexing fails (malformed source), the original normalized source is
 /// returned unchanged to avoid corrupting code with syntax errors.
 pub(super) fn format_source_inner(source: &str) -> String {
     let normalized = normalize_newlines(source);
 
-    match scan_tokens(&normalized) {
-        Ok(tokens) => format_tokens(&normalized, &tokens),
+    match scan_tokens_with_comments(&normalized) {
+        Ok((tokens, comments)) => format_tokens(&normalized, &tokens, &comments),
         Err(_) => normalized,
     }
 }
@@ -40,6 +37,8 @@ pub(super) struct LogicalLine {
     pub(super) text: String,
     /// Whether this line has a blank line gap before it (from source)
     pub(super) blank_before: bool,
+    source_line_start: Option<usize>,
+    source_line_end: Option<usize>,
 }
 
 impl LogicalLine {
@@ -48,6 +47,18 @@ impl LogicalLine {
             kinds: Vec::new(),
             text: String::new(),
             blank_before: false,
+            source_line_start: None,
+            source_line_end: None,
+        }
+    }
+
+    fn comment(comment: &Comment) -> Self {
+        Self {
+            kinds: Vec::new(),
+            text: comment.text().to_string(),
+            blank_before: comment.blank_lines_before() > 0,
+            source_line_start: Some(comment.line()),
+            source_line_end: Some(comment.line()),
         }
     }
 
@@ -63,6 +74,20 @@ impl LogicalLine {
         self.kinds.last().copied()
     }
 
+    fn note_source_line(&mut self, source_line: usize) {
+        if self.source_line_start.is_none() {
+            self.source_line_start = Some(source_line);
+        }
+        self.source_line_end = Some(source_line);
+    }
+
+    fn contains_source_line(&self, source_line: usize) -> bool {
+        matches!(
+            (self.source_line_start, self.source_line_end),
+            (Some(start), Some(end)) if start <= source_line && source_line <= end
+        )
+    }
+
     fn push(&mut self, kind: TokenKind, text: &str) {
         let space = if self.text.is_empty() {
             false
@@ -76,20 +101,25 @@ impl LogicalLine {
         self.text.push_str(text);
         self.kinds.push(kind);
     }
+
+    fn append_trailing_comment(&mut self, comment: &Comment) {
+        if !self.text.is_empty() {
+            self.text.push(' ');
+        }
+        self.text.push_str(comment.text());
+    }
 }
 
 /// Determine whether a space is needed between two adjacent tokens.
 fn space_between(prev: TokenKind, curr: TokenKind, prev_text: &str, curr_text: &str) -> bool {
     use TokenKind::*;
 
-    // Never space before these punctuation tokens
     match curr {
         RParen | RBracket | RBrace | Comma | Dot | Semicolon | Question | Eof => return false,
         StringPart | InterpolationEnd | StringEnd => return false,
         _ => {}
     }
 
-    // Never space after these
     match prev {
         LBracket | Bang | At | Ampersand => return false,
         StringStart | StringPart | InterpolationStart => return false,
@@ -97,33 +127,26 @@ fn space_between(prev: TokenKind, curr: TokenKind, prev_text: &str, curr_text: &
         _ => {}
     }
 
-    // No space: %Module or %{ (struct/map literal)
     if prev == Percent {
         return false;
     }
 
-    // No space before ( in function call: ident(
     if curr == LParen && matches!(prev, Ident | RParen | RBracket | RBrace) {
         return false;
     }
 
-    // No space for { after ident when it's a struct field: Module{
-    // (Percent already handled above; Ident{ only occurs in %Module{...})
     if curr == LBrace && prev == Ident {
         return false;
     }
 
-    // Colon in key: value (label) → no space before, space after handled by comma
     if curr == Colon {
         return false;
     }
 
-    // No space after opening paren or brace
     if prev == LParen || prev == LBrace {
         return false;
     }
 
-    // String continuations
     if curr == StringStart {
         return !matches!(prev, At | Ampersand | LParen | LBracket | Comma);
     }
@@ -134,22 +157,6 @@ fn space_between(prev: TokenKind, curr: TokenKind, prev_text: &str, curr_text: &
     true
 }
 
-/// Build a sequence of logical lines from the token stream.
-///
-/// Strategy: use a combination of source-line position and structural tokens
-/// to determine line breaks. Two adjacent tokens on different source lines
-/// (at nesting depth 0) trigger a line break, UNLESS the token is a `do`
-/// (which always attaches to the line above) or `end`/`else`/etc (which
-/// are handled structurally).
-///
-/// Structural tokens that always create line breaks regardless of nesting:
-/// - After `do` (opens a block)
-/// - Before/after `end`
-/// - Before/after `else`/`rescue`/`catch`/`after`
-/// - After `->` (opens a branch body)
-///
-/// When tokens are on the same source line (or inside parens/brackets),
-/// they are kept together on the same logical line.
 #[allow(unused_assignments)]
 pub(super) fn build_logical_lines(source: &str, tokens: &[Token]) -> Vec<LogicalLine> {
     let line_for_offset = compute_line_map(source);
@@ -191,8 +198,8 @@ pub(super) fn build_logical_lines(source: &str, tokens: &[Token]) -> Vec<Logical
             .copied()
             .unwrap_or(0);
 
-        // Inside string interpolations: accumulate tokens inline (no line breaks)
         if interp_depth > 0 {
+            current.note_source_line(tok_line);
             match kind {
                 TokenKind::InterpolationEnd => {
                     interp_depth -= 1;
@@ -212,78 +219,75 @@ pub(super) fn build_logical_lines(source: &str, tokens: &[Token]) -> Vec<Logical
         let inline = paren_depth > 0 || bracket_depth > 0 || brace_depth > 0;
 
         match kind {
-            // String literals: accumulate inline
             TokenKind::StringStart => {
+                current.note_source_line(tok_line);
                 current.push(kind, "\"");
             }
             TokenKind::StringPart => {
+                current.note_source_line(tok_line);
                 current.push(kind, text);
             }
             TokenKind::InterpolationStart => {
                 interp_depth += 1;
+                current.note_source_line(tok_line);
                 current.push(kind, "#{");
             }
             TokenKind::StringEnd => {
+                current.note_source_line(tok_line);
                 current.push(kind, "\"");
             }
             TokenKind::String => {
+                current.note_source_line(tok_line);
                 current.push(kind, text);
             }
-
-            // Paren tracking
             TokenKind::LParen => {
                 paren_depth += 1;
+                current.note_source_line(tok_line);
                 current.push(kind, "(");
             }
             TokenKind::RParen => {
                 paren_depth = paren_depth.saturating_sub(1);
+                current.note_source_line(tok_line);
                 current.push(kind, ")");
             }
-
-            // Bracket tracking
             TokenKind::LBracket => {
                 bracket_depth += 1;
+                current.note_source_line(tok_line);
                 current.push(kind, "[");
             }
             TokenKind::RBracket => {
                 bracket_depth = bracket_depth.saturating_sub(1);
+                current.note_source_line(tok_line);
                 current.push(kind, "]");
             }
-
-            // Brace tracking (struct/map literals)
             TokenKind::LBrace => {
                 brace_depth += 1;
+                current.note_source_line(tok_line);
                 current.push(kind, "{");
             }
             TokenKind::RBrace => {
                 brace_depth = brace_depth.saturating_sub(1);
+                current.note_source_line(tok_line);
                 current.push(kind, "}");
             }
-
-            // `do`: always attaches to the preceding line, then breaks
             TokenKind::Do => {
+                current.note_source_line(tok_line);
                 current.push(kind, "do");
                 flush!();
             }
-
-            // `end`: always on its own line
             TokenKind::End => {
                 flush!();
+                current.note_source_line(tok_line);
                 current.push(kind, "end");
                 flush!();
             }
-
-            // Block re-openers: else/rescue/catch/after
-            // Always start a new line; may have trailing content before next break
             TokenKind::Else | TokenKind::Rescue | TokenKind::Catch | TokenKind::After => {
                 flush!();
+                current.note_source_line(tok_line);
                 current.push(kind, text);
             }
-
-            // Arrow `->`: completes a branch head.
-            // If the body is on the same source line, keep it inline.
-            // If the body is on the next line, break after the arrow.
             TokenKind::Arrow => {
+                current.note_source_line(tok_line);
                 current.push(kind, "->");
                 let next_tok = tokens.get(i + 1);
                 let break_after = match next_tok {
@@ -314,19 +318,14 @@ pub(super) fn build_logical_lines(source: &str, tokens: &[Token]) -> Vec<Logical
                     flush!();
                 }
             }
-
-            // Pipe `|>`: break before pipe when not inline
             TokenKind::PipeGt if !inline => {
                 flush!();
+                current.note_source_line(tok_line);
                 current.push(kind, "|>");
             }
-
-            // Semicolon: always breaks line
             TokenKind::Semicolon => {
                 flush!();
             }
-
-            // All other tokens: accumulate, breaking on source-line boundaries
             _ => {
                 if !inline {
                     if let Some(prev_ln) = prev_line_num {
@@ -338,6 +337,7 @@ pub(super) fn build_logical_lines(source: &str, tokens: &[Token]) -> Vec<Logical
                         }
                     }
                 }
+                current.note_source_line(tok_line);
                 current.push(kind, text);
             }
         }
@@ -350,7 +350,57 @@ pub(super) fn build_logical_lines(source: &str, tokens: &[Token]) -> Vec<Logical
     lines
 }
 
-/// Build a map: byte_offset → source line number (0-indexed).
+fn merge_comments(lines: Vec<LogicalLine>, comments: &[Comment]) -> Vec<LogicalLine> {
+    if comments.is_empty() {
+        return lines;
+    }
+
+    let mut merged = Vec::with_capacity(lines.len() + comments.len());
+    let mut comment_idx = 0usize;
+
+    for mut line in lines {
+        while let Some(comment) = comments.get(comment_idx) {
+            if comment.has_code_before() {
+                break;
+            }
+            let Some(line_start) = line.source_line_start else {
+                break;
+            };
+            if comment.line() < line_start {
+                merged.push(LogicalLine::comment(comment));
+                comment_idx += 1;
+                continue;
+            }
+            break;
+        }
+
+        while let Some(comment) = comments.get(comment_idx) {
+            if !comment.has_code_before() || !line.contains_source_line(comment.line()) {
+                break;
+            }
+            line.append_trailing_comment(comment);
+            comment_idx += 1;
+        }
+
+        merged.push(line);
+    }
+
+    while let Some(comment) = comments.get(comment_idx) {
+        if comment.has_code_before() {
+            if let Some(last_line) = merged.last_mut() {
+                last_line.append_trailing_comment(comment);
+            } else {
+                merged.push(LogicalLine::comment(comment));
+            }
+        } else {
+            merged.push(LogicalLine::comment(comment));
+        }
+        comment_idx += 1;
+    }
+
+    merged
+}
+
 fn compute_line_map(source: &str) -> Vec<usize> {
     let mut map = Vec::with_capacity(source.len() + 1);
     let mut line = 0usize;
@@ -364,9 +414,6 @@ fn compute_line_map(source: &str) -> Vec<usize> {
     map
 }
 
-/// Build a map: line_number → bool (true if there's a blank source line
-/// before this line number, i.e., there was an empty line between this
-/// line and the previous non-empty line).
 fn compute_blank_before_map(source: &str) -> Vec<bool> {
     let source_lines: Vec<&str> = source.lines().collect();
     let mut result = vec![false; source_lines.len() + 1];
@@ -382,11 +429,6 @@ fn compute_blank_before_map(source: &str) -> Vec<bool> {
     result
 }
 
-/// Apply indentation to the logical lines, emitting each line with proper indent.
-///
-/// Uses a stateful algorithm that tracks whether we are in a "branch body"
-/// (after a `->` arm head). When in a branch body, the next branch head or
-/// block closer triggers a dedent.
 pub(super) fn apply_indentation(lines: &[LogicalLine]) -> String {
     let mut output = String::new();
     let mut indent: i32 = 0;
@@ -408,7 +450,6 @@ pub(super) fn apply_indentation(lines: &[LogicalLine]) -> String {
         );
         let is_branch_head = ends_arrow;
 
-        // PRE-EMIT indent adjustments
         if is_block_reopen || is_end {
             if in_branch_body {
                 indent = indent.saturating_sub(1);
@@ -429,7 +470,6 @@ pub(super) fn apply_indentation(lines: &[LogicalLine]) -> String {
         output.push_str(&line.text);
         output.push('\n');
 
-        // POST-EMIT indent adjustments
         if is_block_reopen {
             indent += 1;
             in_branch_body = false;
@@ -451,11 +491,11 @@ pub(super) fn apply_indentation(lines: &[LogicalLine]) -> String {
     output
 }
 
-pub(super) fn format_tokens(source: &str, tokens: &[Token]) -> String {
+pub(super) fn format_tokens(source: &str, tokens: &[Token], comments: &[Comment]) -> String {
     let lines = build_logical_lines(source, tokens);
-    let mut output = apply_indentation(&lines);
+    let merged = merge_comments(lines, comments);
+    let mut output = apply_indentation(&merged);
 
-    // Ensure no trailing blank lines, exactly one trailing newline
     while output.ends_with("\n\n") {
         output.pop();
     }

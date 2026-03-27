@@ -2,7 +2,7 @@ mod numeric;
 mod string_scan;
 pub(crate) mod types;
 
-pub use types::{LexerError, Span, Token, TokenKind};
+pub use types::{Comment, LexerError, Span, Token, TokenKind};
 
 #[cfg(test)]
 mod tests;
@@ -19,8 +19,15 @@ enum LexerState {
 }
 
 pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
+    scan_tokens_with_comments(source).map(|(tokens, _comments)| tokens)
+}
+
+pub fn scan_tokens_with_comments(source: &str) -> Result<(Vec<Token>, Vec<Comment>), LexerError> {
     let chars: Vec<char> = source.chars().collect();
+    let (line_for_offset, line_start_offsets, blank_lines_before) = compute_source_layout(&chars);
+
     let mut tokens = Vec::new();
+    let mut comments = Vec::new();
     let mut idx = 0;
 
     let mut state_stack = vec![LexerState::Normal];
@@ -39,10 +46,28 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                 }
 
                 if current == '#' {
+                    let start = idx;
                     idx += 1;
                     while idx < chars.len() && chars[idx] != '\n' {
                         idx += 1;
                     }
+
+                    let line = line_for_offset.get(start).copied().unwrap_or(0);
+                    let line_start = line_start_offsets.get(line).copied().unwrap_or(0);
+                    let column = start.saturating_sub(line_start);
+                    let text: String = chars[start..idx].iter().collect();
+                    let has_code_before = chars[line_start..start]
+                        .iter()
+                        .any(|value| !value.is_whitespace());
+
+                    comments.push(Comment::new(
+                        text,
+                        Span::new(start, idx),
+                        line,
+                        column,
+                        blank_lines_before.get(line).copied().unwrap_or(0),
+                        has_code_before,
+                    ));
                     continue;
                 }
 
@@ -268,7 +293,6 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                     '?' => {
                         let start = idx;
                         idx += 1;
-                        // Char literal: ?a, ?\n, etc.
                         if idx < chars.len()
                             && chars[idx] != ' '
                             && chars[idx] != '\n'
@@ -280,7 +304,6 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
                         {
                             let char_value: u32;
                             if chars[idx] == '\\' && idx + 1 < chars.len() {
-                                // Escape sequence
                                 idx += 1;
                                 char_value = match chars[idx] {
                                     'n' => 10,
@@ -422,7 +445,43 @@ pub fn scan_tokens(source: &str) -> Result<Vec<Token>, LexerError> {
         TokenKind::Eof,
         Span::new(chars.len(), chars.len()),
     ));
-    Ok(tokens)
+    Ok((tokens, comments))
+}
+
+fn compute_source_layout(chars: &[char]) -> (Vec<usize>, Vec<usize>, Vec<usize>) {
+    let mut line_for_offset = Vec::with_capacity(chars.len() + 1);
+    let mut line_start_offsets = vec![0];
+    let mut line = 0usize;
+
+    for (idx, ch) in chars.iter().enumerate() {
+        line_for_offset.push(line);
+        if *ch == '\n' {
+            line += 1;
+            line_start_offsets.push(idx + 1);
+        }
+    }
+    line_for_offset.push(line);
+
+    let mut blank_lines_before = vec![0; line_start_offsets.len()];
+    let mut blank_run = 0usize;
+
+    for line_idx in 0..line_start_offsets.len() {
+        let start = line_start_offsets[line_idx];
+        let end = if line_idx + 1 < line_start_offsets.len() {
+            line_start_offsets[line_idx + 1].saturating_sub(1)
+        } else {
+            chars.len()
+        };
+        let is_blank = chars[start..end].iter().all(|value| value.is_whitespace());
+        if is_blank {
+            blank_run += 1;
+        } else {
+            blank_lines_before[line_idx] = blank_run;
+            blank_run = 0;
+        }
+    }
+
+    (line_for_offset, line_start_offsets, blank_lines_before)
 }
 
 fn keyword_kind(lexeme: &str) -> Option<TokenKind> {

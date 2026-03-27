@@ -151,3 +151,53 @@ fn fmt_rewrites_struct_syntax_without_mutating_expressions() {
         "defmodule User do\n  defstruct name: \"\", age: 0\n  def run(user) do\n    case %User{user | age: 43} do\n      %User{name: name} ->\n        %User{name: name}\n      _ ->\n        %User{}\n    end\n  end\nend\n"
     );
 }
+
+#[test]
+fn fmt_preserves_comments_and_is_idempotent() {
+    let fixture_root = common::unique_fixture_root("fmt-comments-idempotent");
+    let examples_dir = fixture_root.join("examples");
+    fs::create_dir_all(&examples_dir).expect("fixture setup should create examples directory");
+
+    let source_path = examples_dir.join("fmt_comments.tn");
+    fs::write(
+        &source_path,
+        "defmodule Demo do\ndef run() do\n# leading\n1 # note\n\n# after gap\n2\nend\nend\n",
+    )
+    .expect("fixture setup should write comment-bearing source");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["fmt", "examples/fmt_comments.tn"])
+        .output()
+        .expect("fmt command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected fmt command to succeed, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let formatted = fs::read_to_string(&source_path).expect("formatted source should be readable");
+    assert_eq!(
+        formatted,
+        "defmodule Demo do\n  def run() do\n    # leading\n    1 # note\n\n    # after gap\n    2\n  end\nend\n"
+    );
+
+    let second_output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["fmt", "examples/fmt_comments.tn"])
+        .output()
+        .expect("second fmt command should execute");
+
+    assert!(
+        second_output.status.success(),
+        "expected second fmt command to succeed, got status {:?} and stderr: {}",
+        second_output.status.code(),
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+
+    let second_formatted =
+        fs::read_to_string(&source_path).expect("formatted source should still be readable");
+    assert_eq!(second_formatted, formatted);
+}
