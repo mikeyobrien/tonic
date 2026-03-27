@@ -120,3 +120,46 @@ fn run_executes_text_block_literals_with_trimmed_dedent_contract() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert_eq!(stdout, "\"hello\n  world\n\ndone\"\n");
 }
+
+#[test]
+fn run_executes_interpolated_text_blocks_with_dedent_and_multiline_expression_contract() {
+    let fixture_root = common::unique_fixture_root("run-primitives-text-block-interpolation");
+    let src_dir = fixture_root.join("examples");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+
+    fs::write(
+        src_dir.join("text_block_interpolation_primitives.tn"),
+        concat!(
+            "defmodule Demo do\n",
+            "  def run() do\n",
+            "    who = \"world\"\n",
+            "    ~t\"\"\"\n",
+            "      hello #{who}\n",
+            "      #{String.upcase(\n",
+            "        \"ok\"\n",
+            "      )}\n",
+            "        done\n",
+            "    \"\"\"\n",
+            "  end\n",
+            "end\n",
+        ),
+    )
+    .expect("fixture setup should write source file");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "examples/text_block_interpolation_primitives.tn"])
+        .output()
+        .expect("run command should execute");
+
+    assert!(
+        output.status.success(),
+        "expected successful run invocation, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert_eq!(stdout, "\"hello world\nOK\n  done\"\n");
+}

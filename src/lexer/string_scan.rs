@@ -1,5 +1,5 @@
 use super::types::{LexerError, Span, Token, TokenKind};
-use super::LexerState;
+use super::{scan_tokens, LexerState};
 
 /// Process a backslash escape sequence, returning the replacement character.
 /// Advances `idx` past the escape (caller already consumed the `\`).
@@ -23,52 +23,388 @@ fn process_escape(chars: &[char], idx: &mut usize) -> char {
     }
 }
 
-fn is_blank_text_block_line(line: &str) -> bool {
-    line.chars().all(|ch| matches!(ch, ' ' | '\t'))
+#[derive(Debug, Clone)]
+enum TextBlockFragment {
+    Text { value: String, spans: Vec<Span> },
+    Expr {
+        source: String,
+        base_offset: usize,
+        open_span: Span,
+        close_span: Option<Span>,
+    },
 }
 
-fn normalize_text_block(raw: &str) -> String {
-    let mut content = raw;
-    if let Some(stripped) = content.strip_prefix('\n') {
-        content = stripped;
+#[derive(Debug, Clone)]
+enum TextBlockItem {
+    Char { ch: char, span: Span },
+    Expr { fragment_index: usize },
+}
+
+fn is_blank_text_block_item(item: &TextBlockItem) -> bool {
+    matches!(item, TextBlockItem::Char { ch: ' ' | '\t', .. })
+}
+
+fn normalize_text_block_items(items: &[TextBlockItem]) -> Vec<TextBlockItem> {
+    let mut content = items.to_vec();
+
+    if matches!(
+        content.first(),
+        Some(TextBlockItem::Char { ch: '\n', .. })
+    ) {
+        content.remove(0);
     }
-    if let Some(stripped) = content.strip_suffix('\n') {
-        content = stripped;
-    } else if let Some((without_last_line, last_line)) = content.rsplit_once('\n') {
-        if is_blank_text_block_line(last_line) {
-            content = without_last_line;
+
+    if matches!(content.last(), Some(TextBlockItem::Char { ch: '\n', .. })) {
+        content.pop();
+    } else if let Some(last_newline) = content
+        .iter()
+        .rposition(|item| matches!(item, TextBlockItem::Char { ch: '\n', .. }))
+    {
+        if content[last_newline + 1..]
+            .iter()
+            .all(is_blank_text_block_item)
+        {
+            content.truncate(last_newline);
         }
     }
 
     if content.is_empty() {
-        return String::new();
+        return Vec::new();
     }
 
-    let Some(common_indent) = content
-        .split('\n')
-        .filter(|line| !is_blank_text_block_line(line))
-        .map(|line| {
-            line.chars()
-                .take_while(|ch| matches!(ch, ' ' | '\t'))
-                .count()
-        })
-        .min()
-    else {
-        return String::new();
+    let mut common_indent: Option<usize> = None;
+    let mut line_start = 0usize;
+
+    while line_start <= content.len() {
+        let line_end = content[line_start..]
+            .iter()
+            .position(|item| matches!(item, TextBlockItem::Char { ch: '\n', .. }))
+            .map(|idx| line_start + idx)
+            .unwrap_or(content.len());
+        let line = &content[line_start..line_end];
+
+        if !line.iter().all(is_blank_text_block_item) {
+            let indent = line
+                .iter()
+                .take_while(|item| is_blank_text_block_item(item))
+                .count();
+            common_indent = Some(common_indent.map_or(indent, |current| current.min(indent)));
+        }
+
+        if line_end == content.len() {
+            break;
+        }
+        line_start = line_end + 1;
+    }
+
+    let Some(common_indent) = common_indent else {
+        return Vec::new();
     };
 
-    let mut normalized = String::new();
-    for (line_idx, line) in content.split('\n').enumerate() {
-        if line_idx > 0 {
-            normalized.push('\n');
+    let mut normalized = Vec::new();
+    line_start = 0;
+
+    loop {
+        let line_end = content[line_start..]
+            .iter()
+            .position(|item| matches!(item, TextBlockItem::Char { ch: '\n', .. }))
+            .map(|idx| line_start + idx)
+            .unwrap_or(content.len());
+        let line = &content[line_start..line_end];
+
+        if !line.iter().all(is_blank_text_block_item) {
+            let mut remaining_indent = common_indent;
+            for item in line {
+                if remaining_indent > 0 && is_blank_text_block_item(item) {
+                    remaining_indent -= 1;
+                    continue;
+                }
+                normalized.push(item.clone());
+            }
         }
-        if is_blank_text_block_line(line) {
-            continue;
+
+        if line_end == content.len() {
+            break;
         }
-        normalized.extend(line.chars().skip(common_indent));
+
+        normalized.push(content[line_end].clone());
+        line_start = line_end + 1;
     }
 
     normalized
+}
+
+#[cfg(test)]
+fn normalize_text_block(raw: &str) -> String {
+    let items: Vec<TextBlockItem> = raw
+        .chars()
+        .enumerate()
+        .map(|(idx, ch)| TextBlockItem::Char {
+            ch,
+            span: Span::new(idx, idx + 1),
+        })
+        .collect();
+
+    normalized_text_block_string(&normalize_text_block_items(&items))
+}
+
+fn normalized_text_block_string(items: &[TextBlockItem]) -> String {
+    let mut output = String::new();
+    for item in items {
+        if let TextBlockItem::Char { ch, .. } = item {
+            output.push(*ch);
+        }
+    }
+    output
+}
+
+fn flush_text_block_text_fragment(
+    fragments: &mut Vec<TextBlockFragment>,
+    current_value: &mut String,
+    current_spans: &mut Vec<Span>,
+) {
+    if current_value.is_empty() {
+        return;
+    }
+
+    fragments.push(TextBlockFragment::Text {
+        value: std::mem::take(current_value),
+        spans: std::mem::take(current_spans),
+    });
+}
+
+fn scan_text_block_interpolation_source(chars: &[char], idx: &mut usize) -> TextBlockFragment {
+    let open_start = *idx;
+    *idx += 2;
+    let base_offset = *idx;
+    let mut source = String::new();
+    let mut depth = 1usize;
+
+    while *idx < chars.len() {
+        if depth == 1
+            && chars.get(*idx) == Some(&'"')
+            && chars.get(*idx + 1) == Some(&'"')
+            && chars.get(*idx + 2) == Some(&'"')
+        {
+            return TextBlockFragment::Expr {
+                source,
+                base_offset,
+                open_span: Span::new(open_start, open_start + 2),
+                close_span: None,
+            };
+        }
+
+        if chars[*idx] == '#' && chars.get(*idx + 1) != Some(&'{') {
+            while *idx < chars.len() {
+                let ch = chars[*idx];
+                source.push(ch);
+                *idx += 1;
+                if ch == '\n' {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        if chars[*idx] == '"' {
+            if chars.get(*idx + 1) == Some(&'"') && chars.get(*idx + 2) == Some(&'"') {
+                source.push('"');
+                source.push('"');
+                source.push('"');
+                *idx += 3;
+
+                while *idx < chars.len() {
+                    if chars.get(*idx) == Some(&'"')
+                        && chars.get(*idx + 1) == Some(&'"')
+                        && chars.get(*idx + 2) == Some(&'"')
+                    {
+                        source.push('"');
+                        source.push('"');
+                        source.push('"');
+                        *idx += 3;
+                        break;
+                    }
+
+                    if chars[*idx] == '\\' {
+                        source.push(chars[*idx]);
+                        *idx += 1;
+                        if *idx < chars.len() {
+                            source.push(chars[*idx]);
+                            *idx += 1;
+                        }
+                    } else {
+                        source.push(chars[*idx]);
+                        *idx += 1;
+                    }
+                }
+                continue;
+            }
+
+            source.push('"');
+            *idx += 1;
+            while *idx < chars.len() {
+                let ch = chars[*idx];
+                source.push(ch);
+                *idx += 1;
+
+                if ch == '\\' {
+                    if *idx < chars.len() {
+                        source.push(chars[*idx]);
+                        *idx += 1;
+                    }
+                    continue;
+                }
+
+                if ch == '"' {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        match chars[*idx] {
+            '{' => {
+                depth += 1;
+                source.push('{');
+                *idx += 1;
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let close_span = Span::new(*idx, *idx + 1);
+                    *idx += 1;
+                    return TextBlockFragment::Expr {
+                        source,
+                        base_offset,
+                        open_span: Span::new(open_start, open_start + 2),
+                        close_span: Some(close_span),
+                    };
+                }
+                source.push('}');
+                *idx += 1;
+            }
+            ch => {
+                source.push(ch);
+                *idx += 1;
+            }
+        }
+    }
+
+    TextBlockFragment::Expr {
+        source,
+        base_offset,
+        open_span: Span::new(open_start, open_start + 2),
+        close_span: None,
+    }
+}
+
+fn shift_token(token: &Token, base_offset: usize) -> Token {
+    let span = token.span();
+    let shifted_span = Span::new(span.start() + base_offset, span.end() + base_offset);
+    if token.lexeme().is_empty() {
+        Token::simple(token.kind(), shifted_span)
+    } else {
+        Token::with_lexeme(token.kind(), token.lexeme().to_string(), shifted_span)
+    }
+}
+
+fn shift_lexer_error(mut error: LexerError, base_offset: usize) -> LexerError {
+    error.span = Span::new(
+        error.span.start() + base_offset,
+        error.span.end() + base_offset,
+    );
+    error
+}
+
+fn push_text_token(
+    tokens: &mut Vec<Token>,
+    kind: TokenKind,
+    text: &mut String,
+    spans: &mut Vec<Span>,
+) {
+    if text.is_empty() {
+        return;
+    }
+
+    let span = Span::new(
+        spans.first().map(|span| span.start()).unwrap_or(0),
+        spans.last().map(|span| span.end()).unwrap_or(0),
+    );
+    tokens.push(Token::with_lexeme(kind, std::mem::take(text), span));
+    spans.clear();
+}
+
+fn emit_text_block_tokens(
+    fragments: &[TextBlockFragment],
+    normalized_items: &[TextBlockItem],
+    start: usize,
+    end: usize,
+    emit_string_end: bool,
+    tokens: &mut Vec<Token>,
+) -> Result<(), LexerError> {
+    let has_interpolation = normalized_items
+        .iter()
+        .any(|item| matches!(item, TextBlockItem::Expr { .. }));
+
+    if !has_interpolation {
+        tokens.push(Token::with_lexeme(
+            TokenKind::String,
+            normalized_text_block_string(normalized_items),
+            Span::new(start, end),
+        ));
+        return Ok(());
+    }
+
+    tokens.push(Token::simple(TokenKind::StringStart, Span::new(start, start + 5)));
+
+    let mut text = String::new();
+    let mut spans = Vec::new();
+
+    for item in normalized_items {
+        match item {
+            TextBlockItem::Char { ch, span } => {
+                text.push(*ch);
+                spans.push(*span);
+            }
+            TextBlockItem::Expr { fragment_index } => {
+                push_text_token(tokens, TokenKind::StringPart, &mut text, &mut spans);
+
+                let TextBlockFragment::Expr {
+                    source,
+                    base_offset,
+                    open_span,
+                    close_span,
+                } = &fragments[*fragment_index]
+                else {
+                    unreachable!("expression placeholder should reference expr fragment");
+                };
+
+                tokens.push(Token::simple(TokenKind::InterpolationStart, *open_span));
+
+                let mut expr_tokens = scan_tokens(source).map_err(|error| {
+                    shift_lexer_error(error, *base_offset)
+                })?;
+                if matches!(expr_tokens.last().map(|token| token.kind()), Some(TokenKind::Eof)) {
+                    expr_tokens.pop();
+                }
+                tokens.extend(
+                    expr_tokens
+                        .iter()
+                        .map(|token| shift_token(token, *base_offset)),
+                );
+
+                if let Some(close_span) = close_span {
+                    tokens.push(Token::simple(TokenKind::InterpolationEnd, *close_span));
+                }
+            }
+        }
+    }
+
+    push_text_token(tokens, TokenKind::StringPart, &mut text, &mut spans);
+    if emit_string_end {
+        tokens.push(Token::simple(TokenKind::StringEnd, Span::new(end - 3, end)));
+    }
+    Ok(())
 }
 
 fn scan_text_block_sigil(
@@ -88,7 +424,10 @@ fn scan_text_block_sigil(
     }
 
     *idx += 5;
-    let mut literal = String::new();
+
+    let mut fragments = Vec::new();
+    let mut current_value = String::new();
+    let mut current_spans = Vec::new();
     let mut terminated = false;
 
     while *idx < chars.len() {
@@ -96,20 +435,63 @@ fn scan_text_block_sigil(
             && chars.get(*idx + 1) == Some(&'"')
             && chars.get(*idx + 2) == Some(&'"')
         {
+            flush_text_block_text_fragment(&mut fragments, &mut current_value, &mut current_spans);
             terminated = true;
             *idx += 3;
             break;
         }
 
         if chars.get(*idx) == Some(&'#') && chars.get(*idx + 1) == Some(&'{') {
-            return Err(LexerError::invalid_token('#', Span::new(*idx, *idx + 1)));
+            flush_text_block_text_fragment(&mut fragments, &mut current_value, &mut current_spans);
+            let fragment = scan_text_block_interpolation_source(chars, idx);
+            let interpolation_closed = matches!(
+                fragment,
+                TextBlockFragment::Expr {
+                    close_span: Some(_),
+                    ..
+                }
+            );
+            fragments.push(fragment);
+
+            if !interpolation_closed {
+                let mut items = Vec::new();
+                for (fragment_index, fragment) in fragments.iter().enumerate() {
+                    match fragment {
+                        TextBlockFragment::Text { value, spans } => {
+                            for (ch, span) in value.chars().zip(spans.iter().copied()) {
+                                items.push(TextBlockItem::Char { ch, span });
+                            }
+                        }
+                        TextBlockFragment::Expr { .. } => {
+                            items.push(TextBlockItem::Expr { fragment_index });
+                        }
+                    }
+                }
+
+                let normalized_items = normalize_text_block_items(&items);
+                *idx = chars.len();
+                return emit_text_block_tokens(
+                    &fragments,
+                    &normalized_items,
+                    start,
+                    *idx,
+                    false,
+                    tokens,
+                );
+            }
+
+            continue;
         }
 
         if chars[*idx] == '\\' {
+            let escape_start = *idx;
             *idx += 1;
-            literal.push(process_escape(chars, idx));
+            let value = process_escape(chars, idx);
+            current_value.push(value);
+            current_spans.push(Span::new(escape_start, *idx));
         } else {
-            literal.push(chars[*idx]);
+            current_value.push(chars[*idx]);
+            current_spans.push(Span::new(*idx, *idx + 1));
             *idx += 1;
         }
     }
@@ -121,13 +503,22 @@ fn scan_text_block_sigil(
         )));
     }
 
-    tokens.push(Token::with_lexeme(
-        TokenKind::String,
-        normalize_text_block(&literal),
-        Span::new(start, *idx),
-    ));
+    let mut items = Vec::new();
+    for (fragment_index, fragment) in fragments.iter().enumerate() {
+        match fragment {
+            TextBlockFragment::Text { value, spans } => {
+                for (ch, span) in value.chars().zip(spans.iter().copied()) {
+                    items.push(TextBlockItem::Char { ch, span });
+                }
+            }
+            TextBlockFragment::Expr { .. } => {
+                items.push(TextBlockItem::Expr { fragment_index });
+            }
+        }
+    }
 
-    Ok(())
+    let normalized_items = normalize_text_block_items(&items);
+    emit_text_block_tokens(&fragments, &normalized_items, start, *idx, true, tokens)
 }
 
 /// Scan a `"..."` or `"""..."""` string literal (or interpolation start) in Normal state.

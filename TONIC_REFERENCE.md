@@ -84,7 +84,7 @@ raw = """line one
 """
 ```
 
-Use `~t"""..."""` for source-indented text blocks. Tonic trims one optional newline after the opener, trims one optional newline before the closer, and removes the minimum common indentation across non-blank lines.
+Use `~t"""..."""` for source-indented text blocks. Tonic trims one optional newline after the opener, trims one optional newline before the closer, and removes the minimum common indentation across non-blank output lines.
 
 ```elixir
 help = ~t"""
@@ -97,7 +97,19 @@ help = ~t"""
 
 The example above produces `"Usage:\n  tonic run <path>\n\nPrints the dedented text exactly as shown here."`.
 
-`~t"""..."""` currently supports plain text plus standard escapes. `#{}` interpolation is not supported in text blocks yet.
+Text blocks also support the normal `#{}` interpolation pipeline:
+
+```elixir
+name = "world"
+message = ~t"""
+  hello #{name}
+  #{String.upcase("ok")}
+"""
+```
+
+That example produces `"hello world\nOK"`.
+
+When an interpolation spans multiple source lines, Tonic computes text-block dedent from the rendered text layout: blank lines stay blank, a line containing only `#{...}` still participates in dedent, and the indentation inside the expression source itself does not affect the surrounding text indentation.
 
 ## String Concatenation
 

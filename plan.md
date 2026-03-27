@@ -1,74 +1,58 @@
 # Plan
 
 ## Active slice
-Implement plain dedented text blocks: `~t""" ... """` → existing `TokenKind::String` / `Expr::String` / runtime string flow.
+Plan and then implement interpolation-aware text blocks: `~t""" ... #{...} ... """` using the existing interpolated-string pipeline.
 
 ## Why this slice now
-The normalization rules are the core ergonomics win, and the non-interpolated path is the smallest honest end-to-end slice. It exercises the live compiler/runtime path without taking on the harder interpolation-plus-dedent state machine in the same commit.
+The plain text-block slice is already landed at `13962bc`, but the original task is not complete until `#{}` works inside text blocks. This is the next honest slice because it finishes the feature without reopening unrelated formatter or runtime work.
 
-## Builder checklist
-- [ ] Re-read `context.md`, `plan.md`, `progress.md`, `src/lexer/string_scan.rs`, `src/lexer/mod.rs`, `src/lexer/tests.rs`, `src/lexer/tests_extended.rs`, `tests/check_dump_ast_expressions.rs`, `tests/run_primitives_smoke.rs`, and `TONIC_REFERENCE.md` before editing.
-- [ ] Add a narrow normalization helper in `src/lexer/string_scan.rs` for text-block trim/dedent behavior.
-- [ ] Extend sigil scanning to recognize `~t"""..."""` only in this slice.
-- [ ] Emit existing `TokenKind::String` with normalized content for non-interpolated text blocks.
-- [ ] Keep raw `"""..."""` heredoc behavior unchanged.
-- [ ] Add focused lexer tests for trim/dedent edge cases and invalid/unterminated `~t` diagnostics.
-- [ ] Add an AST dump regression proving the new syntax still lowers to the existing plain string AST shape.
-- [ ] Add a runtime regression proving `cargo run --bin tonic -- run` produces the dedented result on the live path.
-- [ ] Update `TONIC_REFERENCE.md` to explain raw heredoc vs plain dedented text block, without claiming interpolation support yet.
+## Planner checklist
+- [x] Re-read `context.md`, `plan.md`, `progress.md`, `.agents/tasks/2026-03-27-text-block-ergonomics/dedented-text-block-sigil.code-task.md`, `src/lexer/string_scan.rs`, `src/lexer/tests.rs`, `src/parser/literal.rs`, `src/parser/expr.rs`, `tests/check_dump_ast_string_interpolation.rs`, `tests/run_primitives_smoke.rs`, and `TONIC_REFERENCE.md` before changing the plan.
+- [x] Decide the narrowest lexer strategy that preserves text-block dedent rules while emitting the existing interpolation token sequence.
+- [x] Define exact dedent behavior when `#{...}` appears on mixed-indentation lines or spans multiple source lines.
+- [x] Replace the current "reject text-block interpolation" expectation with positive coverage and sharp malformed-input diagnostics.
+- [x] Keep the slice limited to text-block interpolation, tests, and docs. Do not widen into formatter or unrelated string work.
+- [x] Hand builder a concrete verification list and name the authoritative review target as current HEAD once planned.
+
+## Expected builder work
+- [x] Extend `src/lexer/string_scan.rs` so `~t"""...#{...}..."""` can produce the normal interpolated-string token flow after text-block normalization.
+- [x] Preserve the already-landed plain-text-block behavior.
+- [x] Keep raw heredoc behavior unchanged.
+- [x] Update lexer tests for positive interpolation coverage plus malformed/unterminated diagnostics.
+- [x] Add/extend AST dump regression coverage in `tests/check_dump_ast_string_interpolation.rs`.
+- [x] Add runtime coverage for interpolated text blocks in `tests/run_primitives_smoke.rs` or a nearby focused test.
+- [x] Update `TONIC_REFERENCE.md` to remove the current "not supported yet" note and document interpolation semantics for text blocks.
 - [x] Save verification output under `logs/`.
-- [x] Ensure `.miniloop/context.md`, `.miniloop/plan.md`, `.miniloop/progress.md`, and `.miniloop/logs` resolve before handoff; if root files are canonical, commit the required mirrors/symlinks too.
-- [x] Commit the slice before `review.ready` and record the review-target HEAD commit hash in `progress.md`.
 
-## Test plan
-1. **Lexer normalization**
-   - `~t"""\n  hello\n  world\n"""` → `STRING(hello\nworld)`
-   - blank lines do not increase dedent
-   - a less-indented non-blank line sets the minimum indent floor
-   - fully blank block normalizes to empty string
+## Verification plan
+1. **Lexer / tokenization**
+   - interpolated text block emits the existing `StringStart` / `StringPart` / `InterpolationStart` / `InterpolationEnd` / `StringEnd` flow
+   - dedent still ignores blank lines and preserves relative indentation around interpolation boundaries
 2. **Diagnostics**
-   - unterminated `~t"""` reports the same sharp span style as other string errors
-   - unsupported `~t` spellings fail cleanly instead of being mis-tokenized as some other sigil
+   - malformed `#{...}` inside `~t"""` reports a precise error
+   - unterminated `~t"""` still reports the correct text-block error span
 3. **AST shape**
-   - `tonic check --dump-ast` shows the new literal as the existing `{"kind":"string",...}` shape
+   - `tonic check --dump-ast` shows an `interpolatedstring` shape for the new syntax rather than a new special-case node
 4. **Runtime behavior**
-   - `tonic run` prints the dedented string exactly, proving the live path works
+   - `tonic run` proves dedent + interpolation both work on the live path
 5. **Regression**
-   - existing raw heredoc behavior still preserves newlines exactly
+   - existing plain text-block and raw heredoc behavior remain green
 
-## Verification commands
+## Suggested verification commands
 - `mkdir -p logs && cargo test text_block -- --nocapture > logs/text_block_lexer.log 2>&1`
+- `mkdir -p logs && cargo test --test check_dump_ast_string_interpolation -- --nocapture > logs/text_block_ast_interpolation.log 2>&1`
+- `mkdir -p logs && cargo test --test run_primitives_smoke run_executes_text_block_literals_with_trimmed_dedent_contract -- --exact > logs/text_block_runtime_plain.log 2>&1`
+- `mkdir -p logs && cargo test --test run_primitives_smoke <new_interpolated_text_block_test_name> -- --exact > logs/text_block_runtime_interpolation.log 2>&1`
 - `mkdir -p logs && cargo test heredoc -- --nocapture > logs/text_block_heredoc_regression.log 2>&1`
-- `mkdir -p logs && cargo test --test check_dump_ast_expressions check_dump_ast_matches_text_block_literal_contract -- --exact > logs/text_block_ast.log 2>&1`
-- `mkdir -p logs && cargo test --test run_primitives_smoke run_executes_text_block_literals_with_trimmed_dedent_contract -- --exact > logs/text_block_runtime.log 2>&1`
 
-## Critic manual smoke expectation
-This slice has a real manual surface. Critic should independently create or use a fixture containing `~t"""..."""` and run:
-- `cargo run --bin tonic -- run <fixture>`
+## Critic expectation for the next review
+Critic should review the post-slice HEAD, not `13962bc` alone, and independently smoke an interpolated fixture with:
+- `cargo run --bin tonic -- run <fixture-containing-~t-and-#{...}>`
 
-That smoke must hit the changed lexer path directly; CLI evidence is honest proof for this slice.
+That smoke must hit the changed lexer path directly.
 
-## Expected files
-- `src/lexer/string_scan.rs`
-- `src/lexer/mod.rs` (only if state/plumbing changes are truly needed)
-- `src/lexer/tests.rs`
-- `src/lexer/tests_extended.rs`
-- `tests/check_dump_ast_expressions.rs`
-- `tests/run_primitives_smoke.rs`
-- `TONIC_REFERENCE.md`
-- `context.md`
-- `plan.md`
-- `progress.md`
-- `.miniloop/context.md`
-- `.miniloop/plan.md`
-- `.miniloop/progress.md`
-- `.miniloop/logs`
-- `logs/text_block_lexer.log`
-- `logs/text_block_heredoc_regression.log`
-- `logs/text_block_ast.log`
-- `logs/text_block_runtime.log`
-
-## Explicitly deferred to next slice
-- `~t"""...#{...}..."""` interpolation support
-- interpolation-aware dedent rules
-- any self-hosted lexer parity expansion for the new syntax
+## Explicitly out of scope
+- formatter support
+- self-hosted lexer parity expansion unless tiny
+- changing raw heredoc semantics
+- broader string system redesign

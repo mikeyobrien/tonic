@@ -84,12 +84,44 @@ fn scan_tokens_reports_unterminated_text_block_with_span() {
 }
 
 #[test]
-fn scan_tokens_rejects_text_block_interpolation_for_now() {
-    let error = scan_tokens("~t\"\"\"hello #{name}\"\"\"")
-        .expect_err("scanner should reject text-block interpolation in this slice");
+fn scan_tokens_supports_text_block_interpolation_with_trimmed_dedent_contract() {
+    let labels = dump_labels("~t\"\"\"\n  hello #{name}\n    from #{place}\n\"\"\"");
 
-    assert_eq!(error.to_string(), "invalid token '#' at offset 11");
-    assert_eq!(error.span(), Span::new(11, 12));
+    assert_eq!(
+        labels,
+        [
+            "STRING_START",
+            "STRING_PART(hello )",
+            "INTERPOLATION_START",
+            "IDENT(name)",
+            "INTERPOLATION_END",
+            "STRING_PART(\n  from )",
+            "INTERPOLATION_START",
+            "IDENT(place)",
+            "INTERPOLATION_END",
+            "STRING_END",
+            "EOF",
+        ]
+    );
+}
+
+#[test]
+fn scan_tokens_supports_text_block_interpolation_on_otherwise_blank_line() {
+    let labels = dump_labels("~t\"\"\"\n    start\n    #{value}\n      done\n\"\"\"");
+
+    assert_eq!(
+        labels,
+        [
+            "STRING_START",
+            "STRING_PART(start\n)",
+            "INTERPOLATION_START",
+            "IDENT(value)",
+            "INTERPOLATION_END",
+            "STRING_PART(\n  done)",
+            "STRING_END",
+            "EOF",
+        ]
+    );
 }
 
 #[test]
