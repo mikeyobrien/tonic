@@ -3,8 +3,9 @@
 use super::algebra::{self, Doc};
 use crate::lexer::scan_tokens;
 use crate::parser::{
-    parse_ast, Ast, BinaryOp, Expr, Function, LabelExprEntry, MapExprEntry, Module, ModuleForm,
-    Parameter, ParameterAnnotation, Pattern, StructFieldEntry, UnaryOp,
+    parse_ast, Ast, BinaryOp, CaseBranch, Expr, Function, LabelExprEntry, LabelPatternEntry,
+    MapExprEntry, MapPatternEntry, Module, ModuleForm, Parameter, ParameterAnnotation, Pattern,
+    StructFieldEntry, UnaryOp,
 };
 
 pub(crate) fn format_parsed_source(source: &str, max_width: usize) -> Result<String, String> {
@@ -46,7 +47,7 @@ fn ast_to_doc(ast: &Ast) -> Result<Doc, String> {
 fn module_to_doc(module: &Module) -> Result<Doc, String> {
     if !module.attributes.is_empty() {
         return Err(format!(
-            "slice 4 formatter does not render module attributes yet: {}",
+            "slice 5 formatter does not render module attributes yet: {}",
             module.name
         ));
     }
@@ -86,7 +87,7 @@ fn module_form_to_doc(form: &ModuleForm) -> Result<Doc, String> {
     match form {
         ModuleForm::Defstruct { fields } => defstruct_to_doc(fields),
         unsupported => Err(format!(
-            "slice 4 formatter does not render this module form yet: {unsupported:?}"
+            "slice 5 formatter does not render this module form yet: {unsupported:?}"
         )),
     }
 }
@@ -222,6 +223,9 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
             op, left, right, ..
         } => binary_doc(*op, left, right)?,
         Expr::Pipe { .. } => pipe_doc(expr)?,
+        Expr::Case {
+            subject, branches, ..
+        } => case_doc(subject, branches)?,
         Expr::Block { exprs, .. } => join_docs(
             exprs
                 .iter()
@@ -231,7 +235,7 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
         )?,
         unsupported => {
             return Err(format!(
-                "slice 4 formatter does not render this expression yet: {unsupported:?}"
+                "slice 5 formatter does not render this expression yet: {unsupported:?}"
             ));
         }
     };
@@ -241,6 +245,105 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
     } else {
         Ok(doc)
     }
+}
+
+fn case_doc(subject: &Expr, branches: &[CaseBranch]) -> Result<Doc, String> {
+    let branches = join_docs(
+        branches
+            .iter()
+            .map(case_branch_to_doc)
+            .collect::<Result<Vec<_>, _>>()?,
+        line(),
+    )?;
+
+    Ok(concat_all(vec![
+        text("case "),
+        expr_to_doc(subject, 0)?,
+        text(" do"),
+        nest(2, concat(line(), branches)),
+        line(),
+        text("end"),
+    ]))
+}
+
+fn case_branch_to_doc(branch: &CaseBranch) -> Result<Doc, String> {
+    let mut head = vec![pattern_to_doc(branch.head())?];
+    if let Some(guard) = branch.guard() {
+        head.push(text(" when "));
+        head.push(expr_to_doc(guard, 0)?);
+    }
+    head.push(text(" ->"));
+
+    Ok(concat_all(vec![
+        concat_all(head),
+        nest(2, concat(line(), expr_to_doc(branch.body(), 0)?)),
+    ]))
+}
+
+fn pattern_to_doc(pattern: &Pattern) -> Result<Doc, String> {
+    match pattern {
+        Pattern::Atom { value } => Ok(text(format!(":{value}"))),
+        Pattern::Bind { name } => Ok(text(name)),
+        Pattern::Pin { name } => Ok(text(format!("^{name}"))),
+        Pattern::Wildcard => Ok(text("_")),
+        Pattern::Integer { value } => Ok(text(value.to_string())),
+        Pattern::Bool { value } => Ok(text(if *value { "true" } else { "false" })),
+        Pattern::Nil => Ok(text("nil")),
+        Pattern::String { value } => Ok(text(render_string_literal(value))),
+        Pattern::Tuple { items } => pattern_delimited_doc("{", items, "}"),
+        Pattern::List { items, tail } => list_pattern_doc(items, tail.as_deref()),
+        Pattern::Map { entries } => {
+            bracketed_entries_doc("%{", map_pattern_entries_to_docs(entries)?, "}")
+        }
+        Pattern::Struct { module, entries } => bracketed_entries_doc(
+            format!("%{}{{", module),
+            label_pattern_entries_to_docs(entries)?,
+            "}",
+        ),
+        unsupported => Err(format!(
+            "slice 5 formatter does not render this pattern yet: {unsupported:?}"
+        )),
+    }
+}
+
+fn pattern_delimited_doc(
+    open: impl Into<String>,
+    items: &[Pattern],
+    close: impl Into<String>,
+) -> Result<Doc, String> {
+    bracketed_entries_doc(
+        open,
+        items
+            .iter()
+            .map(pattern_to_doc)
+            .collect::<Result<Vec<_>, _>>()?,
+        close,
+    )
+}
+
+fn list_pattern_doc(items: &[Pattern], tail: Option<&Pattern>) -> Result<Doc, String> {
+    let items = items
+        .iter()
+        .map(pattern_to_doc)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let Some(tail) = tail else {
+        return bracketed_entries_doc("[", items, "]");
+    };
+
+    let mut body = Vec::new();
+    if !items.is_empty() {
+        body.push(join_docs(items, concat(text(","), line()))?);
+        body.push(line());
+    }
+    body.push(concat(text("| "), pattern_to_doc(tail)?));
+
+    Ok(group(concat_all(vec![
+        text("["),
+        nest(2, concat(soft_line(), concat_all(body))),
+        soft_line(),
+        text("]"),
+    ])))
 }
 
 fn delimited_doc(open: impl Into<String>, items: &[Expr], close: impl Into<String>) -> Result<Doc, String> {
@@ -333,6 +436,24 @@ fn map_entry_to_doc(entry: &MapExprEntry) -> Result<Doc, String> {
     }
 }
 
+fn map_pattern_entries_to_docs(entries: &[MapPatternEntry]) -> Result<Vec<Doc>, String> {
+    entries.iter().map(map_pattern_entry_to_doc).collect()
+}
+
+fn map_pattern_entry_to_doc(entry: &MapPatternEntry) -> Result<Doc, String> {
+    match entry.key() {
+        Pattern::Atom { value } => Ok(concat_all(vec![
+            text(format!("{value}: ")),
+            pattern_to_doc(entry.value())?,
+        ])),
+        key => Ok(concat_all(vec![
+            pattern_to_doc(key)?,
+            text(" => "),
+            pattern_to_doc(entry.value())?,
+        ])),
+    }
+}
+
 fn label_entries_to_docs(entries: &[LabelExprEntry]) -> Result<Vec<Doc>, String> {
     entries.iter().map(label_entry_to_doc).collect()
 }
@@ -341,6 +462,17 @@ fn label_entry_to_doc(entry: &LabelExprEntry) -> Result<Doc, String> {
     Ok(concat_all(vec![
         text(format!("{}: ", entry.key)),
         expr_to_doc(&entry.value, 0)?,
+    ]))
+}
+
+fn label_pattern_entries_to_docs(entries: &[LabelPatternEntry]) -> Result<Vec<Doc>, String> {
+    entries.iter().map(label_pattern_entry_to_doc).collect()
+}
+
+fn label_pattern_entry_to_doc(entry: &LabelPatternEntry) -> Result<Doc, String> {
+    Ok(concat_all(vec![
+        text(format!("{}: ", entry.key())),
+        pattern_to_doc(entry.value())?,
     ]))
 }
 
@@ -833,5 +965,169 @@ mod tests {
         let rendered = format_parsed_source(source, 80).expect("block render should succeed");
 
         assert_eq!(rendered, source);
+    }
+
+    #[test]
+    fn format_ast_renders_case_patterns_guards_and_nested_case_bodies() {
+        let source = concat!(
+            "defmodule User do\n",
+            "  defstruct name: \"\", age: 0\n",
+            "\n",
+            "  def run(expected, value) do\n",
+            "    case value do\n",
+            "      {:ok, result} -> result\n",
+            "      [^expected | tail] when expected > 0 -> tail\n",
+            "      %{\"status\" => code, ok: flag} -> case flag do\n",
+            "        true -> {code, flag}\n",
+            "        _ -> nil\n",
+            "      end\n",
+            "      %User{name: name, age: age} -> {name, age}\n",
+            "      _ -> nil\n",
+            "    end\n",
+            "  end\n",
+            "end\n",
+        );
+
+        let rendered = format_parsed_source(source, 120).expect("case render should succeed");
+
+        assert_eq!(
+            rendered,
+            concat!(
+                "defmodule User do\n",
+                "  defstruct name: \"\", age: 0\n",
+                "\n",
+                "  def run(expected, value) do\n",
+                "    case value do\n",
+                "      {:ok, result} ->\n",
+                "        result\n",
+                "      [^expected | tail] when expected > 0 ->\n",
+                "        tail\n",
+                "      %{\"status\" => code, ok: flag} ->\n",
+                "        case flag do\n",
+                "          true ->\n",
+                "            {code, flag}\n",
+                "          _ ->\n",
+                "            nil\n",
+                "        end\n",
+                "      %User{name: name, age: age} ->\n",
+                "        {name, age}\n",
+                "      _ ->\n",
+                "        nil\n",
+                "    end\n",
+                "  end\n",
+                "end\n",
+            )
+        );
+    }
+
+    #[test]
+    fn format_ast_lowers_if_and_unless_to_case() {
+        let source = concat!(
+            "defmodule Demo do\n",
+            "  def pick(flag) do\n",
+            "    if flag do\n",
+            "      1\n",
+            "    else\n",
+            "      0\n",
+            "    end\n",
+            "  end\n",
+            "\n",
+            "  def reject(flag) do\n",
+            "    unless flag do\n",
+            "      2\n",
+            "    else\n",
+            "      3\n",
+            "    end\n",
+            "  end\n",
+            "end\n",
+        );
+
+        let rendered = format_parsed_source(source, 80).expect("control render should succeed");
+
+        assert_eq!(
+            rendered,
+            concat!(
+                "defmodule Demo do\n",
+                "  def pick(flag) do\n",
+                "    case nil do\n",
+                "      _ when !!flag ->\n",
+                "        1\n",
+                "      _ ->\n",
+                "        0\n",
+                "    end\n",
+                "  end\n",
+                "\n",
+                "  def reject(flag) do\n",
+                "    case nil do\n",
+                "      _ when !!flag ->\n",
+                "        3\n",
+                "      _ ->\n",
+                "        2\n",
+                "    end\n",
+                "  end\n",
+                "end\n",
+            )
+        );
+    }
+
+    #[test]
+    fn format_ast_lowers_cond_and_with_to_nested_cases() {
+        let source = concat!(
+            "defmodule Demo do\n",
+            "  def route(value) do\n",
+            "    cond do\n",
+            "      value > 2 -> 4\n",
+            "      true -> 5\n",
+            "    end\n",
+            "  end\n",
+            "\n",
+            "  def chain() do\n",
+            "    with [left, right] <- list(1, 2),\n",
+            "         total <- left + right do\n",
+            "      total\n",
+            "    else\n",
+            "      _ -> 0\n",
+            "    end\n",
+            "  end\n",
+            "end\n",
+        );
+
+        let rendered = format_parsed_source(source, 80).expect("control render should succeed");
+
+        assert_eq!(
+            rendered,
+            concat!(
+                "defmodule Demo do\n",
+                "  def route(value) do\n",
+                "    case nil do\n",
+                "      _ when !!(value > 2) ->\n",
+                "        4\n",
+                "      _ when !!true ->\n",
+                "        5\n",
+                "    end\n",
+                "  end\n",
+                "\n",
+                "  def chain() do\n",
+                "    case list(1, 2) do\n",
+                "      [left, right] ->\n",
+                "        case left + right do\n",
+                "          total ->\n",
+                "            total\n",
+                "          __tonic_with_failure ->\n",
+                "            case __tonic_with_failure do\n",
+                "              _ ->\n",
+                "                0\n",
+                "            end\n",
+                "        end\n",
+                "      __tonic_with_failure ->\n",
+                "        case __tonic_with_failure do\n",
+                "          _ ->\n",
+                "            0\n",
+                "        end\n",
+                "    end\n",
+                "  end\n",
+                "end\n",
+            )
+        );
     }
 }

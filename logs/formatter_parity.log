@@ -1,7 +1,8 @@
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+    Blocking waiting for file lock on package cache
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
      Running tests/fmt_parity_smoke.rs (target/debug/deps/fmt_parity_smoke-450d2b4942aa5f4d)
 
 running 1 test

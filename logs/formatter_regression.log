@@ -3,7 +3,7 @@
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on artifact directory
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.23s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
      Running unittests src/bin/benchsuite.rs (target/debug/deps/benchsuite-a272cd8c1e8988a1)
 
 running 0 tests
@@ -21,7 +21,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 1 test
 test formatter::tests::format_source_is_idempotent_with_comments ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 948 filtered out; finished in 0.00s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 951 filtered out; finished in 0.00s
 
      Running tests/check_anonymous_fn_clause_arity_diagnostics.rs (target/debug/deps/check_anonymous_fn_clause_arity_diagnostics-50b08516ff2de7db)
 
