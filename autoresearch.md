@@ -107,7 +107,7 @@ Improve the Tonic unit testing UX so that writing, running, and debugging tests 
 ### Metrics
 
 - **Primary**: Focused unit testing UX acceptance checks green
-- **Current Best**: 22 focused testing UX checks green (run 32)
+- **Current Best**: 25 focused testing UX checks green (run 33)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -143,3 +143,4 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - **Run 30 (KEEP, metric=15, segment 2)**: Added `--list` flag to `tonic test` that discovers and compiles tests but skips execution, outputting test names (text: one per line, JSON: `{"tests": [...]}`) with optional `--filter` combination, plus 3 focused integration tests. Hypothesis: confirmed — test discovery without execution is essential for editor/tooling integration and pairs naturally with `--filter` for CI matrix splitting.
 - **Run 31 (KEEP, metric=19, segment 2)**: Added `assert_contains` (string substring + list membership) and `assert_in_delta` (numeric proximity) to the Assert stdlib module, with structured failure rendering and 4 focused integration tests. Hypothesis: confirmed — expanding the assertion vocabulary with contains and delta checks covers the most common test patterns beyond equality, making Tonic tests more expressive without adding complexity.
 - **Run 32 (KEEP, metric=22, segment 2)**: Added `--fail-fast` flag to `tonic test` that stops execution after the first test failure, using labeled loop breaks across file and test iterations, with 3 focused integration tests for early stop, all-pass continuation, and JSON output. Hypothesis: confirmed — fail-fast is a high-leverage workflow improvement that saves time in large suites by stopping at the first failure instead of running all remaining tests.
+- **Run 33 (KEEP, metric=25, segment 2)**: Added ANSI colored output to `tonic test` text output — green for passing, red for failing, bold+red for failure headers — respecting `NO_COLOR` env var per no-color.org convention, with 3 focused integration tests for color presence, NO_COLOR stripping, and JSON ANSI-free verification. Hypothesis: confirmed — colored output makes test results instantly scannable with outsized UX impact relative to implementation complexity.
