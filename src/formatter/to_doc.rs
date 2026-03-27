@@ -3,8 +3,8 @@
 use super::algebra::{self, Doc};
 use crate::lexer::scan_tokens;
 use crate::parser::{
-    parse_ast, Ast, BinaryOp, Expr, Function, Module, Parameter, ParameterAnnotation, Pattern,
-    UnaryOp,
+    parse_ast, Ast, BinaryOp, Expr, Function, LabelExprEntry, MapExprEntry, Module, ModuleForm,
+    Parameter, ParameterAnnotation, Pattern, StructFieldEntry, UnaryOp,
 };
 
 pub(crate) fn format_parsed_source(source: &str, max_width: usize) -> Result<String, String> {
@@ -34,34 +34,37 @@ pub(crate) fn format_ast(ast: &Ast, max_width: usize) -> Result<String, String> 
 }
 
 fn ast_to_doc(ast: &Ast) -> Result<Doc, String> {
-    join_docs(ast.modules.iter().map(module_to_doc).collect::<Result<Vec<_>, _>>()?, blank_line())
+    join_docs(
+        ast.modules
+            .iter()
+            .map(module_to_doc)
+            .collect::<Result<Vec<_>, _>>()?,
+        blank_line(),
+    )
 }
 
 fn module_to_doc(module: &Module) -> Result<Doc, String> {
-    if !module.forms.is_empty() {
-        return Err(format!(
-            "slice 3 formatter does not render module forms yet: {}",
-            module.name
-        ));
-    }
-
     if !module.attributes.is_empty() {
         return Err(format!(
-            "slice 3 formatter does not render module attributes yet: {}",
+            "slice 4 formatter does not render module attributes yet: {}",
             module.name
         ));
     }
 
-    let functions = join_docs(
+    let mut items = module
+        .forms
+        .iter()
+        .map(module_form_to_doc)
+        .collect::<Result<Vec<_>, _>>()?;
+    items.extend(
         module
             .functions
             .iter()
             .map(function_to_doc)
             .collect::<Result<Vec<_>, _>>()?,
-        blank_line(),
-    )?;
+    );
 
-    if module.functions.is_empty() {
+    if items.is_empty() {
         return Ok(concat_all(vec![
             text(format!("defmodule {} do", module.name)),
             line(),
@@ -69,11 +72,48 @@ fn module_to_doc(module: &Module) -> Result<Doc, String> {
         ]));
     }
 
+    let body = join_docs(items, blank_line())?;
+
     Ok(concat_all(vec![
         text(format!("defmodule {} do", module.name)),
-        nest(2, concat(line(), functions)),
+        nest(2, concat(line(), body)),
         line(),
         text("end"),
+    ]))
+}
+
+fn module_form_to_doc(form: &ModuleForm) -> Result<Doc, String> {
+    match form {
+        ModuleForm::Defstruct { fields } => defstruct_to_doc(fields),
+        unsupported => Err(format!(
+            "slice 4 formatter does not render this module form yet: {unsupported:?}"
+        )),
+    }
+}
+
+fn defstruct_to_doc(fields: &[StructFieldEntry]) -> Result<Doc, String> {
+    if fields.is_empty() {
+        return Ok(text("defstruct []"));
+    }
+
+    let fields = join_docs(
+        fields
+            .iter()
+            .map(struct_field_to_doc)
+            .collect::<Result<Vec<_>, _>>()?,
+        concat(text(","), line()),
+    )?;
+
+    Ok(group(concat_all(vec![
+        text("defstruct"),
+        nest(2, concat(line(), fields)),
+    ])))
+}
+
+fn struct_field_to_doc(field: &StructFieldEntry) -> Result<Doc, String> {
+    Ok(concat_all(vec![
+        text(format!("{}: ", field.name)),
+        expr_to_doc(&field.default, 0)?,
     ]))
 }
 
@@ -140,6 +180,22 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
         Expr::String { value, .. } => text(render_string_literal(value)),
         Expr::Variable { name, .. } => text(name),
         Expr::Atom { value, .. } => text(format!(":{value}")),
+        Expr::Tuple { items, .. } => delimited_doc("{", items, "}")?,
+        Expr::List { items, .. } => delimited_doc("[", items, "]")?,
+        Expr::Keyword { entries, .. } => {
+            bracketed_entries_doc("[", label_entries_to_docs(entries)?, "]")?
+        }
+        Expr::Map { entries, .. } => bracketed_entries_doc("%{", map_entries_to_docs(entries)?, "}")?,
+        Expr::Struct {
+            module, entries, ..
+        } => bracketed_entries_doc(format!("%{}{{", module), label_entries_to_docs(entries)?, "}")?,
+        Expr::MapUpdate { base, updates, .. } => update_doc("%{", base, updates, "}")?,
+        Expr::StructUpdate {
+            module,
+            base,
+            updates,
+            ..
+        } => update_doc(format!("%{}{{", module), base, updates, "}")?,
         Expr::Call { callee, args, .. } => call_doc(text(callee), args, false)?,
         Expr::Invoke { callee, args, .. } => call_doc(
             concat_all(vec![expr_to_doc(callee, PRECEDENCE_CALL)?, text(".(")]),
@@ -157,7 +213,9 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
             expr_to_doc(index, 0)?,
             text("]"),
         ]),
-        Expr::Question { value, .. } => concat_all(vec![expr_to_doc(value, PRECEDENCE_CALL)?, text("?")]),
+        Expr::Question { value, .. } => {
+            concat_all(vec![expr_to_doc(value, PRECEDENCE_CALL)?, text("?")])
+        }
         Expr::Group { inner, .. } => concat_all(vec![text("("), expr_to_doc(inner, 0)?, text(")")]),
         Expr::Unary { op, value, .. } => unary_doc(*op, value)?,
         Expr::Binary {
@@ -173,7 +231,7 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
         )?,
         unsupported => {
             return Err(format!(
-                "slice 3 formatter does not render this expression yet: {unsupported:?}"
+                "slice 4 formatter does not render this expression yet: {unsupported:?}"
             ));
         }
     };
@@ -183,6 +241,107 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
     } else {
         Ok(doc)
     }
+}
+
+fn delimited_doc(open: impl Into<String>, items: &[Expr], close: impl Into<String>) -> Result<Doc, String> {
+    bracketed_entries_doc(
+        open,
+        items
+            .iter()
+            .map(|item| expr_to_doc(item, 0))
+            .collect::<Result<Vec<_>, _>>()?,
+        close,
+    )
+}
+
+fn bracketed_entries_doc(
+    open: impl Into<String>,
+    entries: Vec<Doc>,
+    close: impl Into<String>,
+) -> Result<Doc, String> {
+    let open = open.into();
+    let close = close.into();
+
+    if entries.is_empty() {
+        return Ok(concat_all(vec![text(open), text(close)]));
+    }
+
+    let entries = join_docs(entries, concat(text(","), line()))?;
+
+    Ok(group(concat_all(vec![
+        text(open),
+        nest(2, concat(soft_line(), entries)),
+        soft_line(),
+        text(close),
+    ])))
+}
+
+fn update_doc(
+    open: impl Into<String>,
+    base: &Expr,
+    updates: &[LabelExprEntry],
+    close: impl Into<String>,
+) -> Result<Doc, String> {
+    let open = open.into();
+    let close = close.into();
+
+    let base = expr_to_doc(base, 0)?;
+    if updates.is_empty() {
+        return Ok(group(concat_all(vec![
+            text(open),
+            nest(2, concat(soft_line(), base)),
+            soft_line(),
+            text(close),
+        ])));
+    }
+
+    let updates = join_docs(
+        updates
+            .iter()
+            .map(label_entry_to_doc)
+            .collect::<Result<Vec<_>, _>>()?,
+        concat(text(","), line()),
+    )?;
+    let updates = concat(text("| "), updates);
+
+    Ok(group(concat_all(vec![
+        text(open),
+        nest(
+            2,
+            concat_all(vec![soft_line(), base, line(), nest(2, updates)]),
+        ),
+        soft_line(),
+        text(close),
+    ])))
+}
+
+fn map_entries_to_docs(entries: &[MapExprEntry]) -> Result<Vec<Doc>, String> {
+    entries.iter().map(map_entry_to_doc).collect()
+}
+
+fn map_entry_to_doc(entry: &MapExprEntry) -> Result<Doc, String> {
+    match entry.key() {
+        Expr::Atom { value, .. } => Ok(concat_all(vec![
+            text(format!("{value}: ")),
+            expr_to_doc(entry.value(), 0)?,
+        ])),
+        key => Ok(concat_all(vec![
+            expr_to_doc(key, 0)?,
+            text(" => "),
+            expr_to_doc(entry.value(), 0)?,
+        ])),
+    }
+}
+
+fn label_entries_to_docs(entries: &[LabelExprEntry]) -> Result<Vec<Doc>, String> {
+    entries.iter().map(label_entry_to_doc).collect()
+}
+
+fn label_entry_to_doc(entry: &LabelExprEntry) -> Result<Doc, String> {
+    Ok(concat_all(vec![
+        text(format!("{}: ", entry.key)),
+        expr_to_doc(&entry.value, 0)?,
+    ]))
 }
 
 fn call_doc(head: Doc, args: &[Expr], head_includes_open_paren: bool) -> Result<Doc, String> {
@@ -456,6 +615,23 @@ mod tests {
     }
 
     #[test]
+    fn format_ast_renders_defstruct_before_functions() {
+        let source = concat!(
+            "defmodule User do\n",
+            "  defstruct name: \"\", age: 0\n",
+            "\n",
+            "  def run() do\n",
+            "    %User{name: \"A\"}\n",
+            "  end\n",
+            "end\n",
+        );
+
+        let rendered = format_parsed_source(source, 80).expect("ast formatter should render");
+
+        assert_eq!(rendered, source);
+    }
+
+    #[test]
     fn format_ast_renders_private_function_defaults_and_guard() {
         let source = concat!(
             "defmodule Demo do\n",
@@ -495,6 +671,122 @@ mod tests {
                 "      gamma,\n",
                 "      delta\n",
                 "    )\n",
+                "  end\n",
+                "end\n",
+            )
+        );
+    }
+
+    #[test]
+    fn format_ast_wraps_tuple_and_list_literals_by_width() {
+        let source = concat!(
+            "defmodule Demo do\n",
+            "  def run() do\n",
+            "    {:ok, [alpha, beta, gamma]}\n",
+            "  end\n",
+            "end\n",
+        );
+
+        let wide = format_parsed_source(source, 80).expect("wide render should succeed");
+        let narrow = format_parsed_source(source, 16).expect("narrow render should succeed");
+
+        assert_eq!(wide, source);
+        assert_eq!(
+            narrow,
+            concat!(
+                "defmodule Demo do\n",
+                "  def run() do\n",
+                "    {\n",
+                "      :ok,\n",
+                "      [\n",
+                "        alpha,\n",
+                "        beta,\n",
+                "        gamma\n",
+                "      ]\n",
+                "    }\n",
+                "  end\n",
+                "end\n",
+            )
+        );
+    }
+
+    #[test]
+    fn format_ast_wraps_map_and_keyword_literals_by_width() {
+        let source = concat!(
+            "defmodule Demo do\n",
+            "  def run() do\n",
+            "    {%{\"status\" => 200, ok: true, 1 => false}, [name: \"Ada\", age: 43]}\n",
+            "  end\n",
+            "end\n",
+        );
+
+        let wide = format_parsed_source(source, 80).expect("wide render should succeed");
+        let narrow = format_parsed_source(source, 24).expect("narrow render should succeed");
+
+        assert_eq!(wide, source);
+        assert_eq!(
+            narrow,
+            concat!(
+                "defmodule Demo do\n",
+                "  def run() do\n",
+                "    {\n",
+                "      %{\n",
+                "        \"status\" => 200,\n",
+                "        ok: true,\n",
+                "        1 => false\n",
+                "      },\n",
+                "      [\n",
+                "        name: \"Ada\",\n",
+                "        age: 43\n",
+                "      ]\n",
+                "    }\n",
+                "  end\n",
+                "end\n",
+            )
+        );
+    }
+
+    #[test]
+    fn format_ast_wraps_struct_and_update_literals_by_width() {
+        let source = concat!(
+            "defmodule User do\n",
+            "  defstruct name: \"\", age: 0\n",
+            "\n",
+            "  def run(user, data) do\n",
+            "    {%User{name: \"A\", age: 43}, %{data | age: 44, name: \"Ada\"}, %User{user | age: 45, name: \"Ada\"}}\n",
+            "  end\n",
+            "end\n",
+        );
+
+        let wide = format_parsed_source(source, 120).expect("wide render should succeed");
+        let narrow = format_parsed_source(source, 26).expect("narrow render should succeed");
+
+        assert_eq!(wide, source);
+        assert_eq!(
+            narrow,
+            concat!(
+                "defmodule User do\n",
+                "  defstruct\n",
+                "    name: \"\",\n",
+                "    age: 0\n",
+                "\n",
+                "  def run(user, data) do\n",
+                "    {\n",
+                "      %User{\n",
+                "        name: \"A\",\n",
+                "        age: 43\n",
+                "      },\n",
+                "      %{\n",
+                "        data\n",
+                "        | age: 44,\n",
+                "          name: \"Ada\"\n",
+                "      },\n",
+                "      %User{\n",
+                "        user\n",
+                "        | age: 45,\n",
+                "          name: \"Ada\"\n",
+                "      }\n",
+                "    }\n",
                 "  end\n",
                 "end\n",
             )
