@@ -13,6 +13,7 @@ mod access_mod;
 mod assert_mod;
 mod base64_mod;
 mod bitwise_mod;
+mod cli_mod;
 mod crypto_mod;
 mod csv_mod;
 mod datetime_mod;
@@ -442,6 +443,7 @@ impl HostRegistry {
         bitwise_mod::register_bitwise_host_functions(self);
         hex_mod::register_hex_host_functions(self);
         access_mod::register_access_host_functions(self);
+        cli_mod::register_cli_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);

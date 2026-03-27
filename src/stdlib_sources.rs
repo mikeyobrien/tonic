@@ -30,6 +30,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Bitwise", OPTIONAL_STDLIB_BITWISE_SOURCE),
     ("Hex", OPTIONAL_STDLIB_HEX_SOURCE),
     ("Access", OPTIONAL_STDLIB_ACCESS_SOURCE),
+    ("CLI", OPTIONAL_STDLIB_CLI_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -943,3 +944,6 @@ const OPTIONAL_STDLIB_HEX_SOURCE: &str =
 
 const OPTIONAL_STDLIB_ACCESS_SOURCE: &str =
     "defmodule Access do\n  def get_in(data, path) do\n    host_call(:access_get_in, data, path)\n  end\n\n  def put_in(data, path, value) do\n    host_call(:access_put_in, data, path, value)\n  end\n\n  def fetch(data, key) do\n    host_call(:access_fetch, data, key)\n  end\n\n  def keys(map) do\n    host_call(:access_keys, map)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_CLI_SOURCE: &str =
+    "defmodule CLI do\n  def spec(opts) do\n    host_call(:cli_build_spec, opts)\n  end\n\n  def parse(spec, argv) do\n    host_call(:cli_parse, spec, argv)\n  end\n\n  def help_text(spec) do\n    host_call(:cli_format_help, spec)\n  end\n\n  def output(result, data) do\n    case result do\n      %{output_json: true} ->\n        IO.puts(Json.encode_pretty(data))\n      _ ->\n        IO.puts(inspect(data))\n    end\n  end\n\n  def exit_error(message) do\n    IO.puts(\"error: \" <> message)\n    System.exit(1)\n  end\nend\n";

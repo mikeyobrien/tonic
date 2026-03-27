@@ -221,3 +221,77 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 47 (KEEP, metric=264)**: Added `Hex.encode/1`, `Hex.decode/1`, `Hex.encode_upper/1` as host-backed stdlib functions with pure Rust byte-to-nibble conversion (no new crate), handling encode/decode round-trips, odd-length and invalid-char errors, plus 12 focused unit tests. Hypothesis: confirmed — a dedicated Hex module complements Crypto (which outputs hex internally) by providing explicit hex encoding/decoding for any Tonic app working with cryptographic hashes, binary protocols, or debug output.
 - **Run 48 (KEEP, metric=283)**: Added `Access.get_in/2`, `Access.put_in/3`, `Access.fetch/2`, `Access.keys/1` as host-backed stdlib functions for nested data traversal and manipulation, supporting string/atom keys for maps and integer keys for list indices, with recursive immutable update in put_in, plus 19 focused unit tests. Hypothesis: confirmed — a dedicated Access module eliminates manual nested pattern matching for any Tonic app working with deeply nested JSON/config structures.
 - **Run 49 (KEEP, metric=311)**: Extended existing Integer module with `to_string/2` (base 2-36 conversion), `digits/1`, `undigits/1`, `gcd/2`, `is_even/1`, `is_odd/1`, `pow/2` as host-backed stdlib functions with overflow detection and input validation, bringing Integer to 28 focused unit tests total. Hypothesis: confirmed — a comprehensive Integer module provides essential number-theoretic and formatting operations for any Tonic app needing base conversion, digit manipulation, or integer math.
+
+## Segment 3 — CLI Creation Stdlib Module
+
+### Objective
+
+Design and implement an elegant CLI creation stdlib module for Tonic, inspired by the best CLI libraries across languages (Click/Typer, clap, cobra, Thor, Oclif, OptionParser). Make `--output-json` first-class and provided for free on every CLI app.
+
+### Design Philosophy
+
+Studied the best CLI libraries: Click/Typer (Python), clap (Rust), cobra (Go), Thor (Ruby), Commander/Oclif (Node), OptionParser (Elixir). The sweet spot for Tonic is a **declarative, data-driven** approach:
+
+1. Define your CLI as a **spec** (name, flags, args, subcommands)
+2. Call `CLI.parse(spec, argv)` — automatic parsing, validation, help, and JSON output
+3. `--help` and `--output-json` are injected for free on every spec
+4. Errors produce helpful messages with exit codes
+
+### Target API
+
+```elixir
+spec = CLI.spec(
+  name: "myapp",
+  version: "1.0.0",
+  description: "A cool CLI tool",
+  flags: [
+    verbose: [type: :boolean, short: "v", doc: "Enable verbose output"],
+    count: [type: :integer, short: "n", default: 1, doc: "Repetitions"]
+  ],
+  args: [
+    file: [doc: "Input file", required: true]
+  ]
+)
+
+case CLI.parse(spec, System.argv()) do
+  {:ok, result} ->
+    CLI.output(result, %{message: "done", count: result.flags.count})
+  {:help, text} ->
+    IO.puts(text)
+  {:error, message} ->
+    CLI.exit_error(message)
+end
+```
+
+### Metrics
+
+- **Primary**: Focused CLI module acceptance checks green
+- **Current Best**: 20 (run 50)
+- **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
+
+### Benchmark Commands
+
+```bash
+cargo test --quiet cli_module 2>&1 | tail -5
+```
+
+### Files in Scope
+
+- `src/stdlib_sources.rs` — stdlib source registration
+- `src/manifest_stdlib.rs` — stdlib source constants (alternative location)
+- `src/interop.rs` — host_call dispatch
+- `src/interop/system.rs` — system interop module (for host call registration)
+- `src/interop_tests.rs` — interop tests
+
+### Constraints
+
+- `cargo test` must pass (excluding pre-existing failures)
+- All example apps must pass
+- No new external dependencies
+- Follow existing stdlib patterns (host_call backed, lazy-loaded)
+- `--output-json` must be automatic and free on every CLI spec
+- Help generation must be automatic and free
+
+### What's Been Tried
+
+- **Run 50 (KEEP, metric=20)**: Implemented CLI.spec/1, CLI.parse/2, CLI.help_text/1, CLI.output/2, CLI.exit_error/1 as host-backed stdlib functions with automatic --help/-h, --version, --output-json injection, flag types (:boolean/:string/:integer/:float), short aliases, positional args (required/optional/rest), --no-* boolean negation, missing-value and unknown-flag errors, plus 20 focused unit tests. Hypothesis: confirmed — a declarative, data-driven CLI module with free --output-json and auto-help establishes the baseline for Tonic CLI creation.
