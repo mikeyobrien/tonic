@@ -24,6 +24,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Random", OPTIONAL_STDLIB_RANDOM_SOURCE),
     ("Regex", OPTIONAL_STDLIB_REGEX_SOURCE),
     ("Logger", OPTIONAL_STDLIB_LOGGER_SOURCE),
+    ("Csv", OPTIONAL_STDLIB_CSV_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -919,3 +920,6 @@ const OPTIONAL_STDLIB_REGEX_SOURCE: &str =
 
 const OPTIONAL_STDLIB_LOGGER_SOURCE: &str =
     "defmodule Logger do\n  def debug(msg) do\n    host_call(:logger_debug, msg)\n  end\n\n  def info(msg) do\n    host_call(:logger_info, msg)\n  end\n\n  def warn(msg) do\n    host_call(:logger_warn, msg)\n  end\n\n  def error(msg) do\n    host_call(:logger_error, msg)\n  end\n\n  def set_level(level) do\n    host_call(:logger_set_level, level)\n  end\n\n  def get_level() do\n    host_call(:logger_get_level)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_CSV_SOURCE: &str =
+    "defmodule Csv do\n  def decode(string) do\n    host_call(:csv_decode, string)\n  end\n\n  def encode(rows) do\n    host_call(:csv_encode, rows)\n  end\n\n  def decode_maps(string) do\n    host_call(:csv_decode_maps, string)\n  end\n\n  def encode_maps(headers, maps) do\n    host_call(:csv_encode_maps, headers, maps)\n  end\nend\n";
