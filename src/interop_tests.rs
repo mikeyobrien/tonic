@@ -192,6 +192,60 @@ fn host_registry_system_run_returns_exit_code_and_output() {
         Some(&RuntimeValue::String("hello".to_string()))
     );
 
+    let streamed = HOST_REGISTRY
+        .call(
+            "sys_run",
+            &[
+                RuntimeValue::String(
+                    "printf 'hello'; sleep 0.05; printf ' stderr' >&2".to_string(),
+                ),
+                RuntimeValue::Map(vec![(
+                    RuntimeValue::Atom("stream".to_string()),
+                    RuntimeValue::Bool(true),
+                )]),
+            ],
+        )
+        .expect("sys_run should accept streaming opts");
+
+    assert_eq!(
+        map_lookup(&streamed, "exit_code"),
+        Some(&RuntimeValue::Int(0))
+    );
+    assert_eq!(
+        map_lookup(&streamed, "output"),
+        Some(&RuntimeValue::String("hello stderr".to_string()))
+    );
+    assert_eq!(
+        map_lookup(&streamed, "timed_out"),
+        Some(&RuntimeValue::Bool(false))
+    );
+
+    let timed_out = HOST_REGISTRY
+        .call(
+            "sys_run",
+            &[
+                RuntimeValue::String("printf 'hello'; sleep 1; printf 'tail'".to_string()),
+                RuntimeValue::Map(vec![(
+                    RuntimeValue::Atom("timeout_ms".to_string()),
+                    RuntimeValue::Int(100),
+                )]),
+            ],
+        )
+        .expect("sys_run should return timeout result map");
+
+    assert_eq!(
+        map_lookup(&timed_out, "exit_code"),
+        Some(&RuntimeValue::Int(124))
+    );
+    assert_eq!(
+        map_lookup(&timed_out, "timed_out"),
+        Some(&RuntimeValue::Bool(true))
+    );
+    assert_eq!(
+        map_lookup(&timed_out, "output"),
+        Some(&RuntimeValue::String("hello".to_string()))
+    );
+
     let failure = HOST_REGISTRY
         .call("sys_run", &[RuntimeValue::String("exit 3".to_string())])
         .expect("sys_run should still return map for non-zero exit");
@@ -199,6 +253,81 @@ fn host_registry_system_run_returns_exit_code_and_output() {
     assert_eq!(
         map_lookup(&failure, "exit_code"),
         Some(&RuntimeValue::Int(3))
+    );
+}
+
+#[test]
+fn host_registry_system_run_rejects_invalid_opts() {
+    let bad_key = HOST_REGISTRY
+        .call(
+            "sys_run",
+            &[
+                RuntimeValue::String("printf 'hello'".to_string()),
+                RuntimeValue::Map(vec![(
+                    RuntimeValue::Atom("surprise".to_string()),
+                    RuntimeValue::Bool(true),
+                )]),
+            ],
+        )
+        .expect_err("sys_run should reject unknown opts keys");
+
+    assert_eq!(
+        bad_key.to_string(),
+        "host error: sys_run unsupported opts key: surprise"
+    );
+
+    let bad_stream = HOST_REGISTRY
+        .call(
+            "sys_run",
+            &[
+                RuntimeValue::String("printf 'hello'".to_string()),
+                RuntimeValue::Map(vec![(
+                    RuntimeValue::Atom("stream".to_string()),
+                    RuntimeValue::String("yes".to_string()),
+                )]),
+            ],
+        )
+        .expect_err("sys_run should reject non-bool stream opts");
+
+    assert_eq!(
+        bad_stream.to_string(),
+        "host error: sys_run opts.stream expects bool; found string"
+    );
+
+    let bad_timeout = HOST_REGISTRY
+        .call(
+            "sys_run",
+            &[
+                RuntimeValue::String("printf 'hello'".to_string()),
+                RuntimeValue::Map(vec![(
+                    RuntimeValue::Atom("timeout_ms".to_string()),
+                    RuntimeValue::String("soon".to_string()),
+                )]),
+            ],
+        )
+        .expect_err("sys_run should reject non-int timeout opts");
+
+    assert_eq!(
+        bad_timeout.to_string(),
+        "host error: sys_run opts.timeout_ms expects int; found string"
+    );
+
+    let negative_timeout = HOST_REGISTRY
+        .call(
+            "sys_run",
+            &[
+                RuntimeValue::String("printf 'hello'".to_string()),
+                RuntimeValue::Map(vec![(
+                    RuntimeValue::Atom("timeout_ms".to_string()),
+                    RuntimeValue::Int(-1),
+                )]),
+            ],
+        )
+        .expect_err("sys_run should reject negative timeout opts");
+
+    assert_eq!(
+        negative_timeout.to_string(),
+        "host error: sys_run opts.timeout_ms must be >= 0, found -1"
     );
 }
 

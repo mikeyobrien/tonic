@@ -433,15 +433,39 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
   }
 
   if (strcmp(key, "sys_run") == 0) {
-    if (argc != 2) {
-      return tn_runtime_failf("host error: sys_run expects exactly 1 argument, found %zu", argc - 1);
-    }
-    TnObj *command_obj = tn_get_obj(args[1]);
-    if (command_obj == NULL || command_obj->kind != TN_OBJ_STRING) {
-      return tn_runtime_failf("host error: sys_run expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    if (argc != 2 && argc != 3) {
+      return tn_runtime_failf("host error: sys_run expects 1 or 2 arguments, found %zu", argc - 1);
     }
 
-    const char *command_text = command_obj->as.text.text;
+    const char *command_text = tn_expect_host_string_arg("sys_run", args[1], 1);
+    int stream_output = 0;
+    if (argc == 3) {
+      TnObj *opts_obj = tn_expect_host_map_arg("sys_run", args[2], 2);
+      for (size_t i = 0; i < opts_obj->as.map_like.len; i += 1) {
+        TnVal opt_key = opts_obj->as.map_like.items[i].key;
+        TnObj *opt_key_obj = tn_get_obj(opt_key);
+        if (opt_key_obj == NULL || opt_key_obj->kind != TN_OBJ_ATOM) {
+          return tn_runtime_failf(
+              "host error: sys_run opts expects atom keys; found %s",
+              tn_runtime_value_kind(opt_key));
+        }
+
+        const char *opt_name = opt_key_obj->as.text.text;
+        TnVal opt_value = opts_obj->as.map_like.items[i].value;
+        if (strcmp(opt_name, "stream") == 0) {
+          TnObj *stream_obj = tn_get_obj(opt_value);
+          if (stream_obj == NULL || stream_obj->kind != TN_OBJ_BOOL) {
+            return tn_runtime_failf(
+                "host error: sys_run opts.stream expects bool; found %s",
+                tn_runtime_value_kind(opt_value));
+          }
+          stream_output = stream_obj->as.bool_value ? 1 : 0;
+        } else {
+          return tn_runtime_failf("host error: sys_run unsupported opts key: %s", opt_name);
+        }
+      }
+    }
+
     size_t command_len = strlen(command_text);
     char *shell_command = (char *)malloc(command_len + 6);
     if (shell_command == NULL) {
@@ -481,6 +505,11 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
       buffer[len] = (char)next_ch;
       len += 1;
       buffer[len] = '\0';
+
+      if (stream_output) {
+        fputc(next_ch, stdout);
+        fflush(stdout);
+      }
     }
 
     int status = pclose(pipe);

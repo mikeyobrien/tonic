@@ -97,3 +97,49 @@ cargo test --quiet --bin tonic repl::tests:: && cargo test --quiet --test repl_s
 - **Run 23 (KEEP, metric=20, judge=8/10)**: Routed host-side stdout/stderr through a scoped interop capture sink and surfaced captured output in remote `eval` / `load-file` responses, with focused unit and TCP integration coverage. Hypothesis: confirmed — returning request-scoped output makes the remote REPL materially closer to editor-driven nREPL workflows because clients can now observe emitted text without scraping server logs.
 - **Run 24 (KEEP, metric=24, judge=8/10)**: Added request-scoped stdin plumbing for remote `eval` / `load-file`, threading optional JSON `stdin` through scoped interop input capture and focused unit + TCP integration coverage for connection-local and logical sessions. Hypothesis: confirmed — request-local stdin closes a major interactivity gap for editor-driven remote REPL workflows without widening scope beyond the existing session/capture substrate.
 - **Run 25 (KEEP, metric=28, judge=8/10)**: Added optional request ids plus streamed stdout/stderr frames for remote `eval` / `load-file`, echoing ids in terminal responses and covering connection-local and logical-session streaming. Hypothesis: confirmed — request-addressable stream frames make the remote REPL materially closer to nREPL-style editor workflows by letting clients correlate asynchronous output with a specific in-flight evaluation without widening scope beyond the existing session/capture substrate.
+
+## Segment 2 — Common Libraries (from tonic-loops analysis)
+
+### Objective
+
+Study the tonic-loops repo and extract common patterns into reusable stdlib modules that benefit any Tonic application.
+
+### Analysis Summary
+
+Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.tn, harness.tn, pi_adapter.tn). Identified these duplicated patterns ranked by impact:
+
+1. **JSON encoding/decoding** (~200+ lines hand-rolled across 3 modules) — highest impact
+2. **TOML parsing** (~200 lines hand-rolled across 2 modules) — medium impact
+3. **Shell quoting** (~30 lines duplicated across 3 modules) — lower impact
+4. **List/string utilities** (list_contains, line_sep, read_if_exists, strip_quotes) — lower impact
+
+### Metrics
+
+- **Primary**: Number of common library functions passing focused tests
+- **Current Best**: 14 focused Json tests green (run 26)
+- **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
+
+### Benchmark Commands
+
+```bash
+cargo test --quiet json 2>&1 | tail -5
+```
+
+### Files in Scope
+
+- `src/manifest_stdlib.rs` — stdlib source registration
+- `src/stdlib_sources.rs` — stdlib source constants (alternative location)
+- `src/interop.rs` — host_call dispatch
+- `src/interop/system.rs` — system interop module
+- `src/interop_tests.rs` — interop tests
+
+### Constraints
+
+- `cargo test` must pass (excluding pre-existing failures)
+- All example apps must pass
+- No new external dependencies (serde_json is already available)
+- Follow existing stdlib patterns (host_call backed, optional lazy-loaded)
+
+### What's Been Tried
+
+- **Run 26 (KEEP, metric=14)**: Added `Json.encode/1`, `Json.decode/1`, and `Json.encode_pretty/1` as host-backed stdlib functions using serde_json, with Tonic value round-trip support for nil, bool, int, float, string, atom, list, map, tuple, and keyword lists, plus 14 focused unit tests. Hypothesis: confirmed — a Rust-backed Json module eliminates ~200 lines of fragile hand-rolled JSON across tonic-loops modules and provides a reliable foundation for any Tonic app needing structured data interchange.

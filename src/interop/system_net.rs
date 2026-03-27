@@ -397,24 +397,337 @@ pub(super) fn host_sys_log(args: &[RuntimeValue]) -> Result<RuntimeValue, HostEr
     Ok(RuntimeValue::Bool(true))
 }
 
-pub(super) fn host_sys_run(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
-    expect_exact_args("sys_run", args, 1)?;
-    let command = expect_string_arg("sys_run", args, 0)?;
-    let shell_command = format!("{command} 2>&1");
+const RUN_TIMEOUT_MAX_MS: i64 = 3_600_000;
+const RUN_TIMEOUT_POLL_MS: u64 = 50;
+const RUN_TIMEOUT_EXIT_CODE: i32 = 124;
 
-    let output = std::process::Command::new("sh")
-        .args(["-lc", &shell_command])
-        .output()
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct RunCommandOptions {
+    stream: bool,
+    timeout_ms: i64,
+}
+
+enum RunCommandEvent {
+    Chunk {
+        stream: HostOutputStream,
+        chunk: Vec<u8>,
+    },
+    Error {
+        stream: HostOutputStream,
+        error: String,
+    },
+}
+
+fn parse_sys_run_opts(
+    entries: &[(RuntimeValue, RuntimeValue)],
+) -> Result<RunCommandOptions, HostError> {
+    let mut opts = RunCommandOptions::default();
+
+    for (key, value) in entries {
+        let RuntimeValue::Atom(name) = key else {
+            return Err(HostError::new(format!(
+                "sys_run opts expects atom keys; found {}",
+                host_value_kind(key)
+            )));
+        };
+
+        match name.as_str() {
+            "stream" => {
+                let RuntimeValue::Bool(stream) = value else {
+                    return Err(HostError::new(format!(
+                        "sys_run opts.stream expects bool; found {}",
+                        host_value_kind(value)
+                    )));
+                };
+                opts.stream = *stream;
+            }
+            "timeout_ms" => {
+                let RuntimeValue::Int(timeout_ms) = value else {
+                    return Err(HostError::new(format!(
+                        "sys_run opts.timeout_ms expects int; found {}",
+                        host_value_kind(value)
+                    )));
+                };
+                opts.timeout_ms = *timeout_ms;
+            }
+            other => {
+                return Err(HostError::new(format!(
+                    "sys_run unsupported opts key: {other}"
+                )));
+            }
+        }
+    }
+
+    Ok(opts)
+}
+
+fn parse_sys_run_args(args: &[RuntimeValue]) -> Result<(String, RunCommandOptions), HostError> {
+    let parsed = match args.len() {
+        1 => (
+            expect_string_arg("sys_run", args, 0)?,
+            RunCommandOptions::default(),
+        ),
+        2 => {
+            let command = expect_string_arg("sys_run", args, 0)?;
+            let opts = parse_sys_run_opts(&expect_map_arg("sys_run", args, 1)?)?;
+            (command, opts)
+        }
+        found => {
+            return Err(HostError::new(format!(
+                "sys_run expects 1 or 2 arguments, found {found}"
+            )))
+        }
+    };
+
+    validate_sys_run_timeout(parsed.1.timeout_ms)?;
+    Ok(parsed)
+}
+
+fn validate_sys_run_timeout(timeout_ms: i64) -> Result<(), HostError> {
+    if timeout_ms < 0 {
+        return Err(HostError::new(format!(
+            "sys_run opts.timeout_ms must be >= 0, found {timeout_ms}"
+        )));
+    }
+
+    if timeout_ms > RUN_TIMEOUT_MAX_MS {
+        return Err(HostError::new(format!(
+            "sys_run opts.timeout_ms out of range: {timeout_ms}"
+        )));
+    }
+
+    Ok(())
+}
+
+fn spawn_run_command_reader<R>(
+    mut reader: R,
+    stream: HostOutputStream,
+    sender: std::sync::mpsc::Sender<RunCommandEvent>,
+) where
+    R: std::io::Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut buffer = [0u8; 4096];
+
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read_len) => {
+                    if sender
+                        .send(RunCommandEvent::Chunk {
+                            stream,
+                            chunk: buffer[..read_len].to_vec(),
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    let _ = sender.send(RunCommandEvent::Error {
+                        stream,
+                        error: error.to_string(),
+                    });
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn forward_run_command_chunk(stream: HostOutputStream, chunk: &[u8]) -> Result<(), HostError> {
+    let text = String::from_utf8_lossy(chunk);
+
+    match stream {
+        HostOutputStream::Stdout => write_host_stdout(&text)?,
+        HostOutputStream::Stderr => write_host_stderr(&text)?,
+    }
+
+    Ok(())
+}
+
+fn spawn_run_command(
+    command: &str,
+) -> Result<
+    (
+        std::process::Child,
+        std::sync::mpsc::Receiver<RunCommandEvent>,
+    ),
+    HostError,
+> {
+    let mut child = std::process::Command::new("sh")
+        .args(["-lc", command])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|error| {
             HostError::new(format!("sys_run failed to execute shell command: {error}"))
         })?;
 
-    let exit_code = output.status.code().unwrap_or(-1);
-    let combined_output = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| HostError::new("sys_run failed to capture stdout pipe"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| HostError::new("sys_run failed to capture stderr pipe"))?;
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    spawn_run_command_reader(stdout, HostOutputStream::Stdout, sender.clone());
+    spawn_run_command_reader(stderr, HostOutputStream::Stderr, sender);
+
+    Ok((child, receiver))
+}
+
+fn handle_run_command_event(
+    child: &mut std::process::Child,
+    combined_output: &mut Vec<u8>,
+    event: RunCommandEvent,
+    stream_output: bool,
+) -> Result<(), HostError> {
+    match event {
+        RunCommandEvent::Chunk { stream, chunk } => {
+            combined_output.extend_from_slice(&chunk);
+            if stream_output {
+                forward_run_command_chunk(stream, &chunk)?;
+            }
+            Ok(())
+        }
+        RunCommandEvent::Error { stream, error } => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(HostError::new(format!(
+                "sys_run failed to read {}: {error}",
+                stream.as_str()
+            )))
+        }
+    }
+}
+
+fn drain_run_command_events(
+    child: &mut std::process::Child,
+    receiver: &std::sync::mpsc::Receiver<RunCommandEvent>,
+    combined_output: &mut Vec<u8>,
+    stream_output: bool,
+) -> Result<(), HostError> {
+    loop {
+        match receiver.try_recv() {
+            Ok(event) => handle_run_command_event(child, combined_output, event, stream_output)?,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return Ok(()),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => return Ok(()),
+        }
+    }
+}
+
+fn run_command(command: &str, opts: RunCommandOptions) -> Result<(i32, String, bool), HostError> {
+    let child = if opts.stream || opts.timeout_ms > 0 {
+        let (mut child, receiver) = spawn_run_command(command)?;
+        let mut combined_output = Vec::new();
+        let mut timed_out = false;
+        let deadline = if opts.timeout_ms > 0 {
+            Some(
+                std::time::Instant::now()
+                    + std::time::Duration::from_millis(opts.timeout_ms as u64),
+            )
+        } else {
+            None
+        };
+
+        let exit_status = loop {
+            let wait_ms = remaining_wait_ms(deadline);
+
+            match receiver.recv_timeout(std::time::Duration::from_millis(wait_ms)) {
+                Ok(event) => {
+                    handle_run_command_event(&mut child, &mut combined_output, event, opts.stream)?;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if timeout_expired(deadline) {
+                        timed_out = true;
+                        let _ = child.kill();
+                        break child.wait().map_err(|error| {
+                            HostError::new(format!(
+                                "sys_run failed to wait for shell command: {error}"
+                            ))
+                        })?;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    break child.wait().map_err(|error| {
+                        HostError::new(format!("sys_run failed to wait for shell command: {error}"))
+                    })?;
+                }
+            }
+        };
+
+        drain_run_command_events(&mut child, &receiver, &mut combined_output, opts.stream)?;
+
+        let exit_code = if timed_out {
+            RUN_TIMEOUT_EXIT_CODE
+        } else {
+            exit_status.code().unwrap_or(-1)
+        };
+
+        return Ok((
+            exit_code,
+            String::from_utf8_lossy(&combined_output).into_owned(),
+            timed_out,
+        ));
+    } else {
+        std::process::Command::new("sh")
+            .args(["-lc", &format!("{command} 2>&1")])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|error| {
+                HostError::new(format!("sys_run failed to execute shell command: {error}"))
+            })?
+    };
+
+    let output = child.wait_with_output().map_err(|error| {
+        HostError::new(format!("sys_run failed to wait for shell command: {error}"))
+    })?;
+
+    Ok((
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        false,
+    ))
+}
+
+fn remaining_wait_ms(deadline: Option<std::time::Instant>) -> u64 {
+    match deadline {
+        Some(deadline) => {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                0
+            } else {
+                let remaining = deadline.duration_since(now).as_millis() as u64;
+                if remaining < RUN_TIMEOUT_POLL_MS {
+                    remaining
+                } else {
+                    RUN_TIMEOUT_POLL_MS
+                }
+            }
+        }
+        None => RUN_TIMEOUT_POLL_MS,
+    }
+}
+
+fn timeout_expired(deadline: Option<std::time::Instant>) -> bool {
+    match deadline {
+        Some(deadline) => std::time::Instant::now() >= deadline,
+        None => false,
+    }
+}
+
+pub(super) fn host_sys_run(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    let (command, opts) = parse_sys_run_args(args)?;
+    let (exit_code, combined_output, timed_out) = run_command(&command, opts)?;
 
     Ok(map_with_atom_keys(vec![
         ("exit_code", RuntimeValue::Int(exit_code as i64)),
         ("output", RuntimeValue::String(combined_output)),
+        ("timed_out", RuntimeValue::Bool(timed_out)),
     ]))
 }
 

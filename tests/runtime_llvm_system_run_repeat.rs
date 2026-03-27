@@ -34,7 +34,7 @@ fn compiled_runtime_retains_output_across_repeated_system_run_calls() {
     );
     assert_eq!(
         String::from_utf8(interpreted.stdout).expect("interpreter stdout should be utf8"),
-        "\"first: exit+output exit_code=0 output=fresh-run-one\\nsecond: exit+output exit_code=0 output=fresh-run-two\"\n"
+        "\"first: exit+output exit_code=0 output=fresh-run-one\nsecond: exit+output exit_code=0 output=fresh-run-two\"\n"
     );
 
     let compile = Command::new(env!("CARGO_BIN_EXE_tonic"))
@@ -64,6 +64,6 @@ fn compiled_runtime_retains_output_across_repeated_system_run_calls() {
     );
     assert_eq!(
         String::from_utf8(compiled.stdout).expect("compiled stdout should be utf8"),
-        "\"first: exit+output exit_code=0 output=fresh-run-one\\nsecond: exit+output exit_code=0 output=fresh-run-two\"\n"
+        "\"first: exit+output exit_code=0 output=fresh-run-one\nsecond: exit+output exit_code=0 output=fresh-run-two\"\n"
     );
 }

@@ -182,15 +182,28 @@ dir = System.cwd()   # → "/home/alice/projects"
 
 ## Process
 
-### `System.run(command: String) → %{exit_code: Int, output: String}`
+### `System.run(command: String, opts: Map \\ %{}) → %{exit_code: Int, output: String, timed_out: Bool}`
 
-Runs `command` in a shell (`sh -lc`), capturing stdout and stderr.  Always returns a map; non-zero exit codes are **not** errors.
+Runs `command` in a shell (`sh -lc`), capturing stdout and stderr. Always returns a map; non-zero exit codes are **not** errors.
+
+Supported opts:
+
+- `stream: Bool` — when `true`, forward child output live while the command is still running and still return the final combined `output` string.
+- `timeout_ms: Int` — when `> 0`, kill the child if it runs past the timeout and return `%{exit_code: 124, timed_out: true, ...}`. `0` disables the timeout.
 
 ```elixir
 result = System.run("ls /tmp")
 result[:exit_code]   # → 0
 result[:output]      # → "..."
+result[:timed_out]   # → false
+
+System.run("printf 'step 1\\n'; sleep 1; printf 'step 2\\n'", %{stream: true})
+System.run("sleep 30", %{timeout_ms: 500})
 ```
+
+**Timeout bounds:** `timeout_ms` ∈ [0, 3_600_000]
+
+**Streaming caveat:** interpreter mode forwards child stdout/stderr to the matching host stream as chunks arrive. Native compiled runtime currently streams the combined shell output live, so stderr identity is not preserved there yet.
 
 ### `System.sleep_ms(delay_ms: Int) → Bool`
 
