@@ -266,7 +266,7 @@ end
 ### Metrics
 
 - **Primary**: Focused CLI module acceptance checks green
-- **Current Best**: 32 (run 51)
+- **Current Best**: 48 (run 52)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -296,3 +296,4 @@ cargo test --quiet cli_module 2>&1 | tail -5
 
 - **Run 50 (KEEP, metric=20)**: Implemented CLI.spec/1, CLI.parse/2, CLI.help_text/1, CLI.output/2, CLI.exit_error/1 as host-backed stdlib functions with automatic --help/-h, --version, --output-json injection, flag types (:boolean/:string/:integer/:float), short aliases, positional args (required/optional/rest), --no-* boolean negation, missing-value and unknown-flag errors, plus 20 focused unit tests. Hypothesis: confirmed — a declarative, data-driven CLI module with free --output-json and auto-help establishes the baseline for Tonic CLI creation.
 - **Run 51 (KEEP, metric=32)**: Added subcommand support to CLI module — `commands:` key in spec with per-command flags/args, root --help lists commands, `myapp cmd --help` shows command-specific help, unknown/missing command errors with available commands list, --output-json inheritance in subcommand context, plus 12 focused unit tests (total 32). Hypothesis: confirmed — subcommands are essential for any non-trivial CLI tool, following cobra/clap/Click patterns of hierarchical command trees.
+- **Run 52 (KEEP, metric=48)**: Added flag choices constraint (`choices:` validates against allowed values), environment variable fallback (`env:` reads from env when flag not on argv), and multi-value flags (`multi: true` collects repeated `--flag val` into a list), with all three features composable (env+choices, multi+choices), shown in help text, and type-coerced consistently — plus 16 focused unit tests (total 48). Hypothesis: confirmed — choices, env fallback, and multi-value flags are production CLI essentials found in Click/clap/cobra, completing the flag validation surface.

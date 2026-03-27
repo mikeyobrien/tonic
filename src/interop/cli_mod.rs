@@ -27,6 +27,34 @@ fn as_keyword(v: &RuntimeValue) -> Option<&Vec<(RuntimeValue, RuntimeValue)>> {
     }
 }
 
+/// Parse choices from a flag keyword list — expects `choices: ["a", "b", "c"]`.
+fn parse_choices(flag_kw: &[(RuntimeValue, RuntimeValue)]) -> Vec<String> {
+    match kw_get(flag_kw, "choices") {
+        Some(RuntimeValue::List(items)) => items
+            .iter()
+            .filter_map(|v| as_str(v).map(|s| s.to_string()))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Validate a parsed value against choices constraint.
+fn validate_choices(flag_name: &str, value: &str, choices: &[String]) -> Result<(), String> {
+    if choices.is_empty() {
+        return Ok(());
+    }
+    if choices.iter().any(|c| c == value) {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid value '{}' for --{}, expected one of: {}",
+            value,
+            flag_name,
+            choices.join(", ")
+        ))
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FlagSpec {
     name: String,
@@ -35,6 +63,9 @@ struct FlagSpec {
     doc: String,
     default: RuntimeValue,
     required: bool,
+    choices: Vec<String>,
+    env: Option<String>,
+    multi: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +159,11 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                     .unwrap_or(RuntimeValue::Nil),
             };
             let required = matches!(kw_get(flag_kw, "required"), Some(RuntimeValue::Bool(true)));
+            let choices = parse_choices(flag_kw);
+            let env = kw_get(flag_kw, "env")
+                .and_then(|v| as_str(v))
+                .map(|s| s.to_string());
+            let multi = matches!(kw_get(flag_kw, "multi"), Some(RuntimeValue::Bool(true)));
 
             flags.push(FlagSpec {
                 name: flag_name.to_string(),
@@ -136,6 +172,9 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 doc,
                 default,
                 required,
+                choices,
+                env,
+                multi,
             });
         }
     }
@@ -230,6 +269,11 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                     };
                     let required =
                         matches!(kw_get(flag_kw, "required"), Some(RuntimeValue::Bool(true)));
+                    let choices = parse_choices(flag_kw);
+                    let env = kw_get(flag_kw, "env")
+                        .and_then(|v| as_str(v))
+                        .map(|s| s.to_string());
+                    let multi = matches!(kw_get(flag_kw, "multi"), Some(RuntimeValue::Bool(true)));
 
                     cmd_flags.push(FlagSpec {
                         name: flag_name.to_string(),
@@ -238,6 +282,9 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                         doc,
                         default,
                         required,
+                        choices,
+                        env,
+                        multi,
                     });
                 }
             }
@@ -352,30 +399,7 @@ fn generate_help(spec: &CliSpec) -> String {
     lines.push("OPTIONS:".to_string());
 
     for flag in &spec.flags {
-        let mut flag_str = String::from("  ");
-        if let Some(short) = &flag.short {
-            flag_str.push_str(&format!("-{}, ", short));
-        } else {
-            flag_str.push_str("    ");
-        }
-        flag_str.push_str(&format!("--{}", flag.name));
-
-        let type_hint = match &flag.flag_type {
-            FlagType::Boolean => "",
-            FlagType::String => " <string>",
-            FlagType::Integer => " <integer>",
-            FlagType::Float => " <float>",
-        };
-        flag_str.push_str(type_hint);
-
-        if !flag.doc.is_empty() {
-            // Pad to align descriptions
-            let pad = 30usize.saturating_sub(flag_str.len());
-            flag_str.push_str(&" ".repeat(pad));
-            flag_str.push_str(&flag.doc);
-        }
-
-        lines.push(flag_str);
+        lines.push(format_flag_help(flag));
     }
 
     // Built-in flags
@@ -384,6 +408,48 @@ fn generate_help(spec: &CliSpec) -> String {
     lines.push("      --version               Show version".to_string());
 
     lines.join("\n")
+}
+
+/// Format a single flag's help line, including choices, env, and multi annotations.
+fn format_flag_help(flag: &FlagSpec) -> String {
+    let mut flag_str = String::from("  ");
+    if let Some(short) = &flag.short {
+        flag_str.push_str(&format!("-{}, ", short));
+    } else {
+        flag_str.push_str("    ");
+    }
+    flag_str.push_str(&format!("--{}", flag.name));
+
+    let type_hint = match &flag.flag_type {
+        FlagType::Boolean => "",
+        FlagType::String => " <string>",
+        FlagType::Integer => " <integer>",
+        FlagType::Float => " <float>",
+    };
+    flag_str.push_str(type_hint);
+
+    // Build description parts
+    let mut desc_parts: Vec<String> = Vec::new();
+    if !flag.doc.is_empty() {
+        desc_parts.push(flag.doc.clone());
+    }
+    if !flag.choices.is_empty() {
+        desc_parts.push(format!("({})", flag.choices.join(", ")));
+    }
+    if let Some(ref env_name) = flag.env {
+        desc_parts.push(format!("(env: {})", env_name));
+    }
+    if flag.multi {
+        desc_parts.push("(can be repeated)".to_string());
+    }
+
+    if !desc_parts.is_empty() {
+        let pad = 30usize.saturating_sub(flag_str.len());
+        flag_str.push_str(&" ".repeat(pad));
+        flag_str.push_str(&desc_parts.join(" "));
+    }
+
+    flag_str
 }
 
 /// Generate help text for a specific subcommand.
@@ -427,29 +493,7 @@ fn generate_command_help(spec: &CliSpec, cmd: &SubcommandSpec) -> String {
     lines.push("OPTIONS:".to_string());
 
     for flag in &cmd.flags {
-        let mut flag_str = String::from("  ");
-        if let Some(short) = &flag.short {
-            flag_str.push_str(&format!("-{}, ", short));
-        } else {
-            flag_str.push_str("    ");
-        }
-        flag_str.push_str(&format!("--{}", flag.name));
-
-        let type_hint = match &flag.flag_type {
-            FlagType::Boolean => "",
-            FlagType::String => " <string>",
-            FlagType::Integer => " <integer>",
-            FlagType::Float => " <float>",
-        };
-        flag_str.push_str(type_hint);
-
-        if !flag.doc.is_empty() {
-            let pad = 30usize.saturating_sub(flag_str.len());
-            flag_str.push_str(&" ".repeat(pad));
-            flag_str.push_str(&flag.doc);
-        }
-
-        lines.push(flag_str);
+        lines.push(format_flag_help(flag));
     }
 
     // Built-in flags
@@ -465,11 +509,7 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
     let mut output_json = false;
     let mut i = 0;
 
-    let mut parsed_flags: Vec<(String, RuntimeValue)> = cmd
-        .flags
-        .iter()
-        .map(|f| (f.name.clone(), f.default.clone()))
-        .collect();
+    let mut parsed_flags = init_parsed_flags(&cmd.flags);
 
     while i < argv.len() {
         let arg = &argv[i];
@@ -494,9 +534,12 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
             if let Some(stripped) = flag_name.strip_prefix("no-") {
                 if let Some(fspec) = cmd.flags.iter().find(|f| f.name == stripped) {
                     if fspec.flag_type == FlagType::Boolean {
-                        if let Some(entry) = parsed_flags.iter_mut().find(|(n, _)| n == stripped) {
-                            entry.1 = RuntimeValue::Bool(false);
-                        }
+                        set_flag_value(
+                            &mut parsed_flags,
+                            stripped,
+                            RuntimeValue::Bool(false),
+                            false,
+                        );
                         i += 1;
                         continue;
                     }
@@ -506,9 +549,12 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
             if let Some(fspec) = cmd.flags.iter().find(|f| f.name == flag_name) {
                 match &fspec.flag_type {
                     FlagType::Boolean => {
-                        if let Some(entry) = parsed_flags.iter_mut().find(|(n, _)| n == flag_name) {
-                            entry.1 = RuntimeValue::Bool(true);
-                        }
+                        set_flag_value(
+                            &mut parsed_flags,
+                            flag_name,
+                            RuntimeValue::Bool(true),
+                            false,
+                        );
                     }
                     _ => {
                         i += 1;
@@ -517,11 +563,7 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
                         }
                         match parse_flag_value(fspec, &argv[i]) {
                             Ok(val) => {
-                                if let Some(entry) =
-                                    parsed_flags.iter_mut().find(|(n, _)| n == flag_name)
-                                {
-                                    entry.1 = val;
-                                }
+                                set_flag_value(&mut parsed_flags, flag_name, val, fspec.multi);
                             }
                             Err(msg) => return error_tuple(msg),
                         }
@@ -538,12 +580,15 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
             let short = &arg[1..2];
             if let Some(fspec) = cmd.flags.iter().find(|f| f.short.as_deref() == Some(short)) {
                 let flag_name = fspec.name.clone();
+                let is_multi = fspec.multi;
                 match &fspec.flag_type {
                     FlagType::Boolean => {
-                        if let Some(entry) = parsed_flags.iter_mut().find(|(n, _)| *n == flag_name)
-                        {
-                            entry.1 = RuntimeValue::Bool(true);
-                        }
+                        set_flag_value(
+                            &mut parsed_flags,
+                            &flag_name,
+                            RuntimeValue::Bool(true),
+                            false,
+                        );
                     }
                     _ => {
                         i += 1;
@@ -554,11 +599,7 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
                         }
                         match parse_flag_value(fspec, &argv[i]) {
                             Ok(val) => {
-                                if let Some(entry) =
-                                    parsed_flags.iter_mut().find(|(n, _)| *n == flag_name)
-                                {
-                                    entry.1 = val;
-                                }
+                                set_flag_value(&mut parsed_flags, &flag_name, val, is_multi);
                             }
                             Err(msg) => return error_tuple(msg),
                         }
@@ -573,6 +614,11 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
 
         positional.push(arg.clone());
         i += 1;
+    }
+
+    // Apply env fallback
+    if let Err(msg) = apply_env_fallback(&cmd.flags, &mut parsed_flags) {
+        return error_tuple(msg);
     }
 
     // Check required flags
@@ -641,6 +687,70 @@ fn do_parse_command(spec: &CliSpec, cmd: &SubcommandSpec, argv: &[String]) -> Ru
     )
 }
 
+/// Initialize parsed_flags with defaults, respecting multi flags (default []).
+fn init_parsed_flags(flags: &[FlagSpec]) -> Vec<(String, RuntimeValue)> {
+    flags
+        .iter()
+        .map(|f| {
+            let default = if f.multi {
+                RuntimeValue::List(vec![])
+            } else {
+                f.default.clone()
+            };
+            (f.name.clone(), default)
+        })
+        .collect()
+}
+
+/// Set a flag value, handling multi (append) vs single (replace).
+fn set_flag_value(
+    parsed_flags: &mut [(String, RuntimeValue)],
+    flag_name: &str,
+    val: RuntimeValue,
+    multi: bool,
+) {
+    if let Some(entry) = parsed_flags.iter_mut().find(|(n, _)| n == flag_name) {
+        if multi {
+            if let RuntimeValue::List(ref mut items) = entry.1 {
+                items.push(val);
+            }
+        } else {
+            entry.1 = val;
+        }
+    }
+}
+
+/// Apply env fallback for flags not set via argv. Checks std::env::var.
+fn apply_env_fallback(
+    flags: &[FlagSpec],
+    parsed_flags: &mut [(String, RuntimeValue)],
+) -> Result<(), String> {
+    for fspec in flags {
+        if let Some(ref env_name) = fspec.env {
+            let (_, current) = parsed_flags.iter().find(|(n, _)| *n == fspec.name).unwrap();
+            // Only fallback if the flag is still at its default (nil for value flags, false for bool, [] for multi)
+            let is_default = if fspec.multi {
+                matches!(current, RuntimeValue::List(items) if items.is_empty())
+            } else if fspec.flag_type == FlagType::Boolean {
+                *current == RuntimeValue::Bool(false)
+            } else {
+                *current == RuntimeValue::Nil
+            };
+            if is_default {
+                if let Ok(env_val) = std::env::var(env_name) {
+                    let val = parse_env_value(fspec, &env_val)?;
+                    if fspec.multi {
+                        set_flag_value(parsed_flags, &fspec.name, val, true);
+                    } else {
+                        set_flag_value(parsed_flags, &fspec.name, val, false);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Parse argv against a spec. Returns {:ok, result}, {:help, text}, {:version, text}, or {:error, msg}.
 fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
     let mut flag_values: Vec<(RuntimeValue, RuntimeValue)> = Vec::new();
@@ -648,12 +758,7 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
     let mut output_json = false;
     let mut i = 0;
 
-    // Initialize flag defaults
-    let mut parsed_flags: Vec<(String, RuntimeValue)> = spec
-        .flags
-        .iter()
-        .map(|f| (f.name.clone(), f.default.clone()))
-        .collect();
+    let mut parsed_flags = init_parsed_flags(&spec.flags);
 
     while i < argv.len() {
         let arg = &argv[i];
@@ -686,9 +791,12 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
             if let Some(stripped) = flag_name.strip_prefix("no-") {
                 if let Some(fspec) = spec.flags.iter().find(|f| f.name == stripped) {
                     if fspec.flag_type == FlagType::Boolean {
-                        if let Some(entry) = parsed_flags.iter_mut().find(|(n, _)| n == stripped) {
-                            entry.1 = RuntimeValue::Bool(false);
-                        }
+                        set_flag_value(
+                            &mut parsed_flags,
+                            stripped,
+                            RuntimeValue::Bool(false),
+                            false,
+                        );
                         i += 1;
                         continue;
                     }
@@ -698,9 +806,12 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
             if let Some(fspec) = spec.flags.iter().find(|f| f.name == flag_name) {
                 match &fspec.flag_type {
                     FlagType::Boolean => {
-                        if let Some(entry) = parsed_flags.iter_mut().find(|(n, _)| n == flag_name) {
-                            entry.1 = RuntimeValue::Bool(true);
-                        }
+                        set_flag_value(
+                            &mut parsed_flags,
+                            flag_name,
+                            RuntimeValue::Bool(true),
+                            false,
+                        );
                     }
                     _ => {
                         i += 1;
@@ -709,11 +820,7 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
                         }
                         match parse_flag_value(fspec, &argv[i]) {
                             Ok(val) => {
-                                if let Some(entry) =
-                                    parsed_flags.iter_mut().find(|(n, _)| n == flag_name)
-                                {
-                                    entry.1 = val;
-                                }
+                                set_flag_value(&mut parsed_flags, flag_name, val, fspec.multi);
                             }
                             Err(msg) => return error_tuple(msg),
                         }
@@ -734,12 +841,15 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
                 .find(|f| f.short.as_deref() == Some(short))
             {
                 let flag_name = fspec.name.clone();
+                let is_multi = fspec.multi;
                 match &fspec.flag_type {
                     FlagType::Boolean => {
-                        if let Some(entry) = parsed_flags.iter_mut().find(|(n, _)| *n == flag_name)
-                        {
-                            entry.1 = RuntimeValue::Bool(true);
-                        }
+                        set_flag_value(
+                            &mut parsed_flags,
+                            &flag_name,
+                            RuntimeValue::Bool(true),
+                            false,
+                        );
                     }
                     _ => {
                         i += 1;
@@ -750,11 +860,7 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
                         }
                         match parse_flag_value(fspec, &argv[i]) {
                             Ok(val) => {
-                                if let Some(entry) =
-                                    parsed_flags.iter_mut().find(|(n, _)| *n == flag_name)
-                                {
-                                    entry.1 = val;
-                                }
+                                set_flag_value(&mut parsed_flags, &flag_name, val, is_multi);
                             }
                             Err(msg) => return error_tuple(msg),
                         }
@@ -796,6 +902,11 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
                 cmd_names.join(", ")
             ));
         }
+    }
+
+    // Apply env fallback for flags not explicitly set
+    if let Err(msg) = apply_env_fallback(&spec.flags, &mut parsed_flags) {
+        return error_tuple(msg);
     }
 
     // Check required flags
@@ -863,7 +974,7 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
 }
 
 fn parse_flag_value(fspec: &FlagSpec, raw: &str) -> Result<RuntimeValue, String> {
-    match &fspec.flag_type {
+    let val = match &fspec.flag_type {
         FlagType::String => Ok(RuntimeValue::String(raw.to_string())),
         FlagType::Integer => raw
             .parse::<i64>()
@@ -883,7 +994,15 @@ fn parse_flag_value(fspec: &FlagSpec, raw: &str) -> Result<RuntimeValue, String>
             // Shouldn't be called for booleans, but handle gracefully
             Ok(RuntimeValue::Bool(true))
         }
-    }
+    }?;
+    // Validate choices
+    validate_choices(&fspec.name, raw, &fspec.choices)?;
+    Ok(val)
+}
+
+/// Convert a raw env string to a RuntimeValue using the flag's type, then validate choices.
+fn parse_env_value(fspec: &FlagSpec, raw: &str) -> Result<RuntimeValue, String> {
+    parse_flag_value(fspec, raw)
 }
 
 fn error_tuple(msg: String) -> RuntimeValue {
@@ -1613,5 +1732,369 @@ mod tests {
         let spec3 = make_cmd_spec();
         let r3 = host_cli_parse(&[spec3, argv(&["status"])]).unwrap();
         assert_eq!(*get_map_field(extract_ok(&r3), "command"), s("status"));
+    }
+
+    // --- Choices tests ---
+
+    fn make_choices_spec() -> RuntimeValue {
+        kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "format",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("short", s("f")),
+                        ("doc", s("Output format")),
+                        ("choices", list(vec![s("json"), s("csv"), s("text")])),
+                        ("default", s("json")),
+                    ]),
+                )]),
+            ),
+        ])
+    }
+
+    #[test]
+    fn cli_module_choices_valid_value_accepted() {
+        let spec = make_choices_spec();
+        let result = host_cli_parse(&[spec, argv(&["--format", "csv"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "format"), s("csv"));
+    }
+
+    #[test]
+    fn cli_module_choices_invalid_value_rejected() {
+        let spec = make_choices_spec();
+        let result = host_cli_parse(&[spec, argv(&["--format", "xml"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("invalid value 'xml'"));
+        assert!(msg.contains("--format"));
+        assert!(msg.contains("json"));
+        assert!(msg.contains("csv"));
+        assert!(msg.contains("text"));
+    }
+
+    #[test]
+    fn cli_module_choices_shown_in_help() {
+        let spec = make_choices_spec();
+        let result = host_cli_parse(&[spec, argv(&["--help"])]).unwrap();
+        match &result {
+            RuntimeValue::Tuple(_, val) => {
+                if let RuntimeValue::String(text) = val.as_ref() {
+                    assert!(text.contains("json, csv, text"));
+                } else {
+                    panic!("expected help text");
+                }
+            }
+            _ => panic!("expected help tuple"),
+        }
+    }
+
+    #[test]
+    fn cli_module_choices_with_integer_type() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "level",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("choices", list(vec![s("1"), s("2"), s("3")])),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec.clone(), argv(&["--level", "2"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "level"), int(2));
+
+        let spec2 = spec;
+        let result2 = host_cli_parse(&[spec2, argv(&["--level", "5"])]).unwrap();
+        let msg = extract_error_msg(&result2);
+        assert!(msg.contains("invalid value '5'"));
+    }
+
+    // --- Env fallback tests ---
+
+    fn make_env_spec() -> RuntimeValue {
+        kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "port",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("doc", s("Server port")),
+                        ("env", s("TEST_CLI_PORT")),
+                        ("default", int(8080)),
+                    ]),
+                )]),
+            ),
+        ])
+    }
+
+    #[test]
+    fn cli_module_env_fallback_reads_from_env() {
+        std::env::set_var("TEST_CLI_PORT_READ", "9090");
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "port",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("env", s("TEST_CLI_PORT_READ")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "port"), int(9090));
+        std::env::remove_var("TEST_CLI_PORT_READ");
+    }
+
+    #[test]
+    fn cli_module_env_argv_takes_precedence() {
+        std::env::set_var("TEST_CLI_PORT_PREC", "9090");
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "port",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("env", s("TEST_CLI_PORT_PREC")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--port", "3000"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "port"), int(3000));
+        std::env::remove_var("TEST_CLI_PORT_PREC");
+    }
+
+    #[test]
+    fn cli_module_env_shown_in_help() {
+        let spec = make_env_spec();
+        let result = host_cli_parse(&[spec, argv(&["--help"])]).unwrap();
+        match &result {
+            RuntimeValue::Tuple(_, val) => {
+                if let RuntimeValue::String(text) = val.as_ref() {
+                    assert!(text.contains("env: TEST_CLI_PORT"));
+                } else {
+                    panic!("expected help text");
+                }
+            }
+            _ => panic!("expected help tuple"),
+        }
+    }
+
+    #[test]
+    fn cli_module_env_type_coerced() {
+        std::env::set_var("TEST_CLI_PORT_COERCE", "4567");
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "port",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("env", s("TEST_CLI_PORT_COERCE")),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "port"), int(4567));
+        std::env::remove_var("TEST_CLI_PORT_COERCE");
+    }
+
+    #[test]
+    fn cli_module_env_validated_against_choices() {
+        std::env::set_var("TEST_CLI_FMT_CHOICES", "xml");
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "format",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("env", s("TEST_CLI_FMT_CHOICES")),
+                        ("choices", list(vec![s("json"), s("csv")])),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("invalid value 'xml'"));
+        assert!(msg.contains("--format"));
+        std::env::remove_var("TEST_CLI_FMT_CHOICES");
+    }
+
+    // --- Multi-value flag tests ---
+
+    fn make_multi_spec() -> RuntimeValue {
+        kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "tag",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("short", s("t")),
+                        ("doc", s("Tags")),
+                        ("multi", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ])
+    }
+
+    #[test]
+    fn cli_module_multi_repeated_flags_collected() {
+        let spec = make_multi_spec();
+        let result = host_cli_parse(&[
+            spec,
+            argv(&["--tag", "foo", "--tag", "bar", "--tag", "baz"]),
+        ])
+        .unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(
+            *get_map_field(flags, "tag"),
+            list(vec![s("foo"), s("bar"), s("baz")])
+        );
+    }
+
+    #[test]
+    fn cli_module_multi_single_value_becomes_list() {
+        let spec = make_multi_spec();
+        let result = host_cli_parse(&[spec, argv(&["--tag", "only"])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "tag"), list(vec![s("only")]));
+    }
+
+    #[test]
+    fn cli_module_multi_no_values_gives_empty_list() {
+        let spec = make_multi_spec();
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "tag"), list(vec![]));
+    }
+
+    #[test]
+    fn cli_module_multi_each_value_type_checked() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "count",
+                    kw(vec![
+                        ("type", atom("integer")),
+                        ("multi", RuntimeValue::Bool(true)),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&["--count", "1", "--count", "abc"])]).unwrap();
+        let msg = extract_error_msg(&result);
+        assert!(msg.contains("integer"));
+        assert!(msg.contains("abc"));
+    }
+
+    #[test]
+    fn cli_module_multi_shown_in_help() {
+        let spec = make_multi_spec();
+        let result = host_cli_parse(&[spec, argv(&["--help"])]).unwrap();
+        match &result {
+            RuntimeValue::Tuple(_, val) => {
+                if let RuntimeValue::String(text) = val.as_ref() {
+                    assert!(text.contains("can be repeated"));
+                } else {
+                    panic!("expected help text");
+                }
+            }
+            _ => panic!("expected help tuple"),
+        }
+    }
+
+    // --- Combined tests ---
+
+    #[test]
+    fn cli_module_multi_plus_choices_validation() {
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "format",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("multi", RuntimeValue::Bool(true)),
+                        ("choices", list(vec![s("json"), s("csv")])),
+                    ]),
+                )]),
+            ),
+        ]);
+        // Valid values
+        let result =
+            host_cli_parse(&[spec.clone(), argv(&["--format", "json", "--format", "csv"])])
+                .unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(
+            *get_map_field(flags, "format"),
+            list(vec![s("json"), s("csv")])
+        );
+
+        // Invalid value in multi
+        let result2 =
+            host_cli_parse(&[spec, argv(&["--format", "json", "--format", "xml"])]).unwrap();
+        let msg = extract_error_msg(&result2);
+        assert!(msg.contains("invalid value 'xml'"));
+    }
+
+    #[test]
+    fn cli_module_env_plus_choices_validation() {
+        std::env::set_var("TEST_CLI_COMBO_FMT", "csv");
+        let spec = kw(vec![
+            ("name", s("app")),
+            (
+                "flags",
+                kw(vec![(
+                    "format",
+                    kw(vec![
+                        ("type", atom("string")),
+                        ("env", s("TEST_CLI_COMBO_FMT")),
+                        ("choices", list(vec![s("json"), s("csv")])),
+                    ]),
+                )]),
+            ),
+        ]);
+        let result = host_cli_parse(&[spec, argv(&[])]).unwrap();
+        let data = extract_ok(&result);
+        let flags = get_map_field(data, "flags");
+        assert_eq!(*get_map_field(flags, "format"), s("csv"));
+        std::env::remove_var("TEST_CLI_COMBO_FMT");
     }
 }
