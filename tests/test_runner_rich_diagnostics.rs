@@ -1643,3 +1643,144 @@ end
         "summary should be normal, got:\n{stdout}"
     );
 }
+
+// ── skip tests ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_skip_marks_test_as_skipped() {
+    let fixture_root = write_single_test_file(
+        "test-skip-basic",
+        "skip_test.tn",
+        "defmodule SkipTest do
+  def test_passes() do
+    :ok
+  end
+
+  def test_skipped() do
+    Assert.skip()
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "skip_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    // Skipped tests should not cause a non-zero exit code
+    assert!(
+        output.status.success(),
+        "skip + pass should exit 0, got status {:?}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("test SkipTest.test_passes ... ok"),
+        "passing test should show ok, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test SkipTest.test_skipped ... skipped"),
+        "skipped test should show skipped, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("1 passed; 0 failed; 1 skipped; 2 total"),
+        "summary should include skipped count, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_skip_with_reason() {
+    let fixture_root = write_single_test_file(
+        "test-skip-reason",
+        "skip_reason_test.tn",
+        "defmodule SkipReasonTest do
+  def test_not_implemented() do
+    Assert.skip(\"not implemented yet\")
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "skip_reason_test.tn"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "skipped-only run should exit 0, got status {:?}",
+        output.status.code()
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout
+            .contains("test SkipReasonTest.test_not_implemented ... skipped (not implemented yet)"),
+        "skip reason should appear in output, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("0 passed; 0 failed; 1 skipped; 1 total"),
+        "summary should count only skipped, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_skip_does_not_trigger_fail_fast() {
+    let fixture_root = write_single_test_file(
+        "test-skip-fail-fast",
+        "skip_ff_test.tn",
+        "defmodule SkipFfTest do
+  def test_alpha_skipped() do
+    Assert.skip(\"wip\")
+  end
+
+  def test_beta_passes() do
+    :ok
+  end
+
+  def test_gamma_passes() do
+    :ok
+  end
+end
+",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .env("NO_COLOR", "1")
+        .args(["test", "skip_ff_test.tn", "--fail-fast"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "skip + pass with --fail-fast should exit 0, got status {:?}",
+        output.status.code()
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    // All 3 tests should appear — skip should not stop --fail-fast execution
+    assert!(
+        stdout.contains("test SkipFfTest.test_alpha_skipped ... skipped"),
+        "skipped test should appear, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test SkipFfTest.test_beta_passes ... ok"),
+        "beta should run, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("test SkipFfTest.test_gamma_passes ... ok"),
+        "gamma should run (skip doesn't trigger fail-fast), got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("2 passed; 0 failed; 1 skipped; 3 total"),
+        "summary should show all 3 tests, got:\n{stdout}"
+    );
+}

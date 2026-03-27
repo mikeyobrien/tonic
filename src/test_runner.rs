@@ -38,6 +38,7 @@ pub struct TestCaseResult {
 pub enum TestCaseStatus {
     Passed,
     Failed,
+    Skipped,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +46,7 @@ pub struct TestRunReport {
     pub total: usize,
     pub passed: usize,
     pub failed: usize,
+    pub skipped: usize,
     pub duration: Duration,
     pub results: Vec<TestCaseResult>,
 }
@@ -75,6 +77,18 @@ impl TestRunReport {
                     if let Some(error) = &result.error {
                         lines.push(format!("  error: {error}"));
                     }
+                }
+                TestCaseStatus::Skipped => {
+                    let reason = result
+                        .error
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .map(|s| format!(" ({s})"))
+                        .unwrap_or_default();
+                    lines.push(format!(
+                        "test {} ... {}skipped{}{reason} ({duration})",
+                        result.id, color.yellow, color.reset
+                    ));
                 }
             }
         }
@@ -110,8 +124,13 @@ impl TestRunReport {
             ("FAILED", color.red)
         };
         let total_duration = format_duration(self.duration);
+        let skipped_part = if self.skipped > 0 {
+            format!("; {} skipped", self.skipped)
+        } else {
+            String::new()
+        };
         lines.push(format!(
-            "test result: {status_color}{status}{reset}. {} passed; {} failed; {} total; finished in {total_duration}",
+            "test result: {status_color}{status}{reset}. {} passed; {} failed{skipped_part}; {} total; finished in {total_duration}",
             self.passed, self.failed, self.total,
             reset = color.reset
         ));
@@ -126,6 +145,7 @@ impl TestRunReport {
                 "status": match result.status {
                     TestCaseStatus::Passed => "passed",
                     TestCaseStatus::Failed => "failed",
+                    TestCaseStatus::Skipped => "skipped",
                 },
                 "error": result.error,
                 "duration_ms": duration_ms(result.duration),
@@ -137,6 +157,7 @@ impl TestRunReport {
             "total": self.total,
             "passed": self.passed,
             "failed": self.failed,
+            "skipped": self.skipped,
             "duration_ms": duration_ms(self.duration),
             "results": self.results.iter().map(result_to_json).collect::<Vec<_>>(),
             "failures": self.results.iter()
@@ -273,15 +294,26 @@ pub fn run(
 
         match evaluate_named_function(ir, test_name) {
             Ok(RuntimeValue::ResultErr(reason)) => {
-                let error = format_assertion_failure(&reason);
-                results.push(TestCaseResult {
-                    id: test_name.clone(),
-                    status: TestCaseStatus::Failed,
-                    error: Some(error),
-                    duration: test_start.elapsed(),
-                });
-                if fail_fast {
-                    break;
+                if is_test_skipped(&reason) {
+                    let skip_reason = extract_skip_reason(&reason);
+                    results.push(TestCaseResult {
+                        id: test_name.clone(),
+                        status: TestCaseStatus::Skipped,
+                        error: Some(skip_reason),
+                        duration: test_start.elapsed(),
+                    });
+                    // Skipped tests do not trigger --fail-fast
+                } else {
+                    let error = format_assertion_failure(&reason);
+                    results.push(TestCaseResult {
+                        id: test_name.clone(),
+                        status: TestCaseStatus::Failed,
+                        error: Some(error),
+                        duration: test_start.elapsed(),
+                    });
+                    if fail_fast {
+                        break;
+                    }
                 }
             }
             Ok(_) => {
@@ -310,12 +342,17 @@ pub fn run(
         .iter()
         .filter(|result| result.status == TestCaseStatus::Passed)
         .count();
-    let failed = results.len().saturating_sub(passed);
+    let skipped = results
+        .iter()
+        .filter(|result| result.status == TestCaseStatus::Skipped)
+        .count();
+    let failed = results.len().saturating_sub(passed + skipped);
 
     Ok(TestRunReport {
         total: results.len(),
         passed,
         failed,
+        skipped,
         duration: run_start.elapsed(),
         results,
     })
@@ -342,6 +379,7 @@ fn shuffle<T>(slice: &mut [T], seed: u64) {
 struct AnsiColor {
     green: &'static str,
     red: &'static str,
+    yellow: &'static str,
     bold: &'static str,
     reset: &'static str,
 }
@@ -352,6 +390,7 @@ impl AnsiColor {
             Self {
                 green: "",
                 red: "",
+                yellow: "",
                 bold: "",
                 reset: "",
             }
@@ -359,6 +398,7 @@ impl AnsiColor {
             Self {
                 green: "\x1b[32m",
                 red: "\x1b[31m",
+                yellow: "\x1b[33m",
                 bold: "\x1b[1m",
                 reset: "\x1b[0m",
             }
@@ -449,6 +489,23 @@ fn is_test_file_name(path: &Path) -> bool {
     };
 
     file_name.starts_with("test_") || file_name.ends_with("_test.tn")
+}
+
+/// Check if a ResultErr value represents a test skip: `{:test_skipped, reason}`.
+fn is_test_skipped(reason: &RuntimeValue) -> bool {
+    matches!(reason,
+        RuntimeValue::Tuple(tag, _) if matches!(tag.as_ref(), RuntimeValue::Atom(a) if a == "test_skipped")
+    )
+}
+
+/// Extract the skip reason string from a `{:test_skipped, reason}` tuple.
+fn extract_skip_reason(reason: &RuntimeValue) -> String {
+    if let RuntimeValue::Tuple(_, reason_val) = reason {
+        if let RuntimeValue::String(s) = reason_val.as_ref() {
+            return s.clone();
+        }
+    }
+    String::new()
 }
 
 /// Format a structured assertion failure from the Assert module into a human-readable message.

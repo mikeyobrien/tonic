@@ -247,6 +247,20 @@ fn host_assert_in_delta(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError
     ))))
 }
 
+/// Skip the current test with an optional reason.
+fn host_skip(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    if args.len() > 1 {
+        return Err(HostError::new(
+            "Assert.skip expects 0-1 arguments (optional reason)",
+        ));
+    }
+    let reason = extract_message(args, 0, "");
+    Ok(RuntimeValue::ResultErr(Box::new(RuntimeValue::Tuple(
+        Box::new(RuntimeValue::Atom("test_skipped".to_string())),
+        Box::new(RuntimeValue::String(reason)),
+    ))))
+}
+
 pub fn register_assert_host_functions(registry: &HostRegistry) {
     registry.register("assert", host_assert);
     registry.register("refute", host_refute);
@@ -254,4 +268,5 @@ pub fn register_assert_host_functions(registry: &HostRegistry) {
     registry.register("assert_not_equal", host_assert_not_equal);
     registry.register("assert_contains", host_assert_contains);
     registry.register("assert_in_delta", host_assert_in_delta);
+    registry.register("skip", host_skip);
 }
