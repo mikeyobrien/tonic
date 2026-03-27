@@ -47,3 +47,9 @@
 ### 9. REPL improvements for interactive LLM use
 ### 10. LSP quality for IDE-assisted LLM coding
 - Use the new request-id and stream-frame substrate to add an `interrupt` op for long-running remote eval/load-file requests.
+
+### Re-attempt Keyword module with focused integration tests
+- Run 43 discarded because pure Tonic Keyword module had no focused Rust tests
+- Re-implement with integration test file (like other stdlib modules) that exercises get/fetch/put/delete/merge through eval
+- This would add ~10-15 focused tests and increase the metric
+- Same applies to any future pure-Tonic-only modules: always add eval-based integration tests
