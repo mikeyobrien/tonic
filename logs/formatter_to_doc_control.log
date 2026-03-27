@@ -1,4 +1,8 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on artifact directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.27s
      Running unittests src/bin/benchsuite.rs (target/debug/deps/benchsuite-a272cd8c1e8988a1)
 
 running 0 tests
@@ -14,16 +18,16 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
      Running unittests src/main.rs (target/debug/deps/tonic-802e7094caf810ca)
 
 running 12 tests
-test formatter::to_doc::tests::format_ast_module_separates_sibling_functions ... ok
-test formatter::to_doc::tests::format_ast_breaks_pipe_chains_before_each_pipe ... ok
-test formatter::to_doc::tests::format_ast_preserves_block_body_line_structure ... ok
 test formatter::to_doc::tests::format_ast_renders_defstruct_before_functions ... ok
+test formatter::to_doc::tests::format_ast_module_separates_sibling_functions ... ok
 test formatter::to_doc::tests::format_ast_lowers_if_and_unless_to_case ... ok
-test formatter::to_doc::tests::format_ast_renders_private_function_defaults_and_guard ... ok
-test formatter::to_doc::tests::format_ast_renders_case_patterns_guards_and_nested_case_bodies ... ok
 test formatter::to_doc::tests::format_ast_lowers_cond_and_with_to_nested_cases ... ok
-test formatter::to_doc::tests::format_ast_wraps_tuple_and_list_literals_by_width ... ok
+test formatter::to_doc::tests::format_ast_renders_case_patterns_guards_and_nested_case_bodies ... ok
+test formatter::to_doc::tests::format_ast_breaks_pipe_chains_before_each_pipe ... ok
 test formatter::to_doc::tests::format_ast_wraps_call_arguments_by_width ... ok
+test formatter::to_doc::tests::format_ast_wraps_tuple_and_list_literals_by_width ... ok
+test formatter::to_doc::tests::format_ast_preserves_block_body_line_structure ... ok
+test formatter::to_doc::tests::format_ast_renders_private_function_defaults_and_guard ... ok
 test formatter::to_doc::tests::format_ast_wraps_map_and_keyword_literals_by_width ... ok
 test formatter::to_doc::tests::format_ast_wraps_struct_and_update_literals_by_width ... ok
 

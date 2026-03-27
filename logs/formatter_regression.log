@@ -1,4 +1,9 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on artifact directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
      Running unittests src/bin/benchsuite.rs (target/debug/deps/benchsuite-a272cd8c1e8988a1)
 
 running 0 tests
