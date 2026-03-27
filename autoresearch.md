@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 37 focused Json+Toml+Shell tests green (run 28)
+- **Current Best**: 45 focused Json+Toml+Shell+DateTime tests green (run 29)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -145,3 +145,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 26 (KEEP, metric=14)**: Added `Json.encode/1`, `Json.decode/1`, and `Json.encode_pretty/1` as host-backed stdlib functions using serde_json, with Tonic value round-trip support for nil, bool, int, float, string, atom, list, map, tuple, and keyword lists, plus 14 focused unit tests. Hypothesis: confirmed — a Rust-backed Json module eliminates ~200 lines of fragile hand-rolled JSON across tonic-loops modules and provides a reliable foundation for any Tonic app needing structured data interchange.
 - **Run 27 (KEEP, metric=25)**: Added `Toml.encode/1` and `Toml.decode/1` as host-backed stdlib functions using the toml crate, with Tonic value round-trip support for tables, arrays, strings, integers, floats, booleans, and datetimes (as strings), plus 11 focused unit tests. Hypothesis: confirmed — a Rust-backed Toml module eliminates ~200 lines of fragile hand-rolled TOML parsing across tonic-loops config.tn and topology.tn and provides reliable structured config parsing for any Tonic app.
 - **Run 28 (KEEP, metric=37)**: Added `Shell.quote/1` and `Shell.join/1` as host-backed stdlib functions with POSIX single-quote wrapping, plus 12 focused unit tests. Hypothesis: confirmed — a Rust-backed Shell module eliminates ~40 lines of duplicated shell quoting across 4+ tonic-loops modules and provides safe command construction for any Tonic app that shells out.
+- **Run 29 (KEEP, metric=45)**: Added `DateTime.utc_now/0`, `DateTime.unix_now/0`, and `DateTime.unix_now_ms/0` as host-backed stdlib functions using the `time` crate, plus 8 focused unit tests. Hypothesis: confirmed — a Rust-backed DateTime module eliminates shell-out `date` calls in tonic-loops memory.tn and provides reliable time access for any Tonic app needing timestamps.
