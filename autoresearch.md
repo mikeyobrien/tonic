@@ -116,7 +116,7 @@ Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.
 ### Metrics
 
 - **Primary**: Number of common library functions passing focused tests
-- **Current Best**: 132 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path tests green + Http wrapper (run 37)
+- **Current Best**: 144 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File tests green + Http wrapper (run 38)
 - **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
 
 ### Benchmark Commands
@@ -154,3 +154,4 @@ cargo test --quiet json 2>&1 | tail -5
 - **Run 35 (KEEP, metric=102)**: Added `Env.get/1-2`, `Env.fetch!/1`, `Env.set/2`, `Env.delete/1`, `Env.all/0`, and `Env.has_key/1` as host-backed stdlib functions with 14 focused unit tests. Hypothesis: confirmed — a dedicated Env module provides ergonomic environment variable access beyond the single `System.env/1` getter, enabling get-with-default, fetch-or-raise, set, delete, enumerate, and key-existence patterns for any Tonic app needing runtime configuration.
 - **Run 36 (KEEP, metric=119)**: Added `Url.encode/1`, `Url.decode/1`, `Url.encode_query/1`, and `Url.decode_query/1` as host-backed stdlib functions with pure Rust RFC 3986 percent-encoding, plus 17 focused unit tests. Hypothesis: confirmed — a Rust-backed Url module provides reliable URL encoding/decoding and query string construction for any Tonic app using the Http module for API interactions.
 - **Run 37 (KEEP, metric=132)**: Extended existing Path module with `Path.rootname/1` and `Path.split/1` host-backed functions, bringing Path to 14 focused unit tests. Hypothesis: confirmed — rootname (strip extension preserving directory) and split (decompose into components) complete the Path module's coverage of common filesystem path manipulation patterns needed by any Tonic app working with files.
+- **Run 38 (KEEP, metric=144)**: Added `File` stdlib module wrapping existing System file operations (read/write/append/exists?/ls/ls_r/is_dir?/mkdir_p/rm_rf) plus 3 new host-backed functions (cp/rename/stat) with 12 focused unit tests. Hypothesis: confirmed — a dedicated File module provides ergonomic, familiar-named file operations that any Tonic app needs, eliminating the need to know System's non-obvious method names.
