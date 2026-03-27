@@ -275,7 +275,7 @@ pub(super) fn print_check_help() {
 }
 
 pub(super) fn print_test_help() {
-    println!("Usage:\n  tonic test <path> [--filter <pattern>] [--format <text|json>]\n\nOptions:\n  --filter <pattern>  Only run tests whose name contains <pattern>\n  --format <text|json> Output format (default: text)\n");
+    println!("Usage:\n  tonic test <path> [--list] [--filter <pattern>] [--format <text|json>]\n\nOptions:\n  --list               List discovered tests without running them\n  --filter <pattern>   Only run tests whose name contains <pattern>\n  --format <text|json>  Output format (default: text)\n");
 }
 
 pub(super) fn print_fmt_help() {

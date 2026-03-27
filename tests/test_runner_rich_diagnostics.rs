@@ -811,6 +811,89 @@ fn test_json_output_includes_failures_array() {
     assert_eq!(all_results.len(), 2, "all results should still be present");
 }
 
+// --- --list flag tests ---
+
+#[test]
+fn test_list_flag_shows_test_names_without_running() {
+    let fixture_root = write_single_test_file(
+        "test-list-text",
+        "test_list.tn",
+        "defmodule ListTest do\n  def test_alpha() do\n    1\n  end\n\n  def test_beta() do\n    err(:boom)\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", ".", "--list"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(
+        output.status.success(),
+        "list should succeed even when tests would fail, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("ListTest.test_alpha"),
+        "expected test_alpha in list, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("ListTest.test_beta"),
+        "expected test_beta in list, got: {stdout}"
+    );
+    // Should NOT contain test runner output markers
+    assert!(
+        !stdout.contains("test result:"),
+        "list should not run tests, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_list_flag_json_output() {
+    let fixture_root = write_single_test_file(
+        "test-list-json",
+        "test_list_json.tn",
+        "defmodule ListJsonTest do\n  def test_one() do\n    1\n  end\n\n  def test_two() do\n    2\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", ".", "--list", "--format", "json"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let report: Value = serde_json::from_str(&stdout).expect("json output should parse");
+
+    let tests = report["tests"].as_array().expect("tests should be array");
+    assert_eq!(tests.len(), 2);
+    assert_eq!(tests[0], "ListJsonTest.test_one");
+    assert_eq!(tests[1], "ListJsonTest.test_two");
+}
+
+#[test]
+fn test_list_flag_with_filter() {
+    let fixture_root = write_single_test_file(
+        "test-list-filter",
+        "test_list_filter.tn",
+        "defmodule ListFilterTest do\n  def test_alpha() do\n    1\n  end\n\n  def test_beta() do\n    2\n  end\n\n  def test_gamma() do\n    3\n  end\nend\n",
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["test", ".", "--list", "--filter", "alpha"])
+        .output()
+        .expect("test command should execute");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let lines: Vec<&str> = stdout.trim().lines().collect();
+    assert_eq!(lines.len(), 1, "only alpha should match, got: {stdout}");
+    assert_eq!(lines[0], "ListFilterTest.test_alpha");
+}
+
 fn write_single_test_file(test_name: &str, file_name: &str, source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
 

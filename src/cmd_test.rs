@@ -17,6 +17,7 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
     let source_path = args[0].clone();
     let mut format = TestOutputFormat::Text;
     let mut filter: Option<String> = None;
+    let mut list_only = false;
     let mut index = 1;
 
     while index < args.len() {
@@ -40,6 +41,10 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
 
                 format = parsed;
                 index += 2;
+            }
+            "--list" => {
+                list_only = true;
+                index += 1;
             }
             "--filter" => {
                 let Some(value) = args.get(index + 1) else {
@@ -76,6 +81,66 @@ pub(super) fn handle_test(args: Vec<String>) -> i32 {
         if let Some(ref f) = filter {
             observed_run.record_metadata("filter", f.clone());
         }
+    }
+
+    if list_only {
+        let tests = match observe_command_phase_result(&mut observed_run, "test.list_tests", || {
+            test_runner::list_tests(&source_path, filter.as_deref())
+        }) {
+            Ok(tests) => tests,
+            Err(TestRunnerError::Failure(message)) => {
+                let exit_code = CliDiagnostic::failure(message.clone()).emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "io_error",
+                        "test.list_tests",
+                        message,
+                        None,
+                    )),
+                );
+            }
+            Err(TestRunnerError::SourceDiagnostic {
+                message,
+                filename,
+                source,
+                offset,
+            }) => {
+                let source_path = filename.unwrap_or_else(|| source_path.clone());
+                let source_info = observability_error_source(&source_path, &source, offset);
+                let exit_code = CliDiagnostic::failure_with_filename_and_source(
+                    message.clone(),
+                    Some(&source_path),
+                    &source,
+                    offset,
+                )
+                .emit();
+                return finalize_observed_run(
+                    &mut observed_run,
+                    exit_code,
+                    Some(make_observability_error(
+                        "typing_error",
+                        "test.list_tests",
+                        message,
+                        source_info,
+                    )),
+                );
+            }
+        };
+
+        match format {
+            TestOutputFormat::Text => {
+                for name in &tests {
+                    println!("{name}");
+                }
+            }
+            TestOutputFormat::Json => {
+                println!("{}", serde_json::json!({ "tests": tests }));
+            }
+        }
+
+        return finalize_observed_run(&mut observed_run, EXIT_OK, None);
     }
 
     let report = match observe_command_phase_result(&mut observed_run, "test.run_suite", || {

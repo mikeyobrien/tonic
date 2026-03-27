@@ -147,6 +147,34 @@ struct TestSuite {
     ir: IrProgram,
 }
 
+pub fn list_tests(path: &str, filter: Option<&str>) -> Result<Vec<String>, TestRunnerError> {
+    let target = Path::new(path);
+    let test_files = discover_test_files(target)?;
+    let mut all_tests = Vec::new();
+
+    for file in test_files {
+        let source = std::fs::read_to_string(&file).map_err(|error| {
+            TestRunnerError::Failure(format!(
+                "failed to read source file {}: {error}",
+                file.display()
+            ))
+        })?;
+
+        let suite = compile_suite(&file, &source)?;
+
+        for test_name in suite.tests {
+            if let Some(pattern) = filter {
+                if !test_name.contains(pattern) {
+                    continue;
+                }
+            }
+            all_tests.push(test_name);
+        }
+    }
+
+    Ok(all_tests)
+}
+
 pub fn run(path: &str, filter: Option<&str>) -> Result<TestRunReport, TestRunnerError> {
     let target = Path::new(path);
     let test_files = discover_test_files(target)?;
