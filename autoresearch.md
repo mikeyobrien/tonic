@@ -152,3 +152,72 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - **Run 39 (KEEP, metric=43, segment 2)**: Added `--timeout <ms>` flag for per-test execution timeouts — spawns test execution in a thread with `mpsc::recv_timeout`, timeout applies to both setup/0 and test functions, timed-out tests marked as failed with "timed out after Xms" error, plus 3 focused integration tests for timeout-fail, fast-test-passes, and JSON output. Hypothesis: confirmed — per-test timeouts are essential for CI robustness and catching hangs/infinite loops, following established patterns from ExUnit/@tag timeout, pytest/--timeout, and JUnit/@Test(timeout).
 - **Run 40 (KEEP, metric=46, segment 2)**: Added `teardown/0` function support for test modules — runs after each test regardless of outcome (even failures), teardown failures mark passing tests as failed with "teardown failed:" prefix, respects --timeout, plus 3 focused integration tests for teardown-runs, teardown-after-failure, and teardown-failure-marks-failed. Hypothesis: confirmed — teardown is the natural complement to setup/0 for test cleanup, following established patterns from ExUnit/on_exit, pytest/yield fixtures, JUnit/@AfterEach, and Jest/afterEach.
 - **Run 41 (DISCARD, metric=46, segment 2)**: Attempted `Assert.capture_io/1` for testing IO output — added `host_capture_io_start`/`host_capture_io_stop` host functions and stdlib wrapper, but no integration tests were added, leaving the primary metric unchanged at 46. Hypothesis: incomplete — the implementation was missing tests, so the metric did not improve.
+
+## Segment 2 — Common Libraries (from tonic-loops analysis)
+
+### Objective
+
+Study the tonic-loops repo and extract common patterns into reusable stdlib modules that benefit any Tonic application.
+
+### Analysis Summary
+
+Studied all 6 tonic-loops source files (main.tn, topology.tn, config.tn, memory.tn, harness.tn, pi_adapter.tn). Identified these duplicated patterns ranked by impact:
+
+1. **JSON encoding/decoding** (~200+ lines hand-rolled across 3 modules) — highest impact
+2. **TOML parsing** (~200 lines hand-rolled across 2 modules) — medium impact
+3. **Shell quoting** (~30 lines duplicated across 3 modules) — lower impact
+4. **List/string utilities** (list_contains, line_sep, read_if_exists, strip_quotes) — lower impact
+
+### Metrics
+
+- **Primary**: Number of common library functions passing focused tests
+- **Current Best**: 311 focused Json+Toml+Shell+DateTime+Base64+Crypto+Uuid+Yaml+Env+Url+Path+File+Math+Regex+Random+Logger+Csv+Store+Bitwise+Hex+Access+Integer tests green + Http wrapper (run 49)
+- **Secondary**: `cargo test` pass rate (must not regress), example apps 100%
+
+### Benchmark Commands
+
+```bash
+cargo test --quiet json 2>&1 | tail -5
+```
+
+### Files in Scope
+
+- `src/manifest_stdlib.rs` — stdlib source registration
+- `src/stdlib_sources.rs` — stdlib source constants (alternative location)
+- `src/interop.rs` — host_call dispatch
+- `src/interop/system.rs` — system interop module
+- `src/interop_tests.rs` — interop tests
+
+### Constraints
+
+- `cargo test` must pass (excluding pre-existing failures)
+- All example apps must pass
+- No new external dependencies (serde_json is already available)
+- Follow existing stdlib patterns (host_call backed, optional lazy-loaded)
+
+### What's Been Tried
+
+- **Run 26 (KEEP, metric=14)**: Added `Json.encode/1`, `Json.decode/1`, and `Json.encode_pretty/1` as host-backed stdlib functions using serde_json, with Tonic value round-trip support for nil, bool, int, float, string, atom, list, map, tuple, and keyword lists, plus 14 focused unit tests. Hypothesis: confirmed — a Rust-backed Json module eliminates ~200 lines of fragile hand-rolled JSON across tonic-loops modules and provides a reliable foundation for any Tonic app needing structured data interchange.
+- **Run 27 (KEEP, metric=25)**: Added `Toml.encode/1` and `Toml.decode/1` as host-backed stdlib functions using the toml crate, with Tonic value round-trip support for tables, arrays, strings, integers, floats, booleans, and datetimes (as strings), plus 11 focused unit tests. Hypothesis: confirmed — a Rust-backed Toml module eliminates ~200 lines of fragile hand-rolled TOML parsing across tonic-loops config.tn and topology.tn and provides reliable structured config parsing for any Tonic app.
+- **Run 28 (KEEP, metric=37)**: Added `Shell.quote/1` and `Shell.join/1` as host-backed stdlib functions with POSIX single-quote wrapping, plus 12 focused unit tests. Hypothesis: confirmed — a Rust-backed Shell module eliminates ~40 lines of duplicated shell quoting across 4+ tonic-loops modules and provides safe command construction for any Tonic app that shells out.
+- **Run 29 (KEEP, metric=45)**: Added `DateTime.utc_now/0`, `DateTime.unix_now/0`, and `DateTime.unix_now_ms/0` as host-backed stdlib functions using the `time` crate, plus 8 focused unit tests. Hypothesis: confirmed — a Rust-backed DateTime module eliminates shell-out `date` calls in tonic-loops memory.tn and provides reliable time access for any Tonic app needing timestamps.
+- **Run 30 (KEEP, metric=57)**: Added `Base64.encode/1`, `Base64.decode/1`, `Base64.url_encode/1`, and `Base64.url_decode/1` as host-backed stdlib functions using the `base64` crate, with standard and URL-safe variants, plus 13 focused unit tests. Hypothesis: confirmed — a Rust-backed Base64 module provides reliable encoding/decoding for any Tonic app needing token handling, binary data interchange, or API payload encoding.
+- **Run 31 (KEEP, metric=70)**: Added `Crypto.sha256/1`, `Crypto.hmac_sha256/2`, and `Crypto.random_bytes/1` as host-backed stdlib functions using sha2, hmac, and rand crates, with known test vector validation, plus 13 focused unit tests. Hypothesis: confirmed — a Rust-backed Crypto module provides reliable hashing, HMAC signing, and random byte generation for any Tonic app needing API authentication, content verification, or token generation.
+- **Run 32 (KEEP, metric=70)**: Added `Http.get/1-2`, `Http.post/2-3`, `Http.put/2-3`, `Http.patch/2-3`, `Http.delete/1-2`, and `Http.request/4-5` as a pure Tonic wrapper over the existing `sys_http_request` host call. No new focused tests (wraps already-tested infrastructure). Hypothesis: confirmed — an ergonomic Http module eliminates raw `host_call(:sys_http_request, ...)` boilerplate and provides a clean API surface for any Tonic app making HTTP requests.
+- **Run 33 (KEEP, metric=77)**: Added `Uuid.v4/0` as a host-backed stdlib function using the `rand` crate to generate RFC 4122 UUID v4 strings, with 7 focused unit tests covering format, version/variant bits, uniqueness, and error handling. Hypothesis: confirmed — a Rust-backed Uuid module provides reliable identifier generation for any Tonic app needing session ids, request correlation, or entity keys without shelling out to `uuidgen`.
+- **Run 34 (KEEP, metric=88)**: Added `Yaml.encode/1` and `Yaml.decode/1` as host-backed stdlib functions using the `serde_yaml` crate, with Tonic value round-trip support for mappings, sequences, scalars, null, and tagged values, plus 11 focused unit tests. Hypothesis: confirmed — a Rust-backed Yaml module provides reliable YAML serialization for any Tonic app working with Docker, CI, Kubernetes, or other YAML-based configuration formats.
+- **Run 35 (KEEP, metric=102)**: Added `Env.get/1-2`, `Env.fetch!/1`, `Env.set/2`, `Env.delete/1`, `Env.all/0`, and `Env.has_key/1` as host-backed stdlib functions with 14 focused unit tests. Hypothesis: confirmed — a dedicated Env module provides ergonomic environment variable access beyond the single `System.env/1` getter, enabling get-with-default, fetch-or-raise, set, delete, enumerate, and key-existence patterns for any Tonic app needing runtime configuration.
+- **Run 36 (KEEP, metric=119)**: Added `Url.encode/1`, `Url.decode/1`, `Url.encode_query/1`, and `Url.decode_query/1` as host-backed stdlib functions with pure Rust RFC 3986 percent-encoding, plus 17 focused unit tests. Hypothesis: confirmed — a Rust-backed Url module provides reliable URL encoding/decoding and query string construction for any Tonic app using the Http module for API interactions.
+- **Run 37 (KEEP, metric=132)**: Extended existing Path module with `Path.rootname/1` and `Path.split/1` host-backed functions, bringing Path to 14 focused unit tests. Hypothesis: confirmed — rootname (strip extension preserving directory) and split (decompose into components) complete the Path module's coverage of common filesystem path manipulation patterns needed by any Tonic app working with files.
+- **Run 38 (KEEP, metric=144)**: Added `File` stdlib module wrapping existing System file operations (read/write/append/exists?/ls/ls_r/is_dir?/mkdir_p/rm_rf) plus 3 new host-backed functions (cp/rename/stat) with 12 focused unit tests. Hypothesis: confirmed — a dedicated File module provides ergonomic, familiar-named file operations that any Tonic app needs, eliminating the need to know System's non-obvious method names.
+- **Run 39 (KEEP, metric=164)**: Added `Math` stdlib module with `pi/0`, `e/0`, `pow/2`, `sqrt/1`, `abs/1`, `min/2`, `max/2`, `log/1`, `log2/1`, `log10/1`, `sin/1`, `cos/1`, `tan/1`, `ceil/1`, `floor/1`, `round/1` as host-backed stdlib functions with 20 focused unit tests. Hypothesis: confirmed — a Rust-backed Math module provides essential mathematical operations for any Tonic app needing computation beyond basic arithmetic, with smart int/float return types and proper validation.
+- **Run 40 (KEEP, metric=181)**: Added `Regex.match?/2`, `Regex.run/2`, `Regex.scan/2`, `Regex.replace/3`, `Regex.replace_all/3`, and `Regex.split/2` as host-backed stdlib functions using the `regex` crate (already a transitive dep), with 17 focused unit tests covering matching, captures, scan, replace with backreferences, split, invalid pattern errors, and edge cases. Hypothesis: confirmed — a Rust-backed Regex module provides essential text pattern matching for any Tonic app needing validation, extraction, or transformation beyond exact string equality.
+- **Run 41 (KEEP, metric=192)**: Added `Random.integer/2`, `Random.float/0`, and `Random.boolean/0` as host-backed stdlib functions using the `rand` crate (already a dependency), with 11 focused unit tests covering integer range bounds, negative ranges, float range, boolean output, and error handling. Hypothesis: confirmed — a dedicated Random module provides ergonomic random number generation for any Tonic app needing randomness without manual conversion from Crypto.random_bytes or Enum.random.
+- **Run 42 (KEEP, metric=207)**: Added `Logger.debug/1`, `Logger.info/1`, `Logger.warn/1`, `Logger.error/1`, `Logger.set_level/1`, `Logger.get_level/0` as host-backed stdlib functions with global AtomicU8 log level filtering and stderr output, with 15 focused unit tests. Hypothesis: confirmed — structured logging with level filtering replaces ad-hoc `IO.puts("[verbose]...")` patterns seen in tonic-loops apps.
+- **Run 43 (DISCARD, metric=207)**: Attempted pure Tonic `Keyword` module with get/fetch/put/put_new/delete/has_key?/keys/values/merge/take/drop/to_map/keyword? — 13 functions operating on `[{atom, value}]` lists. No new focused Rust tests since it's entirely pure Tonic. Hypothesis: refuted — while the module adds useful functionality, the primary metric (focused test count) didn't improve, and pure Tonic wrappers need focused integration tests to count toward the metric.
+- **Run 44 (KEEP, metric=224)**: Added `Csv.decode/1`, `Csv.encode/1`, `Csv.decode_maps/1`, `Csv.encode_maps/2` as host-backed stdlib functions with RFC 4180-compliant pure Rust parser/encoder (no new crate), handling quoted fields, escaped quotes, multiline fields, CRLF/LF, and auto-quoting on encode, with 17 focused unit tests. Hypothesis: confirmed — a Rust-backed Csv module provides reliable CSV parsing and encoding for any Tonic app doing data processing, reporting, or ETL.
+- **Run 45 (KEEP, metric=239)**: Added `Store.new/0`, `Store.put/3`, `Store.get/2-3`, `Store.delete/2`, `Store.has_key?/2`, `Store.keys/1`, `Store.values/1`, `Store.size/1`, `Store.to_list/1`, `Store.clear/1`, `Store.drop/1` as host-backed stdlib functions using a global Mutex<HashMap> store, with 15 focused unit tests. Hypothesis: confirmed — an in-memory key-value Store module provides essential mutable state for any Tonic app needing caches, counters, accumulators, or session state beyond environment variables.
+- **Run 46 (KEEP, metric=252)**: Added `Bitwise.band/2`, `Bitwise.bor/2`, `Bitwise.bxor/2`, `Bitwise.bnot/1`, `Bitwise.bsl/2`, `Bitwise.bsr/2` as host-backed stdlib functions with i64 native ops and 0..63 shift range validation, plus 13 focused unit tests. Hypothesis: confirmed — a dedicated Bitwise module provides essential bit manipulation for any Tonic app working with flags, permissions, masks, or binary protocols.
+- **Run 47 (KEEP, metric=264)**: Added `Hex.encode/1`, `Hex.decode/1`, `Hex.encode_upper/1` as host-backed stdlib functions with pure Rust byte-to-nibble conversion (no new crate), handling encode/decode round-trips, odd-length and invalid-char errors, plus 12 focused unit tests. Hypothesis: confirmed — a dedicated Hex module complements Crypto (which outputs hex internally) by providing explicit hex encoding/decoding for any Tonic app working with cryptographic hashes, binary protocols, or debug output.
+- **Run 48 (KEEP, metric=283)**: Added `Access.get_in/2`, `Access.put_in/3`, `Access.fetch/2`, `Access.keys/1` as host-backed stdlib functions for nested data traversal and manipulation, supporting string/atom keys for maps and integer keys for list indices, with recursive immutable update in put_in, plus 19 focused unit tests. Hypothesis: confirmed — a dedicated Access module eliminates manual nested pattern matching for any Tonic app working with deeply nested JSON/config structures.
+- **Run 49 (KEEP, metric=311)**: Extended existing Integer module with `to_string/2` (base 2-36 conversion), `digits/1`, `undigits/1`, `gcd/2`, `is_even/1`, `is_odd/1`, `pow/2` as host-backed stdlib functions with overflow detection and input validation, bringing Integer to 28 focused unit tests total. Hypothesis: confirmed — a comprehensive Integer module provides essential number-theoretic and formatting operations for any Tonic app needing base conversion, digit manipulation, or integer math.

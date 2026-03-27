@@ -9,17 +9,37 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{LazyLock, Mutex};
 
+mod access_mod;
 mod assert_mod;
+mod base64_mod;
+mod bitwise_mod;
+mod crypto_mod;
+mod csv_mod;
+mod datetime_mod;
 mod enum_mod;
+mod env_mod;
+mod file_mod;
 mod float_mod;
+mod hex_mod;
 mod http_server;
 mod integer_mod;
 mod io_mod;
+mod json_mod;
+mod logger_mod;
 mod map_mod;
+mod math_mod;
 mod path_mod;
+mod random_mod;
+mod regex_mod;
+mod shell_mod;
+mod store_mod;
 mod string_mod;
 mod system;
+mod toml_mod;
 mod tuple_mod;
+mod url_mod;
+mod uuid_mod;
+mod yaml_mod;
 
 /// Host function signature: takes runtime values, returns result
 pub type HostFn = fn(&[RuntimeValue]) -> Result<RuntimeValue, HostError>;
@@ -390,6 +410,38 @@ impl HostRegistry {
 
         // Tuple stdlib interop primitives for interpreter-backed Tuple.* and List.to_tuple calls.
         tuple_mod::register_tuple_host_functions(self);
+
+        // JSON stdlib interop primitives for interpreter-backed Json.* calls.
+        json_mod::register_json_host_functions(self);
+
+        // TOML stdlib interop primitives for interpreter-backed Toml.* calls.
+        toml_mod::register_toml_host_functions(self);
+
+        // Shell stdlib interop primitives for interpreter-backed Shell.* calls.
+        shell_mod::register_shell_host_functions(self);
+
+        // DateTime stdlib interop primitives for interpreter-backed DateTime.* calls.
+        datetime_mod::register_datetime_host_functions(self);
+
+        // Base64 stdlib interop primitives for interpreter-backed Base64.* calls.
+        base64_mod::register_base64_host_functions(self);
+
+        // Crypto stdlib interop primitives for interpreter-backed Crypto.* calls.
+        crypto_mod::register_crypto_host_functions(self);
+        uuid_mod::register_uuid_host_functions(self);
+        yaml_mod::register_yaml_host_functions(self);
+        env_mod::register_env_host_functions(self);
+        url_mod::register_url_host_functions(self);
+        file_mod::register_file_host_functions(self);
+        math_mod::register_math_host_functions(self);
+        random_mod::register_random_host_functions(self);
+        regex_mod::register_regex_host_functions(self);
+        logger_mod::register_logger_host_functions(self);
+        csv_mod::register_csv_host_functions(self);
+        store_mod::register_store_host_functions(self);
+        bitwise_mod::register_bitwise_host_functions(self);
+        hex_mod::register_hex_host_functions(self);
+        access_mod::register_access_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);

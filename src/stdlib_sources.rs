@@ -9,6 +9,27 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Integer", OPTIONAL_STDLIB_INTEGER_SOURCE),
     ("Float", OPTIONAL_STDLIB_FLOAT_SOURCE),
     ("Assert", OPTIONAL_STDLIB_ASSERT_SOURCE),
+    ("Json", OPTIONAL_STDLIB_JSON_SOURCE),
+    ("Toml", OPTIONAL_STDLIB_TOML_SOURCE),
+    ("Shell", OPTIONAL_STDLIB_SHELL_SOURCE),
+    ("DateTime", OPTIONAL_STDLIB_DATETIME_SOURCE),
+    ("Base64", OPTIONAL_STDLIB_BASE64_SOURCE),
+    ("Crypto", OPTIONAL_STDLIB_CRYPTO_SOURCE),
+    ("Http", OPTIONAL_STDLIB_HTTP_SOURCE),
+    ("Uuid", OPTIONAL_STDLIB_UUID_SOURCE),
+    ("Yaml", OPTIONAL_STDLIB_YAML_SOURCE),
+    ("Env", OPTIONAL_STDLIB_ENV_SOURCE),
+    ("Url", OPTIONAL_STDLIB_URL_SOURCE),
+    ("File", OPTIONAL_STDLIB_FILE_SOURCE),
+    ("Math", OPTIONAL_STDLIB_MATH_SOURCE),
+    ("Random", OPTIONAL_STDLIB_RANDOM_SOURCE),
+    ("Regex", OPTIONAL_STDLIB_REGEX_SOURCE),
+    ("Logger", OPTIONAL_STDLIB_LOGGER_SOURCE),
+    ("Csv", OPTIONAL_STDLIB_CSV_SOURCE),
+    ("Store", OPTIONAL_STDLIB_STORE_SOURCE),
+    ("Bitwise", OPTIONAL_STDLIB_BITWISE_SOURCE),
+    ("Hex", OPTIONAL_STDLIB_HEX_SOURCE),
+    ("Access", OPTIONAL_STDLIB_ACCESS_SOURCE),
 ];
 
 const OPTIONAL_STDLIB_IO_SOURCE: &str =
@@ -843,13 +864,13 @@ const OPTIONAL_STDLIB_STRING_SOURCE: &str =
     "defmodule String do\n  def split(str, delimiter \\\\ \" \") do\n    host_call(:str_split, str, delimiter)\n  end\n\n  def graphemes(str) do\n    host_call(:str_graphemes, str)\n  end\n\n  def replace(str, pattern, replacement) do\n    host_call(:str_replace, str, pattern, replacement)\n  end\n\n  def trim(str) do\n    host_call(:str_trim, str)\n  end\n\n  def trim_leading(str) do\n    host_call(:str_trim_leading, str)\n  end\n\n  def trim_trailing(str) do\n    host_call(:str_trim_trailing, str)\n  end\n\n  def starts_with(str, prefix) do\n    host_call(:str_starts_with, str, prefix)\n  end\n\n  def ends_with(str, suffix) do\n    host_call(:str_ends_with, str, suffix)\n  end\n\n  def contains(str, substr) do\n    host_call(:str_contains, str, substr)\n  end\n\n  def upcase(str) do\n    host_call(:str_upcase, str)\n  end\n\n  def downcase(str) do\n    host_call(:str_downcase, str)\n  end\n\n  def length(str) do\n    host_call(:str_length, str)\n  end\n\n  def to_charlist(str) do\n    host_call(:str_to_charlist, str)\n  end\n\n  def at(str, index) do\n    host_call(:str_at, str, index)\n  end\n\n  def slice(str, start, len) do\n    host_call(:str_slice, str, start, len)\n  end\n\n  def to_integer(str) do\n    host_call(:str_to_integer, str)\n  end\n\n  def to_float(str) do\n    host_call(:str_to_float, str)\n  end\n\n  def pad_leading(str, count, padding) do\n    host_call(:str_pad_leading, str, count, padding)\n  end\n\n  def pad_trailing(str, count, padding) do\n    host_call(:str_pad_trailing, str, count, padding)\n  end\n\n  def reverse(str) do\n    host_call(:str_reverse, str)\n  end\n\n  def duplicate(_str, count) when count <= 0 do\n    \"\"\n  end\n\n  def duplicate(str, count) do\n    duplicate_acc(str, count, \"\")\n  end\n\n  def to_atom(str) do\n    host_call(:str_to_atom, str)\n  end\n\n  def capitalize(\"\") do\n    \"\"\n  end\n\n  def capitalize(str) do\n    first = host_call(:str_upcase, host_call(:str_at, str, 0))\n    len = host_call(:str_length, str)\n    rest = host_call(:str_downcase, host_call(:str_slice, str, 1, len))\n    first <> rest\n  end\n\n  defp duplicate_acc(_str, 0, acc) do\n    acc\n  end\n\n  defp duplicate_acc(str, count, acc) do\n    duplicate_acc(str, count - 1, acc <> str)\n  end\nend\n";
 
 const OPTIONAL_STDLIB_INTEGER_SOURCE: &str =
-    "defmodule Integer do\n  def to_string(n) do\n    host_call(:integer_to_string, n)\n  end\n\n  def parse(str) do\n    host_call(:integer_parse, str)\n  end\nend\n";
+    "defmodule Integer do\n  def to_string(n) do\n    host_call(:integer_to_string, n)\n  end\n\n  def to_string(n, base) do\n    host_call(:integer_to_string_base, n, base)\n  end\n\n  def parse(str) do\n    host_call(:integer_parse, str)\n  end\n\n  def digits(n) do\n    host_call(:integer_digits, n)\n  end\n\n  def undigits(list) do\n    host_call(:integer_undigits, list)\n  end\n\n  def gcd(a, b) do\n    host_call(:integer_gcd, a, b)\n  end\n\n  def is_even(n) do\n    host_call(:integer_is_even, n)\n  end\n\n  def is_odd(n) do\n    host_call(:integer_is_odd, n)\n  end\n\n  def pow(base, exp) do\n    host_call(:integer_pow, base, exp)\n  end\nend\n";
 
 const OPTIONAL_STDLIB_FLOAT_SOURCE: &str =
     "defmodule Float do\n  def to_string(n) do\n    host_call(:float_to_string, n)\n  end\n\n  def round(n, precision) do\n    host_call(:float_round, n, precision)\n  end\n\n  def ceil(n) do\n    host_call(:float_ceil, n)\n  end\n\n  def floor(n) do\n    host_call(:float_floor, n)\n  end\nend\n";
 
 const OPTIONAL_STDLIB_PATH_SOURCE: &str =
-    "defmodule Path do\n  def join(a, b) do\n    host_call(:path_join, a, b)\n  end\n\n  def dirname(path) do\n    host_call(:path_dirname, path)\n  end\n\n  def basename(path) do\n    host_call(:path_basename, path)\n  end\n\n  def extname(path) do\n    host_call(:path_extname, path)\n  end\n\n  def expand(path) do\n    host_call(:path_expand, path)\n  end\n\n  def relative_to(path, base) do\n    host_call(:path_relative_to, path, base)\n  end\nend\n";
+    "defmodule Path do\n  def join(a, b) do\n    host_call(:path_join, a, b)\n  end\n\n  def dirname(path) do\n    host_call(:path_dirname, path)\n  end\n\n  def basename(path) do\n    host_call(:path_basename, path)\n  end\n\n  def extname(path) do\n    host_call(:path_extname, path)\n  end\n\n  def rootname(path) do\n    host_call(:path_rootname, path)\n  end\n\n  def expand(path) do\n    host_call(:path_expand, path)\n  end\n\n  def relative_to(path, base) do\n    host_call(:path_relative_to, path, base)\n  end\n\n  def split(path) do\n    host_call(:path_split, path)\n  end\nend\n";
 
 const OPTIONAL_STDLIB_SYSTEM_SOURCE: &str =
     "defmodule System do\n  def run(command, opts \\\\ %{}) do\n    host_call(:sys_run, command, opts)\n  end\n\n  def sleep_ms(delay_ms) do\n    host_call(:sys_sleep_ms, delay_ms)\n  end\n\n  def retry_plan(status_code, attempt, max_attempts, base_delay_ms, max_delay_ms, jitter_ms, retry_after) do\n    host_call(:sys_retry_plan, status_code, attempt, max_attempts, base_delay_ms, max_delay_ms, jitter_ms, retry_after)\n  end\n\n  def log(level, event, fields) do\n    host_call(:sys_log, level, event, fields)\n  end\n\n  def path_exists(path) do\n    host_call(:sys_path_exists, path)\n  end\n\n  def list_dir(path) do\n    host_call(:sys_list_dir, path)\n  end\n\n  def is_dir(path) do\n    host_call(:sys_is_dir, path)\n  end\n\n  def list_files_recursive(path) do\n    host_call(:sys_list_files_recursive, path)\n  end\n\n  def ensure_dir(path) do\n    host_call(:sys_ensure_dir, path)\n  end\n\n  def remove_tree(path) do\n    host_call(:sys_remove_tree, path)\n  end\n\n  def write_text(path, content) do\n    host_call(:sys_write_text, path, content)\n  end\n\n  def append_text(path, content) do\n    host_call(:sys_append_text, path, content)\n  end\n\n  def write_text_atomic(path, content) do\n    host_call(:sys_write_text_atomic, path, content)\n  end\n\n  def lock_acquire(path) do\n    host_call(:sys_lock_acquire, path)\n  end\n\n  def lock_release(path) do\n    host_call(:sys_lock_release, path)\n  end\n\n  def read_text(path) do\n    host_call(:sys_read_text, path)\n  end\n\n  def read_stdin() do\n    host_call(:sys_read_stdin)\n  end\n\n  def http_request(method, url, headers, body, opts) do\n    host_call(:sys_http_request, method, url, headers, body, opts)\n  end\n\n  def env(name) do\n    host_call(:sys_env, name)\n  end\n\n  def which(name) do\n    host_call(:sys_which, name)\n  end\n\n  def cwd() do\n    host_call(:sys_cwd)\n  end\n\n  def argv() do\n    host_call(:sys_argv)\n  end\n\n  def random_token(bytes) do\n    host_call(:sys_random_token, bytes)\n  end\n\n  def hmac_sha256_hex(secret, message) do\n    host_call(:sys_hmac_sha256_hex, secret, message)\n  end\n\n  def constant_time_eq(left, right) do\n    host_call(:sys_constant_time_eq, left, right)\n  end\n\n  def discord_ed25519_verify(public_key_hex, signature_hex, timestamp, body) do\n    host_call(:sys_discord_ed25519_verify, public_key_hex, signature_hex, timestamp, body)\n  end\n\n  def http_listen(host, port) do\n    host_call(:sys_http_listen, host, port)\n  end\n\n  def http_accept(listener_id, timeout_ms) do\n    host_call(:sys_http_accept, listener_id, timeout_ms)\n  end\n\n  def http_read_request(connection_id) do\n    host_call(:sys_http_read_request, connection_id)\n  end\n\n  def http_write_response(connection_id, status, headers, body) do\n    host_call(:sys_http_write_response, connection_id, status, headers, body)\n  end\nend\n";
@@ -859,3 +880,66 @@ const OPTIONAL_STDLIB_TUPLE_SOURCE: &str =
 
 const OPTIONAL_STDLIB_ASSERT_SOURCE: &str =
     "defmodule Assert do\n  def assert(value, message \\\\ nil) do\n    host_call(:assert, value, message)\n  end\n\n  def refute(value, message \\\\ nil) do\n    host_call(:refute, value, message)\n  end\n\n  def assert_equal(left, right, message \\\\ nil) do\n    host_call(:assert_equal, left, right, message)\n  end\n\n  def assert_not_equal(left, right, message \\\\ nil) do\n    host_call(:assert_not_equal, left, right, message)\n  end\n\n  def assert_contains(container, element, message \\\\ nil) do\n    host_call(:assert_contains, container, element, message)\n  end\n\n  def assert_in_delta(left, right, delta, message \\\\ nil) do\n    host_call(:assert_in_delta, left, right, delta, message)\n  end\n\n  def skip(reason \\\\ nil) do\n    host_call(:skip, reason)\n  end\n\n  def assert_match(expected, actual, message \\\\ nil) do\n    host_call(:assert_match, expected, actual, message)\n  end\n\n  def assert_raises(fun, expected \\\\ nil) do\n    check_raises(do_try_raises(fun), expected)\n  end\n\n  defp do_try_raises(fun) do\n    try do\n      fun.()\n      {:no_raise, :ok}\n    rescue\n      e -> {:raised, to_string(e)}\n    end\n  end\n\n  defp check_raises({:raised, _msg}, nil) do\n    :ok\n  end\n\n  defp check_raises({:raised, msg}, expected) do\n    host_call(:assert_raises_check, msg, expected)\n  end\n\n  defp check_raises(_, _expected) do\n    err({:assertion_failed, {:assert_raises, \"expected function to raise, but it returned normally\"}})\n  end\nend\n";
+
+const OPTIONAL_STDLIB_JSON_SOURCE: &str =
+    "defmodule Json do\n  def encode(value) do\n    host_call(:json_encode, value)\n  end\n\n  def decode(string) do\n    host_call(:json_decode, string)\n  end\n\n  def encode_pretty(value) do\n    host_call(:json_encode_pretty, value)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_TOML_SOURCE: &str =
+    "defmodule Toml do\n  def encode(value) do\n    host_call(:toml_encode, value)\n  end\n\n  def decode(string) do\n    host_call(:toml_decode, string)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_SHELL_SOURCE: &str =
+    "defmodule Shell do\n  def quote(string) do\n    host_call(:shell_quote, string)\n  end\n\n  def join(args) do\n    host_call(:shell_join, args)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_DATETIME_SOURCE: &str =
+    "defmodule DateTime do\n  def utc_now() do\n    host_call(:datetime_utc_now)\n  end\n\n  def unix_now() do\n    host_call(:datetime_unix_now)\n  end\n\n  def unix_now_ms() do\n    host_call(:datetime_unix_now_ms)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_BASE64_SOURCE: &str =
+    "defmodule Base64 do\n  def encode(string) do\n    host_call(:base64_encode, string)\n  end\n\n  def decode(string) do\n    host_call(:base64_decode, string)\n  end\n\n  def url_encode(string) do\n    host_call(:base64_url_encode, string)\n  end\n\n  def url_decode(string) do\n    host_call(:base64_url_decode, string)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_CRYPTO_SOURCE: &str =
+    "defmodule Crypto do\n  def sha256(string) do\n    host_call(:crypto_sha256, string)\n  end\n\n  def hmac_sha256(key, message) do\n    host_call(:crypto_hmac_sha256, key, message)\n  end\n\n  def random_bytes(size) do\n    host_call(:crypto_random_bytes, size)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_HTTP_SOURCE: &str =
+    "defmodule Http do\n  def get(url) do\n    get(url, [])\n  end\n\n  def get(url, headers) do\n    request(\"GET\", url, headers, \"\")\n  end\n\n  def post(url, body) do\n    post(url, body, [])\n  end\n\n  def post(url, body, headers) do\n    request(\"POST\", url, headers, body)\n  end\n\n  def put(url, body) do\n    put(url, body, [])\n  end\n\n  def put(url, body, headers) do\n    request(\"PUT\", url, headers, body)\n  end\n\n  def patch(url, body) do\n    patch(url, body, [])\n  end\n\n  def patch(url, body, headers) do\n    request(\"PATCH\", url, headers, body)\n  end\n\n  def delete(url) do\n    delete(url, [])\n  end\n\n  def delete(url, headers) do\n    request(\"DELETE\", url, headers, \"\")\n  end\n\n  def request(method, url, headers, body) do\n    request(method, url, headers, body, %{})\n  end\n\n  def request(method, url, headers, body, opts) do\n    host_call(:sys_http_request, method, url, headers, body, opts)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_UUID_SOURCE: &str =
+    "defmodule Uuid do\n  def v4() do\n    host_call(:uuid_v4)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_YAML_SOURCE: &str =
+    "defmodule Yaml do\n  def encode(value) do\n    host_call(:yaml_encode, value)\n  end\n\n  def decode(string) do\n    host_call(:yaml_decode, string)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_URL_SOURCE: &str =
+    "defmodule Url do\n  def encode(string) do\n    host_call(:url_encode, string)\n  end\n\n  def decode(string) do\n    host_call(:url_decode, string)\n  end\n\n  def encode_query(params) do\n    host_call(:url_encode_query, params)\n  end\n\n  def decode_query(string) do\n    host_call(:url_decode_query, string)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_ENV_SOURCE: &str =
+    "defmodule Env do\n  def get(key) do\n    System.env(key)\n  end\n\n  def get(key, default) do\n    case System.env(key) do\n      nil -> default\n      value -> value\n    end\n  end\n\n  def fetch!(key) do\n    case System.env(key) do\n      nil -> raise \"environment variable #{key} is not set\"\n      value -> value\n    end\n  end\n\n  def set(key, value) do\n    host_call(:env_set, key, value)\n  end\n\n  def delete(key) do\n    host_call(:env_delete, key)\n  end\n\n  def all() do\n    host_call(:env_all)\n  end\n\n  def has_key(key) do\n    host_call(:env_has_key, key)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_FILE_SOURCE: &str =
+    "defmodule File do\n  def read(path) do\n    System.read_text(path)\n  end\n\n  def write(path, content) do\n    System.write_text(path, content)\n  end\n\n  def write_atomic(path, content) do\n    System.write_text_atomic(path, content)\n  end\n\n  def append(path, content) do\n    System.append_text(path, content)\n  end\n\n  def exists?(path) do\n    System.path_exists(path)\n  end\n\n  def ls(path) do\n    System.list_dir(path)\n  end\n\n  def ls_r(path) do\n    System.list_files_recursive(path)\n  end\n\n  def is_dir?(path) do\n    System.is_dir(path)\n  end\n\n  def mkdir_p(path) do\n    System.ensure_dir(path)\n  end\n\n  def rm_rf(path) do\n    System.remove_tree(path)\n  end\n\n  def cp(source, destination) do\n    host_call(:file_cp, source, destination)\n  end\n\n  def rename(source, destination) do\n    host_call(:file_rename, source, destination)\n  end\n\n  def stat(path) do\n    host_call(:file_stat, path)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_MATH_SOURCE: &str =
+    "defmodule Math do\n  def pi() do\n    3.141592653589793\n  end\n\n  def e() do\n    2.718281828459045\n  end\n\n  def pow(base, exponent) do\n    host_call(:math_pow, base, exponent)\n  end\n\n  def sqrt(value) do\n    host_call(:math_sqrt, value)\n  end\n\n  def abs(value) do\n    host_call(:math_abs, value)\n  end\n\n  def min(a, b) do\n    host_call(:math_min, a, b)\n  end\n\n  def max(a, b) do\n    host_call(:math_max, a, b)\n  end\n\n  def log(value) do\n    host_call(:math_log, value)\n  end\n\n  def log2(value) do\n    host_call(:math_log2, value)\n  end\n\n  def log10(value) do\n    host_call(:math_log10, value)\n  end\n\n  def sin(value) do\n    host_call(:math_sin, value)\n  end\n\n  def cos(value) do\n    host_call(:math_cos, value)\n  end\n\n  def tan(value) do\n    host_call(:math_tan, value)\n  end\n\n  def ceil(value) do\n    host_call(:math_ceil, value)\n  end\n\n  def floor(value) do\n    host_call(:math_floor, value)\n  end\n\n  def round(value) do\n    host_call(:math_round, value)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_RANDOM_SOURCE: &str =
+    "defmodule Random do\n  def integer(min, max) do\n    host_call(:random_integer, min, max)\n  end\n\n  def float() do\n    host_call(:random_float)\n  end\n\n  def boolean() do\n    host_call(:random_boolean)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_REGEX_SOURCE: &str =
+    "defmodule Regex do\n  def match?(string, pattern) do\n    host_call(:regex_match, string, pattern)\n  end\n\n  def run(string, pattern) do\n    host_call(:regex_run, string, pattern)\n  end\n\n  def scan(string, pattern) do\n    host_call(:regex_scan, string, pattern)\n  end\n\n  def replace(string, pattern, replacement) do\n    host_call(:regex_replace, string, pattern, replacement)\n  end\n\n  def replace_all(string, pattern, replacement) do\n    host_call(:regex_replace_all, string, pattern, replacement)\n  end\n\n  def split(string, pattern) do\n    host_call(:regex_split, string, pattern)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_LOGGER_SOURCE: &str =
+    "defmodule Logger do\n  def debug(msg) do\n    host_call(:logger_debug, msg)\n  end\n\n  def info(msg) do\n    host_call(:logger_info, msg)\n  end\n\n  def warn(msg) do\n    host_call(:logger_warn, msg)\n  end\n\n  def error(msg) do\n    host_call(:logger_error, msg)\n  end\n\n  def set_level(level) do\n    host_call(:logger_set_level, level)\n  end\n\n  def get_level() do\n    host_call(:logger_get_level)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_CSV_SOURCE: &str =
+    "defmodule Csv do\n  def decode(string) do\n    host_call(:csv_decode, string)\n  end\n\n  def encode(rows) do\n    host_call(:csv_encode, rows)\n  end\n\n  def decode_maps(string) do\n    host_call(:csv_decode_maps, string)\n  end\n\n  def encode_maps(headers, maps) do\n    host_call(:csv_encode_maps, headers, maps)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_STORE_SOURCE: &str =
+    "defmodule Store do\n  def new() do\n    host_call(:store_new)\n  end\n\n  def put(store, key, value) do\n    host_call(:store_put, store, key, value)\n  end\n\n  def get(store, key) do\n    host_call(:store_get, store, key)\n  end\n\n  def get(store, key, default) do\n    host_call(:store_get, store, key, default)\n  end\n\n  def delete(store, key) do\n    host_call(:store_delete, store, key)\n  end\n\n  def has_key?(store, key) do\n    host_call(:store_has_key, store, key)\n  end\n\n  def keys(store) do\n    host_call(:store_keys, store)\n  end\n\n  def values(store) do\n    host_call(:store_values, store)\n  end\n\n  def size(store) do\n    host_call(:store_size, store)\n  end\n\n  def to_list(store) do\n    host_call(:store_to_list, store)\n  end\n\n  def clear(store) do\n    host_call(:store_clear, store)\n  end\n\n  def drop(store) do\n    host_call(:store_drop, store)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_BITWISE_SOURCE: &str =
+    "defmodule Bitwise do\n  def band(a, b) do\n    host_call(:bitwise_band, a, b)\n  end\n\n  def bor(a, b) do\n    host_call(:bitwise_bor, a, b)\n  end\n\n  def bxor(a, b) do\n    host_call(:bitwise_bxor, a, b)\n  end\n\n  def bnot(a) do\n    host_call(:bitwise_bnot, a)\n  end\n\n  def bsl(a, shift) do\n    host_call(:bitwise_bsl, a, shift)\n  end\n\n  def bsr(a, shift) do\n    host_call(:bitwise_bsr, a, shift)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_HEX_SOURCE: &str =
+    "defmodule Hex do\n  def encode(binary) do\n    host_call(:hex_encode, binary)\n  end\n\n  def decode(hex_string) do\n    host_call(:hex_decode, hex_string)\n  end\n\n  def encode_upper(binary) do\n    host_call(:hex_encode_upper, binary)\n  end\nend\n";
+
+const OPTIONAL_STDLIB_ACCESS_SOURCE: &str =
+    "defmodule Access do\n  def get_in(data, path) do\n    host_call(:access_get_in, data, path)\n  end\n\n  def put_in(data, path, value) do\n    host_call(:access_put_in, data, path, value)\n  end\n\n  def fetch(data, key) do\n    host_call(:access_fetch, data, key)\n  end\n\n  def keys(map) do\n    host_call(:access_keys, map)\n  end\nend\n";
