@@ -26,6 +26,7 @@ mod string_mod;
 mod system;
 mod toml_mod;
 mod tuple_mod;
+mod url_mod;
 mod uuid_mod;
 mod yaml_mod;
 
@@ -419,6 +420,7 @@ impl HostRegistry {
         uuid_mod::register_uuid_host_functions(self);
         yaml_mod::register_yaml_host_functions(self);
         env_mod::register_env_host_functions(self);
+        url_mod::register_url_host_functions(self);
 
         // HTTP server primitives for tonic-only server code.
         http_server::register_http_server_host_functions(self);
