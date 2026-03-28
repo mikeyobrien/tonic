@@ -1,12 +1,12 @@
 #!/bin/sh
 set -eu
-export MINILOOPS_PROJECT_DIR='/Users/rook/projects/tonic-loops/presets/autoqa'
+export MINILOOPS_PROJECT_DIR='/Users/rook/projects/tonic-loops/presets/autoresearch'
 export MINILOOPS_JOURNAL_FILE='/Users/rook/projects/tonic.tonic-install/./.miniloop/journal.jsonl'
 export MINILOOPS_EVENTS_FILE='/Users/rook/projects/tonic.tonic-install/./.miniloop/journal.jsonl'
 export MINILOOPS_MEMORY_FILE='/Users/rook/projects/tonic.tonic-install/./.miniloop/memory.jsonl'
-export MINILOOPS_RUN_ID='run-mn9qe1u0-96l_'
+export MINILOOPS_RUN_ID='run-mn9swpq0-dvvl'
 export MINILOOPS_COMPLETION_EVENT='task.complete'
-export MINILOOPS_REQUIRED_EVENTS='surfaces.identified'
+export MINILOOPS_REQUIRED_EVENTS='experiment.measured'
 export MINILOOPS_BIN='/Users/rook/projects/tonic.tonic-install/./.miniloop/miniloops'
 stdout_file=$(mktemp)
 stderr_file=$(mktemp)

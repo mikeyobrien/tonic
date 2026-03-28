@@ -5,26 +5,39 @@ use std::path::Path;
 
 mod common;
 
-const PARITY_DIFF_SUBSET: &[&str] = &[
-    "examples/parity/02-operators/arithmetic_basic.tn",
-    "examples/parity/02-operators/comparison_set.tn",
-    "examples/parity/02-operators/membership_and_range.tn",
-    "examples/parity/03-collections/list_literal.tn",
-    "examples/parity/03-collections/map_literal_single_entry.tn",
-    "examples/parity/03-collections/map_fat_arrow_literal.tn",
-    "examples/parity/03-collections/struct_literal_update_pattern.tn",
-    "examples/parity/03-collections/tuple_literal_and_match.tn",
-    "examples/parity/04-patterns/case_atom_and_wildcard.tn",
-    "examples/parity/04-patterns/case_list_bind.tn",
-    "examples/parity/04-patterns/pin_pattern_and_guard.tn",
-    "examples/parity/05-functions/multi_clause_pattern_dispatch.tn",
-    "examples/parity/05-functions/function_capture_named_arity.tn",
-    "examples/parity/05-functions/guard_builtins_parity.tn",
-    "examples/parity/06-control-flow/cond_branches.tn",
-    "examples/parity/06-control-flow/with_happy_path.tn",
-    "examples/parity/07-modules/import_only_except_semantics.tn",
-    "examples/parity/07-modules/use_require_scoped_semantics.tn",
-    "examples/parity/08-errors/question_operator_success.tn",
+const DIFFERENTIAL_CATALOG_EXCLUSIONS: &[(&str, &str)] = &[
+    (
+        "examples/parity/02-operators/stepped_range.tn",
+        "native C backend still aborts on tn_runtime_for-backed comprehensions",
+    ),
+    (
+        "examples/parity/05-functions/function_capture_multi_clause_anon.tn",
+        "native closure lowering still rejects this multi-clause anonymous function capture",
+    ),
+    (
+        "examples/parity/06-control-flow/for_into_runtime_fail.tn",
+        "native runtime failure output still lacks the interpreter's source-context-rich diagnostic text",
+    ),
+    (
+        "examples/parity/10-idiomatic/closures_and_captures.tn",
+        "native C backend still aborts on tn_runtime_for-backed comprehensions",
+    ),
+    (
+        "examples/parity/10-idiomatic/fizzbuzz.tn",
+        "native C backend still aborts on tn_runtime_for-backed comprehensions",
+    ),
+    (
+        "examples/parity/10-idiomatic/keyword_filtering.tn",
+        "native C backend still aborts on tn_runtime_for-backed comprehensions",
+    ),
+    (
+        "examples/parity/10-idiomatic/list_processing.tn",
+        "native C backend still aborts on tn_runtime_for-backed comprehensions",
+    ),
+    (
+        "examples/parity/10-idiomatic/pipeline_transform.tn",
+        "native C backend still aborts on tn_runtime_for-backed comprehensions",
+    ),
 ];
 
 #[derive(Debug, Deserialize)]
@@ -35,37 +48,50 @@ struct Catalog {
 #[derive(Debug, Deserialize)]
 struct CatalogEntry {
     path: String,
+    check_exit: i32,
     status: String,
 }
 
 #[test]
-fn parity_catalog_subset_matches_between_interpreter_and_native() {
-    let catalog: Catalog = toml::from_str(
-        &fs::read_to_string("examples/parity/catalog.toml")
-            .expect("parity catalog should be readable"),
-    )
-    .expect("parity catalog should parse");
+fn active_compileable_catalog_entries_have_explicit_differential_coverage() {
+    let eligible_paths = active_compileable_catalog_paths();
+    let eligible_set: BTreeSet<String> = eligible_paths.iter().cloned().collect();
 
-    let active_paths: BTreeSet<String> = catalog
-        .example
-        .into_iter()
-        .filter(|entry| entry.status == "active")
-        .map(|entry| entry.path)
-        .collect();
-
-    for fixture in PARITY_DIFF_SUBSET {
+    for (path, reason) in DIFFERENTIAL_CATALOG_EXCLUSIONS {
         assert!(
-            active_paths.contains(*fixture),
-            "fixture {fixture} must remain active in examples/parity/catalog.toml"
+            eligible_set.contains(*path),
+            "differential exclusion {path} must target an active catalog entry with check_exit = 0"
         );
+        assert!(
+            !reason.trim().is_empty(),
+            "differential exclusion {path} must include a non-empty justification"
+        );
+    }
 
+    let excluded: BTreeSet<String> = DIFFERENTIAL_CATALOG_EXCLUSIONS
+        .iter()
+        .map(|(path, _)| (*path).to_string())
+        .collect();
+    let included: BTreeSet<String> = differential_catalog_fixtures().into_iter().collect();
+    let decided: BTreeSet<String> = included.union(&excluded).cloned().collect();
+    let missing: Vec<String> = eligible_set.difference(&decided).cloned().collect();
+
+    assert!(
+        missing.is_empty(),
+        "every active catalog entry with check_exit = 0 must be included in the differential gate or explicitly excluded: {missing:?}"
+    );
+}
+
+#[test]
+fn parity_catalog_fixtures_match_between_interpreter_and_native() {
+    for fixture in differential_catalog_fixtures() {
         if let Err(mismatch) = common::differential::run_differential_fixture(
             Path::new(env!("CARGO_BIN_EXE_tonic")),
             Path::new("."),
-            fixture,
+            &fixture,
         ) {
             let artifact_root = common::unique_temp_dir("differential-parity-mismatch");
-            let fixture_source = fs::read_to_string(fixture)
+            let fixture_source = fs::read_to_string(&fixture)
                 .unwrap_or_else(|_| format!("# fixture source unavailable for {fixture}\n"));
             let artifact_dir = common::differential::capture_mismatch_artifact(
                 &artifact_root,
@@ -180,6 +206,36 @@ fn mismatch_artifact_capture_writes_replay_bundle() {
         .expect("mismatch payload should be readable");
     assert!(payload.contains("stdout mismatch"));
     assert!(payload.contains("generated/seed-99.tn"));
+}
+
+fn differential_catalog_fixtures() -> Vec<String> {
+    active_compileable_catalog_paths()
+        .into_iter()
+        .filter(|path| differential_exclusion_reason(path).is_none())
+        .collect()
+}
+
+fn active_compileable_catalog_paths() -> Vec<String> {
+    load_catalog()
+        .example
+        .into_iter()
+        .filter(|entry| entry.status == "active" && entry.check_exit == 0)
+        .map(|entry| entry.path)
+        .collect()
+}
+
+fn differential_exclusion_reason(path: &str) -> Option<&'static str> {
+    DIFFERENTIAL_CATALOG_EXCLUSIONS
+        .iter()
+        .find_map(|(excluded_path, reason)| (*excluded_path == path).then_some(*reason))
+}
+
+fn load_catalog() -> Catalog {
+    toml::from_str(
+        &fs::read_to_string("examples/parity/catalog.toml")
+            .expect("parity catalog should be readable"),
+    )
+    .expect("parity catalog should parse")
 }
 
 fn generate_program(seed: u64) -> String {

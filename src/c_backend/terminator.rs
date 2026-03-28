@@ -212,20 +212,31 @@ pub(super) fn emit_c_guard_condition(
                         "c backend guard stack underflow in function {function_name}"
                     ))
                 })?;
-                let op_str = match kind {
-                    CmpKind::Eq => "==",
-                    CmpKind::NotEq => "!=",
-                    CmpKind::Lt => "<",
-                    CmpKind::Lte => "<=",
-                    CmpKind::Gt => ">",
-                    CmpKind::Gte => ">=",
-                    CmpKind::StrictEq => "==",
-                    CmpKind::StrictNotEq => "!=",
-                };
                 let reg = format!("{label}_cmp_{index}");
-                out.push_str(&format!(
-                    "  TnVal {reg} = ({left} {op_str} {right}) ? 1 : 0;\n"
-                ));
+                match kind {
+                    CmpKind::Eq | CmpKind::StrictEq => {
+                        out.push_str(&format!(
+                            "  TnVal {reg} = tn_runtime_value_equal({left}, {right}) ? 1 : 0;\n"
+                        ));
+                    }
+                    CmpKind::NotEq | CmpKind::StrictNotEq => {
+                        out.push_str(&format!(
+                            "  TnVal {reg} = tn_runtime_value_equal({left}, {right}) ? 0 : 1;\n"
+                        ));
+                    }
+                    CmpKind::Lt | CmpKind::Lte | CmpKind::Gt | CmpKind::Gte => {
+                        let op_str = match kind {
+                            CmpKind::Lt => "<",
+                            CmpKind::Lte => "<=",
+                            CmpKind::Gt => ">",
+                            CmpKind::Gte => ">=",
+                            _ => unreachable!(),
+                        };
+                        out.push_str(&format!(
+                            "  TnVal {reg} = ({left} {op_str} {right}) ? 1 : 0;\n"
+                        ));
+                    }
+                }
                 stack.push(reg);
             }
             IrOp::Bang { .. } => {
