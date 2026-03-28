@@ -28,6 +28,8 @@ enum StaticForValue {
     Atom(String),
     String(String),
     Float(String),
+    Range(i64, i64),
+    SteppedRange(i64, i64, i64),
     Tuple(Box<StaticForValue>, Box<StaticForValue>),
     List(Vec<StaticForValue>),
     Map(Vec<(StaticForValue, StaticForValue)>),
@@ -43,6 +45,8 @@ impl StaticForValue {
             StaticForValue::Atom(_) => "atom",
             StaticForValue::String(_) => "string",
             StaticForValue::Float(_) => "float",
+            StaticForValue::Range(_, _) => "range",
+            StaticForValue::SteppedRange(_, _, _) => "stepped_range",
             StaticForValue::Tuple(_, _) => "tuple",
             StaticForValue::List(_) => "list",
             StaticForValue::Map(_) => "map",
@@ -201,6 +205,12 @@ fn emit_static_for_value(
             let escaped = c_string_literal(value);
             format!("tn_runtime_const_float((TnVal)(intptr_t){escaped})")
         }
+        StaticForValue::Range(start, end) => {
+            format!("tn_runtime_range((TnVal){start}LL, (TnVal){end}LL)")
+        }
+        StaticForValue::SteppedRange(..) => {
+            "tn_stub_abort(\"tn_runtime_stepped_range\")".to_string()
+        }
         StaticForValue::Tuple(left, right) => {
             let left_value = emit_static_for_value(left, out, temp_index);
             let right_value = emit_static_for_value(right, out, temp_index);
@@ -340,15 +350,7 @@ fn evaluate_for_generators(
 
     let generator = &generators[index];
     let enumerable = evaluate_static_for_ops(&generator.source_ops, env)?;
-    let values = match enumerable {
-        StaticForValue::List(values) => values,
-        other => {
-            return Err(StaticForEvalIssue::Runtime(format!(
-                "for expects list generator, found {}",
-                other.kind_label()
-            )));
-        }
-    };
+    let values = iter_static_for_source(enumerable)?;
 
     for value in values {
         let mut iteration_env = env.clone();
@@ -374,6 +376,45 @@ fn evaluate_for_generators(
     }
 
     Ok(())
+}
+
+fn iter_static_for_source(
+    source: StaticForValue,
+) -> Result<Vec<StaticForValue>, StaticForEvalIssue> {
+    match source {
+        StaticForValue::List(values) => Ok(values),
+        StaticForValue::Range(start, end) => {
+            if start <= end {
+                Ok((start..=end).map(StaticForValue::Int).collect())
+            } else {
+                Ok(Vec::new())
+            }
+        }
+        StaticForValue::SteppedRange(start, end, step) => {
+            let mut values = Vec::new();
+            let mut current = start;
+            if step > 0 {
+                while current <= end {
+                    values.push(StaticForValue::Int(current));
+                    current += step;
+                }
+            } else if step < 0 {
+                while current >= end {
+                    values.push(StaticForValue::Int(current));
+                    current += step;
+                }
+            }
+            Ok(values)
+        }
+        StaticForValue::Map(entries) => Ok(entries
+            .into_iter()
+            .map(|(key, value)| StaticForValue::Tuple(Box::new(key), Box::new(value)))
+            .collect()),
+        other => Err(StaticForEvalIssue::Runtime(format!(
+            "for requires iterable, found {}",
+            other.kind_label()
+        ))),
+    }
 }
 
 fn collect_for_value(
@@ -424,4 +465,146 @@ fn collect_for_value(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::{IrForGenerator, IrOp, IrPattern};
+
+    fn evaluate_generator_source(source_ops: Vec<IrOp>) -> Vec<StaticForValue> {
+        let for_op = IrOp::For {
+            generators: vec![IrForGenerator {
+                pattern: IrPattern::Bind {
+                    name: "x".to_string(),
+                },
+                source_ops,
+                guard_ops: None,
+            }],
+            into_ops: None,
+            reduce_ops: None,
+            body_ops: vec![
+                IrOp::LoadVariable {
+                    name: "x".to_string(),
+                    offset: 0,
+                },
+                IrOp::Return { offset: 0 },
+            ],
+            offset: 0,
+        };
+
+        let StaticForValue::List(values) =
+            evaluate_for_spec(&for_op).expect("static for should evaluate")
+        else {
+            panic!("static for should collect to list");
+        };
+
+        values
+    }
+
+    #[test]
+    fn static_for_iterates_range_generator() {
+        let values = evaluate_generator_source(vec![
+            IrOp::ConstInt {
+                value: 1,
+                offset: 0,
+            },
+            IrOp::ConstInt {
+                value: 3,
+                offset: 0,
+            },
+            IrOp::Range { offset: 0 },
+        ]);
+
+        assert_eq!(
+            values,
+            vec![
+                StaticForValue::Int(1),
+                StaticForValue::Int(2),
+                StaticForValue::Int(3),
+            ]
+        );
+    }
+
+    #[test]
+    fn static_for_iterates_stepped_range_generator() {
+        let values = evaluate_generator_source(vec![
+            IrOp::ConstInt {
+                value: 1,
+                offset: 0,
+            },
+            IrOp::ConstInt {
+                value: 10,
+                offset: 0,
+            },
+            IrOp::Range { offset: 0 },
+            IrOp::ConstInt {
+                value: 3,
+                offset: 0,
+            },
+            IrOp::SteppedRange { offset: 0 },
+        ]);
+
+        assert_eq!(
+            values,
+            vec![
+                StaticForValue::Int(1),
+                StaticForValue::Int(4),
+                StaticForValue::Int(7),
+                StaticForValue::Int(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn static_for_iterates_descending_stepped_range_generator() {
+        let values = evaluate_generator_source(vec![
+            IrOp::ConstInt {
+                value: 10,
+                offset: 0,
+            },
+            IrOp::ConstInt {
+                value: 1,
+                offset: 0,
+            },
+            IrOp::Range { offset: 0 },
+            IrOp::ConstInt {
+                value: -3,
+                offset: 0,
+            },
+            IrOp::SteppedRange { offset: 0 },
+        ]);
+
+        assert_eq!(
+            values,
+            vec![
+                StaticForValue::Int(10),
+                StaticForValue::Int(7),
+                StaticForValue::Int(4),
+                StaticForValue::Int(1),
+            ]
+        );
+    }
+
+    #[test]
+    fn static_for_zero_step_stepped_range_is_empty() {
+        let values = evaluate_generator_source(vec![
+            IrOp::ConstInt {
+                value: 1,
+                offset: 0,
+            },
+            IrOp::ConstInt {
+                value: 5,
+                offset: 0,
+            },
+            IrOp::Range { offset: 0 },
+            IrOp::ConstInt {
+                value: 0,
+                offset: 0,
+            },
+            IrOp::SteppedRange { offset: 0 },
+        ]);
+
+        assert!(values.is_empty());
+    }
 }

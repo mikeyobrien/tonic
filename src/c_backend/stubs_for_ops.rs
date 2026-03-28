@@ -45,6 +45,26 @@ pub(super) fn evaluate_static_for_ops(
                 let left = pop_static_for_int(&mut stack, "div left")?;
                 stack.push(StaticForValue::Int(left / right));
             }
+            IrOp::Range { .. } => {
+                let right = pop_static_for_int(&mut stack, "range right")?;
+                let left = pop_static_for_int(&mut stack, "range left")?;
+                stack.push(StaticForValue::Range(left, right));
+            }
+            IrOp::SteppedRange { .. } => {
+                let step = pop_static_for_int(&mut stack, "stepped range step")?;
+                let range = pop_static_for_value(&mut stack, "stepped range range")?;
+                match range {
+                    StaticForValue::Range(start, end) => {
+                        stack.push(StaticForValue::SteppedRange(start, end, step));
+                    }
+                    other => {
+                        return Err(StaticForEvalIssue::Runtime(format!(
+                            "stepped range expects range operand, found {}",
+                            other.kind_label()
+                        )));
+                    }
+                }
+            }
             IrOp::Case { branches, .. } => {
                 let subject = pop_static_for_value(&mut stack, "case subject")?;
                 let mut matched_value = None;

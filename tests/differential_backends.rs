@@ -7,10 +7,6 @@ mod common;
 
 const DIFFERENTIAL_CATALOG_EXCLUSIONS: &[(&str, &str)] = &[
     (
-        "examples/parity/02-operators/stepped_range.tn",
-        "native C backend still aborts on tn_runtime_for-backed comprehensions",
-    ),
-    (
         "examples/parity/05-functions/function_capture_multi_clause_anon.tn",
         "native closure lowering still rejects this multi-clause anonymous function capture",
     ),
