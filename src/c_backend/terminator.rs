@@ -303,6 +303,17 @@ pub(super) fn emit_c_guard_condition(
                             }
 
                             out.push_str(&format!("  TnVal {reg} = {helper}({rendered_args});\n"));
+                        } else if name == "div" || name == "rem" {
+                            if call_args.len() != 2 {
+                                return Err(CBackendError::new(format!(
+                                    "c backend guard builtin {name} arity mismatch in function {function_name} at offset {offset}"
+                                )));
+                            }
+                            let operator = if name == "div" { "/" } else { "%" };
+                            out.push_str(&format!(
+                                "  TnVal {reg} = (TnVal)({} {operator} {});\n",
+                                call_args[0], call_args[1]
+                            ));
                         } else {
                             out.push_str(&format!(
                                 "  TnVal {reg} = tn_stub_abort(\"guard builtin {name}\");\n"

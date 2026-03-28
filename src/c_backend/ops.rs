@@ -196,9 +196,32 @@ pub(super) fn emit_c_instructions(
                         function.name
                     )));
                 };
-                out.push_str(&format!(
-                    "  v{dest} = {runtime_helper}((TnVal){op_hash}LL);\n"
-                ));
+
+                if matches!(source, IrOp::For { .. }) {
+                    out.push_str(&format!(
+                        "  TnBinding tn_for_call_bindings_{dest}[TN_MAX_BINDINGS];\n"
+                    ));
+                    out.push_str(&format!("  size_t tn_for_call_bindings_len_{dest} = 0;\n"));
+                    out.push_str(&format!(
+                        "  tn_binding_snapshot(tn_for_call_bindings_{dest}, &tn_for_call_bindings_len_{dest});\n"
+                    ));
+                    for (param_index, param) in function.params.iter().enumerate() {
+                        let binding_hash = hash_text_i64(&param.name);
+                        out.push_str(&format!(
+                            "  tn_binding_set((TnVal){binding_hash}LL, _arg{param_index});\n"
+                        ));
+                    }
+                    out.push_str(&format!(
+                        "  v{dest} = {runtime_helper}((TnVal){op_hash}LL);\n"
+                    ));
+                    out.push_str(&format!(
+                        "  tn_binding_restore(tn_for_call_bindings_{dest}, tn_for_call_bindings_len_{dest});\n"
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "  v{dest} = {runtime_helper}((TnVal){op_hash}LL);\n"
+                    ));
+                }
                 out.push_str(&format!("  tn_runtime_root_register(v{dest});\n"));
             }
         }
