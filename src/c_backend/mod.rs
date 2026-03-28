@@ -41,7 +41,7 @@ use stubs::{emit_header, emit_runtime_stubs};
 /// - Includes required headers
 /// - Declares `tn_runtime_*` functions as weak stubs (abort on call)
 /// - Emits user function implementations
-/// - Emits a `main()` that calls `Demo.run()` and prints the integer result
+/// - Emits a `main()` that calls `Demo.run()` and mirrors the interpreter's stdout contract
 pub(crate) fn lower_mir_to_c(
     mir: &MirProgram,
     source_path: &str,

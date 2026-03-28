@@ -2,6 +2,7 @@ pub(super) fn emit_stubs_io(out: &mut String) {
     out.push_str(
         r###"static TnVal tn_host_io_puts(TnVal value) {
   const char *text = tn_expect_host_string_arg("IO.puts", value, 1);
+  tn_runtime_observe_stdout();
   fputs(text, stdout);
   fputc('\n', stdout);
   return tn_runtime_const_nil();
@@ -16,6 +17,7 @@ static TnVal tn_host_io_inspect(TnVal value) {
 
 static TnVal tn_host_io_gets(TnVal prompt_value) {
   const char *prompt = tn_expect_host_string_arg("IO.gets", prompt_value, 1);
+  tn_runtime_observe_stdout();
   fputs(prompt, stdout);
   if (fflush(stdout) != 0) {
     int io_errno = errno != 0 ? errno : EIO;

@@ -891,6 +891,7 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
       buffer[len] = '\0';
 
       if (stream_output) {
+        tn_runtime_observe_stdout();
         fputc(next_ch, stdout);
         fflush(stdout);
       }

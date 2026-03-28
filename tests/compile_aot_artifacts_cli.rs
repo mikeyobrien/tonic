@@ -2,6 +2,7 @@ use assert_cmd::assert::OutputAssertExt;
 use predicates::str::contains;
 use serde_json::Value;
 use std::fs;
+
 mod common;
 
 // ---------------------------------------------------------------------------
@@ -183,6 +184,63 @@ fn compiled_elf_output_matches_interpreter_for_arithmetic() {
     assert_eq!(
         native_output.stdout, interp_output.stdout,
         "stdout must match between interpreter and native ELF"
+    );
+}
+
+#[test]
+fn compiled_elf_suppresses_final_value_after_stdout_side_effects() {
+    let fixture_root = common::unique_fixture_root("compile-stdout-contract-puts");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    IO.puts(\"hi\")\n    7\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "."])
+        .output()
+        .expect("interpreter run should execute");
+
+    assert!(
+        interpreted.status.success(),
+        "expected interpreter success, got status {:?} and stderr: {}",
+        interpreted.status.code(),
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(interpreted.stdout.clone()).expect("interpreter stdout should be utf8"),
+        "hi\n"
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success();
+
+    let compiled = std::process::Command::new(fixture_root.join(".tonic/build/main"))
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        compiled.status.success(),
+        "expected compiled executable success, got status {:?} and stderr: {}",
+        compiled.status.code(),
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    assert_eq!(
+        compiled.stdout, interpreted.stdout,
+        "stdout must match interpreter when stdout side effects already occurred"
     );
 }
 

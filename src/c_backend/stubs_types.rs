@@ -92,12 +92,16 @@ static uint64_t tn_memory_gc_collections_total = 0;
 static int tn_memory_stats_enabled = -1;
 static int tn_memory_rc_enabled = -1;
 static int tn_memory_trace_enabled = -1;
+static int tn_stdout_observed = 0;
 
 static const uint32_t TN_GC_FLAG_MARK = UINT32_C(1);
 
 static int tn_is_boxed(TnVal value);
 static void tn_runtime_retain(TnVal value);
 static void tn_runtime_release(TnVal value);
+static void tn_runtime_reset_stdout_observed(void);
+static void tn_runtime_observe_stdout(void);
+static int tn_runtime_stdout_was_observed(void);
 static int tn_runtime_memory_trace_enabled(void);
 static const char *tn_runtime_memory_mode_label(void);
 static const char *tn_runtime_cycle_collection_label(void);
@@ -150,6 +154,18 @@ static const char *tn_runtime_memory_mode_label(void) {
 
 static const char *tn_runtime_cycle_collection_label(void) {
   return tn_runtime_memory_trace_enabled() ? "mark_sweep" : "off";
+}
+
+static void tn_runtime_reset_stdout_observed(void) {
+  tn_stdout_observed = 0;
+}
+
+static void tn_runtime_observe_stdout(void) {
+  tn_stdout_observed = 1;
+}
+
+static int tn_runtime_stdout_was_observed(void) {
+  return tn_stdout_observed;
 }
 
 static void tn_runtime_gc_finalize(void) {

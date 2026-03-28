@@ -62,8 +62,11 @@ pub(super) fn emit_main_entrypoint(
     out.push_str("int main(int argc, char **argv) {\n");
     out.push_str("  tn_global_argc = argc;\n");
     out.push_str("  tn_global_argv = argv;\n");
+    out.push_str("  tn_runtime_reset_stdout_observed();\n");
     out.push_str(&format!("  TnVal result = {entry_symbol}();\n"));
-    out.push_str("  tn_runtime_println(result);\n");
+    out.push_str("  if (!tn_runtime_stdout_was_observed()) {\n");
+    out.push_str("    tn_runtime_println(result);\n");
+    out.push_str("  }\n");
     out.push_str("  tn_runtime_release(result);\n");
     out.push_str("  tn_runtime_gc_finalize();\n");
     out.push_str("  tn_runtime_memory_stats_print();\n");
