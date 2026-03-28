@@ -3,6 +3,15 @@ use std::collections::BTreeMap;
 
 use super::groups::{group_requires_dispatcher, FunctionGroup};
 
+const RUNTIME_HELPER_DECLARATIONS: &[(&str, usize)] = &[
+    ("tn_runtime_length", 1),
+    ("tn_runtime_hd", 1),
+    ("tn_runtime_tl", 1),
+    ("tn_runtime_elem", 2),
+    ("tn_runtime_tuple_size", 1),
+    ("tn_runtime_put_elem", 3),
+];
+
 pub(super) fn emit_forward_declarations(
     groups: &[FunctionGroup],
     mir: &MirProgram,
@@ -11,6 +20,7 @@ pub(super) fn emit_forward_declarations(
     out: &mut String,
 ) {
     out.push_str("/* forward declarations */\n");
+    emit_runtime_helper_forward_declarations(out);
     for group in groups {
         let use_dispatcher = group_requires_dispatcher(group, mir);
         if use_dispatcher {
@@ -48,6 +58,16 @@ pub(super) fn emit_forward_declarations(
         }
     }
     out.push('\n');
+}
+
+fn emit_runtime_helper_forward_declarations(out: &mut String) {
+    for (symbol, arity) in RUNTIME_HELPER_DECLARATIONS {
+        let params = (0..*arity)
+            .map(|i| format!("TnVal _arg{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("static TnVal {symbol}({params});\n"));
+    }
 }
 
 pub(super) fn emit_main_entrypoint(

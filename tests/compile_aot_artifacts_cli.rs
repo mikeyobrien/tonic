@@ -331,6 +331,49 @@ fn compiled_elf_supports_list_and_tuple_kernel_builtins() {
 }
 
 #[test]
+fn compiled_elf_supports_stdlib_enum_helpers_using_length_and_elem() {
+    let temp_dir = common::unique_temp_dir("compile-stdlib-enum-helpers");
+    let source_path = temp_dir.join("enum_helpers.tn");
+    fs::write(
+        &source_path,
+        "defmodule Demo do\n  def run() do\n    fetched = Enum.fetch([10, 20, 30], 1)\n    reduced = Enum.reduce_while([1, 2, 3, 4], 0, fn x, acc ->\n      case acc + x >= 6 do\n        true -> {:halt, acc}\n        _ -> {:cont, acc + x}\n      end\n    end)\n    {fetched, reduced}\n  end\nend\n",
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "enum_helpers.tn"])
+        .output()
+        .expect("interpreter run should execute enum helpers program");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "enum_helpers.tn"])
+        .assert()
+        .success();
+
+    let exe_path = temp_dir.join(".tonic/build/enum_helpers");
+    let native_output = std::process::Command::new(&exe_path)
+        .output()
+        .expect("compiled enum helpers binary should execute");
+
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        native_output.stdout, interpreted.stdout,
+        "stdout must match between interpreter and native ELF"
+    );
+}
+
+#[test]
 fn compiled_elf_matches_interpreter_for_abs_max_min_round_and_trunc() {
     let temp_dir = common::unique_temp_dir("compile-math-builtins-focused");
     let source_path = temp_dir.join("main.tn");
