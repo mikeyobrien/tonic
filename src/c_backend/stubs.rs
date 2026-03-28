@@ -25,6 +25,7 @@ pub(super) fn emit_header(out: &mut String) {
     out.push_str("#include <sys/stat.h>\n");
     out.push_str("#include <sys/wait.h>\n");
     out.push_str("#include <unistd.h>\n");
+    out.push_str("#include <sys/time.h>\n");
     out.push_str("#include <sys/socket.h>\n");
     out.push_str("#include <netinet/in.h>\n");
     out.push_str("#include <arpa/inet.h>\n");

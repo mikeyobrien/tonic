@@ -363,6 +363,67 @@ fn compiled_runtime_supports_system_write_text_atomic_and_lock_primitives() {
 }
 
 #[test]
+fn compiled_runtime_lock_acquire_writes_observable_marker_with_positive_timestamp() {
+    let fixture_root = common::unique_fixture_root("runtime-llvm-system-lock-marker");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    [System.lock_acquire(\"locks/proposal.lock\"), System.read_text(\"locks/proposal.lock\")]\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok"));
+
+    let executable = fixture_root.join(".tonic/build/main");
+    let output = std::process::Command::new(&executable)
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        output.status.success(),
+        "expected compiled executable success, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.starts_with("[true, \"pid=") && stdout.contains(" timestamp_ms="),
+        "expected observable lock marker in compiled output, got: {stdout}"
+    );
+
+    let marker = fs::read_to_string(fixture_root.join("locks").join("proposal.lock"))
+        .expect("lock marker should exist after acquire");
+    assert!(
+        marker.starts_with("pid=") && marker.contains(" timestamp_ms="),
+        "expected lock marker shape, got: {marker}"
+    );
+
+    let timestamp_text = marker
+        .split("timestamp_ms=")
+        .nth(1)
+        .expect("marker should include timestamp_ms")
+        .trim();
+    let timestamp_ms: i64 = timestamp_text
+        .parse()
+        .expect("timestamp_ms should be a positive integer");
+    assert!(timestamp_ms > 0, "expected timestamp_ms > 0, got: {timestamp_ms}");
+}
+
+#[test]
 fn compiled_runtime_system_write_text_atomic_rejects_non_string_content_deterministically() {
     let fixture_root =
         common::unique_fixture_root("runtime-llvm-system-write-text-atomic-type-error");

@@ -436,9 +436,16 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
       }
       return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(errno));
     }
+    struct timeval now;
+    if (gettimeofday(&now, NULL) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      fclose(handle);
+      return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(io_errno));
+    }
+    long long timestamp_ms = ((long long)now.tv_sec * 1000LL) + ((long long)now.tv_usec / 1000LL);
     char marker[128];
-    int marker_len = snprintf(marker, sizeof(marker), "pid=%d timestamp_ms=0\n", getpid());
-    if (marker_len < 0 || fputs(marker, handle) < 0) {
+    int marker_len = snprintf(marker, sizeof(marker), "pid=%d timestamp_ms=%lld\n", getpid(), timestamp_ms);
+    if (marker_len < 0 || (size_t)marker_len >= sizeof(marker) || fputs(marker, handle) < 0) {
       int io_errno = errno != 0 ? errno : EIO;
       fclose(handle);
       return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(io_errno));
