@@ -25,6 +25,13 @@ pass_threshold = 0.82
   artifact_size_bytes = 12000000
   compile_latency_ms = 3000
 
+  [performance_contract.regression_policy]
+  quarantine_margin = 0.10
+  rollback_margin = 0.20
+  quarantine_max_soft_regressions = 2
+  quarantine_max_score_gap = 0.03
+  rollback_min_score_gap = 0.08
+
 [[workload]]
 name = "check_parse_control_flow"
 command = ["check", "examples/parity/06-control-flow/for_multi_generator.tn"]

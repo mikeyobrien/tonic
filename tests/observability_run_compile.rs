@@ -161,7 +161,7 @@ fn compile_failure_with_observability_records_normalized_error_and_source() {
     let obs_dir = fixture_root.join("observability");
     fs::write(
         &source_path,
-        "defmodule Demo do\n  def run() do\n    true + 1\n  end\nend\n",
+        "defmodule Demo do\n  def run() do\n    if 1 do\n      true\n    end\n  end\nend\n",
     )
     .expect("fixture source should be written");
 

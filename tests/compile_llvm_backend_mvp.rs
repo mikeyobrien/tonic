@@ -41,11 +41,11 @@ fn compile_llvm_backend_emits_executable_artifact_for_subset_program() {
     let exe_path = temp_dir.join(".tonic/build/math");
     assert!(exe_path.exists(), "ELF executable should exist");
 
-    let elf_bytes = fs::read(&exe_path).expect("should read ELF binary");
-    assert_eq!(
-        &elf_bytes[..4],
-        b"\x7fELF",
-        "output must be a real ELF binary"
+    let elf_bytes = fs::read(&exe_path).expect("should read executable binary");
+    assert!(
+        common::is_native_executable(&elf_bytes),
+        "output must be a native executable, got {:?}",
+        &elf_bytes[..4]
     );
 
     // LLVM IR sidecar is still generated

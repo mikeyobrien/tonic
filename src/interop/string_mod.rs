@@ -421,7 +421,7 @@ mod tests {
         let result = HOST_REGISTRY
             .call("str_to_float", &[s("3.14")])
             .expect("str_to_float should succeed");
-        assert_eq!(result, s("3.14"));
+        assert_eq!(result, RuntimeValue::Float("3.14".to_string()));
     }
 
     #[test]

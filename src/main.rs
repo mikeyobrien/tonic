@@ -11,6 +11,7 @@ mod ir;
 mod lexer;
 mod linker;
 mod llvm_backend;
+#[cfg(feature = "lsp")]
 mod lsp;
 mod manifest;
 mod mir;
@@ -328,6 +329,7 @@ fn run(args: Vec<String>) -> i32 {
         Some("uninstall") => handle_uninstall(iter.collect()),
         Some("installed") => handle_installed(iter.collect()),
         Some("docs") => docs::handle_docs(iter.collect()),
+        #[cfg(feature = "lsp")]
         Some("lsp") => {
             lsp::run_lsp_server();
             EXIT_OK

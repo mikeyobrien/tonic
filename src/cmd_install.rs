@@ -37,6 +37,9 @@ struct PackageEntry {
 // ---------------------------------------------------------------------------
 
 fn tonic_home() -> PathBuf {
+    if let Some(val) = std::env::var_os("TONIC_HOME") {
+        return PathBuf::from(val);
+    }
     dirs_or_home().join(".tonic")
 }
 

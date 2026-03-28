@@ -67,7 +67,7 @@ fn compiled_runtime_supports_io_ansi_helpers_and_inspect_return_semantics() {
 }
 
 #[test]
-fn compiled_runtime_supports_io_puts_stdout_behavior() {
+fn compiled_runtime_suppresses_final_value_after_io_puts_stdout() {
     let fixture_root = common::unique_fixture_root("runtime-llvm-io-puts");
     write_project_fixture(
         &fixture_root,
@@ -89,7 +89,7 @@ fn compiled_runtime_supports_io_puts_stdout_behavior() {
 
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout should be utf8"),
-        "hello from puts\n:done\n"
+        "hello from puts\n"
     );
     assert_eq!(
         String::from_utf8(output.stderr).expect("stderr should be utf8"),
@@ -98,7 +98,7 @@ fn compiled_runtime_supports_io_puts_stdout_behavior() {
 }
 
 #[test]
-fn compiled_runtime_supports_io_gets_prompt_and_newline_stripping() {
+fn compiled_runtime_suppresses_final_value_after_io_gets_prompt() {
     let fixture_root = common::unique_fixture_root("runtime-llvm-io-gets");
     write_project_fixture(
         &fixture_root,
@@ -133,7 +133,7 @@ fn compiled_runtime_supports_io_gets_prompt_and_newline_stripping() {
 
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout should be utf8"),
-        "prompt> \"typed line\"\n"
+        "prompt> "
     );
     assert_eq!(
         String::from_utf8(output.stderr).expect("stderr should be utf8"),

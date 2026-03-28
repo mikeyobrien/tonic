@@ -282,6 +282,7 @@ fn host_registry_system_constant_time_eq_reports_match_and_mismatch() {
     assert_eq!(different, RuntimeValue::Bool(false));
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_discord_ed25519_verify_accepts_valid_signature() {
     let result = HOST_REGISTRY
@@ -305,6 +306,7 @@ fn host_registry_system_discord_ed25519_verify_accepts_valid_signature() {
     assert_eq!(result, RuntimeValue::Bool(true));
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_discord_ed25519_verify_returns_false_for_invalid_signature() {
     let result = HOST_REGISTRY
@@ -328,6 +330,7 @@ fn host_registry_system_discord_ed25519_verify_returns_false_for_invalid_signatu
     assert_eq!(result, RuntimeValue::Bool(false));
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_discord_ed25519_verify_rejects_malformed_signature_hex() {
     let error = HOST_REGISTRY

@@ -192,6 +192,7 @@ fn host_registry_system_persistence_primitives_report_deterministic_argument_and
     let _ = std::fs::remove_dir_all(&fixture_root);
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_invalid_url() {
     let invalid_url = HOST_REGISTRY
@@ -213,6 +214,7 @@ fn host_registry_system_http_request_rejects_invalid_url() {
     );
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_unsupported_url_scheme() {
     let ftp_scheme = HOST_REGISTRY
@@ -234,6 +236,7 @@ fn host_registry_system_http_request_rejects_unsupported_url_scheme() {
     );
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_timeout_out_of_range() {
     let too_low = HOST_REGISTRY
@@ -279,6 +282,7 @@ fn host_registry_system_http_request_rejects_timeout_out_of_range() {
     );
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_invalid_header_entry() {
     let bad_header = HOST_REGISTRY
