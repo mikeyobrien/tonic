@@ -5,10 +5,12 @@ use super::system::expect_exact_args;
 use super::{host_value_kind, HostError, HostRegistry};
 use crate::runtime::RuntimeValue;
 
+type StoreEntries = Vec<(RuntimeValue, RuntimeValue)>;
+type StoreMap = HashMap<String, StoreEntries>;
+
 /// Global store: maps store_id -> Vec<(key, value)> pairs.
 /// We use Vec<(RuntimeValue, RuntimeValue)> because RuntimeValue doesn't implement Hash.
-static STORES: LazyLock<Mutex<HashMap<String, Vec<(RuntimeValue, RuntimeValue)>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static STORES: LazyLock<Mutex<StoreMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 static STORE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -19,7 +21,7 @@ fn next_store_id() -> String {
 
 fn with_store<F, R>(name: &str, store_id: &str, f: F) -> Result<R, HostError>
 where
-    F: FnOnce(&mut Vec<(RuntimeValue, RuntimeValue)>) -> R,
+    F: FnOnce(&mut StoreEntries) -> R,
 {
     let mut stores = STORES.lock().unwrap();
     match stores.get_mut(store_id) {
@@ -308,7 +310,7 @@ mod tests {
         ])
         .unwrap();
 
-        let keys = host_store_keys(&[sid.clone()]).unwrap();
+        let keys = host_store_keys(std::slice::from_ref(&sid)).unwrap();
         assert_eq!(
             keys,
             RuntimeValue::List(vec![
@@ -331,7 +333,7 @@ mod tests {
         let sid = RuntimeValue::String(id);
 
         assert_eq!(
-            host_store_size(&[sid.clone()]).unwrap(),
+            host_store_size(std::slice::from_ref(&sid)).unwrap(),
             RuntimeValue::Int(0)
         );
 
@@ -342,7 +344,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(
-            host_store_size(&[sid.clone()]).unwrap(),
+            host_store_size(std::slice::from_ref(&sid)).unwrap(),
             RuntimeValue::Int(1)
         );
 
@@ -390,7 +392,7 @@ mod tests {
             RuntimeValue::Int(1),
         ])
         .unwrap();
-        host_store_clear(&[sid.clone()]).unwrap();
+        host_store_clear(std::slice::from_ref(&sid)).unwrap();
 
         assert_eq!(host_store_size(&[sid]).unwrap(), RuntimeValue::Int(0));
     }
@@ -401,7 +403,7 @@ mod tests {
         let id = new_store();
         let sid = RuntimeValue::String(id.clone());
 
-        host_store_drop(&[sid.clone()]).unwrap();
+        host_store_drop(std::slice::from_ref(&sid)).unwrap();
 
         // Operations on dropped store should fail
         let result = host_store_get(&[sid, RuntimeValue::Atom("x".into())]);

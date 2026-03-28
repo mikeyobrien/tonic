@@ -110,6 +110,120 @@ static TnVal tn_runtime_make_bitstring_varargs(TnVal count, ...) {
   return tn_heap_store(obj);
 }
 
+static TnVal tn_runtime_length(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("length expects a list, found %s", tn_runtime_value_kind(value));
+  }
+
+  return (TnVal)obj->as.list.len;
+}
+
+static TnVal tn_runtime_hd(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("hd expects a list, found %s", tn_runtime_value_kind(value));
+  }
+  if (obj->as.list.len == 0) {
+    return tn_runtime_fail("hd called on empty list");
+  }
+
+  TnVal head = obj->as.list.items[0];
+  tn_runtime_retain(head);
+  return head;
+}
+
+static TnVal tn_runtime_tl(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("tl expects a list, found %s", tn_runtime_value_kind(value));
+  }
+  if (obj->as.list.len == 0) {
+    return tn_runtime_fail("tl called on empty list");
+  }
+
+  size_t len = obj->as.list.len - 1;
+  TnObj *list = tn_new_obj(TN_OBJ_LIST);
+  list->as.list.len = len;
+  list->as.list.items = len == 0 ? NULL : (TnVal *)calloc(len, sizeof(TnVal));
+  if (len > 0 && list->as.list.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < len; i += 1) {
+    list->as.list.items[i] = obj->as.list.items[i + 1];
+    tn_runtime_retain(list->as.list.items[i]);
+  }
+
+  return tn_heap_store(list);
+}
+
+static TnVal tn_runtime_elem(TnVal tuple, TnVal index) {
+  TnObj *obj = tn_get_obj(tuple);
+  if (obj == NULL || obj->kind != TN_OBJ_TUPLE) {
+    return tn_runtime_failf("elem expects a tuple, found %s", tn_runtime_value_kind(tuple));
+  }
+  if (tn_is_boxed(index)) {
+    return tn_runtime_failf(
+        "elem index must be an integer, found %s",
+        tn_runtime_value_kind(index));
+  }
+
+  TnVal value;
+  switch ((long long)index) {
+    case 0:
+      value = obj->as.tuple.left;
+      break;
+    case 1:
+      value = obj->as.tuple.right;
+      break;
+    default:
+      return tn_runtime_failf(
+          "elem index %lld out of range for 2-element tuple",
+          (long long)index);
+  }
+
+  tn_runtime_retain(value);
+  return value;
+}
+
+static TnVal tn_runtime_tuple_size(TnVal tuple) {
+  TnObj *obj = tn_get_obj(tuple);
+  if (obj == NULL || obj->kind != TN_OBJ_TUPLE) {
+    return tn_runtime_failf(
+        "tuple_size expects a tuple, found %s",
+        tn_runtime_value_kind(tuple));
+  }
+
+  return 2;
+}
+
+static TnVal tn_runtime_put_elem(TnVal tuple, TnVal index, TnVal value) {
+  TnObj *obj = tn_get_obj(tuple);
+  if (obj == NULL || obj->kind != TN_OBJ_TUPLE) {
+    return tn_runtime_failf(
+        "put_elem expects a tuple, found %s",
+        tn_runtime_value_kind(tuple));
+  }
+  if (tn_is_boxed(index)) {
+    return tn_runtime_failf(
+        "put_elem index must be an integer, found %s",
+        tn_runtime_value_kind(index));
+  }
+
+  switch ((long long)index) {
+    case 0:
+      return tn_runtime_make_tuple(value, obj->as.tuple.right);
+    case 1:
+      return tn_runtime_make_tuple(obj->as.tuple.left, value);
+    default:
+      return tn_runtime_failf(
+          "put_elem index %lld out of range for 2-element tuple",
+          (long long)index);
+  }
+}
+
 static TnVal tn_runtime_range(TnVal left, TnVal right) {
   if (tn_is_boxed(left) || tn_is_boxed(right)) {
     return tn_stub_abort("tn_runtime_range");

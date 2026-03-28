@@ -44,7 +44,7 @@ fn host_bitwise_bsl(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("Bitwise.bsl", args, 2)?;
     let a = require_int("Bitwise.bsl", &args[0])?;
     let shift = require_int("Bitwise.bsl", &args[1])?;
-    if shift < 0 || shift > 63 {
+    if !(0..=63).contains(&shift) {
         return Err(HostError::new(format!(
             "Bitwise.bsl: shift amount must be 0..63, got {}",
             shift
@@ -57,7 +57,7 @@ fn host_bitwise_bsr(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("Bitwise.bsr", args, 2)?;
     let a = require_int("Bitwise.bsr", &args[0])?;
     let shift = require_int("Bitwise.bsr", &args[1])?;
-    if shift < 0 || shift > 63 {
+    if !(0..=63).contains(&shift) {
         return Err(HostError::new(format!(
             "Bitwise.bsr: shift amount must be 0..63, got {}",
             shift

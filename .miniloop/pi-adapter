@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-exec tonic run '/Users/rook/projects/tonic-loops' pi-adapter "$@"

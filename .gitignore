@@ -21,7 +21,14 @@ devenv.local.yaml
 # agent planning/scratch artifacts
 .agents/
 .worktrees/
+.miniloop/
+.miniloops/
+progress.md
 
 # transient temp/scratch directories produced by tooling
 .tmp/
 .claude/worktrees/
+
+# generated benchmark summaries
+benchmarks/native-compiler-summary.json
+benchmarks/native-compiler-summary.md

@@ -238,7 +238,7 @@ fn host_csv_encode_maps(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError
     };
 
     // Extract header strings
-    let header_strs: Vec<String> = headers.iter().map(|h| runtime_to_string(h)).collect();
+    let header_strs: Vec<String> = headers.iter().map(runtime_to_string).collect();
 
     let mut output = String::new();
 

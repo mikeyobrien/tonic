@@ -1,7 +1,7 @@
 mod common;
 
-use std::fs;
 use predicates::prelude::*;
+use std::fs;
 
 /// Install with existing shim from different package; verify --force overwrites and no-flag errors.
 #[test]

@@ -15,7 +15,9 @@ fn install_dir_without_tonic_toml_errors() {
         .env("TONIC_HOME", &home)
         .assert()
         .code(1)
-        .stderr(predicates::prelude::predicate::str::contains("no tonic.toml"));
+        .stderr(predicates::prelude::predicate::str::contains(
+            "no tonic.toml",
+        ));
 
     let _ = fs::remove_dir_all(&dir);
 }

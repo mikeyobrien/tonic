@@ -53,7 +53,11 @@ fn check_dump_ast_supports_interpolated_text_blocks() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
         .current_dir(&fixture_root)
-        .args(["check", "examples/text_block_interpolation.tn", "--dump-ast"])
+        .args([
+            "check",
+            "examples/text_block_interpolation.tn",
+            "--dump-ast",
+        ])
         .output()
         .expect("check command should execute");
 

@@ -111,7 +111,7 @@ mod tests {
     fn encode_decode_round_trip() {
         let original = s("The quick brown fox jumps over the lazy dog");
         let encoded = HOST_REGISTRY
-            .call("base64_encode", &[original.clone()])
+            .call("base64_encode", std::slice::from_ref(&original))
             .expect("encode should succeed");
         let decoded = HOST_REGISTRY
             .call("base64_decode", &[encoded])
@@ -167,7 +167,7 @@ mod tests {
     fn url_encode_decode_round_trip() {
         let original = s("data with +/= chars: foo+bar/baz=qux");
         let encoded = HOST_REGISTRY
-            .call("base64_url_encode", &[original.clone()])
+            .call("base64_url_encode", std::slice::from_ref(&original))
             .expect("url_encode should succeed");
         // URL-safe should not contain + or /
         if let RuntimeValue::String(ref enc) = encoded {
