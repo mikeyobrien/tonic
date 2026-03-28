@@ -260,6 +260,33 @@ fn run_trace_lazy_loads_map_stdlib_module_when_referenced() {
     );
 }
 
+#[test]
+fn run_trace_supports_map_predicate_stdlib_function() {
+    let fixture_root = create_project_fixture(
+        "run-lazy-map-predicate-stdlib",
+        "defmodule Demo do\n  def run() do\n    Map.has_key?(%{a: 1}, :a)\n  end\nend\n",
+    );
+
+    let output = run_with_module_trace(&fixture_root);
+
+    assert!(
+        output.status.success(),
+        "expected successful run for Map.has_key?/2 fixture, got status {:?}, stdout: {}, stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert_eq!(stdout, "true\n");
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("module-load stdlib:Map"),
+        "expected Map stdlib module to lazy-load, got: {stderr:?}"
+    );
+}
+
 fn create_project_fixture(test_name: &str, entry_source: &str) -> PathBuf {
     let fixture_root = common::unique_fixture_root(test_name);
     let src_dir = fixture_root.join("src");

@@ -239,6 +239,43 @@ fn scan_tokens_supports_module_qualified_calls() {
 }
 
 #[test]
+fn scan_tokens_supports_predicate_identifiers_before_call_parens() {
+    let labels = dump_labels("has_key?(map) Map.has_key?(map, key) %{exists?: true}");
+
+    assert_eq!(
+        labels,
+        [
+            "IDENT(has_key?)",
+            "LPAREN",
+            "IDENT(map)",
+            "RPAREN",
+            "IDENT(Map)",
+            "DOT",
+            "IDENT(has_key?)",
+            "LPAREN",
+            "IDENT(map)",
+            "COMMA",
+            "IDENT(key)",
+            "RPAREN",
+            "PERCENT",
+            "LBRACE",
+            "IDENT(exists?)",
+            "COLON",
+            "TRUE(true)",
+            "RBRACE",
+            "EOF",
+        ]
+    );
+}
+
+#[test]
+fn scan_tokens_supports_predicate_atoms() {
+    let labels = dump_labels(":exists? :ok?");
+
+    assert_eq!(labels, ["ATOM(exists?)", "ATOM(ok?)", "EOF"]);
+}
+
+#[test]
 fn scan_tokens_supports_question_operator() {
     let labels = dump_labels("value()?");
 

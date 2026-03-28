@@ -373,9 +373,7 @@ pub fn scan_tokens_with_comments(source: &str) -> Result<(Vec<Token>, Vec<Commen
                             let atom_start = idx;
                             idx += 1;
 
-                            while idx < chars.len() && is_ident_continue(chars[idx]) {
-                                idx += 1;
-                            }
+                            idx = scan_identifier_tail(&chars, idx, IdentifierScanMode::Atom);
 
                             let lexeme: String = chars[atom_start..idx].iter().collect();
                             tokens.push(Token::with_lexeme(
@@ -409,9 +407,7 @@ pub fn scan_tokens_with_comments(source: &str) -> Result<(Vec<Token>, Vec<Commen
                         let start = idx;
                         idx += 1;
 
-                        while idx < chars.len() && is_ident_continue(chars[idx]) {
-                            idx += 1;
-                        }
+                        idx = scan_identifier_tail(&chars, idx, IdentifierScanMode::Ident);
 
                         let lexeme: String = chars[start..idx].iter().collect();
                         let kind = keyword_kind(&lexeme).unwrap_or(TokenKind::Ident);
@@ -482,6 +478,41 @@ fn compute_source_layout(chars: &[char]) -> (Vec<usize>, Vec<usize>, Vec<usize>)
     }
 
     (line_for_offset, line_start_offsets, blank_lines_before)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IdentifierScanMode {
+    Ident,
+    Atom,
+}
+
+fn scan_identifier_tail(chars: &[char], mut idx: usize, mode: IdentifierScanMode) -> usize {
+    while idx < chars.len() && is_ident_continue(chars[idx]) {
+        idx += 1;
+    }
+
+    if chars.get(idx) == Some(&'?') && trailing_question_belongs_to_identifier(chars, idx, mode) {
+        idx += 1;
+    }
+
+    idx
+}
+
+fn trailing_question_belongs_to_identifier(
+    chars: &[char],
+    question_idx: usize,
+    mode: IdentifierScanMode,
+) -> bool {
+    let next = chars.get(question_idx + 1).copied();
+
+    match mode {
+        IdentifierScanMode::Ident => matches!(next, Some('(' | '/' | ':')),
+        IdentifierScanMode::Atom => next.is_none_or(atom_question_boundary),
+    }
+}
+
+fn atom_question_boundary(value: char) -> bool {
+    value.is_whitespace() || matches!(value, ',' | ')' | ']' | '}' | ':')
 }
 
 fn keyword_kind(lexeme: &str) -> Option<TokenKind> {

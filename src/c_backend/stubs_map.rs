@@ -276,6 +276,12 @@ static TnVal tn_host_map_get(TnVal map_value, TnVal key, TnVal default_value) {
   return default_value;
 }
 
+static TnVal tn_host_map_has_key(TnVal map_value, TnVal key) {
+  TnObj *map = tn_expect_host_map_arg("Map.has_key?", map_value, 1);
+  long existing_index = tn_map_like_find_index(map, key);
+  return tn_runtime_const_bool((TnVal)(existing_index >= 0));
+}
+
 static TnVal tn_host_map_delete(TnVal map_value, TnVal key) {
   TnObj *map = tn_expect_host_map_arg("Map.delete", map_value, 1);
   TnObj *result = tn_new_obj(TN_OBJ_MAP);

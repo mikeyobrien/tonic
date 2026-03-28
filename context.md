@@ -1,63 +1,52 @@
 # Context
 
 ## Objective
-Implement the dedented text-block task incrementally.
+Implement `.miniloop/ideas-report.md` with one concrete slice at a time.
 
-### Active slice
-Add a non-interpolated `~t""" ... """` text-block sigil that:
-- trims one optional framing newline after the opener
-- trims one optional framing newline before the closer
-- removes the minimum common indentation across non-blank content lines
-- preserves relative indentation after dedent
-- leaves raw `"""..."""` heredocs unchanged
+## Completed slice
+Slice 1 — support `?`-suffixed predicate identifiers and atoms, and keep the newly-usable `Map.has_key?/2` path working in both interpreted and compiled execution.
 
-Interpolated text blocks (`~t"""...#{...}..."""`) are explicitly **next slice**, not this one.
-
-## Source task
-- Primary task file: `.agents/tasks/2026-03-27-text-block-ergonomics/dedented-text-block-sigil.code-task.md`
-- The prompt said `.agents/planning`, but the actual implementation brief lives under `.agents/tasks/...`.
-
-## Baseline repo state
-- Baseline commit before this planning pass: `26e491c`
-- The worktree is already dirty in many unrelated files; this slice must avoid touching or staging unrelated paths.
-
-## Existing implementation facts
-- `src/lexer/string_scan.rs`
-  - `scan_string_literal` handles `"..."` and raw heredocs `"""..."""`
-  - interpolation uses the existing token flow: `StringStart` / `StringPart` / `InterpolationStart` / `InterpolationEnd` / `StringEnd`
-  - `scan_sigil` currently supports `~s`, `~r`, and `~w`
+## What changed
 - `src/lexer/mod.rs`
-  - lexer state only distinguishes `Normal` vs `String { is_heredoc, brace_depth }`
-  - `~` dispatch already routes into `string_scan::scan_sigil`
-- `src/parser/expr.rs` and `src/parser/literal.rs`
-  - plain `TokenKind::String` lowers straight to `Expr::String`
-  - interpolated string tokens lower to `Expr::InterpolatedString`
-- `src/ir_lower_expr.rs`
-  - `Expr::String` already lowers to `IrOp::ConstString`
-  - plain text-block literals can therefore reuse the existing runtime path with no new runtime node
-- Existing regression surfaces
-  - lexer unit tests: `src/lexer/tests.rs`, `src/lexer/tests_extended.rs`
-  - AST dump regression: `tests/check_dump_ast_expressions.rs`
-  - runtime regression: `tests/run_primitives_smoke.rs`
-  - user docs: `TONIC_REFERENCE.md`
+  - added narrow trailing-`?` identifier scanning rules
+  - plain identifiers absorb `?` only for unambiguous boundaries: `(`, `/`, `:`
+  - atoms absorb trailing `?` before atom-safe boundaries
+- `src/lexer/tests.rs`
+  - added predicate identifier and atom lexer regressions
+- `src/parser/tests.rs`
+  - added parser regression for predicate defs/calls, predicate atoms, and keyword-style `exists?` map keys
+- `src/stdlib_sources.rs`
+- `src/manifest_stdlib.rs`
+  - renamed `Map.has_key/2` stdlib entry to `Map.has_key?/2`
+- `src/c_backend/stubs_map.rs`
+- `src/c_backend/stubs_host_path.rs`
+  - added native compiled dispatch for `map_has_key`
+- `tests/run_lazy_stdlib_loading_smoke.rs`
+  - added interpreted stdlib smoke for `Map.has_key?/2`
+- `tests/runtime_llvm_map_predicate_smoke.rs`
+  - added compiled stdlib smoke for `Map.has_key?/2`
 
-## Recommended implementation shape for this slice
-1. Extend `scan_sigil` to recognize only the dedicated triple-quoted text-block form: `~t"""..."""`.
-2. Keep the output surface narrow by normalizing the raw text-block contents in the lexer and then emitting an ordinary `TokenKind::String`.
-3. Centralize trim/dedent logic in one helper inside `src/lexer/string_scan.rs` so edge cases are unit-testable without parser/runtime noise.
-4. Keep raw heredoc scanning untouched.
-5. Keep parser, AST, resolver, typing, and lowering changes minimal or zero unless span/diagnostic plumbing truly requires otherwise.
+## Why the slice widened slightly
+The lexer/parser fix made `Map.has_key?(...)` parse, but verification exposed two directly relevant parity gaps:
+1. stdlib still exported `Map.has_key/2` instead of `Map.has_key?/2`
+2. compiled C backend lacked `map_has_key` host dispatch
 
-## Edge cases this slice should define and test
-- fully blank block → empty string after framing trim/dedent
-- one content line
-- mixed blank and indented lines
-- a less-indented line setting the common indent floor
-- unterminated `~t"""` block
-- invalid `~t` sigil spellings that are not the supported triple-quoted form
+Both blocked the required `check`/`run`/`compile` verification path for the predicate example, so they were fixed in the same slice.
 
-## Intentionally out of scope for this slice
-- interpolation inside `~t` blocks
-- new AST/runtime string node types
-- formatter support
-- self-hosted lexer parity expansion unless it stays tiny and does not widen the slice
+## Intended boundary
+This slice is intentionally narrow.
+- Supported now:
+  - `def has_key?(...)`
+  - `Map.has_key?(...)`
+  - `:ok?`
+  - `%{exists?: true}`
+  - `&Map.has_key?/2`
+- Intentionally unchanged:
+  - postfix question operator parsing (`value()?`, `1?`, `x? y`)
+  - char literals (`?a`, `?\n`, `?0`)
+  - ambiguous bare/no-paren `name? value` forms
+
+## Critic focus
+- Verify the lexer did not steal postfix `?` or char literals.
+- Verify `Map.has_key?/2` now works in both `tonic run` and `tonic compile` paths.
+- Review only the slice diff/commit, not the unrelated dirty worktree.

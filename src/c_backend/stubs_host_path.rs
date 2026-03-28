@@ -373,6 +373,15 @@ pub(super) fn emit_stubs_host_path(out: &mut String) {
     return result;
   }
 
+  if (strcmp(key, "map_has_key") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.has_key? expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal result = tn_host_map_has_key(args[1], args[2]);
+    free(args);
+    return result;
+  }
+
   if (strcmp(key, "map_put") == 0) {
     if (argc != 4) {
       return tn_runtime_failf("host error: Map.put expects exactly 3 arguments, found %zu", argc - 1);

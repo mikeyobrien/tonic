@@ -87,6 +87,56 @@ fn parse_ast_supports_module_qualified_calls() {
 }
 
 #[test]
+fn parse_ast_supports_predicate_function_defs_and_calls() {
+    let tokens = scan_tokens(
+        "defmodule Demo do\n  def has_key?(map, key) do\n    Map.has_key?(map, key)\n  end\n\n  def run() do\n    {has_key?(%{exists?: true}, :exists?), :ok?}\n  end\nend\n",
+    )
+    .expect("scanner should tokenize predicate parser fixture");
+
+    let ast = parse_ast(&tokens).expect("parser should produce ast");
+
+    assert_eq!(ast.modules[0].functions[0].name, "has_key?");
+    assert_eq!(
+        serde_json::to_value(&ast.modules[0].functions[0].body)
+            .expect("expression should serialize"),
+        serde_json::json!({
+            "kind":"call",
+            "callee":"Map.has_key?",
+            "args":[
+                {"kind":"variable","name":"map"},
+                {"kind":"variable","name":"key"}
+            ]
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(&ast.modules[0].functions[1].body)
+            .expect("expression should serialize"),
+        serde_json::json!({
+            "kind":"tuple",
+            "items":[
+                {
+                    "kind":"call",
+                    "callee":"has_key?",
+                    "args":[
+                        {
+                            "kind":"map",
+                            "entries":[
+                                {
+                                    "key":{"kind":"atom","value":"exists?"},
+                                    "value":{"kind":"bool","value":true}
+                                }
+                            ]
+                        },
+                        {"kind":"atom","value":"exists?"}
+                    ]
+                },
+                {"kind":"atom","value":"ok?"}
+            ]
+        })
+    );
+}
+
+#[test]
 fn parse_ast_supports_no_paren_calls() {
     let tokens = scan_tokens(
         "defmodule Demo do\n  def helper(value) do\n    value\n  end\n\n  def run() do\n    helper 7\n  end\nend\n",
