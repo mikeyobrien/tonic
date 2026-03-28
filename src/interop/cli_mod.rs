@@ -40,13 +40,7 @@ fn parse_string_list(flag_kw: &[(RuntimeValue, RuntimeValue)], key: &str) -> Vec
 
 /// Parse choices from a flag keyword list — expects `choices: ["a", "b", "c"]`.
 fn parse_choices(flag_kw: &[(RuntimeValue, RuntimeValue)]) -> Vec<String> {
-    match kw_get(flag_kw, "choices") {
-        Some(RuntimeValue::List(items)) => items
-            .iter()
-            .filter_map(|v| as_str(v).map(|s| s.to_string()))
-            .collect(),
-        _ => Vec::new(),
-    }
+    parse_string_list(flag_kw, "choices")
 }
 
 /// Validate a parsed value against choices constraint.

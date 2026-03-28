@@ -13,30 +13,31 @@ use super::{
 
 /// Emit the C file preamble: include directives and typedef.
 pub(super) fn emit_header(out: &mut String) {
-    out.push_str("/* tonic c backend - generated file */\n");
-    out.push_str("#include <stdio.h>\n");
-    out.push_str("#include <stdlib.h>\n");
-    out.push_str("#include <stdint.h>\n");
-    out.push_str("#include <inttypes.h>\n");
-    out.push_str("#include <string.h>\n");
-    out.push_str("#include <ctype.h>\n");
-    out.push_str("#include <stdarg.h>\n");
-    out.push_str("#include <errno.h>\n");
-    out.push_str("#include <math.h>\n");
-    out.push_str("#include <limits.h>\n");
-    out.push_str("#include <dirent.h>\n");
-    out.push_str("#include <sys/stat.h>\n");
-    out.push_str("#include <sys/wait.h>\n");
-    out.push_str("#include <unistd.h>\n");
-    out.push_str("#include <time.h>\n");
-    out.push_str("#include <sys/time.h>\n");
-    out.push_str("#include <sys/socket.h>\n");
-    out.push_str("#include <netinet/in.h>\n");
-    out.push_str("#include <arpa/inet.h>\n");
-    out.push_str("#include <sys/select.h>\n");
-    out.push('\n');
-    out.push_str("typedef int64_t TnVal;\n");
-    out.push('\n');
+    out.push_str(
+        "/* tonic c backend - generated file */\n\
+         #include <stdio.h>\n\
+         #include <stdlib.h>\n\
+         #include <stdint.h>\n\
+         #include <inttypes.h>\n\
+         #include <string.h>\n\
+         #include <ctype.h>\n\
+         #include <stdarg.h>\n\
+         #include <errno.h>\n\
+         #include <math.h>\n\
+         #include <limits.h>\n\
+         #include <dirent.h>\n\
+         #include <sys/stat.h>\n\
+         #include <sys/wait.h>\n\
+         #include <unistd.h>\n\
+         #include <time.h>\n\
+         #include <sys/time.h>\n\
+         #include <sys/socket.h>\n\
+         #include <netinet/in.h>\n\
+         #include <arpa/inet.h>\n\
+         #include <sys/select.h>\n\
+         \n\
+         typedef int64_t TnVal;\n\n",
+    );
 }
 
 /// Emit runtime helper definitions for the generated C program.
