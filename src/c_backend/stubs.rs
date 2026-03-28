@@ -5,9 +5,10 @@ use super::{
     stubs_closures::emit_compiled_closure_helpers, stubs_constructors::emit_stubs_constructors,
     stubs_for::emit_runtime_for_helpers, stubs_host_dispatch::emit_stubs_host_dispatch,
     stubs_host_http::emit_stubs_host_http, stubs_host_path::emit_stubs_host_path,
-    stubs_host_sys::emit_stubs_host_sys, stubs_io::emit_stubs_io, stubs_map::emit_stubs_map,
-    stubs_memory::emit_stubs_memory, stubs_results::emit_stubs_results,
-    stubs_try::emit_runtime_try_helpers, stubs_types::emit_stubs_types,
+    stubs_host_sys::emit_stubs_host_sys, stubs_host_sys_helpers::emit_stubs_host_sys_helpers,
+    stubs_io::emit_stubs_io, stubs_map::emit_stubs_map, stubs_memory::emit_stubs_memory,
+    stubs_results::emit_stubs_results, stubs_try::emit_runtime_try_helpers,
+    stubs_types::emit_stubs_types,
 };
 
 /// Emit the C file preamble: include directives and typedef.
@@ -18,13 +19,16 @@ pub(super) fn emit_header(out: &mut String) {
     out.push_str("#include <stdint.h>\n");
     out.push_str("#include <inttypes.h>\n");
     out.push_str("#include <string.h>\n");
+    out.push_str("#include <ctype.h>\n");
     out.push_str("#include <stdarg.h>\n");
     out.push_str("#include <errno.h>\n");
+    out.push_str("#include <math.h>\n");
     out.push_str("#include <limits.h>\n");
     out.push_str("#include <dirent.h>\n");
     out.push_str("#include <sys/stat.h>\n");
     out.push_str("#include <sys/wait.h>\n");
     out.push_str("#include <unistd.h>\n");
+    out.push_str("#include <time.h>\n");
     out.push_str("#include <sys/time.h>\n");
     out.push_str("#include <sys/socket.h>\n");
     out.push_str("#include <netinet/in.h>\n");
@@ -45,6 +49,7 @@ pub(super) fn emit_runtime_stubs(mir: &MirProgram, out: &mut String) -> Result<(
     emit_stubs_constructors(out);
     emit_stubs_map(out);
     emit_stubs_io(out);
+    emit_stubs_host_sys_helpers(out);
     emit_stubs_host_dispatch(out);
     emit_stubs_host_path(out);
     emit_stubs_host_sys(out);

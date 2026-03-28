@@ -311,6 +311,214 @@ fn compiled_runtime_supports_system_append_text() {
 }
 
 #[test]
+fn compiled_runtime_supports_system_log_sleep_and_random_token() {
+    let fixture_root = common::unique_fixture_root("runtime-llvm-system-log-sleep-random-token");
+    let src_dir = fixture_root.join("src");
+    let sink_path = fixture_root.join("logs").join("events.jsonl");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    System.sleep_ms(0)\n    token = System.random_token(16)\n    token_len = String.length(token)\n    System.log(:info, \"slice5a.utility\", %{token_len: token_len, token: token, nested: %{source: \"compiled\"}, flags: [true, false]})\n    [token_len, token]\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok"));
+
+    let executable = fixture_root.join(".tonic/build/main");
+    let output = std::process::Command::new(&executable)
+        .current_dir(&fixture_root)
+        .env("TONIC_SYSTEM_LOG_PATH", &sink_path)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        output.status.success(),
+        "expected compiled executable success, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let payload: serde_json::Value =
+        serde_json::from_str(stdout.trim()).expect("stdout should be JSON-shaped list");
+    let token_len = payload[0]
+        .as_u64()
+        .expect("first item should be numeric token length");
+    let token = payload[1]
+        .as_str()
+        .expect("second item should be the emitted token");
+    assert_eq!(token_len, 22, "16 random bytes should encode to 22 chars");
+    assert!(
+        token
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'),
+        "expected base64url token, got: {token}"
+    );
+
+    let sink = fs::read_to_string(&sink_path).expect("structured log sink should be readable");
+    let lines = sink.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 1, "expected one JSONL record from System.log");
+
+    let log_entry: serde_json::Value =
+        serde_json::from_str(lines[0]).expect("log line should be valid JSON");
+    assert_eq!(log_entry["level"], serde_json::json!("info"));
+    assert_eq!(log_entry["event"], serde_json::json!("slice5a.utility"));
+    assert_eq!(log_entry["fields"]["token_len"], serde_json::json!(22));
+    assert_eq!(log_entry["fields"]["token"], serde_json::json!(token));
+    assert_eq!(
+        log_entry["fields"]["nested"]["source"],
+        serde_json::json!("compiled")
+    );
+    assert_eq!(
+        log_entry["fields"]["flags"],
+        serde_json::json!([true, false])
+    );
+    assert!(
+        log_entry["timestamp_ms"].as_i64().is_some(),
+        "expected numeric timestamp_ms in structured log entry"
+    );
+}
+
+#[test]
+fn compiled_runtime_system_sleep_ms_rejects_out_of_range_delay_deterministically() {
+    let fixture_root = common::unique_fixture_root("runtime-llvm-system-sleep-ms-range");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    System.sleep_ms(300001)\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok"));
+
+    let executable = fixture_root.join(".tonic/build/main");
+    let output = std::process::Command::new(&executable)
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        !output.status.success(),
+        "expected compiled executable failure for out-of-range sleep"
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("error: host error: sys_sleep_ms delay_ms out of range: 300001"),
+        "expected deterministic range error, got: {stderr}"
+    );
+}
+
+#[test]
+fn compiled_runtime_system_log_rejects_invalid_level_deterministically() {
+    let fixture_root = common::unique_fixture_root("runtime-llvm-system-log-invalid-level");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    System.log(\"trace\", \"bad.level\", %{})\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok"));
+
+    let executable = fixture_root.join(".tonic/build/main");
+    let output = std::process::Command::new(&executable)
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        !output.status.success(),
+        "expected compiled executable failure for invalid log level"
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains(
+            "error: host error: sys_log level must be one of debug|info|warn|error; found trace"
+        ),
+        "expected deterministic log-level error, got: {stderr}"
+    );
+}
+
+#[test]
+fn compiled_runtime_system_random_token_rejects_non_int_argument_deterministically() {
+    let fixture_root = common::unique_fixture_root("runtime-llvm-system-random-token-type-error");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    System.random_token(\"16\")\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok"));
+
+    let executable = fixture_root.join(".tonic/build/main");
+    let output = std::process::Command::new(&executable)
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        !output.status.success(),
+        "expected compiled executable failure for wrong random_token argument type"
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("error: host error: sys_random_token expects int argument 1; found string"),
+        "expected deterministic type error, got: {stderr}"
+    );
+}
+
+#[test]
 fn compiled_runtime_supports_system_write_text_atomic_and_lock_primitives() {
     let fixture_root = common::unique_fixture_root("runtime-llvm-system-persistence-locks");
     let src_dir = fixture_root.join("src");
@@ -420,7 +628,10 @@ fn compiled_runtime_lock_acquire_writes_observable_marker_with_positive_timestam
     let timestamp_ms: i64 = timestamp_text
         .parse()
         .expect("timestamp_ms should be a positive integer");
-    assert!(timestamp_ms > 0, "expected timestamp_ms > 0, got: {timestamp_ms}");
+    assert!(
+        timestamp_ms > 0,
+        "expected timestamp_ms > 0, got: {timestamp_ms}"
+    );
 }
 
 #[test]

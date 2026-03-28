@@ -14,6 +14,7 @@ mod stubs_host_dispatch;
 mod stubs_host_http;
 mod stubs_host_path;
 mod stubs_host_sys;
+mod stubs_host_sys_helpers;
 mod stubs_io;
 mod stubs_map;
 mod stubs_memory;

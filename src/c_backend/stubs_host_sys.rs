@@ -680,6 +680,142 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
     return tn_heap_store(list_obj);
   }
 
+  if (strcmp(key, "sys_sleep_ms") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_sleep_ms expects exactly 1 argument, found %zu", argc - 1);
+    }
+    long long delay_ms = tn_expect_host_int_arg("sys_sleep_ms", args[1], 1);
+    if (delay_ms < 0 || delay_ms > 300000) {
+      return tn_runtime_failf("host error: sys_sleep_ms delay_ms out of range: %lld", delay_ms);
+    }
+    if (delay_ms > 0) {
+      struct timespec request;
+      request.tv_sec = (time_t)(delay_ms / 1000);
+      request.tv_nsec = (long)((delay_ms % 1000) * 1000000L);
+      while (nanosleep(&request, &request) != 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        return tn_runtime_failf("host error: sys_sleep_ms failed: %s", strerror(errno));
+      }
+    }
+    free(args);
+    return tn_runtime_const_bool((TnVal)1);
+  }
+
+  if (strcmp(key, "sys_log") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: sys_log expects exactly 3 arguments, found %zu", argc - 1);
+    }
+
+    TnObj *level_obj = tn_get_obj(args[1]);
+    if (level_obj == NULL || (level_obj->kind != TN_OBJ_STRING && level_obj->kind != TN_OBJ_ATOM)) {
+      return tn_runtime_failf(
+          "host error: sys_log expects string-or-atom argument 1; found %s",
+          tn_runtime_value_kind(args[1]));
+    }
+    const char *level = tn_sys_log_level_label(level_obj->as.text.text);
+    if (level == NULL) {
+      return tn_runtime_failf(
+          "host error: sys_log level must be one of debug|info|warn|error; found %s",
+          level_obj->as.text.text);
+    }
+
+    TnObj *event_obj = tn_get_obj(args[2]);
+    if (event_obj == NULL || (event_obj->kind != TN_OBJ_STRING && event_obj->kind != TN_OBJ_ATOM)) {
+      return tn_runtime_failf(
+          "host error: sys_log expects string-or-atom argument 2; found %s",
+          tn_runtime_value_kind(args[2]));
+    }
+    const char *event = event_obj->as.text.text;
+    if (tn_sys_string_is_blank(event)) {
+      return tn_runtime_fail("host error: sys_log event must not be empty");
+    }
+
+    TnObj *fields_obj = tn_get_obj(args[3]);
+    if (fields_obj == NULL || fields_obj->kind != TN_OBJ_MAP) {
+      return tn_runtime_failf(
+          "host error: sys_log expects map argument 3; found %s",
+          tn_runtime_value_kind(args[3]));
+    }
+
+    const char *sink_path = getenv("TONIC_SYSTEM_LOG_PATH");
+    FILE *sink = stderr;
+    int close_sink = 0;
+    if (sink_path != NULL) {
+      while (*sink_path != '\0' && tn_sys_log_is_space(*sink_path)) {
+        sink_path += 1;
+      }
+      if (*sink_path != '\0') {
+        tn_sys_ensure_parent_dir_for_file("sys_log", sink_path);
+        sink = fopen(sink_path, "a");
+        if (sink == NULL) {
+          return tn_runtime_failf(
+              "host error: sys_log failed to open sink '%s': %s",
+              sink_path,
+              strerror(errno));
+        }
+        close_sink = 1;
+      }
+    }
+
+    fprintf(sink, "{\"timestamp_ms\":%lld,\"level\":", tn_sys_unix_timestamp_ms());
+    tn_sys_json_write_string(sink, level);
+    fputs(",\"event\":", sink);
+    tn_sys_json_write_string(sink, event);
+    fputs(",\"fields\":", sink);
+    tn_sys_log_write_json_map_like(sink, "fields", fields_obj);
+    fputs("}\n", sink);
+
+    if (fflush(sink) != 0 || ferror(sink)) {
+      int io_errno = errno != 0 ? errno : EIO;
+      if (close_sink) {
+        fclose(sink);
+        return tn_runtime_failf(
+            "host error: sys_log failed to append sink '%s': %s",
+            sink_path,
+            strerror(io_errno));
+      }
+      return tn_runtime_failf(
+          "host error: sys_log failed to append sink 'stderr': %s",
+          strerror(io_errno));
+    }
+    if (close_sink && fclose(sink) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      return tn_runtime_failf(
+          "host error: sys_log failed to append sink '%s': %s",
+          sink_path,
+          strerror(io_errno));
+    }
+
+    free(args);
+    return tn_runtime_const_bool((TnVal)1);
+  }
+
+  if (strcmp(key, "sys_random_token") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_random_token expects exactly 1 argument, found %zu", argc - 1);
+    }
+    long long bytes = tn_expect_host_int_arg("sys_random_token", args[1], 1);
+    if (bytes < 16 || bytes > 256) {
+      return tn_runtime_failf("host error: sys_random_token bytes out of range: %lld", bytes);
+    }
+
+    unsigned char *buffer = (unsigned char *)malloc((size_t)bytes);
+    if (buffer == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    tn_sys_fill_random_bytes(buffer, (size_t)bytes);
+    char *encoded = tn_sys_base64url_encode(buffer, (size_t)bytes);
+    free(buffer);
+
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)encoded);
+    free(encoded);
+    free(args);
+    return result;
+  }
+
   if (strcmp(key, "sys_run") == 0) {
     if (argc != 2 && argc != 3) {
       return tn_runtime_failf("host error: sys_run expects 1 or 2 arguments, found %zu", argc - 1);
