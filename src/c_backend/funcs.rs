@@ -2,6 +2,7 @@ use crate::mir::{MirFunction, MirInstruction, MirTerminator};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::error::CBackendError;
+use super::hash::hash_text_i64;
 use super::ops::emit_c_instructions;
 use super::terminator::emit_c_terminator_with_phi;
 
@@ -50,6 +51,12 @@ pub(super) fn emit_function(
     out.push_str("  TnBinding tn_function_bindings[TN_MAX_BINDINGS];\n");
     out.push_str("  size_t tn_function_bindings_len = 0;\n");
     out.push_str("  tn_binding_snapshot(tn_function_bindings, &tn_function_bindings_len);\n");
+    for (index, param) in function.params.iter().enumerate() {
+        let binding_hash = hash_text_i64(&param.name);
+        out.push_str(&format!(
+            "  tn_binding_set((TnVal){binding_hash}LL, _arg{index});\n"
+        ));
+    }
 
     for block in &function.blocks {
         out.push_str(&format!("  bb{}: ;\n", block.id));

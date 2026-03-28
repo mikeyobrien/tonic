@@ -564,9 +564,35 @@ fn emit_closure_guard_ops(
 
                             out.push_str(&format!("  TnVal {temp} = {helper}({rendered_args});\n"));
                         } else {
-                            return Err(CBackendError::new(format!(
-                                "c backend closure guard unsupported builtin call target: {name}"
-                            )));
+                            match name.as_str() {
+                                "div" => {
+                                    if args.len() != 2 {
+                                        return Err(CBackendError::new(format!(
+                                            "c backend closure guard builtin {name} arity mismatch"
+                                        )));
+                                    }
+                                    out.push_str(&format!(
+                                        "  TnVal {temp} = (TnVal)({} / {});\n",
+                                        args[0], args[1]
+                                    ));
+                                }
+                                "rem" => {
+                                    if args.len() != 2 {
+                                        return Err(CBackendError::new(format!(
+                                            "c backend closure guard builtin {name} arity mismatch"
+                                        )));
+                                    }
+                                    out.push_str(&format!(
+                                        "  TnVal {temp} = (TnVal)({} % {});\n",
+                                        args[0], args[1]
+                                    ));
+                                }
+                                _ => {
+                                    return Err(CBackendError::new(format!(
+                                        "c backend closure guard unsupported builtin call target: {name}"
+                                    )));
+                                }
+                            }
                         }
                     }
                     IrCallTarget::Function { name } => {

@@ -8,8 +8,11 @@ use super::hash::hash_ir_op_i64;
 use super::stubs::c_string_literal;
 use crate::cli_diag::failure_message_lines_with_filename_and_source;
 
+#[path = "stubs_for_emit.rs"]
+mod emit;
 #[path = "stubs_for_ops.rs"]
 mod ops;
+use emit::emit_dynamic_for_case;
 use ops::{apply_pattern_bindings, evaluate_static_for_ops};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,34 +137,39 @@ fn emit_runtime_for_case(
     source: &str,
     out: &mut String,
 ) -> Result<(), CBackendError> {
-    out.push_str(&format!(
-        "static TnVal tn_runtime_for_case_{index}(void) {{\n"
-    ));
-    out.push_str("  TnBinding tn_for_bindings[TN_MAX_BINDINGS];\n");
-    out.push_str("  size_t tn_for_bindings_len = 0;\n");
-    out.push_str("  tn_binding_snapshot(tn_for_bindings, &tn_for_bindings_len);\n");
-
     match evaluate_for_spec(&for_spec.op) {
         Ok(value) => {
+            out.push_str(&format!(
+                "static TnVal tn_runtime_for_case_{index}(void) {{\n"
+            ));
+            out.push_str("  TnBinding tn_for_bindings[TN_MAX_BINDINGS];\n");
+            out.push_str("  size_t tn_for_bindings_len = 0;\n");
+            out.push_str("  tn_binding_snapshot(tn_for_bindings, &tn_for_bindings_len);\n");
             let mut temp_index = 0usize;
             let rendered = emit_static_for_value(&value, out, &mut temp_index);
             out.push_str("  tn_binding_restore(tn_for_bindings, tn_for_bindings_len);\n");
             out.push_str(&format!("  return {rendered};\n"));
+            out.push_str("}\n\n");
         }
         Err(StaticForEvalIssue::Runtime(message)) => {
+            out.push_str(&format!(
+                "static TnVal tn_runtime_for_case_{index}(void) {{\n"
+            ));
+            out.push_str("  TnBinding tn_for_bindings[TN_MAX_BINDINGS];\n");
+            out.push_str("  size_t tn_for_bindings_len = 0;\n");
+            out.push_str("  tn_binding_snapshot(tn_for_bindings, &tn_for_bindings_len);\n");
             let rendered =
                 render_static_for_runtime_failure(source_path, source, for_spec, &message);
             let escaped = c_string_literal(&rendered);
             out.push_str("  tn_binding_restore(tn_for_bindings, tn_for_bindings_len);\n");
             out.push_str(&format!("  return tn_runtime_fail({escaped});\n"));
+            out.push_str("}\n\n");
         }
         Err(StaticForEvalIssue::Unsupported(_)) => {
-            out.push_str("  tn_binding_restore(tn_for_bindings, tn_for_bindings_len);\n");
-            out.push_str("  return tn_stub_abort(\"tn_runtime_for\");\n");
+            emit_dynamic_for_case(index, for_spec, out)?;
         }
     }
 
-    out.push_str("}\n\n");
     Ok(())
 }
 

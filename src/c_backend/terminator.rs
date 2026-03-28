@@ -304,9 +304,35 @@ pub(super) fn emit_c_guard_condition(
 
                             out.push_str(&format!("  TnVal {reg} = {helper}({rendered_args});\n"));
                         } else {
-                            out.push_str(&format!(
-                                "  TnVal {reg} = tn_stub_abort(\"guard builtin {name}\");\n"
-                            ));
+                            match name.as_str() {
+                                "div" => {
+                                    if call_args.len() != 2 {
+                                        return Err(CBackendError::new(format!(
+                                            "c backend guard builtin {name} arity mismatch in function {function_name} at offset {offset}"
+                                        )));
+                                    }
+                                    out.push_str(&format!(
+                                        "  TnVal {reg} = (TnVal)({} / {});\n",
+                                        call_args[0], call_args[1]
+                                    ));
+                                }
+                                "rem" => {
+                                    if call_args.len() != 2 {
+                                        return Err(CBackendError::new(format!(
+                                            "c backend guard builtin {name} arity mismatch in function {function_name} at offset {offset}"
+                                        )));
+                                    }
+                                    out.push_str(&format!(
+                                        "  TnVal {reg} = (TnVal)({} % {});\n",
+                                        call_args[0], call_args[1]
+                                    ));
+                                }
+                                _ => {
+                                    out.push_str(&format!(
+                                        "  TnVal {reg} = tn_stub_abort(\"guard builtin {name}\");\n"
+                                    ));
+                                }
+                            }
                         }
                     }
                 }

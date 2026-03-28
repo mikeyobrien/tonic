@@ -5,28 +5,7 @@ use std::path::Path;
 
 mod common;
 
-const DIFFERENTIAL_CATALOG_EXCLUSIONS: &[(&str, &str)] = &[
-    (
-        "examples/parity/10-idiomatic/closures_and_captures.tn",
-        "native C backend still aborts on tn_runtime_for-backed comprehensions",
-    ),
-    (
-        "examples/parity/10-idiomatic/fizzbuzz.tn",
-        "native C backend still aborts on tn_runtime_for-backed comprehensions",
-    ),
-    (
-        "examples/parity/10-idiomatic/keyword_filtering.tn",
-        "native C backend still aborts on tn_runtime_for-backed comprehensions",
-    ),
-    (
-        "examples/parity/10-idiomatic/list_processing.tn",
-        "native C backend still aborts on tn_runtime_for-backed comprehensions",
-    ),
-    (
-        "examples/parity/10-idiomatic/pipeline_transform.tn",
-        "native C backend still aborts on tn_runtime_for-backed comprehensions",
-    ),
-];
+const DIFFERENTIAL_CATALOG_EXCLUSIONS: &[(&str, &str)] = &[];
 
 #[derive(Debug, Deserialize)]
 struct Catalog {
