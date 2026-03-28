@@ -6,6 +6,7 @@ use crate::mir::{MirInstruction, MirProgram};
 use super::error::CBackendError;
 use super::hash::hash_ir_op_i64;
 use super::stubs::c_string_literal;
+use crate::cli_diag::failure_message_lines_with_filename_and_source;
 
 #[path = "stubs_for_ops.rs"]
 mod ops;
@@ -57,13 +58,15 @@ enum StaticForEvalIssue {
 }
 pub(super) fn emit_runtime_for_helpers(
     mir: &MirProgram,
+    source_path: &str,
+    source: &str,
     out: &mut String,
 ) -> Result<(), CBackendError> {
     let for_specs = collect_for_specs(mir)?;
 
     out.push_str("/* compiled for helpers */\n");
     for (index, for_spec) in for_specs.iter().enumerate() {
-        emit_runtime_for_case(index, for_spec, out)?;
+        emit_runtime_for_case(index, for_spec, source_path, source, out)?;
     }
 
     out.push_str("static TnVal tn_runtime_for(TnVal op_hash) {\n");
@@ -123,6 +126,8 @@ fn collect_for_specs(mir: &MirProgram) -> Result<Vec<ForSpec>, CBackendError> {
 fn emit_runtime_for_case(
     index: usize,
     for_spec: &ForSpec,
+    source_path: &str,
+    source: &str,
     out: &mut String,
 ) -> Result<(), CBackendError> {
     out.push_str(&format!(
@@ -140,7 +145,9 @@ fn emit_runtime_for_case(
             out.push_str(&format!("  return {rendered};\n"));
         }
         Err(StaticForEvalIssue::Runtime(message)) => {
-            let escaped = c_string_literal(&message);
+            let rendered =
+                render_static_for_runtime_failure(source_path, source, for_spec, &message);
+            let escaped = c_string_literal(&rendered);
             out.push_str("  tn_binding_restore(tn_for_bindings, tn_for_bindings_len);\n");
             out.push_str(&format!("  return tn_runtime_fail({escaped});\n"));
         }
@@ -152,6 +159,20 @@ fn emit_runtime_for_case(
 
     out.push_str("}\n\n");
     Ok(())
+}
+
+fn render_static_for_runtime_failure(
+    source_path: &str,
+    source: &str,
+    for_spec: &ForSpec,
+    message: &str,
+) -> String {
+    let offset = match &for_spec.op {
+        IrOp::For { offset, .. } => Some(*offset),
+        _ => None,
+    };
+    failure_message_lines_with_filename_and_source(message, Some(source_path), source, offset)
+        .join("\n")
 }
 
 fn emit_static_for_value(

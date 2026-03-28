@@ -29,6 +29,24 @@ pub struct CliDiagnostic {
     lines: Vec<String>,
 }
 
+pub(crate) fn failure_message_lines_with_filename_and_source(
+    message: impl Into<String>,
+    filename: Option<&str>,
+    source: &str,
+    offset: Option<usize>,
+) -> Vec<String> {
+    let message = message.into();
+    let mut lines = vec![message];
+
+    if let Some(offset) = offset {
+        if let Some(context_lines) = source_context_lines(filename, source, offset) {
+            lines.extend(context_lines);
+        }
+    }
+
+    lines
+}
+
 impl CliDiagnostic {
     pub fn usage(message: impl Into<String>) -> Self {
         Self {
@@ -67,14 +85,10 @@ impl CliDiagnostic {
         source: &str,
         offset: Option<usize>,
     ) -> Self {
-        let mut diagnostic = Self::failure(message);
-
-        if let Some(offset) = offset {
-            if let Some(lines) = source_context_lines(filename, source, offset) {
-                diagnostic.lines.extend(lines);
-            }
-        }
-
+        let lines =
+            failure_message_lines_with_filename_and_source(message, filename, source, offset);
+        let mut diagnostic = Self::failure(lines[0].clone());
+        diagnostic.lines.extend(lines.into_iter().skip(1));
         diagnostic
     }
 

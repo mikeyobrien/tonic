@@ -15,10 +15,6 @@ const DIFFERENTIAL_CATALOG_EXCLUSIONS: &[(&str, &str)] = &[
         "native closure lowering still rejects this multi-clause anonymous function capture",
     ),
     (
-        "examples/parity/06-control-flow/for_into_runtime_fail.tn",
-        "native runtime failure output still lacks the interpreter's source-context-rich diagnostic text",
-    ),
-    (
         "examples/parity/10-idiomatic/closures_and_captures.tn",
         "native C backend still aborts on tn_runtime_for-backed comprehensions",
     ),

@@ -42,7 +42,11 @@ use stubs::{emit_header, emit_runtime_stubs};
 /// - Declares `tn_runtime_*` functions as weak stubs (abort on call)
 /// - Emits user function implementations
 /// - Emits a `main()` that calls `Demo.run()` and prints the integer result
-pub(crate) fn lower_mir_to_c(mir: &MirProgram) -> Result<String, CBackendError> {
+pub(crate) fn lower_mir_to_c(
+    mir: &MirProgram,
+    source_path: &str,
+    source: &str,
+) -> Result<String, CBackendError> {
     let groups = group_functions(mir);
     let mut callable_symbols = BTreeMap::<(String, usize), String>::new();
     let mut clause_symbols = BTreeMap::<usize, String>::new();
@@ -69,7 +73,7 @@ pub(crate) fn lower_mir_to_c(mir: &MirProgram) -> Result<String, CBackendError> 
 
     emit_header(&mut out);
     emit_forward_declarations(&groups, mir, &clause_symbols, &callable_symbols, &mut out);
-    emit_runtime_stubs(mir, &mut out)?;
+    emit_runtime_stubs(mir, source_path, source, &mut out)?;
 
     for group in &groups {
         let use_dispatcher = group_requires_dispatcher(group, mir);

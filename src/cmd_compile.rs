@@ -307,7 +307,7 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
 
     let c_source =
         match observe_phase_result(&mut profiler, &mut observed_run, "backend.lower_c", || {
-            c_backend::lower_mir_to_c(&optimized_mir)
+            c_backend::lower_mir_to_c(&optimized_mir, &source_path, &source)
         }) {
             Ok(src) => src,
             Err(error) => {

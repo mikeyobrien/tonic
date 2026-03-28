@@ -43,7 +43,12 @@ pub(super) fn emit_header(out: &mut String) {
 ///
 /// Task 05 helpers are implemented inline; unsupported helpers remain explicit
 /// abort stubs so failures stay deterministic.
-pub(super) fn emit_runtime_stubs(mir: &MirProgram, out: &mut String) -> Result<(), CBackendError> {
+pub(super) fn emit_runtime_stubs(
+    mir: &MirProgram,
+    source_path: &str,
+    source: &str,
+    out: &mut String,
+) -> Result<(), CBackendError> {
     emit_stubs_types(out);
     emit_stubs_memory(out);
     emit_stubs_constructors(out);
@@ -57,7 +62,7 @@ pub(super) fn emit_runtime_stubs(mir: &MirProgram, out: &mut String) -> Result<(
     emit_stubs_results(out);
     emit_runtime_pattern_helpers(mir, out)?;
     emit_runtime_try_helpers(mir, out)?;
-    emit_runtime_for_helpers(mir, out)?;
+    emit_runtime_for_helpers(mir, source_path, source, out)?;
     emit_compiled_closure_helpers(mir, out)?;
     Ok(())
 }
