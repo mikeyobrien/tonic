@@ -3,6 +3,7 @@ use super::{
     HostError, HostRegistry,
 };
 use crate::runtime::RuntimeValue;
+use termimad::MadSkin;
 
 fn expect_exact_args(
     function: &str,
@@ -99,6 +100,13 @@ fn host_io_gets(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     Ok(RuntimeValue::String(line))
 }
 
+fn host_io_render_markdown(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("IO.render_markdown", args, 1)?;
+    let markdown = expect_string_arg("IO.render_markdown", args, 0)?;
+    let skin = MadSkin::default();
+    Ok(RuntimeValue::String(skin.term_text(&markdown).to_string()))
+}
+
 fn host_io_ansi_red(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("IO.ansi_red", args, 1)?;
     let s = expect_string_arg("IO.ansi_red", args, 0)?;
@@ -132,6 +140,7 @@ pub fn register_io_host_functions(registry: &HostRegistry) {
     registry.register("io_puts", host_io_puts);
     registry.register("io_inspect", host_io_inspect);
     registry.register("io_gets", host_io_gets);
+    registry.register("io_render_markdown", host_io_render_markdown);
     registry.register("io_ansi_red", host_io_ansi_red);
     registry.register("io_ansi_green", host_io_ansi_green);
     registry.register("io_ansi_yellow", host_io_ansi_yellow);
@@ -146,6 +155,20 @@ mod tests {
 
     fn s(text: &str) -> RuntimeValue {
         RuntimeValue::String(text.to_string())
+    }
+
+    #[test]
+    fn io_render_markdown_renders_terminal_text() {
+        let result = HOST_REGISTRY
+            .call("io_render_markdown", &[s("# Title\n\n- item")])
+            .expect("io_render_markdown should succeed");
+        let RuntimeValue::String(rendered) = result else {
+            panic!("io_render_markdown should return a string");
+        };
+        assert!(rendered.contains("Title"));
+        assert!(rendered.contains("item"));
+        assert!(!rendered.contains("# Title"));
+        assert!(rendered.contains("\x1b["));
     }
 
     #[test]
@@ -186,6 +209,17 @@ mod tests {
             .call("io_ansi_reset", &[])
             .expect("io_ansi_reset should succeed");
         assert_eq!(result, s("\x1b[0m"));
+    }
+
+    #[test]
+    fn io_render_markdown_rejects_wrong_arity() {
+        let error = HOST_REGISTRY
+            .call("io_render_markdown", &[])
+            .expect_err("io_render_markdown should reject zero arguments");
+        assert_eq!(
+            error.to_string(),
+            "host error: IO.render_markdown expects exactly 1 argument, found 0"
+        );
     }
 
     #[test]
