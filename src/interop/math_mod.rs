@@ -219,8 +219,8 @@ mod tests {
 
     #[test]
     fn abs_float() {
-        let result = as_f64(&call("math_abs", &[float(-3.14)]));
-        assert!((result - 3.14).abs() < 1e-10);
+        let result = as_f64(&call("math_abs", &[float(-std::f64::consts::PI)]));
+        assert!((result - std::f64::consts::PI).abs() < 1e-10);
     }
 
     #[test]

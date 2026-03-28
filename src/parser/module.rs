@@ -66,9 +66,7 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_function(&mut self) -> Result<Function, ParserError> {
         let id = self.node_ids.next_function();
 
-        let function_span = if self.match_kind(TokenKind::Def) {
-            self.tokens[self.index - 1].span()
-        } else if self.match_kind(TokenKind::Defp) {
+        let function_span = if self.match_kind(TokenKind::Def) || self.match_kind(TokenKind::Defp) {
             self.tokens[self.index - 1].span()
         } else {
             return Err(self.expected("def or defp"));

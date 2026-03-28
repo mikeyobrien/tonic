@@ -74,8 +74,8 @@ fn load_packages_manifest() -> PackagesManifest {
 }
 
 fn save_packages_manifest(manifest: &PackagesManifest) -> Result<(), String> {
-    let contents =
-        toml::to_string_pretty(manifest).map_err(|e| format!("failed to serialize packages.toml: {e}"))?;
+    let contents = toml::to_string_pretty(manifest)
+        .map_err(|e| format!("failed to serialize packages.toml: {e}"))?;
     std::fs::write(packages_toml_path(), contents)
         .map_err(|e| format!("failed to write packages.toml: {e}"))
 }
@@ -88,9 +88,9 @@ pub(super) fn handle_install(args: Vec<String>) -> i32 {
     let mut source_arg: Option<String> = None;
     let mut copy = false;
     let mut force = false;
-    let mut iter = args.iter();
+    let iter = args.iter();
 
-    while let Some(arg) = iter.next() {
+    for arg in iter {
         match arg.as_str() {
             "-h" | "--help" | "help" => {
                 print_install_help();
@@ -142,7 +142,7 @@ pub(super) fn handle_install(args: Vec<String>) -> i32 {
     let path = Path::new(&source);
     if !path.exists() && !source.contains('/') && !source.starts_with('.') {
         return CliDiagnostic::failure_with_hint(
-            format!("registry install not yet supported; use a path or git URL"),
+            "registry install not yet supported; use a path or git URL".to_string(),
             format!("try: tonic install ./{source}  (for a local path)"),
         );
     }
@@ -162,10 +162,11 @@ fn install_local_path(source: &str, copy: bool, force: bool) -> i32 {
     // Verify tonic.toml exists
     if !abs_path.join("tonic.toml").exists() {
         return CliDiagnostic::failure_with_hint(
+            "path does not appear to be a tonic project (no tonic.toml found)".to_string(),
             format!(
-                "path does not appear to be a tonic project (no tonic.toml found)"
+                "expected tonic.toml at {}",
+                abs_path.join("tonic.toml").display()
             ),
-            format!("expected tonic.toml at {}", abs_path.join("tonic.toml").display()),
         );
     }
 
@@ -177,7 +178,8 @@ fn install_local_path(source: &str, copy: bool, force: bool) -> i32 {
 
     // Create directories
     if let Err(e) = std::fs::create_dir_all(bin_dir()) {
-        return CliDiagnostic::failure(format!("failed to create {}: {e}", bin_dir().display())).emit();
+        return CliDiagnostic::failure(format!("failed to create {}: {e}", bin_dir().display()))
+            .emit();
     }
     if let Err(e) = std::fs::create_dir_all(packages_dir()) {
         return CliDiagnostic::failure(format!(
@@ -239,7 +241,8 @@ fn install_local_path(source: &str, copy: bool, force: bool) -> i32 {
         }
         #[cfg(not(unix))]
         {
-            return CliDiagnostic::failure("symlink install requires Unix; use --copy instead").emit();
+            return CliDiagnostic::failure("symlink install requires Unix; use --copy instead")
+                .emit();
         }
     }
 
@@ -294,20 +297,28 @@ fn install_local_path(source: &str, copy: bool, force: bool) -> i32 {
 
 fn install_git(_url: &str, _force: bool) -> i32 {
     // Git install will be implemented in Slice 3
-    CliDiagnostic::failure("git URL install is not yet implemented; use a local path for now").emit()
+    CliDiagnostic::failure("git URL install is not yet implemented; use a local path for now")
+        .emit()
 }
 
 // ---------------------------------------------------------------------------
 // Binary discovery
 // ---------------------------------------------------------------------------
 
-fn discover_binaries(project_path: &Path, pkg_name: &str, explicit_name: bool) -> Result<Vec<String>, String> {
+fn discover_binaries(
+    project_path: &Path,
+    pkg_name: &str,
+    explicit_name: bool,
+) -> Result<Vec<String>, String> {
     let bin_dir = project_path.join("bin");
 
     if bin_dir.is_dir() {
         let mut bins = Vec::new();
         let entries = std::fs::read_dir(&bin_dir).map_err(|e| {
-            format!("failed to read bin/ directory at {}: {e}", bin_dir.display())
+            format!(
+                "failed to read bin/ directory at {}: {e}",
+                bin_dir.display()
+            )
         })?;
         for entry in entries {
             let entry = entry.map_err(|e| format!("failed to read bin/ entry: {e}"))?;
@@ -334,9 +345,10 @@ fn discover_binaries(project_path: &Path, pkg_name: &str, explicit_name: bool) -
         // when [package] name is explicitly set in tonic.toml.
         Ok(vec![pkg_name.to_string()])
     } else {
-        Err(format!(
-            "no installable binaries found; add executables to bin/ or set [package] name in tonic.toml",
-        ))
+        Err(
+            "no installable binaries found; add executables to bin/ or set [package] name in tonic.toml"
+                .to_string(),
+        )
     }
 }
 
@@ -382,8 +394,9 @@ fn generate_shims(pkg_name: &str, pkg_path: &Path, bins: &[String]) -> Result<()
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o755);
-            std::fs::set_permissions(&shim_path, perms)
-                .map_err(|e| format!("failed to set permissions on {}: {e}", shim_path.display()))?;
+            std::fs::set_permissions(&shim_path, perms).map_err(|e| {
+                format!("failed to set permissions on {}: {e}", shim_path.display())
+            })?;
         }
     }
 
@@ -429,9 +442,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {e}", dst.display()))?;
     for entry in std::fs::read_dir(src).map_err(|e| format!("read_dir {}: {e}", src.display()))? {
         let entry = entry.map_err(|e| format!("read entry: {e}"))?;
-        let ty = entry
-            .file_type()
-            .map_err(|e| format!("file_type: {e}"))?;
+        let ty = entry.file_type().map_err(|e| format!("file_type: {e}"))?;
         let dest_path = dst.join(entry.file_name());
         if ty.is_dir() {
             copy_dir_recursive(&entry.path(), &dest_path)?;
@@ -525,8 +536,8 @@ pub(super) fn handle_installed(args: Vec<String>) -> i32 {
     }
 
     println!(
-        "{:<20} {:<10} {:<30} {}",
-        "PACKAGE", "SOURCE", "BINARIES", "INSTALLED"
+        "{:<20} {:<10} {:<30} INSTALLED",
+        "PACKAGE", "SOURCE", "BINARIES"
     );
     println!("{}", "-".repeat(80));
 
@@ -556,7 +567,10 @@ pub(super) fn handle_installed(args: Vec<String>) -> i32 {
             .next()
             .unwrap_or(&entry.installed_at);
 
-        println!("{:<20} {:<10} {:<30} {}", name, source_display, bins_display, date);
+        println!(
+            "{:<20} {:<10} {:<30} {}",
+            name, source_display, bins_display, date
+        );
     }
 
     EXIT_OK
@@ -689,7 +703,10 @@ mod tests {
         std::fs::write(dir.join("tonic.toml"), "# empty manifest\n").unwrap();
 
         let result = discover_binaries(&dir, "tonic-test-no-bins", false);
-        assert!(result.is_err(), "expected error when no bin/ and no explicit name");
+        assert!(
+            result.is_err(),
+            "expected error when no bin/ and no explicit name"
+        );
         let msg = result.unwrap_err();
         assert!(msg.contains("no installable binaries found"), "got: {msg}");
 

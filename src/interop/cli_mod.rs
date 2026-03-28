@@ -225,10 +225,7 @@ fn parse_spec(spec_kw: &[(RuntimeValue, RuntimeValue)]) -> Result<CliSpec, HostE
                 .and_then(|v| as_str(v))
                 .unwrap_or("")
                 .to_string();
-            let required = match kw_get(arg_kw, "required") {
-                Some(RuntimeValue::Bool(true)) => true,
-                _ => false,
-            };
+            let required = matches!(kw_get(arg_kw, "required"), Some(RuntimeValue::Bool(true)));
             let arg_type = match kw_get(arg_kw, "type").and_then(|v| as_str(v)) {
                 Some("integer") => FlagType::Integer,
                 Some("float") => FlagType::Float,
@@ -718,8 +715,7 @@ fn do_parse_command(
             continue;
         }
 
-        if arg.starts_with("--") {
-            let flag_name = &arg[2..];
+        if let Some(flag_name) = arg.strip_prefix("--") {
             // Check for --no-<flag> boolean negation
             if let Some(stripped) = flag_name.strip_prefix("no-") {
                 if let Some(fspec) = cmd.flags.iter().find(|f| f.name == stripped) {
@@ -1028,8 +1024,7 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
             continue;
         }
 
-        if arg.starts_with("--") {
-            let flag_name = &arg[2..];
+        if let Some(flag_name) = arg.strip_prefix("--") {
             // Check for --no-<flag> boolean negation
             if let Some(stripped) = flag_name.strip_prefix("no-") {
                 if let Some(fspec) = spec.flags.iter().find(|f| f.name == stripped) {
@@ -1077,7 +1072,7 @@ fn do_parse(spec: &CliSpec, argv: &[String]) -> RuntimeValue {
         }
 
         if arg.starts_with('-') && arg.len() >= 2 && !arg.starts_with("--") {
-            match parse_combined_short_flags(arg, &spec.flags, &mut parsed_flags, &argv, i) {
+            match parse_combined_short_flags(arg, &spec.flags, &mut parsed_flags, argv, i) {
                 Ok(extra) => {
                     i += 1 + extra;
                     continue;
@@ -1367,8 +1362,7 @@ fn validate_flag_relations(
 
 /// Try to split a `--flag=value` argument. Returns Some((flag_name, value)) or None.
 fn split_equals(arg: &str) -> Option<(&str, &str)> {
-    if arg.starts_with("--") {
-        let rest = &arg[2..];
+    if let Some(rest) = arg.strip_prefix("--") {
         if let Some(eq_pos) = rest.find('=') {
             let name = &rest[..eq_pos];
             let value = &rest[eq_pos + 1..];
@@ -1756,7 +1750,7 @@ mod tests {
     #[test]
     fn cli_module_build_spec_accepts_keyword() {
         let spec = make_spec();
-        let result = host_cli_build_spec(&[spec.clone()]).unwrap();
+        let result = host_cli_build_spec(std::slice::from_ref(&spec)).unwrap();
         assert_eq!(result, spec);
     }
 
@@ -2629,7 +2623,7 @@ mod tests {
             ),
         ]);
         // Help should not show --debug
-        let help = host_cli_format_help(&[spec.clone()]).unwrap();
+        let help = host_cli_format_help(std::slice::from_ref(&spec)).unwrap();
         if let RuntimeValue::String(text) = &help {
             assert!(text.contains("--[no-]verbose"));
             assert!(!text.contains("--debug") && !text.contains("Debug mode"));
@@ -2662,7 +2656,7 @@ mod tests {
             ),
         ]);
         // Help should not show internal
-        let help = host_cli_format_help(&[spec.clone()]).unwrap();
+        let help = host_cli_format_help(std::slice::from_ref(&spec)).unwrap();
         if let RuntimeValue::String(text) = &help {
             assert!(text.contains("public"));
             assert!(!text.contains("internal"));

@@ -316,7 +316,13 @@ mod tests {
 
     #[test]
     fn soft_line_disappears_when_group_stays_flat() {
-        let doc = group(concat_all(vec![text("call("), soft_line(), text("arg"), soft_line(), text(")")]));
+        let doc = group(concat_all(vec![
+            text("call("),
+            soft_line(),
+            text("arg"),
+            soft_line(),
+            text(")"),
+        ]));
 
         assert_eq!(format(&doc, 20), "call(arg)");
         assert_eq!(format(&doc, 4), "call(\narg\n)");

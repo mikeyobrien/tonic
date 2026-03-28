@@ -25,7 +25,10 @@ fn process_escape(chars: &[char], idx: &mut usize) -> char {
 
 #[derive(Debug, Clone)]
 enum TextBlockFragment {
-    Text { value: String, spans: Vec<Span> },
+    Text {
+        value: String,
+        spans: Vec<Span>,
+    },
     Expr {
         source: String,
         base_offset: usize,
@@ -47,10 +50,7 @@ fn is_blank_text_block_item(item: &TextBlockItem) -> bool {
 fn normalize_text_block_items(items: &[TextBlockItem]) -> Vec<TextBlockItem> {
     let mut content = items.to_vec();
 
-    if matches!(
-        content.first(),
-        Some(TextBlockItem::Char { ch: '\n', .. })
-    ) {
+    if matches!(content.first(), Some(TextBlockItem::Char { ch: '\n', .. })) {
         content.remove(0);
     }
 
@@ -355,7 +355,10 @@ fn emit_text_block_tokens(
         return Ok(());
     }
 
-    tokens.push(Token::simple(TokenKind::StringStart, Span::new(start, start + 5)));
+    tokens.push(Token::simple(
+        TokenKind::StringStart,
+        Span::new(start, start + 5),
+    ));
 
     let mut text = String::new();
     let mut spans = Vec::new();
@@ -381,10 +384,12 @@ fn emit_text_block_tokens(
 
                 tokens.push(Token::simple(TokenKind::InterpolationStart, *open_span));
 
-                let mut expr_tokens = scan_tokens(source).map_err(|error| {
-                    shift_lexer_error(error, *base_offset)
-                })?;
-                if matches!(expr_tokens.last().map(|token| token.kind()), Some(TokenKind::Eof)) {
+                let mut expr_tokens =
+                    scan_tokens(source).map_err(|error| shift_lexer_error(error, *base_offset))?;
+                if matches!(
+                    expr_tokens.last().map(|token| token.kind()),
+                    Some(TokenKind::Eof)
+                ) {
                     expr_tokens.pop();
                 }
                 tokens.extend(

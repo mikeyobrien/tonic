@@ -1,5 +1,19 @@
 use super::*;
-use crate::lexer::TokenKind;
+use crate::lexer::{Span, TokenKind};
+
+struct LabelEntriesHints {
+    missing_comma: &'static str,
+    unclosed: &'static str,
+}
+
+impl LabelEntriesHints {
+    const fn new(missing_comma: &'static str, unclosed: &'static str) -> Self {
+        Self {
+            missing_comma,
+            unclosed,
+        }
+    }
+}
 
 impl<'a> Parser<'a> {
     pub(super) fn parse_interpolated_string_expression(&mut self) -> Result<Expr, ParserError> {
@@ -108,8 +122,10 @@ impl<'a> Parser<'a> {
                 "keyword key",
                 "keyword list",
                 opening_span,
-                "separate keyword entries with commas, for example `[message: \"oops\", detail: info]`",
-                "add ']' to close the keyword list, for example `[message: \"oops\", detail: info]`",
+                LabelEntriesHints::new(
+                    "separate keyword entries with commas, for example `[message: \"oops\", detail: info]`",
+                    "add ']' to close the keyword list, for example `[message: \"oops\", detail: info]`",
+                ),
             )?;
             return Ok(Expr::keyword(self.node_ids.next_expr(), offset, entries));
         }
@@ -159,8 +175,10 @@ impl<'a> Parser<'a> {
                 "map update key",
                 "map update",
                 opening_span,
-                "separate map update fields with commas, for example `%{base | left: value, right: other}`",
-                "add '}' to close the map update, for example `%{base | left: value, right: other}`",
+                LabelEntriesHints::new(
+                    "separate map update fields with commas, for example `%{base | left: value, right: other}`",
+                    "add '}' to close the map update, for example `%{base | left: value, right: other}`",
+                ),
             )?;
             return Ok(Expr::map_update(
                 self.node_ids.next_expr(),
@@ -214,8 +232,10 @@ impl<'a> Parser<'a> {
                 "struct field",
                 "struct literal",
                 opening_span,
-                "separate struct fields with commas, for example `%User{name: name, age: age}`",
-                "add '}' to close the struct literal, for example `%User{name: name, age: age}`",
+                LabelEntriesHints::new(
+                    "separate struct fields with commas, for example `%User{name: name, age: age}`",
+                    "add '}' to close the struct literal, for example `%User{name: name, age: age}`",
+                ),
             )?;
             return Ok(Expr::struct_literal(
                 self.node_ids.next_expr(),
@@ -233,8 +253,10 @@ impl<'a> Parser<'a> {
             "struct update field",
             "struct update",
             opening_span,
-            "separate struct update fields with commas, for example `%User{record | name: value, age: other}`",
-            "add '}' to close the struct update, for example `%User{record | name: value, age: other}`",
+            LabelEntriesHints::new(
+                "separate struct update fields with commas, for example `%User{record | name: value, age: other}`",
+                "add '}' to close the struct update, for example `%User{record | name: value, age: other}`",
+            ),
         )?;
 
         Ok(Expr::struct_update(
@@ -319,15 +341,14 @@ impl<'a> Parser<'a> {
         Ok(MapExprEntry { key, value })
     }
 
-    pub(super) fn parse_label_entries(
+    fn parse_label_entries(
         &mut self,
         closing: TokenKind,
         expected_closing: &str,
         expected_key: &str,
         construct: &str,
-        opening_span: crate::lexer::Span,
-        missing_comma_hint: &str,
-        unclosed_hint: &str,
+        opening_span: Span,
+        hints: LabelEntriesHints,
     ) -> Result<Vec<LabelExprEntry>, ParserError> {
         let mut entries = Vec::new();
 
@@ -343,7 +364,7 @@ impl<'a> Parser<'a> {
 
             if !self.check(closing) {
                 if self.current_starts_missing_keyword_entry_comma() {
-                    return Err(self.missing_comma_error(construct, missing_comma_hint));
+                    return Err(self.missing_comma_error(construct, hints.missing_comma));
                 }
 
                 if self.check(TokenKind::Colon)
@@ -353,7 +374,7 @@ impl<'a> Parser<'a> {
                     return Err(self.missing_comma_error_at_token(
                         construct,
                         &self.tokens[self.index - 1],
-                        missing_comma_hint,
+                        hints.missing_comma,
                     ));
                 }
             }
@@ -366,7 +387,7 @@ impl<'a> Parser<'a> {
             expected_closing,
             construct,
             opening_span,
-            unclosed_hint,
+            hints.unclosed,
         )?;
         Ok(entries)
     }

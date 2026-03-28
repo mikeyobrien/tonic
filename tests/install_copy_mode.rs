@@ -29,7 +29,7 @@ fn install_copy_mode_copies_source() {
     let pkg_path = home.join("packages").join("copy-pkg");
     assert!(pkg_path.exists(), "package dir should exist");
     assert!(
-        !pkg_path.read_link().is_ok(),
+        pkg_path.read_link().is_err(),
         "package dir should NOT be a symlink in copy mode"
     );
 

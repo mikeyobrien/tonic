@@ -9,7 +9,9 @@ fn install_missing_source_path_errors() {
         .env("TONIC_HOME", &home)
         .assert()
         .code(1)
-        .stderr(predicates::prelude::predicate::str::contains("cannot resolve path"));
+        .stderr(predicates::prelude::predicate::str::contains(
+            "cannot resolve path",
+        ));
 
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -265,7 +265,7 @@ mod tests {
     fn encode_decode_round_trip() {
         let original = s("hello world & café = good!");
         let encoded = HOST_REGISTRY
-            .call("url_encode", &[original.clone()])
+            .call("url_encode", std::slice::from_ref(&original))
             .expect("encode should succeed");
         let decoded = HOST_REGISTRY
             .call("url_decode", &[encoded])

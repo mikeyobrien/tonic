@@ -23,7 +23,9 @@ fn install_local_path_creates_shim_and_manifest_entry() {
         .env("TONIC_HOME", &home)
         .assert()
         .success()
-        .stdout(predicates::prelude::predicate::str::contains("Installed package 'my-tool'"));
+        .stdout(predicates::prelude::predicate::str::contains(
+            "Installed package 'my-tool'",
+        ));
 
     // Verify shim exists
     let shim = home.join("bin").join("my-tool");

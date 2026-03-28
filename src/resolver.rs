@@ -69,6 +69,8 @@ fn resolve_expr_with_guard_context(
     context: &ResolveContext<'_>,
     in_guard_context: bool,
 ) -> Result<(), ResolverError> {
+    let _ = in_guard_context;
+
     match expr {
         Expr::Int { .. }
         | Expr::Float { .. }

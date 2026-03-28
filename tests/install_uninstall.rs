@@ -32,7 +32,9 @@ fn install_then_uninstall_cleans_up() {
         .env("TONIC_HOME", &home)
         .assert()
         .success()
-        .stdout(predicates::prelude::predicate::str::contains("Uninstalled package 'removable'"));
+        .stdout(predicates::prelude::predicate::str::contains(
+            "Uninstalled package 'removable'",
+        ));
 
     // Verify shim removed
     assert!(!shim.exists(), "shim should be removed after uninstall");

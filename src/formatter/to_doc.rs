@@ -129,7 +129,11 @@ fn function_to_doc(function: &Function) -> Result<Doc, String> {
         text(", "),
     )?;
 
-    let mut head_parts = vec![text(format!("{keyword} {}(", function.name)), params, text(")")];
+    let mut head_parts = vec![
+        text(format!("{keyword} {}(", function.name)),
+        params,
+        text(")"),
+    ];
     if let Some(guard) = function.guard() {
         head_parts.push(text(" when "));
         head_parts.push(expr_to_doc(guard, 0)?);
@@ -186,10 +190,16 @@ fn expr_to_doc(expr: &Expr, parent_precedence: u8) -> Result<Doc, String> {
         Expr::Keyword { entries, .. } => {
             bracketed_entries_doc("[", label_entries_to_docs(entries)?, "]")?
         }
-        Expr::Map { entries, .. } => bracketed_entries_doc("%{", map_entries_to_docs(entries)?, "}")?,
+        Expr::Map { entries, .. } => {
+            bracketed_entries_doc("%{", map_entries_to_docs(entries)?, "}")?
+        }
         Expr::Struct {
             module, entries, ..
-        } => bracketed_entries_doc(format!("%{}{{", module), label_entries_to_docs(entries)?, "}")?,
+        } => bracketed_entries_doc(
+            format!("%{}{{", module),
+            label_entries_to_docs(entries)?,
+            "}",
+        )?,
         Expr::MapUpdate { base, updates, .. } => update_doc("%{", base, updates, "}")?,
         Expr::StructUpdate {
             module,
@@ -346,7 +356,11 @@ fn list_pattern_doc(items: &[Pattern], tail: Option<&Pattern>) -> Result<Doc, St
     ])))
 }
 
-fn delimited_doc(open: impl Into<String>, items: &[Expr], close: impl Into<String>) -> Result<Doc, String> {
+fn delimited_doc(
+    open: impl Into<String>,
+    items: &[Expr],
+    close: impl Into<String>,
+) -> Result<Doc, String> {
     bracketed_entries_doc(
         open,
         items

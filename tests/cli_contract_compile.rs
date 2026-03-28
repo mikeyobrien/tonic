@@ -126,7 +126,11 @@ fn compile_single_file_success() {
     let artifact_path = temp_dir.join(".tonic/build/single");
     assert!(artifact_path.exists());
     let bytes = fs::read(&artifact_path).unwrap();
-    assert!(common::is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
+    assert!(
+        common::is_native_executable(&bytes),
+        "expected native executable magic bytes, got {:?}",
+        &bytes[..4]
+    );
 }
 
 #[test]
@@ -160,7 +164,11 @@ fn compile_project_root_success() {
     let artifact_path = temp_dir.join(".tonic/build/main");
     assert!(artifact_path.exists());
     let bytes = fs::read(&artifact_path).unwrap();
-    assert!(common::is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
+    assert!(
+        common::is_native_executable(&bytes),
+        "expected native executable magic bytes, got {:?}",
+        &bytes[..4]
+    );
 }
 
 #[test]
@@ -190,7 +198,11 @@ fn compile_custom_out_path() {
 
     assert!(custom_out_path.exists());
     let bytes = fs::read(&custom_out_path).unwrap();
-    assert!(common::is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
+    assert!(
+        common::is_native_executable(&bytes),
+        "expected native executable magic bytes, got {:?}",
+        &bytes[..4]
+    );
 }
 
 #[test]
@@ -240,4 +252,3 @@ fn compile_failure_invalid_source() {
         .failure()
         .stderr(contains("error:"));
 }
-
