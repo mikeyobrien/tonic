@@ -323,6 +323,9 @@ fn run(args: Vec<String>) -> i32 {
         Some("verify") => handle_verify(iter.collect()),
         Some("deps") => handle_deps(iter.collect()),
         Some("publish") => handle_publish(iter.collect()),
+        Some("install") => handle_install(iter.collect()),
+        Some("uninstall") => handle_uninstall(iter.collect()),
+        Some("installed") => handle_installed(iter.collect()),
         Some("docs") => docs::handle_docs(iter.collect()),
         Some("lsp") => {
             lsp::run_lsp_server();
@@ -359,3 +362,7 @@ use cmd_verify::*;
 #[path = "cmd_deps.rs"]
 mod cmd_deps;
 use cmd_deps::*;
+
+#[path = "cmd_install.rs"]
+mod cmd_install;
+use cmd_install::*;

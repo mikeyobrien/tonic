@@ -1,52 +1,62 @@
 # Context
 
 ## Objective
-Implement `.miniloop/ideas-report.md` with one concrete slice at a time.
+Create backpressure mechanisms that stop parity drift between `tonic run` and `tonic compile` from landing unnoticed.
 
-## Completed slice
-Slice 1 — support `?`-suffixed predicate identifiers and atoms, and keep the newly-usable `Map.has_key?/2` path working in both interpreted and compiled execution.
+## Current state
+Experiment 1 is complete and **kept**.
 
-## What changed
-- `src/lexer/mod.rs`
-  - added narrow trailing-`?` identifier scanning rules
-  - plain identifiers absorb `?` only for unambiguous boundaries: `(`, `/`, `:`
-  - atoms absorb trailing `?` before atom-safe boundaries
-- `src/lexer/tests.rs`
-  - added predicate identifier and atom lexer regressions
-- `src/parser/tests.rs`
-  - added parser regression for predicate defs/calls, predicate atoms, and keyword-style `exists?` map keys
-- `src/stdlib_sources.rs`
-- `src/manifest_stdlib.rs`
-  - renamed `Map.has_key/2` stdlib entry to `Map.has_key?/2`
-- `src/c_backend/stubs_map.rs`
-- `src/c_backend/stubs_host_path.rs`
-  - added native compiled dispatch for `map_has_key`
-- `tests/run_lazy_stdlib_loading_smoke.rs`
-  - added interpreted stdlib smoke for `Map.has_key?/2`
-- `tests/runtime_llvm_map_predicate_smoke.rs`
-  - added compiled stdlib smoke for `Map.has_key?/2`
+### What changed
+- `tests/differential_backends.rs` now derives enforced differential coverage from the parity catalog instead of a hand-maintained subset.
+- Every active compileable parity fixture now has an explicit differential decision.
+- Native C equality emission was corrected to use `tn_runtime_value_equal(...)`, fixing the newly exposed `strict_equality.tn` mismatch.
 
-## Why the slice widened slightly
-The lexer/parser fix made `Map.has_key?(...)` parse, but verification exposed two directly relevant parity gaps:
-1. stdlib still exported `Map.has_key/2` instead of `Map.has_key?/2`
-2. compiled C backend lacked `map_has_key` host dispatch
+### Primary metric
+- Eligible parity fixtures missing enforced differential coverage
+- Baseline: **80** uncovered active compileable fixtures
+- Current: **0** uncovered fixtures
 
-Both blocked the required `check`/`run`/`compile` verification path for the predicate example, so they were fixed in the same slice.
+### Current coverage snapshot
+- Eligible active compileable catalog fixtures: **99**
+- Enforced differential fixtures: **91**
+- Explicit exclusions: **8**
+- Silently uncovered eligible fixtures: **0**
 
-## Intended boundary
-This slice is intentionally narrow.
-- Supported now:
-  - `def has_key?(...)`
-  - `Map.has_key?(...)`
-  - `:ok?`
-  - `%{exists?: true}`
-  - `&Map.has_key?/2`
-- Intentionally unchanged:
-  - postfix question operator parsing (`value()?`, `1?`, `x? y`)
-  - char literals (`?a`, `?\n`, `?0`)
-  - ambiguous bare/no-paren `name? value` forms
+### Evidence collected
+1. `cargo test --test differential_backends active_compileable_catalog_entries_have_explicit_differential_coverage -- --nocapture` ✅
+2. `cargo test --test differential_backends -- --nocapture` ✅ (`4 passed` in `26.85s`)
 
-## Critic focus
-- Verify the lexer did not steal postfix `?` or char literals.
-- Verify `Map.has_key?/2` now works in both `tonic run` and `tonic compile` paths.
-- Review only the slice diff/commit, not the unrelated dirty worktree.
+## Remaining explicit exclusions
+These are known gaps, not silent drift:
+- Missing native `tn_runtime_for` support:
+  - `examples/parity/02-operators/stepped_range.tn`
+  - `examples/parity/10-idiomatic/closures_and_captures.tn`
+  - `examples/parity/10-idiomatic/fizzbuzz.tn`
+  - `examples/parity/10-idiomatic/keyword_filtering.tn`
+  - `examples/parity/10-idiomatic/list_processing.tn`
+  - `examples/parity/10-idiomatic/pipeline_transform.tn`
+- Multi-clause anonymous-function capture gap:
+  - `examples/parity/05-functions/function_capture_multi_clause_anon.tn`
+- Native runtime diagnostic text drift:
+  - `examples/parity/06-control-flow/for_into_runtime_fail.tn`
+
+## Decision boundary for the next strategist
+Default route: **`task.complete`**.
+
+If the loop is already sitting on a `task.complete` routing event and nothing about scope or evidence has changed, stop there rather than re-planning or re-verifying the same slice.
+
+If advisory topology metadata still suggests strategist/implementer/benchmarker/evaluator after `task.complete`, ignore it unless the scope has actually changed.
+
+Only plan another experiment if there is an explicit decision to burn down one of the 8 named exclusions. If that happens, pick exactly one exclusion family and define a fresh baseline metric for it.
+
+## Relevant files
+- `.miniloop/autoresearch.md`
+- `.miniloop/progress.md`
+- `tests/differential_backends.rs`
+- `examples/parity/catalog.toml`
+- `src/c_backend/ops.rs`
+- `src/c_backend/stubs_closures.rs`
+- `src/c_backend/terminator.rs`
+
+## Operator note
+Previous loop docs here had stale `tonic install` planning context. They should not drive the next iteration.

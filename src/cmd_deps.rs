@@ -260,7 +260,7 @@ pub(super) fn benchmark_thresholds_report() -> serde_json::Value {
 
 pub(super) fn print_help() {
     println!(
-        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run      Execute source\n  repl     Start interactive or remote REPL\n  check    Parse and type-check source\n  test     Run project tests\n  fmt      Format source files\n  compile  Compile source to executable artifact\n  cache    Manage compiled artifacts\n  verify   Run acceptance verification\n  deps     Manage project dependencies\n  docs     Generate API documentation\n  lsp      Start language server\n  publish  Publish package to registry (not yet implemented)\n"
+        "tonic language core v0\n\nUsage:\n  tonic <COMMAND> [OPTIONS]\n\nCommands:\n  run        Execute source\n  repl       Start interactive or remote REPL\n  check      Parse and type-check source\n  test       Run project tests\n  fmt        Format source files\n  compile    Compile source to executable artifact\n  cache      Manage compiled artifacts\n  verify     Run acceptance verification\n  deps       Manage project dependencies\n  install    Install a tonic module globally\n  uninstall  Remove an installed tonic module\n  installed  List installed tonic modules\n  docs       Generate API documentation\n  lsp        Start language server\n  publish    Publish package to registry (not yet implemented)\n"
     );
 }
 

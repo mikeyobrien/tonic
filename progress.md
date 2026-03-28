@@ -1,77 +1,67 @@
-# Progress
+# Autoresearch Progress
 
-## Current phase
-Builder complete — ready for critic after slice commit.
+## Status
+Experiment 1 evaluated and kept. Objective satisfied; routing to `task.complete`.
 
-## Active slice
-Slice 1 — support `?`-suffixed predicate identifiers/calls and keep `Map.has_key?/2` working across run/compile parity.
+## Stop condition
+If the latest routing event is already `task.complete` and no new scope has been introduced, do not reopen planning or re-run validation just to restate the result. Prefer a brief memory note if needed, then exit cleanly.
 
-## Builder checklist
-- [x] Re-read `.miniloop/context.md`, `.miniloop/plan.md`, `.miniloop/progress.md`, and `.miniloop/ideas-report.md`
-- [x] Add failing lexer/parser regressions first
-- [x] Implement narrow lexer fix
-- [x] Add parser regression coverage
-- [x] Fix directly-blocking stdlib/native parity issues exposed by verification (`Map.has_key?/2` naming + `map_has_key` C host dispatch)
-- [x] Verify targeted tests
-- [x] Verify `check` on `.miniloop/logs/predicate-check.tn`
-- [x] Verify manual `run` smoke
-- [x] Verify manual `compile` + execute smoke
-- [x] Record commit hash
-- [ ] Emit `review.ready`
+The topology block is advisory only. If it still lists generic roles or allowed events after `task.complete`, treat that as stale/default routing metadata, not as a reason to do more work.
+
+## Current experiment
+- **Hypothesis:** parity drift is slipping through because `tests/differential_backends.rs` used a hand-maintained subset instead of catalog-driven coverage rules.
+- **Primary metric:** eligible parity fixtures missing enforced differential coverage (lower is better).
+- **Baseline:** 80 uncovered fixtures.
+- **Current implementation result:** 0 uncovered fixtures via 91 enforced differential fixtures plus 8 explicit catalog exclusions.
+
+## Implemented changes
+- Replaced the hardcoded `PARITY_DIFF_SUBSET` gate with catalog-driven selection of every active catalog entry where `check_exit = 0`.
+- Added an explicit exclusion list with required reasons so unsupported or known-drifting fixtures must be acknowledged instead of silently falling out of coverage.
+- Fixed native C backend equality emission to use `tn_runtime_value_equal(...)` for equality/inequality comparisons in normal ops, closure lowering, and guard/dispatcher code paths.
+
+## Explicit exclusions introduced
+- `examples/parity/02-operators/stepped_range.tn` — native C backend still aborts on `tn_runtime_for`-backed comprehensions.
+- `examples/parity/05-functions/function_capture_multi_clause_anon.tn` — native closure lowering still rejects this multi-clause anonymous function capture.
+- `examples/parity/06-control-flow/for_into_runtime_fail.tn` — native runtime failure output still lacks interpreter-style source-context diagnostics.
+- `examples/parity/10-idiomatic/closures_and_captures.tn`
+- `examples/parity/10-idiomatic/fizzbuzz.tn`
+- `examples/parity/10-idiomatic/keyword_filtering.tn`
+- `examples/parity/10-idiomatic/list_processing.tn`
+- `examples/parity/10-idiomatic/pipeline_transform.tn`
+  - The last five are also excluded because they still hit the missing `tn_runtime_for` native helper.
 
 ## Changed files
-- `src/lexer/mod.rs`
-- `src/lexer/tests.rs`
-- `src/parser/tests.rs`
-- `src/stdlib_sources.rs`
-- `src/manifest_stdlib.rs`
-- `src/c_backend/stubs_map.rs`
-- `src/c_backend/stubs_host_path.rs`
-- `tests/run_lazy_stdlib_loading_smoke.rs`
-- `tests/runtime_llvm_map_predicate_smoke.rs`
-- `.miniloop/context.md`
-- `.miniloop/plan.md`
-- `.miniloop/progress.md`
+- `tests/differential_backends.rs`
+- `src/c_backend/ops.rs`
+- `src/c_backend/stubs_closures.rs`
+- `src/c_backend/terminator.rs`
 
-## Verification
-Builder ran:
-- `cargo fmt --check`
-- `cargo test --bin tonic scan_tokens_supports_predicate_identifiers_before_call_parens`
-- `cargo test --bin tonic scan_tokens_supports_predicate_atoms`
-- `cargo test --bin tonic parse_ast_supports_predicate_function_defs_and_calls`
-- `cargo test --bin tonic scan_tokens_supports_question_operator`
-- `cargo test --bin tonic scan_tokens_char_literal_ascii_letter`
-- `cargo test --bin tonic scan_tokens_char_literal_newline_escape`
-- `cargo test --bin tonic parse_ast_supports_postfix_question_operator`
-- `cargo test run_trace_supports_map_predicate_stdlib_function`
-- `cargo test compiled_runtime_supports_map_has_key_predicate`
-- `cargo run --bin tonic -- check .miniloop/logs/predicate-check.tn`
-- `cargo run --bin tonic -- run .miniloop/logs/predicate-run.tn`
-- `cargo run --bin tonic -- compile .miniloop/logs/predicate-run.tn --out .miniloop/logs/predicate-run-bin && ./.miniloop/logs/predicate-run-bin`
+## Correctness evidence collected
+1. `cargo test --test differential_backends active_compileable_catalog_entries_have_explicit_differential_coverage -- --nocapture` ✅
+   - Result: 1 passed; every active compileable catalog entry still has an explicit differential decision.
+2. `cargo test --test differential_backends -- --nocapture` ✅
+   - Result: 4 passed in 26.85s; the full differential backend suite still holds after the catalog-driven gate expansion.
 
-Observed outcomes:
-- all listed commands passed
-- interpreted smoke output: `true`
-- compiled smoke output: `true`
+## Raw measurement
+- Baseline uncovered eligible fixtures: 80
+- Current eligible fixtures: 99
+- Current enforced differential fixtures: 91
+- Current explicit exclusions: 8
+- Current uncovered eligible fixtures: 0
+- Net change in uncovered eligible fixtures: 80 -> 0
+- Remaining backpressure gap: only the 8 explicit exclusions, each documented with an inline reason in `tests/differential_backends.rs`
 
-## Relevant Issues
-- `Ideas report P0 example claims missing C stubs for str_replace/sys_append_text, but current source already has them` — `out-of-scope`
-  - Disposition: stale report context; not part of this slice.
-- `Predicate-style function names like has_key?/2 fail because the lexer turns ?( into INT(40)` — `fix-now`
-  - Disposition: fixed in `src/lexer/mod.rs` with lexer/parser regressions.
-- `Potential ambiguity with postfix ? operator and char literals while adding predicate identifiers` — `fix-now`
-  - Disposition: fixed narrowly and covered with targeted regression commands.
-- `Predicate-style atoms and keyword-style keys like :ok? / exists?: were inconsistent` — `fix-now`
-  - Disposition: fixed in lexer and parser regressions.
-- `Map stdlib exported has_key/2 while interop and report expect Map.has_key?/2` — `fix-now`
-  - Disposition: fixed in `src/stdlib_sources.rs` and `src/manifest_stdlib.rs`.
-- `Compiled C backend lacked map_has_key host dispatch, breaking Map.has_key?/2 parity after compile` — `fix-now`
-  - Disposition: fixed in `src/c_backend/stubs_map.rs` and `src/c_backend/stubs_host_path.rs`.
-- `Broader stdlib predicate naming inconsistencies likely remain outside Map.has_key?/2 (for example other non-? predicate APIs)` — `fix-next`
-  - Disposition: not required to make this slice green; revisit in a later ideas-report slice.
-- `tests/runtime_llvm_map_stdlib_smoke.rs` currently hits a separate pre-existing compile failure (`tn_runtime_length` / `tn_runtime_elem` undeclared) on a much broader Map stdlib fixture` — `deferred`
-  - Disposition: unrelated to the narrow predicate slice; builder used a dedicated compiled predicate smoke instead.
+## Verdict
+keep
 
-## Commit
-- Slice commit: `HEAD` at `review.ready` time (`git rev-parse --short HEAD`)
-- Review diff command: `git diff HEAD^ HEAD -- context.md plan.md progress.md src/lexer/mod.rs src/lexer/tests.rs src/parser/tests.rs src/stdlib_sources.rs src/manifest_stdlib.rs src/c_backend/stubs_map.rs src/c_backend/stubs_host_path.rs tests/run_lazy_stdlib_loading_smoke.rs tests/runtime_llvm_map_predicate_smoke.rs`
+## Evaluation
+- The primary metric improved decisively: uncovered eligible fixtures dropped from 80 to 0.
+- Correctness evidence is strong enough for a keep: the new explicit-coverage contract test passed, and the full differential backend suite passed after expanding coverage.
+- The 8 remaining gaps are no longer silent drift; they are enforced, named exclusions with concrete reasons. That satisfies the backpressure objective of blocking unnoticed parity regressions from landing.
+- The equality-emission fix is not speculative cleanup; it resolved a real newly-exposed `strict_equality.tn` native mismatch while broadening the enforced gate.
+
+## Next role
+completion
+
+## Next action
+Emit `task.complete`: catalog-driven differential coverage now enforces an explicit include/exclude decision for every active compileable parity fixture, and the remaining 8 gaps are acknowledged exclusions instead of silent drift.

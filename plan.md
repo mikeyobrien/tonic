@@ -1,33 +1,35 @@
 # Plan
 
-## Critic verification checklist
-1. Inspect the landed slice only.
-   - Use the slice commit hash from `.miniloop/progress.md`.
-   - Preferred diff command: `git diff HEAD^ HEAD -- context.md plan.md progress.md src/lexer/mod.rs src/lexer/tests.rs src/parser/tests.rs src/stdlib_sources.rs src/manifest_stdlib.rs src/c_backend/stubs_map.rs src/c_backend/stubs_host_path.rs tests/run_lazy_stdlib_loading_smoke.rs tests/runtime_llvm_map_predicate_smoke.rs`
+## Status
+The active backpressure experiment is finished and kept.
 
-2. Re-run builder verification exactly.
-   - `cargo fmt --check`
-   - `cargo test --bin tonic scan_tokens_supports_predicate_identifiers_before_call_parens`
-   - `cargo test --bin tonic scan_tokens_supports_predicate_atoms`
-   - `cargo test --bin tonic parse_ast_supports_predicate_function_defs_and_calls`
-   - `cargo test --bin tonic scan_tokens_supports_question_operator`
-   - `cargo test --bin tonic scan_tokens_char_literal_ascii_letter`
-   - `cargo test --bin tonic scan_tokens_char_literal_newline_escape`
-   - `cargo test --bin tonic parse_ast_supports_postfix_question_operator`
-   - `cargo test run_trace_supports_map_predicate_stdlib_function`
-   - `cargo test compiled_runtime_supports_map_has_key_predicate`
-   - `cargo run --bin tonic -- check .miniloop/logs/predicate-check.tn`
+- Primary metric improved from **80** uncovered eligible fixtures to **0**.
+- Validation evidence is already collected and recorded in `.miniloop/autoresearch.md` and `.miniloop/progress.md`.
+- There is no active implementation slice.
 
-3. Manual smoke, independently.
-   - `cargo run --bin tonic -- run .miniloop/logs/predicate-run.tn`
-   - `cargo run --bin tonic -- compile .miniloop/logs/predicate-run.tn --out .miniloop/logs/predicate-run-bin && ./.miniloop/logs/predicate-run-bin`
-   - Expected output for both execution paths: `true`
+## Default next action
+The strategist should emit **`task.complete`**.
 
-4. Review for narrowness.
-   - Plain identifier trailing `?` should only bind at unambiguous boundaries.
-   - Atom handling should not affect postfix operator semantics.
-   - Native fix should be limited to `map_has_key` support.
+If the latest routing event is already `task.complete`, do not treat any generic topology suggestions as new work. Exit cleanly unless a new exclusion-burndown request appears.
 
-## Expected verdict criteria
-- Pass if lexer/parser regressions, interpreted smoke, and compiled smoke all succeed and the diff stays narrow.
-- Reject if postfix `?` or char literals regress, or if `Map.has_key?/2` still diverges between run and compile.
+## Only if explicit follow-up work is requested
+Start a new experiment only for one of these exclusion families:
+1. Native `tn_runtime_for` support gaps (6 fixtures)
+2. Multi-clause anonymous-function capture lowering gap (1 fixture)
+3. Native runtime diagnostic text parity gap (1 fixture)
+
+If a follow-up experiment is opened:
+- choose exactly one family
+- define a new primary metric before changing code
+- keep the change scoped and reversible
+- collect both raw measurements and correctness evidence before evaluation
+
+## Not active
+- No unrelated CLI/install work
+- No new broad parity initiative without a fresh metric and hypothesis
+
+## Ready-for-completion checklist
+- [x] Goal of this loop slice is met
+- [x] Evidence for keep is documented
+- [x] Remaining gaps are explicit and named
+- [x] Next role guidance points to completion by default

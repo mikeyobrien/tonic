@@ -215,10 +215,10 @@ fn emit_c_binary(dest: u32, kind: &MirBinaryKind, left: u32, right: u32, out: &m
         MirBinaryKind::IntDiv => out.push_str(&format!("  v{dest} = v{left} / v{right};\n")),
         MirBinaryKind::RemInt => out.push_str(&format!("  v{dest} = v{left} % v{right};\n")),
         MirBinaryKind::CmpIntEq => out.push_str(&format!(
-            "  v{dest} = tn_runtime_const_bool((v{left} == v{right}) ? 1 : 0);\n"
+            "  v{dest} = tn_runtime_const_bool(tn_runtime_value_equal(v{left}, v{right}) ? 1 : 0);\n"
         )),
         MirBinaryKind::CmpIntNotEq => out.push_str(&format!(
-            "  v{dest} = tn_runtime_const_bool((v{left} != v{right}) ? 1 : 0);\n"
+            "  v{dest} = tn_runtime_const_bool(tn_runtime_value_equal(v{left}, v{right}) ? 0 : 1);\n"
         )),
         MirBinaryKind::CmpIntLt => out.push_str(&format!(
             "  v{dest} = tn_runtime_const_bool((v{left} < v{right}) ? 1 : 0);\n"

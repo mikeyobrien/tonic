@@ -195,19 +195,30 @@ fn emit_compiled_closure_body(
                 let left = pop_stack_value(&mut stack, "cmp_int left operand")?;
                 let temp = format!("tmp_{temp_index}");
                 temp_index += 1;
-                let operator = match kind {
-                    CmpKind::Eq => "==",
-                    CmpKind::NotEq => "!=",
-                    CmpKind::Lt => "<",
-                    CmpKind::Lte => "<=",
-                    CmpKind::Gt => ">",
-                    CmpKind::Gte => ">=",
-                    CmpKind::StrictEq => "==",
-                    CmpKind::StrictNotEq => "!=",
-                };
-                out.push_str(&format!(
-                    "  TnVal {temp} = tn_runtime_const_bool(({left} {operator} {right}) ? 1 : 0);\n"
-                ));
+                match kind {
+                    CmpKind::Eq | CmpKind::StrictEq => {
+                        out.push_str(&format!(
+                            "  TnVal {temp} = tn_runtime_const_bool(tn_runtime_value_equal({left}, {right}) ? 1 : 0);\n"
+                        ));
+                    }
+                    CmpKind::NotEq | CmpKind::StrictNotEq => {
+                        out.push_str(&format!(
+                            "  TnVal {temp} = tn_runtime_const_bool(tn_runtime_value_equal({left}, {right}) ? 0 : 1);\n"
+                        ));
+                    }
+                    CmpKind::Lt | CmpKind::Lte | CmpKind::Gt | CmpKind::Gte => {
+                        let operator = match kind {
+                            CmpKind::Lt => "<",
+                            CmpKind::Lte => "<=",
+                            CmpKind::Gt => ">",
+                            CmpKind::Gte => ">=",
+                            _ => unreachable!(),
+                        };
+                        out.push_str(&format!(
+                            "  TnVal {temp} = tn_runtime_const_bool(({left} {operator} {right}) ? 1 : 0);\n"
+                        ));
+                    }
+                }
                 stack.push(temp);
             }
             IrOp::ToString { .. } => {
