@@ -39,8 +39,9 @@ if [[ ! -f "$report_path" ]]; then
 fi
 
 tonic_obs_record_artifact 'native-regression-summary-json' "$report_path"
+suite_toml="${TONIC_REGRESSION_SUITE_TOML:-benchmarks/native-compiler-suite.toml}"
 tonic_obs_run_step 'python3 native-regression-policy evaluator' \
-  python3 - "$report_path" "$mode" <<'PY'
+  python3 - "$report_path" "$mode" "$suite_toml" <<'PY'
 import json
 import math
 import sys
@@ -48,6 +49,7 @@ from pathlib import Path
 
 report_path = Path(sys.argv[1])
 mode = sys.argv[2]
+suite_toml_path = Path(sys.argv[3]) if len(sys.argv) > 3 else None
 
 try:
     report = json.loads(report_path.read_text())
@@ -66,10 +68,34 @@ if contract.get("status") == "pass":
     print(f"verdict=pass score={score:.3f} threshold={threshold:.3f}")
     sys.exit(0)
 
+# Load regression policy thresholds from suite TOML (with defaults).
+policy = {}
+if suite_toml_path and suite_toml_path.is_file():
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError:
+            tomllib = None
+    if tomllib:
+        try:
+            with open(suite_toml_path, "rb") as f:
+                suite_cfg = tomllib.load(f)
+            policy = (suite_cfg.get("performance_contract") or {}).get("regression_policy") or {}
+        except Exception:
+            pass
+
+quarantine_margin = float(policy.get("quarantine_margin", 0.10))
+rollback_margin = float(policy.get("rollback_margin", 0.20))
+quarantine_max_soft = int(policy.get("quarantine_max_soft_regressions", 2))
+quarantine_max_gap = float(policy.get("quarantine_max_score_gap", 0.03))
+rollback_min_gap = float(policy.get("rollback_min_score_gap", 0.08))
+
 relative_budget_pct = float(contract.get("relative_budget_pct", 0.0))
 budget_ratio = 1.0 + (relative_budget_pct / 100.0)
-quarantine_ratio = budget_ratio + 0.10
-rollback_ratio = budget_ratio + 0.20
+quarantine_ratio = budget_ratio + quarantine_margin
+rollback_ratio = budget_ratio + rollback_margin
 
 score = float(contract.get("overall_score", 0.0))
 pass_threshold = float(contract.get("pass_threshold", 1.0))
@@ -104,7 +130,7 @@ for workload in workload_scores:
 
 failure_reasons = contract.get("failure_reasons") if isinstance(contract.get("failure_reasons"), list) else []
 
-if slo_status == "fail" or slo_failures or hard_regressions > 0 or score_gap > 0.08:
+if slo_status == "fail" or slo_failures or hard_regressions > 0 or score_gap > rollback_min_gap:
     print(
         "verdict=rollback"
         f" score={score:.3f}"
@@ -114,7 +140,7 @@ if slo_status == "fail" or slo_failures or hard_regressions > 0 or score_gap > 0
     )
     sys.exit(3)
 
-if soft_regressions <= 2 and score_gap <= 0.03:
+if soft_regressions <= quarantine_max_soft and score_gap <= quarantine_max_gap:
     print(
         "verdict=quarantine"
         f" score={score:.3f}"

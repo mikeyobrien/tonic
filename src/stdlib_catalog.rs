@@ -18,8 +18,95 @@ pub(crate) fn stdlib_module_names() -> impl Iterator<Item = &'static str> {
     STDLIB_SOURCES.iter().map(|(module_name, _)| *module_name)
 }
 
-pub(super) const OPTIONAL_STDLIB_IO_SOURCE: &str =
-    "defmodule IO do\n  def puts(value) do\n    host_call(:io_puts, value)\n  end\n\n  def inspect(value) do\n    host_call(:io_inspect, value)\n  end\n\n  def gets(prompt) do\n    host_call(:io_gets, prompt)\n  end\n\n  def render_markdown(markdown) do\n    host_call(:io_render_markdown, markdown)\n  end\n\n  def ansi_red(value) do\n    host_call(:io_ansi_red, value)\n  end\n\n  def ansi_green(value) do\n    host_call(:io_ansi_green, value)\n  end\n\n  def ansi_yellow(value) do\n    host_call(:io_ansi_yellow, value)\n  end\n\n  def ansi_blue(value) do\n    host_call(:io_ansi_blue, value)\n  end\n\n  def ansi_reset() do\n    host_call(:io_ansi_reset)\n  end\nend\n";
+pub(super) const OPTIONAL_STDLIB_IO_SOURCE: &str = r#"defmodule IO do
+  ## Prints a value followed by a newline to stdout.
+  ##
+  ## Parameters:
+  ##   value: any — the value to print
+  ##
+  ## Returns: :ok
+  def puts(value) do
+    host_call(:io_puts, value)
+  end
+
+  ## Inspects a value and prints its internal representation to stderr.
+  ##
+  ## Parameters:
+  ##   value: any — the value to inspect
+  ##
+  ## Returns: the original value (pass-through)
+  def inspect(value) do
+    host_call(:io_inspect, value)
+  end
+
+  ## Reads a line from stdin, showing prompt.
+  ##
+  ## Parameters:
+  ##   prompt: string — the prompt to display
+  ##
+  ## Returns: string
+  def gets(prompt) do
+    host_call(:io_gets, prompt)
+  end
+
+  ## Renders a markdown string to formatted terminal output.
+  ##
+  ## Parameters:
+  ##   markdown: string — the markdown text to render
+  ##
+  ## Returns: :ok
+  def render_markdown(markdown) do
+    host_call(:io_render_markdown, markdown)
+  end
+
+  ## Wraps value in ANSI red escape codes.
+  ##
+  ## Parameters:
+  ##   value: any — the value to colorize
+  ##
+  ## Returns: string
+  def ansi_red(value) do
+    host_call(:io_ansi_red, value)
+  end
+
+  ## Wraps value in ANSI green escape codes.
+  ##
+  ## Parameters:
+  ##   value: any — the value to colorize
+  ##
+  ## Returns: string
+  def ansi_green(value) do
+    host_call(:io_ansi_green, value)
+  end
+
+  ## Wraps value in ANSI yellow escape codes.
+  ##
+  ## Parameters:
+  ##   value: any — the value to colorize
+  ##
+  ## Returns: string
+  def ansi_yellow(value) do
+    host_call(:io_ansi_yellow, value)
+  end
+
+  ## Wraps value in ANSI blue escape codes.
+  ##
+  ## Parameters:
+  ##   value: any — the value to colorize
+  ##
+  ## Returns: string
+  def ansi_blue(value) do
+    host_call(:io_ansi_blue, value)
+  end
+
+  ## Returns the ANSI reset escape sequence.
+  ##
+  ## Returns: string
+  def ansi_reset() do
+    host_call(:io_ansi_reset)
+  end
+end
+"#;
 pub(super) const OPTIONAL_STDLIB_LIST_SOURCE: &str =
     "defmodule List do\n  def first(list, default \\\\ nil) do\n    first_impl(list, default)\n  end\n\n  def last(list, default \\\\ nil) do\n    last_impl(list, default)\n  end\n\n  defp first_impl([], default) do\n    default\n  end\n\n  defp first_impl([head | _tail], _default) do\n    head\n  end\n\n  defp last_impl([], default) do\n    default\n  end\n\n  defp last_impl([value], _default) do\n    value\n  end\n\n  defp last_impl([_head | tail], default) do\n    last_impl(tail, default)\n  end\n\n  def flatten([]) do\n    []\n  end\n\n  def flatten([head | tail]) do\n    flatten_value(head) ++ flatten(tail)\n  end\n\n  def zip([], _right) do\n    []\n  end\n\n  def zip(_left, []) do\n    []\n  end\n\n  def zip([left_head | left_tail], [right_head | right_tail]) do\n    [{left_head, right_head}] ++ zip(left_tail, right_tail)\n  end\n\n  def unzip([]) do\n    {[], []}\n  end\n\n  def unzip([{left, right} | tail]) do\n    unzip_with_pair(left, right, unzip(tail))\n  end\n\n  def wrap(nil) do\n    []\n  end\n\n  def wrap(value) when is_list(value) do\n    value\n  end\n\n  def wrap(value) do\n    [value]\n  end\n\n  def delete([], _value) do\n    []\n  end\n\n  def delete([head | tail], value) do\n    case head == value do\n      true -> tail\n      _ -> [head] ++ delete(tail, value)\n    end\n  end\n\n  def duplicate(_value, count) when count <= 0 do\n    []\n  end\n\n  def duplicate(value, count) do\n    [value] ++ duplicate(value, count - 1)\n  end\n\n  def insert_at(list, 0, value) do\n    [value] ++ list\n  end\n\n  def insert_at([], _index, value) do\n    [value]\n  end\n\n  def insert_at([head | tail], index, value) do\n    [head] ++ insert_at(tail, index - 1, value)\n  end\n\n  def starts_with([], _prefix) do
     starts_with_check([], _prefix)
@@ -845,23 +932,419 @@ pub(super) const OPTIONAL_STDLIB_ENUM_SOURCE: &str = r#"defmodule Enum do
 end
 "#;
 
-pub(super) const OPTIONAL_STDLIB_STRING_SOURCE: &str =
-    "defmodule String do\n  def split(str, delimiter \\\\ \" \") do\n    host_call(:str_split, str, delimiter)\n  end\n\n  def graphemes(str) do\n    host_call(:str_graphemes, str)\n  end\n\n  def replace(str, pattern, replacement) do\n    host_call(:str_replace, str, pattern, replacement)\n  end\n\n  def trim(str) do\n    host_call(:str_trim, str)\n  end\n\n  def trim_leading(str) do\n    host_call(:str_trim_leading, str)\n  end\n\n  def trim_trailing(str) do\n    host_call(:str_trim_trailing, str)\n  end\n\n  def starts_with(str, prefix) do\n    host_call(:str_starts_with, str, prefix)\n  end\n\n  def ends_with(str, suffix) do\n    host_call(:str_ends_with, str, suffix)\n  end\n\n  def contains(str, substr) do\n    host_call(:str_contains, str, substr)\n  end\n\n  def upcase(str) do\n    host_call(:str_upcase, str)\n  end\n\n  def downcase(str) do\n    host_call(:str_downcase, str)\n  end\n\n  def length(str) do\n    host_call(:str_length, str)\n  end\n\n  def to_charlist(str) do\n    host_call(:str_to_charlist, str)\n  end\n\n  def at(str, index) do\n    host_call(:str_at, str, index)\n  end\n\n  def slice(str, start, len) do\n    host_call(:str_slice, str, start, len)\n  end\n\n  def to_integer(str) do\n    host_call(:str_to_integer, str)\n  end\n\n  def to_float(str) do\n    host_call(:str_to_float, str)\n  end\n\n  def pad_leading(str, count, padding) do\n    host_call(:str_pad_leading, str, count, padding)\n  end\n\n  def pad_trailing(str, count, padding) do\n    host_call(:str_pad_trailing, str, count, padding)\n  end\n\n  def reverse(str) do\n    host_call(:str_reverse, str)\n  end\n\n  def duplicate(_str, count) when count <= 0 do\n    \"\"\n  end\n\n  def duplicate(str, count) do\n    duplicate_acc(str, count, \"\")\n  end\n\n  def to_atom(str) do\n    host_call(:str_to_atom, str)\n  end\n\n  def capitalize(\"\") do\n    \"\"\n  end\n\n  def capitalize(str) do\n    first = host_call(:str_upcase, host_call(:str_at, str, 0))\n    len = host_call(:str_length, str)\n    rest = host_call(:str_downcase, host_call(:str_slice, str, 1, len))\n    first <> rest\n  end\n\n  defp duplicate_acc(_str, 0, acc) do\n    acc\n  end\n\n  defp duplicate_acc(str, count, acc) do\n    duplicate_acc(str, count - 1, acc <> str)\n  end\nend\n";
+pub(super) const OPTIONAL_STDLIB_STRING_SOURCE: &str = r#"defmodule String do
+  ## Splits a string by delimiter.
+  ##
+  ## Parameters:
+  ##   str: string — the string to split
+  ##   delimiter: string — the delimiter to split on (default: " ")
+  ##
+  ## Returns: list of strings
+  def split(str, delimiter \\ " ") do
+    host_call(:str_split, str, delimiter)
+  end
 
-pub(super) const OPTIONAL_STDLIB_INTEGER_SOURCE: &str =
-    "defmodule Integer do\n  def to_string(n) do\n    host_call(:integer_to_string, n)\n  end\n\n  def parse(str) do\n    host_call(:integer_parse, str)\n  end\nend\n";
+  ## Returns the grapheme clusters of a string.
+  ##
+  ## Parameters:
+  ##   str: string — the input string
+  ##
+  ## Returns: list of strings (one per grapheme cluster)
+  def graphemes(str) do
+    host_call(:str_graphemes, str)
+  end
 
-pub(super) const OPTIONAL_STDLIB_FLOAT_SOURCE: &str =
-    "defmodule Float do\n  def to_string(n) do\n    host_call(:float_to_string, n)\n  end\n\n  def round(n, precision) do\n    host_call(:float_round, n, precision)\n  end\n\n  def ceil(n) do\n    host_call(:float_ceil, n)\n  end\n\n  def floor(n) do\n    host_call(:float_floor, n)\n  end\nend\n";
+  ## Replaces all occurrences of pattern in str with replacement.
+  ##
+  ## Parameters:
+  ##   str: string — the input string
+  ##   pattern: string — the pattern to match
+  ##   replacement: string — the replacement text
+  ##
+  ## Returns: string
+  def replace(str, pattern, replacement) do
+    host_call(:str_replace, str, pattern, replacement)
+  end
 
-pub(super) const OPTIONAL_STDLIB_PATH_SOURCE: &str =
-    "defmodule Path do\n  def join(a, b) do\n    host_call(:path_join, a, b)\n  end\n\n  def dirname(path) do\n    host_call(:path_dirname, path)\n  end\n\n  def basename(path) do\n    host_call(:path_basename, path)\n  end\n\n  def extname(path) do\n    host_call(:path_extname, path)\n  end\n\n  def expand(path) do\n    host_call(:path_expand, path)\n  end\n\n  def relative_to(path, base) do\n    host_call(:path_relative_to, path, base)\n  end\nend\n";
+  ## Trims leading and trailing whitespace.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: string
+  def trim(str) do
+    host_call(:str_trim, str)
+  end
+
+  ## Trims leading whitespace.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: string
+  def trim_leading(str) do
+    host_call(:str_trim_leading, str)
+  end
+
+  ## Trims trailing whitespace.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: string
+  def trim_trailing(str) do
+    host_call(:str_trim_trailing, str)
+  end
+
+  ## Checks if str starts with the given prefix.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   prefix: string
+  ##
+  ## Returns: boolean
+  def starts_with(str, prefix) do
+    host_call(:str_starts_with, str, prefix)
+  end
+
+  ## Checks if str ends with the given suffix.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   suffix: string
+  ##
+  ## Returns: boolean
+  def ends_with(str, suffix) do
+    host_call(:str_ends_with, str, suffix)
+  end
+
+  ## Checks if str contains the given substring.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   substr: string
+  ##
+  ## Returns: boolean
+  def contains(str, substr) do
+    host_call(:str_contains, str, substr)
+  end
+
+  ## Converts a string to uppercase.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: string
+  def upcase(str) do
+    host_call(:str_upcase, str)
+  end
+
+  ## Converts a string to lowercase.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: string
+  def downcase(str) do
+    host_call(:str_downcase, str)
+  end
+
+  ## Returns the number of grapheme clusters in the string.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: integer
+  def length(str) do
+    host_call(:str_length, str)
+  end
+
+  ## Converts a string to a list of codepoints.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: list of integers
+  def to_charlist(str) do
+    host_call(:str_to_charlist, str)
+  end
+
+  ## Returns the grapheme at the given index.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   index: integer — zero-based index
+  ##
+  ## Returns: string (single grapheme) or nil
+  def at(str, index) do
+    host_call(:str_at, str, index)
+  end
+
+  ## Returns a substring starting at start with the given length.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   start: integer — zero-based start index
+  ##   len: integer — number of graphemes
+  ##
+  ## Returns: string
+  def slice(str, start, len) do
+    host_call(:str_slice, str, start, len)
+  end
+
+  ## Parses a string as an integer.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: integer
+  def to_integer(str) do
+    host_call(:str_to_integer, str)
+  end
+
+  ## Parses a string as a float.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: float
+  def to_float(str) do
+    host_call(:str_to_float, str)
+  end
+
+  ## Pads the string on the left to the given count with padding.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   count: integer — desired total length
+  ##   padding: string — the padding character(s)
+  ##
+  ## Returns: string
+  def pad_leading(str, count, padding) do
+    host_call(:str_pad_leading, str, count, padding)
+  end
+
+  ## Pads the string on the right to the given count with padding.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   count: integer — desired total length
+  ##   padding: string — the padding character(s)
+  ##
+  ## Returns: string
+  def pad_trailing(str, count, padding) do
+    host_call(:str_pad_trailing, str, count, padding)
+  end
+
+  ## Reverses the grapheme order of a string.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: string
+  def reverse(str) do
+    host_call(:str_reverse, str)
+  end
+
+  ## Duplicates a string the given number of times.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##   count: integer — number of repetitions
+  ##
+  ## Returns: string
+  def duplicate(_str, count) when count <= 0 do
+    ""
+  end
+
+  def duplicate(str, count) do
+    duplicate_acc(str, count, "")
+  end
+
+  ## Converts a string to an atom.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: atom
+  def to_atom(str) do
+    host_call(:str_to_atom, str)
+  end
+
+  ## Capitalizes the first grapheme and lowercases the rest.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: string
+  def capitalize("") do
+    ""
+  end
+
+  def capitalize(str) do
+    first = host_call(:str_upcase, host_call(:str_at, str, 0))
+    len = host_call(:str_length, str)
+    rest = host_call(:str_downcase, host_call(:str_slice, str, 1, len))
+    first <> rest
+  end
+
+  defp duplicate_acc(_str, 0, acc) do
+    acc
+  end
+
+  defp duplicate_acc(str, count, acc) do
+    duplicate_acc(str, count - 1, acc <> str)
+  end
+end
+"#;
+
+pub(super) const OPTIONAL_STDLIB_INTEGER_SOURCE: &str = r#"defmodule Integer do
+  ## Converts an integer to its string representation.
+  ##
+  ## Parameters:
+  ##   n: integer
+  ##
+  ## Returns: string
+  def to_string(n) do
+    host_call(:integer_to_string, n)
+  end
+
+  ## Parses a string as an integer.
+  ##
+  ## Parameters:
+  ##   str: string
+  ##
+  ## Returns: integer
+  def parse(str) do
+    host_call(:integer_parse, str)
+  end
+end
+"#;
+
+pub(super) const OPTIONAL_STDLIB_FLOAT_SOURCE: &str = r#"defmodule Float do
+  ## Converts a float to its string representation.
+  ##
+  ## Parameters:
+  ##   n: float
+  ##
+  ## Returns: string
+  def to_string(n) do
+    host_call(:float_to_string, n)
+  end
+
+  ## Rounds a float to the given precision.
+  ##
+  ## Parameters:
+  ##   n: float
+  ##   precision: integer — number of decimal places
+  ##
+  ## Returns: float
+  def round(n, precision) do
+    host_call(:float_round, n, precision)
+  end
+
+  ## Returns the smallest integer greater than or equal to n.
+  ##
+  ## Parameters:
+  ##   n: float
+  ##
+  ## Returns: integer
+  def ceil(n) do
+    host_call(:float_ceil, n)
+  end
+
+  ## Returns the largest integer less than or equal to n.
+  ##
+  ## Parameters:
+  ##   n: float
+  ##
+  ## Returns: integer
+  def floor(n) do
+    host_call(:float_floor, n)
+  end
+end
+"#;
+
+pub(super) const OPTIONAL_STDLIB_PATH_SOURCE: &str = r#"defmodule Path do
+  ## Joins two path segments.
+  ##
+  ## Parameters:
+  ##   a: string — the base path
+  ##   b: string — the path to append
+  ##
+  ## Returns: string
+  def join(a, b) do
+    host_call(:path_join, a, b)
+  end
+
+  ## Returns the directory portion of a path.
+  ##
+  ## Parameters:
+  ##   path: string
+  ##
+  ## Returns: string
+  def dirname(path) do
+    host_call(:path_dirname, path)
+  end
+
+  ## Returns the filename portion of a path.
+  ##
+  ## Parameters:
+  ##   path: string
+  ##
+  ## Returns: string
+  def basename(path) do
+    host_call(:path_basename, path)
+  end
+
+  ## Returns the file extension of a path.
+  ##
+  ## Parameters:
+  ##   path: string
+  ##
+  ## Returns: string
+  def extname(path) do
+    host_call(:path_extname, path)
+  end
+
+  ## Expands a path to its absolute form.
+  ##
+  ## Parameters:
+  ##   path: string
+  ##
+  ## Returns: string
+  def expand(path) do
+    host_call(:path_expand, path)
+  end
+
+  ## Returns the relative path from base to path.
+  ##
+  ## Parameters:
+  ##   path: string — the target path
+  ##   base: string — the base path
+  ##
+  ## Returns: string
+  def relative_to(path, base) do
+    host_call(:path_relative_to, path, base)
+  end
+end
+"#;
 
 pub(super) const OPTIONAL_STDLIB_SYSTEM_SOURCE: &str =
     "defmodule System do\n  def run(command, opts \\\\ %{}) do\n    host_call(:sys_run, command, opts)\n  end\n\n  def sleep_ms(delay_ms) do\n    host_call(:sys_sleep_ms, delay_ms)\n  end\n\n  def retry_plan(status_code, attempt, max_attempts, base_delay_ms, max_delay_ms, jitter_ms, retry_after) do\n    host_call(:sys_retry_plan, status_code, attempt, max_attempts, base_delay_ms, max_delay_ms, jitter_ms, retry_after)\n  end\n\n  def log(level, event, fields) do\n    host_call(:sys_log, level, event, fields)\n  end\n\n  def path_exists(path) do\n    host_call(:sys_path_exists, path)\n  end\n\n  def list_dir(path) do\n    host_call(:sys_list_dir, path)\n  end\n\n  def is_dir(path) do\n    host_call(:sys_is_dir, path)\n  end\n\n  def list_files_recursive(path) do\n    host_call(:sys_list_files_recursive, path)\n  end\n\n  def ensure_dir(path) do\n    host_call(:sys_ensure_dir, path)\n  end\n\n  def remove_tree(path) do\n    host_call(:sys_remove_tree, path)\n  end\n\n  def write_text(path, content) do\n    host_call(:sys_write_text, path, content)\n  end\n\n  def append_text(path, content) do\n    host_call(:sys_append_text, path, content)\n  end\n\n  def write_text_atomic(path, content) do\n    host_call(:sys_write_text_atomic, path, content)\n  end\n\n  def lock_acquire(path) do\n    host_call(:sys_lock_acquire, path)\n  end\n\n  def lock_release(path) do\n    host_call(:sys_lock_release, path)\n  end\n\n  def read_text(path) do\n    host_call(:sys_read_text, path)\n  end\n\n  def read_stdin() do\n    host_call(:sys_read_stdin)\n  end\n\n  def http_request(method, url, headers, body, opts) do\n    host_call(:sys_http_request, method, url, headers, body, opts)\n  end\n\n  def env(name) do\n    host_call(:sys_env, name)\n  end\n\n  def which(name) do\n    host_call(:sys_which, name)\n  end\n\n  def cwd() do\n    host_call(:sys_cwd)\n  end\n\n  def argv() do\n    host_call(:sys_argv)\n  end\n\n  def random_token(bytes) do\n    host_call(:sys_random_token, bytes)\n  end\n\n  def hmac_sha256_hex(secret, message) do\n    host_call(:sys_hmac_sha256_hex, secret, message)\n  end\n\n  def constant_time_eq(left, right) do\n    host_call(:sys_constant_time_eq, left, right)\n  end\n\n  def discord_ed25519_verify(public_key_hex, signature_hex, timestamp, body) do\n    host_call(:sys_discord_ed25519_verify, public_key_hex, signature_hex, timestamp, body)\n  end\n\n  def http_listen(host, port) do\n    host_call(:sys_http_listen, host, port)\n  end\n\n  def http_accept(listener_id, timeout_ms) do\n    host_call(:sys_http_accept, listener_id, timeout_ms)\n  end\n\n  def http_read_request(connection_id) do\n    host_call(:sys_http_read_request, connection_id)\n  end\n\n  def http_write_response(connection_id, status, headers, body) do\n    host_call(:sys_http_write_response, connection_id, status, headers, body)\n  end\nend\n";
 
-pub(super) const OPTIONAL_STDLIB_TUPLE_SOURCE: &str =
-    "defmodule Tuple do\n  def to_list(tuple) do\n    host_call(:tuple_to_list, tuple)\n  end\nend\n";
+pub(super) const OPTIONAL_STDLIB_TUPLE_SOURCE: &str = r#"defmodule Tuple do
+  ## Converts a tuple to a list.
+  ##
+  ## Parameters:
+  ##   tuple: tuple
+  ##
+  ## Returns: list
+  def to_list(tuple) do
+    host_call(:tuple_to_list, tuple)
+  end
+end
+"#;
 
 pub(super) const OPTIONAL_STDLIB_ASSERT_SOURCE: &str =
     "defmodule Assert do\n  def assert(value, message \\\\ nil) do\n    host_call(:assert, value, message)\n  end\n\n  def refute(value, message \\\\ nil) do\n    host_call(:refute, value, message)\n  end\n\n  def assert_equal(left, right, message \\\\ nil) do\n    host_call(:assert_equal, left, right, message)\n  end\n\n  def assert_not_equal(left, right, message \\\\ nil) do\n    host_call(:assert_not_equal, left, right, message)\n  end\n\n  def assert_contains(container, element, message \\\\ nil) do\n    host_call(:assert_contains, container, element, message)\n  end\n\n  def assert_in_delta(left, right, delta, message \\\\ nil) do\n    host_call(:assert_in_delta, left, right, delta, message)\n  end\n\n  def skip(reason \\\\ nil) do\n    host_call(:skip, reason)\n  end\n\n  def assert_match(expected, actual, message \\\\ nil) do\n    host_call(:assert_match, expected, actual, message)\n  end\n\n  def assert_raises(fun, expected \\\\ nil) do\n    check_raises(do_try_raises(fun), expected)\n  end\n\n  defp do_try_raises(fun) do\n    try do\n      fun.()\n      {:no_raise, :ok}\n    rescue\n      e -> {:raised, to_string(e)}\n    end\n  end\n\n  defp check_raises({:raised, _msg}, nil) do\n    :ok\n  end\n\n  defp check_raises({:raised, msg}, expected) do\n    host_call(:assert_raises_check, msg, expected)\n  end\n\n  defp check_raises(_, _expected) do\n    err({:assertion_failed, {:assert_raises, \"expected function to raise, but it returned normally\"}})\n  end\nend\n";
