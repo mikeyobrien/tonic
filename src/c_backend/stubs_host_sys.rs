@@ -240,6 +240,41 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
     return tn_runtime_const_bool((TnVal)1);
   }
 
+  if (strcmp(key, "sys_append_text") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: sys_append_text expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    TnObj *content_obj = tn_get_obj(args[2]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_append_text expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (content_obj == NULL || content_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_append_text expects string argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    const char *path = path_obj->as.text.text;
+    FILE *handle = fopen(path, "a");
+    if (handle == NULL) {
+      return tn_runtime_failf("host error: sys_append_text failed for '%s': %s", path, strerror(errno));
+    }
+    if (fputs(content_obj->as.text.text, handle) < 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      fclose(handle);
+      return tn_runtime_failf("host error: sys_append_text failed for '%s': %s", path, strerror(io_errno));
+    }
+    if (fflush(handle) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      fclose(handle);
+      return tn_runtime_failf("host error: sys_append_text failed for '%s': %s", path, strerror(io_errno));
+    }
+    if (fclose(handle) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      return tn_runtime_failf("host error: sys_append_text failed for '%s': %s", path, strerror(io_errno));
+    }
+    free(args);
+    return tn_runtime_const_bool((TnVal)1);
+  }
+
   if (strcmp(key, "sys_read_text") == 0) {
     if (argc != 2) {
       return tn_runtime_failf("host error: sys_read_text expects exactly 1 argument, found %zu", argc - 1);

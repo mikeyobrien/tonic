@@ -92,6 +92,11 @@ fn compiled_runtime_supports_string_stdlib_frontmatter_helper_set_on_literals() 
             "\"hello\"\n",
         ),
         (
+            "replace",
+            "defmodule Demo do\n  def run() do\n    String.replace(\"hello world world\", \"world\", \"Tonic\")\n  end\nend\n",
+            "\"hello Tonic Tonic\"\n",
+        ),
+        (
             "trim-leading",
             "defmodule Demo do\n  def run() do\n    String.trim_leading(\"  hello  \")\n  end\nend\n",
             "\"hello  \"\n",

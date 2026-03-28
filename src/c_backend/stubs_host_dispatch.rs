@@ -218,6 +218,111 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     return tn_heap_store(list_obj);
   }
 
+  if (strcmp(key, "str_replace") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: String.replace expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    TnObj *pattern_obj = tn_get_obj(args[2]);
+    TnObj *replacement_obj = tn_get_obj(args[3]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.replace expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (pattern_obj == NULL || pattern_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.replace expects string argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    if (replacement_obj == NULL || replacement_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.replace expects string argument 3; found %s", tn_runtime_value_kind(args[3]));
+    }
+
+    const char *text = text_obj->as.text.text;
+    const char *pattern = pattern_obj->as.text.text;
+    const char *replacement = replacement_obj->as.text.text;
+    size_t text_len = strlen(text);
+    size_t pattern_len = strlen(pattern);
+    size_t replacement_len = strlen(replacement);
+
+    if (pattern_len == 0) {
+      size_t insertion_count = tn_utf8_codepoint_count(text) + 1;
+      size_t replaced_len = text_len + (insertion_count * replacement_len);
+      char *replaced = (char *)malloc(replaced_len + 1);
+      if (replaced == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+
+      char *cursor = replaced;
+      memcpy(cursor, replacement, replacement_len);
+      cursor += replacement_len;
+
+      size_t index = 0;
+      while (index < text_len) {
+        size_t start = index;
+        tn_utf8_decode_next(text, text_len, &index);
+        size_t segment_len = index - start;
+        memcpy(cursor, text + start, segment_len);
+        cursor += segment_len;
+        memcpy(cursor, replacement, replacement_len);
+        cursor += replacement_len;
+      }
+      *cursor = '\0';
+
+      TnVal result = tn_runtime_const_string((TnVal)(intptr_t)replaced);
+      free(replaced);
+      free(args);
+      return result;
+    }
+
+    size_t match_count = 0;
+    const char *scan = text;
+    for (;;) {
+      const char *match = strstr(scan, pattern);
+      if (match == NULL) {
+        break;
+      }
+      match_count += 1;
+      scan = match + pattern_len;
+    }
+
+    size_t replaced_len = text_len;
+    if (replacement_len >= pattern_len) {
+      replaced_len += match_count * (replacement_len - pattern_len);
+    } else {
+      replaced_len -= match_count * (pattern_len - replacement_len);
+    }
+
+    char *replaced = (char *)malloc(replaced_len + 1);
+    if (replaced == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+
+    const char *cursor = text;
+    char *write_cursor = replaced;
+    for (;;) {
+      const char *match = strstr(cursor, pattern);
+      if (match == NULL) {
+        size_t tail_len = strlen(cursor);
+        memcpy(write_cursor, cursor, tail_len);
+        write_cursor += tail_len;
+        break;
+      }
+
+      size_t prefix_len = (size_t)(match - cursor);
+      memcpy(write_cursor, cursor, prefix_len);
+      write_cursor += prefix_len;
+      memcpy(write_cursor, replacement, replacement_len);
+      write_cursor += replacement_len;
+      cursor = match + pattern_len;
+    }
+    *write_cursor = '\0';
+
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)replaced);
+    free(replaced);
+    free(args);
+    return result;
+  }
+
   if (strcmp(key, "str_trim") == 0) {
     if (argc != 2) {
       return tn_runtime_failf("host error: String.trim expects exactly 1 argument, found %zu", argc - 1);
