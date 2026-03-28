@@ -264,6 +264,7 @@ pub(super) fn host_sys_read_stdin(args: &[RuntimeValue]) -> Result<RuntimeValue,
     Ok(RuntimeValue::String(stdin))
 }
 
+#[cfg(feature = "network")]
 pub(super) fn host_sys_http_request(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
     expect_exact_args("sys_http_request", args, 5)?;
 
@@ -407,6 +408,7 @@ pub(super) fn host_sys_constant_time_eq(args: &[RuntimeValue]) -> Result<Runtime
     Ok(RuntimeValue::Bool(equal))
 }
 
+#[cfg(feature = "network")]
 pub(super) fn host_sys_discord_ed25519_verify(
     args: &[RuntimeValue],
 ) -> Result<RuntimeValue, HostError> {

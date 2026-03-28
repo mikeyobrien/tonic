@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "network")]
 pub(super) fn parse_http_method(value: &str) -> Result<Method, HostError> {
     let upper = value.to_ascii_uppercase();
     if !matches!(
@@ -15,6 +16,7 @@ pub(super) fn parse_http_method(value: &str) -> Result<Method, HostError> {
         .map_err(|_| HostError::new(format!("sys_http_request invalid method: {value}")))
 }
 
+#[cfg(feature = "network")]
 pub(super) fn parse_http_headers(
     items: &[RuntimeValue],
 ) -> Result<Vec<(String, String)>, HostError> {
@@ -51,6 +53,7 @@ pub(super) fn parse_http_headers(
     Ok(headers)
 }
 
+#[cfg(feature = "network")]
 pub(super) fn parse_http_opts(
     entries: &[(RuntimeValue, RuntimeValue)],
 ) -> Result<HttpRequestOptions, HostError> {
@@ -138,6 +141,7 @@ pub(super) fn parse_http_opts(
     Ok(opts)
 }
 
+#[cfg(feature = "network")]
 pub(super) fn hex_nibble(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -147,6 +151,7 @@ pub(super) fn hex_nibble(byte: u8) -> Option<u8> {
     }
 }
 
+#[cfg(feature = "network")]
 pub(super) fn decode_fixed_hex<const N: usize>(
     function: &str,
     field_name: &str,

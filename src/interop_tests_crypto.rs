@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_wrong_arity() {
     let too_few = HOST_REGISTRY
@@ -18,6 +19,7 @@ fn host_registry_system_http_request_rejects_wrong_arity() {
     );
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_max_redirects_out_of_range() {
     let too_high = HOST_REGISTRY

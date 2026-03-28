@@ -4,9 +4,11 @@ use super::{
 };
 use crate::runtime::RuntimeValue;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+#[cfg(feature = "network")]
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use hmac::{Hmac, Mac};
 use rand::RngCore;
+#[cfg(feature = "network")]
 use reqwest::Method;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use sha2::Sha256;
@@ -18,13 +20,21 @@ use subtle::ConstantTimeEq;
 const RANDOM_TOKEN_MIN_BYTES: i64 = 16;
 const RANDOM_TOKEN_MAX_BYTES: i64 = 256;
 
+#[cfg(feature = "network")]
 const HTTP_TIMEOUT_DEFAULT_MS: i64 = 30_000;
+#[cfg(feature = "network")]
 const HTTP_TIMEOUT_MIN_MS: i64 = 100;
+#[cfg(feature = "network")]
 const HTTP_TIMEOUT_MAX_MS: i64 = 120_000;
+#[cfg(feature = "network")]
 const HTTP_MAX_RESPONSE_DEFAULT_BYTES: i64 = 2_097_152;
+#[cfg(feature = "network")]
 const HTTP_MAX_RESPONSE_MAX_BYTES: i64 = 8_388_608;
+#[cfg(feature = "network")]
 const HTTP_FOLLOW_REDIRECTS_DEFAULT: bool = true;
+#[cfg(feature = "network")]
 const HTTP_MAX_REDIRECTS_DEFAULT: i64 = 3;
+#[cfg(feature = "network")]
 const HTTP_MAX_REDIRECTS_MAX: i64 = 5;
 
 const SLEEP_MAX_MS: i64 = 300_000;
@@ -34,11 +44,14 @@ const RETRY_MAX_ATTEMPTS_CAP: i64 = 20;
 const RETRY_DELAY_MAX_MS: i64 = 300_000;
 const RETRY_JITTER_MAX_MS: i64 = 60_000;
 
+#[cfg(feature = "network")]
 const ED25519_PUBLIC_KEY_BYTES: usize = 32;
+#[cfg(feature = "network")]
 const ED25519_SIGNATURE_BYTES: usize = 64;
 const STRUCTURED_LOG_PATH_ENV: &str = "TONIC_SYSTEM_LOG_PATH";
 const STRUCTURED_LOG_LEVELS: [&str; 4] = ["debug", "info", "warn", "error"];
 
+#[cfg(feature = "network")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HttpRequestOptions {
     timeout_ms: i64,
@@ -470,12 +483,14 @@ pub(super) fn register_system_host_functions(registry: &HostRegistry) {
     registry.register("sys_lock_release", host_sys_lock_release);
     registry.register("sys_read_text", host_sys_read_text);
     registry.register("sys_read_stdin", host_sys_read_stdin);
+    #[cfg(feature = "network")]
     registry.register("sys_http_request", host_sys_http_request);
     registry.register("sys_env", host_sys_env);
     registry.register("sys_which", host_sys_which);
     registry.register("sys_cwd", host_sys_cwd);
     registry.register("sys_argv", host_sys_argv);
     registry.register("sys_constant_time_eq", host_sys_constant_time_eq);
+    #[cfg(feature = "network")]
     registry.register(
         "sys_discord_ed25519_verify",
         host_sys_discord_ed25519_verify,

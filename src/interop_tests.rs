@@ -351,6 +351,7 @@ fn host_registry_system_read_text_reports_missing_file() {
     );
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_invalid_method() {
     let invalid_method = HOST_REGISTRY
@@ -372,6 +373,7 @@ fn host_registry_system_http_request_rejects_invalid_method() {
     );
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn host_registry_system_http_request_rejects_unknown_opts_key() {
     let invalid_opts = HOST_REGISTRY
