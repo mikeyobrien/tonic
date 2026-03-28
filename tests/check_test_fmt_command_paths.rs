@@ -44,7 +44,12 @@ fn test_accepts_project_root_path_and_emits_ok_contract() {
     );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    assert_eq!(stdout, "test result: ok. 0 passed; 0 failed; 0 total\n");
+    // Strip ANSI escape codes for comparison; ignore trailing timing info.
+    let plain = strip_ansi(&stdout);
+    assert!(
+        plain.starts_with("test result: ok. 0 passed; 0 failed; 0 total"),
+        "unexpected test output: {plain:?}"
+    );
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert_eq!(stderr, "");
@@ -72,6 +77,24 @@ fn fmt_accepts_project_root_path_and_emits_ok_contract() {
 
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert_eq!(stderr, "");
+}
+
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Skip until 'm' (end of SGR sequence)
+            for cc in chars.by_ref() {
+                if cc == 'm' {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn write_project_fixture(test_name: &str) -> PathBuf {

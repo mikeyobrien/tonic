@@ -76,7 +76,7 @@ fn check_failure_with_observability_records_normalized_error() {
     let obs_dir = fixture_root.join("observability");
     fs::write(
         fixture_root.join("bad.tn"),
-        "defmodule Demo do\n  def run() do\n    true + 1\n  end\nend\n",
+        "defmodule Demo do\n  def run() do\n    if 1 do\n      true\n    end\n  end\nend\n",
     )
     .expect("fixture should write source");
 
