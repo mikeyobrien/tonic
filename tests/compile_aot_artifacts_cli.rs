@@ -245,6 +245,63 @@ fn compiled_elf_suppresses_final_value_after_stdout_side_effects() {
 }
 
 #[test]
+fn compiled_elf_system_run_stream_matches_interpreter_for_stderr_only_output() {
+    let fixture_root = common::unique_fixture_root("compile-system-run-stream-stderr");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    Map.get(System.run(\"printf 'oops\\n' 1>&2\", %{stream: true}), :output, \"\")\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "."])
+        .output()
+        .expect("interpreter run should execute");
+
+    assert!(
+        interpreted.status.success(),
+        "expected interpreter success, got status {:?} and stderr: {}",
+        interpreted.status.code(),
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success();
+
+    let compiled = std::process::Command::new(fixture_root.join(".tonic/build/main"))
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        compiled.status.success(),
+        "expected compiled executable success, got status {:?} and stderr: {}",
+        compiled.status.code(),
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    assert_eq!(
+        compiled.stdout, interpreted.stdout,
+        "stdout must match interpreter"
+    );
+    assert_eq!(
+        compiled.stderr, interpreted.stderr,
+        "stderr must match interpreter"
+    );
+}
+
+#[test]
 fn compiled_elf_supports_list_and_tuple_kernel_builtins() {
     let temp_dir = common::unique_temp_dir("compile-kernel-builtins");
     let source_path = temp_dir.join("builtins.tn");

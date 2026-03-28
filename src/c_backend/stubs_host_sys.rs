@@ -850,64 +850,163 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
       }
     }
 
-    size_t command_len = strlen(command_text);
-    char *shell_command = (char *)malloc(command_len + 6);
-    if (shell_command == NULL) {
-      fprintf(stderr, "error: native runtime allocation failure\n");
-      exit(1);
-    }
-    snprintf(shell_command, command_len + 6, "%s 2>&1", command_text);
-
-    FILE *pipe = popen(shell_command, "r");
-    free(shell_command);
-    if (pipe == NULL) {
+    int stdout_pipe[2] = {-1, -1};
+    int stderr_pipe[2] = {-1, -1};
+    if (pipe(stdout_pipe) != 0) {
       return tn_runtime_fail("host error: sys_run failed to spawn shell");
     }
+    if (pipe(stderr_pipe) != 0) {
+      close(stdout_pipe[0]);
+      close(stdout_pipe[1]);
+      return tn_runtime_fail("host error: sys_run failed to spawn shell");
+    }
+
+    pid_t child_pid = fork();
+    if (child_pid < 0) {
+      close(stdout_pipe[0]);
+      close(stdout_pipe[1]);
+      close(stderr_pipe[0]);
+      close(stderr_pipe[1]);
+      return tn_runtime_fail("host error: sys_run failed to spawn shell");
+    }
+
+    if (child_pid == 0) {
+      close(stdout_pipe[0]);
+      close(stderr_pipe[0]);
+      if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0 || dup2(stderr_pipe[1], STDERR_FILENO) < 0) {
+        _exit(127);
+      }
+      close(stdout_pipe[1]);
+      close(stderr_pipe[1]);
+      execl("/bin/sh", "sh", "-lc", command_text, (char *)NULL);
+      _exit(127);
+    }
+
+    close(stdout_pipe[1]);
+    close(stderr_pipe[1]);
 
     size_t cap = 256;
     size_t len = 0;
     char *buffer = (char *)malloc(cap);
     if (buffer == NULL) {
+      close(stdout_pipe[0]);
+      close(stderr_pipe[0]);
       fprintf(stderr, "error: native runtime allocation failure\n");
       exit(1);
     }
     buffer[0] = '\0';
 
-    int next_ch = 0;
-    while ((next_ch = fgetc(pipe)) != EOF) {
-      if (len + 2 > cap) {
-        cap *= 2;
-        char *next = (char *)realloc(buffer, cap);
-        if (next == NULL) {
-          free(buffer);
-          fprintf(stderr, "error: native runtime allocation failure\n");
-          exit(1);
+    int stdout_fd = stdout_pipe[0];
+    int stderr_fd = stderr_pipe[0];
+    while (stdout_fd >= 0 || stderr_fd >= 0) {
+      fd_set read_fds;
+      FD_ZERO(&read_fds);
+      int max_fd = -1;
+      if (stdout_fd >= 0) {
+        FD_SET(stdout_fd, &read_fds);
+        if (stdout_fd > max_fd) {
+          max_fd = stdout_fd;
         }
-        buffer = next;
+      }
+      if (stderr_fd >= 0) {
+        FD_SET(stderr_fd, &read_fds);
+        if (stderr_fd > max_fd) {
+          max_fd = stderr_fd;
+        }
       }
 
-      buffer[len] = (char)next_ch;
-      len += 1;
-      buffer[len] = '\0';
+      int ready = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
+      if (ready < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        if (stdout_fd >= 0) close(stdout_fd);
+        if (stderr_fd >= 0) close(stderr_fd);
+        waitpid(child_pid, NULL, 0);
+        free(buffer);
+        return tn_runtime_failf("host error: sys_run failed to read stdout: %s", strerror(errno));
+      }
 
-      if (stream_output) {
-        tn_runtime_observe_stdout();
-        fputc(next_ch, stdout);
-        fflush(stdout);
+      int active_fds[2] = {stdout_fd, stderr_fd};
+      for (int stream_index = 0; stream_index < 2; stream_index += 1) {
+        int current_fd = active_fds[stream_index];
+        if (current_fd < 0 || !FD_ISSET(current_fd, &read_fds)) {
+          continue;
+        }
+
+        char chunk[4096];
+        ssize_t bytes_read = read(current_fd, chunk, sizeof(chunk));
+        if (bytes_read < 0) {
+          if (errno == EINTR) {
+            continue;
+          }
+          if (stdout_fd >= 0) close(stdout_fd);
+          if (stderr_fd >= 0) close(stderr_fd);
+          waitpid(child_pid, NULL, 0);
+          free(buffer);
+          return tn_runtime_failf(
+              stream_index == 0 ? "host error: sys_run failed to read stdout: %s" : "host error: sys_run failed to read stderr: %s",
+              strerror(errno));
+        }
+
+        if (bytes_read == 0) {
+          close(current_fd);
+          if (stream_index == 0) {
+            stdout_fd = -1;
+          } else {
+            stderr_fd = -1;
+          }
+          continue;
+        }
+
+        size_t required = len + (size_t)bytes_read + 1;
+        if (required > cap) {
+          size_t next_cap = cap;
+          while (next_cap < required) {
+            next_cap *= 2;
+          }
+          char *next = (char *)realloc(buffer, next_cap);
+          if (next == NULL) {
+            if (stdout_fd >= 0) close(stdout_fd);
+            if (stderr_fd >= 0) close(stderr_fd);
+            waitpid(child_pid, NULL, 0);
+            free(buffer);
+            fprintf(stderr, "error: native runtime allocation failure\n");
+            exit(1);
+          }
+          buffer = next;
+          cap = next_cap;
+        }
+
+        memcpy(buffer + len, chunk, (size_t)bytes_read);
+        len += (size_t)bytes_read;
+        buffer[len] = '\0';
+
+        if (stream_output) {
+          FILE *target = stream_index == 0 ? stdout : stderr;
+          if (stream_index == 0) {
+            tn_runtime_observe_stdout();
+          }
+          fwrite(chunk, 1, (size_t)bytes_read, target);
+          fflush(target);
+        }
       }
     }
 
-    int status = pclose(pipe);
+    int status = 0;
+    if (waitpid(child_pid, &status, 0) < 0) {
+      free(buffer);
+      return tn_runtime_failf("host error: sys_run failed to wait for shell command: %s", strerror(errno));
+    }
+
     int exit_code = -1;
-    if (status >= 0) {
 #ifdef WIFEXITED
-      if (WIFEXITED(status)) {
-        exit_code = WEXITSTATUS(status);
-      }
-#else
-      exit_code = status;
-#endif
+    if (WIFEXITED(status)) {
+      exit_code = WEXITSTATUS(status);
     }
+#else
+    exit_code = status;
+#endif
 
     TnVal result = tn_runtime_make_map(
       tn_runtime_const_atom((TnVal)(intptr_t)"exit_code"),
