@@ -882,6 +882,266 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     return (TnVal)((int64_t)value);
   }
 
+  if (strcmp(key, "str_to_float") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.to_float expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.to_float expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *text = text_obj->as.text.text;
+    const char *start = text;
+    while (*start == ' ' || *start == '\n' || *start == '\r' || *start == '\t' || *start == '\f' || *start == '\v') {
+      start += 1;
+    }
+    errno = 0;
+    char *end = NULL;
+    double value = strtod(start, &end);
+    while (end != NULL && (*end == ' ' || *end == '\n' || *end == '\r' || *end == '\t' || *end == '\f' || *end == '\v')) {
+      end += 1;
+    }
+    if (start == end || errno == ERANGE || end == NULL || *end != '\0') {
+      return tn_runtime_failf("host error: String.to_float could not parse \"%s\" as float", text);
+    }
+    char formatted[64];
+    int formatted_len = snprintf(formatted, sizeof(formatted), "%.17g", value);
+    if (formatted_len < 0 || (size_t)formatted_len >= sizeof(formatted)) {
+      return tn_runtime_fail("host error: String.to_float formatting failed");
+    }
+    TnVal result = tn_runtime_const_float((TnVal)(intptr_t)formatted);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_pad_leading") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: String.pad_leading expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.pad_leading expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (tn_get_obj(args[2]) != NULL) {
+      return tn_runtime_failf("host error: String.pad_leading expects int argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    TnObj *padding_obj = tn_get_obj(args[3]);
+    if (padding_obj == NULL || padding_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.pad_leading expects string argument 3; found %s", tn_runtime_value_kind(args[3]));
+    }
+    int64_t target = (int64_t)args[2];
+    if (target < 0) {
+      return tn_runtime_fail("host error: String.pad_leading count must be non-negative");
+    }
+    const char *text = text_obj->as.text.text;
+    const char *padding = padding_obj->as.text.text;
+    size_t text_char_count = tn_utf8_codepoint_count(text);
+    if ((size_t)target <= text_char_count) {
+      TnVal result = tn_runtime_const_string((TnVal)(intptr_t)text);
+      free(args);
+      return result;
+    }
+    size_t padding_len = strlen(padding);
+    size_t padding_char_count = tn_utf8_codepoint_count(padding);
+    if (padding_char_count == 0) {
+      return tn_runtime_fail("host error: String.pad_leading padding must not be empty");
+    }
+    uint32_t *padding_codepoints = (uint32_t *)calloc(padding_char_count, sizeof(uint32_t));
+    if (padding_codepoints == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    size_t padding_index = 0;
+    size_t padding_byte_index = 0;
+    while (padding_byte_index < padding_len) {
+      padding_codepoints[padding_index] = tn_utf8_decode_next(padding, padding_len, &padding_byte_index);
+      padding_index += 1;
+    }
+    size_t needed = (size_t)target - text_char_count;
+    size_t pad_bytes = 0;
+    for (size_t i = 0; i < needed; i += 1) {
+      pad_bytes += tn_utf8_encoded_len(padding_codepoints[i % padding_char_count]);
+    }
+    size_t text_len = strlen(text);
+    char *padded = (char *)malloc(text_len + pad_bytes + 1);
+    if (padded == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    char *cursor = padded;
+    for (size_t i = 0; i < needed; i += 1) {
+      cursor += tn_utf8_encode(padding_codepoints[i % padding_char_count], cursor);
+    }
+    memcpy(cursor, text, text_len + 1);
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)padded);
+    free(padding_codepoints);
+    free(padded);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_pad_trailing") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: String.pad_trailing expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.pad_trailing expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (tn_get_obj(args[2]) != NULL) {
+      return tn_runtime_failf("host error: String.pad_trailing expects int argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    TnObj *padding_obj = tn_get_obj(args[3]);
+    if (padding_obj == NULL || padding_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.pad_trailing expects string argument 3; found %s", tn_runtime_value_kind(args[3]));
+    }
+    int64_t target = (int64_t)args[2];
+    if (target < 0) {
+      return tn_runtime_fail("host error: String.pad_trailing count must be non-negative");
+    }
+    const char *text = text_obj->as.text.text;
+    const char *padding = padding_obj->as.text.text;
+    size_t text_char_count = tn_utf8_codepoint_count(text);
+    if ((size_t)target <= text_char_count) {
+      TnVal result = tn_runtime_const_string((TnVal)(intptr_t)text);
+      free(args);
+      return result;
+    }
+    size_t padding_len = strlen(padding);
+    size_t padding_char_count = tn_utf8_codepoint_count(padding);
+    if (padding_char_count == 0) {
+      return tn_runtime_fail("host error: String.pad_trailing padding must not be empty");
+    }
+    uint32_t *padding_codepoints = (uint32_t *)calloc(padding_char_count, sizeof(uint32_t));
+    if (padding_codepoints == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    size_t padding_index = 0;
+    size_t padding_byte_index = 0;
+    while (padding_byte_index < padding_len) {
+      padding_codepoints[padding_index] = tn_utf8_decode_next(padding, padding_len, &padding_byte_index);
+      padding_index += 1;
+    }
+    size_t needed = (size_t)target - text_char_count;
+    size_t pad_bytes = 0;
+    for (size_t i = 0; i < needed; i += 1) {
+      pad_bytes += tn_utf8_encoded_len(padding_codepoints[i % padding_char_count]);
+    }
+    size_t text_len = strlen(text);
+    char *padded = (char *)malloc(text_len + pad_bytes + 1);
+    if (padded == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    char *cursor = padded;
+    memcpy(cursor, text, text_len);
+    cursor += text_len;
+    for (size_t i = 0; i < needed; i += 1) {
+      cursor += tn_utf8_encode(padding_codepoints[i % padding_char_count], cursor);
+    }
+    *cursor = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)padded);
+    free(padding_codepoints);
+    free(padded);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_reverse") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.reverse expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.reverse expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *text = text_obj->as.text.text;
+    size_t text_len = strlen(text);
+    size_t char_count = tn_utf8_codepoint_count(text);
+    size_t *starts = char_count == 0 ? NULL : (size_t *)calloc(char_count, sizeof(size_t));
+    size_t *lengths = char_count == 0 ? NULL : (size_t *)calloc(char_count, sizeof(size_t));
+    if (char_count > 0 && (starts == NULL || lengths == NULL)) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    size_t index = 0;
+    for (size_t i = 0; i < char_count; i += 1) {
+      size_t start = index;
+      tn_utf8_decode_next(text, text_len, &index);
+      starts[i] = start;
+      lengths[i] = index - start;
+    }
+    char *reversed = (char *)malloc(text_len + 1);
+    if (reversed == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    char *cursor = reversed;
+    for (size_t i = char_count; i > 0; i -= 1) {
+      memcpy(cursor, text + starts[i - 1], lengths[i - 1]);
+      cursor += lengths[i - 1];
+    }
+    *cursor = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)reversed);
+    free(starts);
+    free(lengths);
+    free(reversed);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_to_atom") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.to_atom expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.to_atom expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    TnVal result = tn_runtime_const_atom((TnVal)(intptr_t)text_obj->as.text.text);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_graphemes") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.graphemes expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.graphemes expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *text = text_obj->as.text.text;
+    size_t text_len = strlen(text);
+    size_t char_count = tn_utf8_codepoint_count(text);
+    TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+    list_obj->as.list.len = char_count;
+    list_obj->as.list.items = char_count == 0 ? NULL : (TnVal *)calloc(char_count, sizeof(TnVal));
+    if (char_count > 0 && list_obj->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    size_t index = 0;
+    for (size_t item_index = 0; item_index < char_count; item_index += 1) {
+      size_t start = index;
+      tn_utf8_decode_next(text, text_len, &index);
+      size_t grapheme_len = index - start;
+      char *grapheme = (char *)malloc(grapheme_len + 1);
+      if (grapheme == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      memcpy(grapheme, text + start, grapheme_len);
+      grapheme[grapheme_len] = '\0';
+      list_obj->as.list.items[item_index] = tn_runtime_const_string((TnVal)(intptr_t)grapheme);
+      tn_runtime_retain(list_obj->as.list.items[item_index]);
+      free(grapheme);
+    }
+    free(args);
+    return tn_heap_store(list_obj);
+  }
+
 "###,
     );
 }

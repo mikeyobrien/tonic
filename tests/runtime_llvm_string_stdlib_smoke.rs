@@ -196,6 +196,36 @@ fn compiled_runtime_supports_string_stdlib_frontmatter_helper_set_on_literals() 
             "defmodule Demo do\n  def run() do\n    String.to_integer(\"7\")\n  end\nend\n",
             "7\n",
         ),
+        (
+            "to-float",
+            "defmodule Demo do\n  def run() do\n    String.to_float(\" 7.5 \")\n  end\nend\n",
+            "7.5\n",
+        ),
+        (
+            "pad-leading-unicode",
+            "defmodule Demo do\n  def run() do\n    String.pad_leading(\"é\", 4, \"🙂x\")\n  end\nend\n",
+            "\"🙂x🙂é\"\n",
+        ),
+        (
+            "pad-trailing-unicode",
+            "defmodule Demo do\n  def run() do\n    String.pad_trailing(\"é\", 4, \"🙂x\")\n  end\nend\n",
+            "\"é🙂x🙂\"\n",
+        ),
+        (
+            "reverse-unicode",
+            "defmodule Demo do\n  def run() do\n    String.reverse(\"hé🙂\")\n  end\nend\n",
+            "\"🙂éh\"\n",
+        ),
+        (
+            "to-atom",
+            "defmodule Demo do\n  def run() do\n    String.to_atom(\"tonic\")\n  end\nend\n",
+            ":tonic\n",
+        ),
+        (
+            "graphemes-unicode",
+            "defmodule Demo do\n  def run() do\n    String.graphemes(\"hé🙂\")\n  end\nend\n",
+            "[\"h\", \"é\", \"🙂\"]\n",
+        ),
     ];
 
     for (suffix, entry_source, expected_stdout) in cases {
@@ -248,6 +278,28 @@ fn compiled_runtime_string_to_integer_reports_parse_failure_deterministically() 
     let stderr = String::from_utf8(output.stderr).expect("compiled stderr should be utf8");
     assert!(
         stderr.contains("error: host error: String.to_integer could not parse \"abc\" as integer"),
+        "expected deterministic parse-failure message, got: {stderr}"
+    );
+}
+
+#[test]
+fn compiled_runtime_string_to_float_reports_parse_failure_deterministically() {
+    let fixture_root = create_project_fixture(
+        "runtime-llvm-string-stdlib-to-float-failure",
+        "defmodule Demo do\n  def run() do\n    String.to_float(\"abc\")\n  end\nend\n",
+        None,
+    );
+    compile_fixture(&fixture_root);
+
+    let output = run_compiled_fixture(&fixture_root);
+    assert!(
+        !output.status.success(),
+        "expected compiled executable failure for invalid float"
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("compiled stderr should be utf8");
+    assert!(
+        stderr.contains("error: host error: String.to_float could not parse \"abc\" as float"),
         "expected deterministic parse-failure message, got: {stderr}"
     );
 }
