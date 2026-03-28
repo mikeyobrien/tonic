@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+export MINILOOPS_PROJECT_DIR='/Users/rook/projects/tonic-loops/presets/autoqa'
+export MINILOOPS_JOURNAL_FILE='/Users/rook/projects/tonic.tonic-install/./.miniloop/journal.jsonl'
+export MINILOOPS_EVENTS_FILE='/Users/rook/projects/tonic.tonic-install/./.miniloop/journal.jsonl'
+export MINILOOPS_MEMORY_FILE='/Users/rook/projects/tonic.tonic-install/./.miniloop/memory.jsonl'
+export MINILOOPS_RUN_ID='run-mn9qe1u0-96l_'
+export MINILOOPS_COMPLETION_EVENT='task.complete'
+export MINILOOPS_REQUIRED_EVENTS='surfaces.identified'
+export MINILOOPS_BIN='/Users/rook/projects/tonic.tonic-install/./.miniloop/miniloops'
+stdout_file=$(mktemp)
+stderr_file=$(mktemp)
+cleanup() {
+  rm -f "$stdout_file" "$stderr_file"
+}
+trap cleanup EXIT
+if tonic run '/Users/rook/projects/tonic-loops' "$@" >"$stdout_file" 2>"$stderr_file"; then
+  status=0
+else
+  status=$?
+fi
+cat "$stderr_file" >&2
+if [ "${1:-}" = "emit" ]; then
+  inner=$(sed -n 's/^%{:exit_code => \([0-9][0-9]*\),.*$/\1/p' "$stdout_file" | tail -n 1)
+  if [ -n "$inner" ]; then
+    exit "$inner"
+  fi
+fi
+cat "$stdout_file"
+exit "$status"

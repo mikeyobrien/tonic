@@ -1,58 +1,80 @@
 # Plan
 
 ## Active slice
-Plan and then implement interpolation-aware text blocks: `~t""" ... #{...} ... """` using the existing interpolated-string pipeline.
+Slice 1: Scaffold `cmd_install.rs` with all three handlers, wire dispatch in `main.rs`, implement local-path install end-to-end (symlink + shim generation + packages.toml + help text).
 
-## Why this slice now
-The plain text-block slice is already landed at `13962bc`, but the original task is not complete until `#{}` works inside text blocks. This is the next honest slice because it finishes the feature without reopening unrelated formatter or runtime work.
+## Why this slice first
+Local-path install exercises the full lifecycle (resolve → cache → discover bins → generate shims → write manifest → print summary). Once this works, git URL support and uninstall/installed are incremental additions on a proven foundation.
 
-## Planner checklist
-- [x] Re-read `context.md`, `plan.md`, `progress.md`, `.agents/tasks/2026-03-27-text-block-ergonomics/dedented-text-block-sigil.code-task.md`, `src/lexer/string_scan.rs`, `src/lexer/tests.rs`, `src/parser/literal.rs`, `src/parser/expr.rs`, `tests/check_dump_ast_string_interpolation.rs`, `tests/run_primitives_smoke.rs`, and `TONIC_REFERENCE.md` before changing the plan.
-- [x] Decide the narrowest lexer strategy that preserves text-block dedent rules while emitting the existing interpolation token sequence.
-- [x] Define exact dedent behavior when `#{...}` appears on mixed-indentation lines or spans multiple source lines.
-- [x] Replace the current "reject text-block interpolation" expectation with positive coverage and sharp malformed-input diagnostics.
-- [x] Keep the slice limited to text-block interpolation, tests, and docs. Do not widen into formatter or unrelated string work.
-- [x] Hand builder a concrete verification list and name the authoritative review target as current HEAD once planned.
+## Slice breakdown
 
-## Expected builder work
-- [x] Extend `src/lexer/string_scan.rs` so `~t"""...#{...}..."""` can produce the normal interpolated-string token flow after text-block normalization.
-- [x] Preserve the already-landed plain-text-block behavior.
-- [x] Keep raw heredoc behavior unchanged.
-- [x] Update lexer tests for positive interpolation coverage plus malformed/unterminated diagnostics.
-- [x] Add/extend AST dump regression coverage in `tests/check_dump_ast_string_interpolation.rs`.
-- [x] Add runtime coverage for interpolated text blocks in `tests/run_primitives_smoke.rs` or a nearby focused test.
-- [x] Update `TONIC_REFERENCE.md` to remove the current "not supported yet" note and document interpolation semantics for text blocks.
-- [x] Save verification output under `logs/`.
+### Slice 1 — Local-path install (active)
+- Create `src/cmd_install.rs` with `handle_install`, `handle_uninstall`, `handle_installed`
+- Wire dispatch in `src/main.rs` for `"install"`, `"uninstall"`, `"installed"`
+- Implement `handle_install` for local-path source:
+  - Parse args (`--copy`, `--force`, `-h`/`--help`)
+  - Resolve local path → canonicalize, verify `tonic.toml` exists
+  - Read package name from manifest (fallback: dir name)
+  - Create `~/.tonic/{bin,packages}/` dirs
+  - Symlink (or copy with `--copy`) source → `~/.tonic/packages/<name>/`
+  - Discover binaries from `bin/` dir (or fallback shim)
+  - Check for binary name conflicts in `packages.toml`
+  - Generate shims in `~/.tonic/bin/`
+  - Write/update `packages.toml`
+  - Print summary + PATH instructions on first install
+- Implement help text for all three commands
+- Stub `handle_uninstall` and `handle_installed` (just help + "not yet implemented" or minimal)
+- Update `print_help()` in main.rs to list new commands
+- Add unit tests for the new dispatch arms
+
+### Slice 2 — Uninstall + installed listing
+- Implement `handle_uninstall`: read manifest, remove shims, remove package dir, update manifest
+- Implement `handle_installed`: read manifest, print table
+- Tests
+
+### Slice 3 — Git URL install
+- Source detection (URL vs path vs registry name)
+- `git clone` into `~/.tonic/packages/<name>/`
+- `#ref` suffix parsing and checkout
+- Record commit hash in manifest
+- Dependency sync after clone
+- Tests
+
+### Slice 4 — Edge cases + polish
+- Registry name error message
+- `--force` for binary conflicts
+- Reinstall (update in place)
+- No-binaries error
+- Comprehensive error messages per RFC
+
+## Builder checklist for Slice 1
+- [ ] Create `src/cmd_install.rs`
+- [ ] Wire dispatch in `src/main.rs` (match arms + module declaration)
+- [ ] Implement local-path install flow
+- [ ] Implement packages.toml read/write
+- [ ] Implement shim generation
+- [ ] Implement binary discovery
+- [ ] Implement conflict detection
+- [ ] Add help text for install/uninstall/installed
+- [ ] Update `print_help()` with new commands
+- [ ] `cargo build` succeeds
+- [ ] `cargo test` passes (existing + new tests)
 
 ## Verification plan
-1. **Lexer / tokenization**
-   - interpolated text block emits the existing `StringStart` / `StringPart` / `InterpolationStart` / `InterpolationEnd` / `StringEnd` flow
-   - dedent still ignores blank lines and preserves relative indentation around interpolation boundaries
-2. **Diagnostics**
-   - malformed `#{...}` inside `~t"""` reports a precise error
-   - unterminated `~t"""` still reports the correct text-block error span
-3. **AST shape**
-   - `tonic check --dump-ast` shows an `interpolatedstring` shape for the new syntax rather than a new special-case node
-4. **Runtime behavior**
-   - `tonic run` proves dedent + interpolation both work on the live path
-5. **Regression**
-   - existing plain text-block and raw heredoc behavior remain green
+1. `cargo build` — compiles cleanly
+2. `cargo test` — all existing tests pass, new dispatch tests pass
+3. Manual: `cargo run --bin tonic -- install --help` shows help
+4. Manual: create a test project with `tonic.toml` and `bin/` script, install it, verify shim and manifest
+5. Manual: verify `tonic --help` lists new commands
 
 ## Suggested verification commands
-- `mkdir -p logs && cargo test text_block -- --nocapture > logs/text_block_lexer.log 2>&1`
-- `mkdir -p logs && cargo test --test check_dump_ast_string_interpolation -- --nocapture > logs/text_block_ast_interpolation.log 2>&1`
-- `mkdir -p logs && cargo test --test run_primitives_smoke run_executes_text_block_literals_with_trimmed_dedent_contract -- --exact > logs/text_block_runtime_plain.log 2>&1`
-- `mkdir -p logs && cargo test --test run_primitives_smoke <new_interpolated_text_block_test_name> -- --exact > logs/text_block_runtime_interpolation.log 2>&1`
-- `mkdir -p logs && cargo test heredoc -- --nocapture > logs/text_block_heredoc_regression.log 2>&1`
-
-## Critic expectation for the next review
-Critic should review the post-slice HEAD, not `13962bc` alone, and independently smoke an interpolated fixture with:
-- `cargo run --bin tonic -- run <fixture-containing-~t-and-#{...}>`
-
-That smoke must hit the changed lexer path directly.
+- `cargo build 2>&1`
+- `cargo test 2>&1`
+- `cargo run --bin tonic -- --help`
+- `cargo run --bin tonic -- install --help`
 
 ## Explicitly out of scope
-- formatter support
-- self-hosted lexer parity expansion unless tiny
-- changing raw heredoc semantics
-- broader string system redesign
+- Windows support
+- `tonic update` command
+- `[[bin]]` manifest section
+- Compiled binary optimization

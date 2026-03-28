@@ -1,63 +1,37 @@
 # Context
 
 ## Objective
-Implement the dedented text-block task incrementally.
-
-### Active slice
-Add a non-interpolated `~t""" ... """` text-block sigil that:
-- trims one optional framing newline after the opener
-- trims one optional framing newline before the closer
-- removes the minimum common indentation across non-blank content lines
-- preserves relative indentation after dedent
-- leaves raw `"""..."""` heredocs unchanged
-
-Interpolated text blocks (`~t"""...#{...}..."""`) are explicitly **next slice**, not this one.
+Implement `tonic install`, `tonic uninstall`, and `tonic installed` CLI subcommands per the RFC at `docs/rfcs/tonic-install.md` and the code task at `.agents/tasks/tonic-install/tonic-install.code-task.md`.
 
 ## Source task
-- Primary task file: `.agents/tasks/2026-03-27-text-block-ergonomics/dedented-text-block-sigil.code-task.md`
-- The prompt said `.agents/planning`, but the actual implementation brief lives under `.agents/tasks/...`.
-
-## Baseline repo state
-- Baseline commit before this planning pass: `26e491c`
-- The worktree is already dirty in many unrelated files; this slice must avoid touching or staging unrelated paths.
+- Code task: `.agents/tasks/tonic-install/tonic-install.code-task.md`
+- RFC: `docs/rfcs/tonic-install.md`
 
 ## Existing implementation facts
-- `src/lexer/string_scan.rs`
-  - `scan_string_literal` handles `"..."` and raw heredocs `"""..."""`
-  - interpolation uses the existing token flow: `StringStart` / `StringPart` / `InterpolationStart` / `InterpolationEnd` / `StringEnd`
-  - `scan_sigil` currently supports `~s`, `~r`, and `~w`
-- `src/lexer/mod.rs`
-  - lexer state only distinguishes `Normal` vs `String { is_heredoc, brace_depth }`
-  - `~` dispatch already routes into `string_scan::scan_sigil`
-- `src/parser/expr.rs` and `src/parser/literal.rs`
-  - plain `TokenKind::String` lowers straight to `Expr::String`
-  - interpolated string tokens lower to `Expr::InterpolatedString`
-- `src/ir_lower_expr.rs`
-  - `Expr::String` already lowers to `IrOp::ConstString`
-  - plain text-block literals can therefore reuse the existing runtime path with no new runtime node
-- Existing regression surfaces
-  - lexer unit tests: `src/lexer/tests.rs`, `src/lexer/tests_extended.rs`
-  - AST dump regression: `tests/check_dump_ast_expressions.rs`
-  - runtime regression: `tests/run_primitives_smoke.rs`
-  - user docs: `TONIC_REFERENCE.md`
+- CLI dispatch: `src/main.rs` — `run()` matches subcommand strings, delegates to `handle_*` functions
+- Command handler pattern: `src/cmd_deps.rs` — `handle_deps(args: Vec<String>) -> i32`, uses `CliDiagnostic` for errors
+- Module wiring: `#[path = "cmd_*.rs"] mod cmd_*; use cmd_*::*;` at bottom of `main.rs`
+- Error handling: `src/cli_diag.rs` — `CliDiagnostic::failure()`, `::usage_with_hint()`, `EXIT_OK/EXIT_FAILURE/EXIT_USAGE`
+- Manifest: `src/manifest.rs` + `src/manifest_parse.rs` — `load_project_manifest(path) -> Result<ProjectManifest, String>`, `PackageMetadata { name, ... }`
+- Dependency sync: `src/deps.rs` — `DependencyResolver::sync(&deps, &root) -> Result<Lockfile, String>`
+- `toml` crate already in dependencies
+- Help text functions: `print_*_help()` in `src/cmd_deps.rs`
+- Tests: `src/main.rs` has `mod tests` with CLI dispatch tests
 
-## Recommended implementation shape for this slice
-1. Extend `scan_sigil` to recognize only the dedicated triple-quoted text-block form: `~t"""..."""`.
-2. Keep the output surface narrow by normalizing the raw text-block contents in the lexer and then emitting an ordinary `TokenKind::String`.
-3. Centralize trim/dedent logic in one helper inside `src/lexer/string_scan.rs` so edge cases are unit-testable without parser/runtime noise.
-4. Keep raw heredoc scanning untouched.
-5. Keep parser, AST, resolver, typing, and lowering changes minimal or zero unless span/diagnostic plumbing truly requires otherwise.
+## Directory layout target
+```
+~/.tonic/
+├── bin/           # shims
+├── packages/      # cached sources (symlinks or clones)
+└── packages.toml  # global manifest
+```
 
-## Edge cases this slice should define and test
-- fully blank block → empty string after framing trim/dedent
-- one content line
-- mixed blank and indented lines
-- a less-indented line setting the common indent floor
-- unterminated `~t"""` block
-- invalid `~t` sigil spellings that are not the supported triple-quoted form
-
-## Intentionally out of scope for this slice
-- interpolation inside `~t` blocks
-- new AST/runtime string node types
-- formatter support
-- self-hosted lexer parity expansion unless it stays tiny and does not widen the slice
+## Key design decisions from RFC
+- Local path: symlink by default, `--copy` flag copies
+- Git URL: `git clone`, support `#ref` suffix
+- Registry name: error "not yet supported"
+- Shim: `#!/bin/sh` + `exec` passthrough
+- Binary discovery: scan `bin/` dir, fallback to single shim via `tonic run`
+- Conflict: error on binary name collision unless `--force`
+- Reinstall: update in place
+- PATH setup: print instructions on first install, no auto-modification

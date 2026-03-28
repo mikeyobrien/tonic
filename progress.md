@@ -1,63 +1,54 @@
-# Progress
+# QA Progress
 
-## Current step
-Builder completed the interpolation follow-up on top of baseline `13962bc`. `~t"""..."""` now supports `#{...}` while keeping the existing framing-newline trim and common-indent dedent contract for plain text blocks and leaving raw heredocs unchanged.
+## Surfaces
 
-## Next role
-critic
+| # | Surface | Command / Method | Status |
+|---|---------|-----------------|--------|
+| 1 | Compilation | `cargo build` | passed |
+| 2 | Unit tests (cmd_install) | `cargo test cmd_install` | passed |
+| 3 | Clippy | `cargo clippy -- -D warnings` | failed |
+| 4 | CLI help smoke test | `cargo test --test cli_help_smoke` | passed |
+| 5 | Structural code review | read-only: wiring, error paths, security | passed |
+| 6 | Shim correctness review | read-only: shim script content | passed |
 
-## Allowed next event
-review.passed, review.rejected
+## Execution Order
+1 → 2 → 3 → 4 → 5 → 6 (sequential; early failure in 1 blocks 2-4)
 
-## Slice status
-### Baseline already landed at `13962bc`
-- [x] Plain `~t"""..."""` lexer support
-- [x] Centralized framing-newline trim + common-indent dedent helper
-- [x] Plain text-block lexer / AST / runtime coverage
-- [x] Raw heredoc preservation
-- [x] Shared `.miniloop/*` path repair
+## Notes
+- Surface 2 covers qa-plan items 7 (manifest round-trip) and 8 (fallback shim edge case) since those are inline unit tests in cmd_install.
+- Surfaces 5-6 are read-only structural inspections with specific evidence queries.
 
-### Interpolation follow-up in this slice
-- [x] `#{}` interpolation inside text blocks
-- [x] Dedent defined over logical output lines so multiline interpolation source indentation does not distort surrounding text
-- [x] Positive lexer coverage for interpolated text blocks, including interpolation on an otherwise blank content line
-- [x] Malformed interpolation diagnostic coverage for missing `}` inside `~t"""`
-- [x] AST dump regression for interpolated text blocks
-- [x] Runtime regression for interpolated text blocks with multiline interpolation expressions
-- [x] `TONIC_REFERENCE.md` updated to document interpolation semantics
+## Results Detail
 
-## Relevant issues
-| Issue | Disposition | Notes |
-|---|---|---|
-| Original task requires interpolation inside `~t"""..."""`, and baseline `13962bc` intentionally deferred it | fix-now | Fixed in this slice by normalizing logical text-block lines and then reusing the existing interpolated-string token flow. |
-| Current docs still said text-block interpolation was unsupported | fix-now | Fixed in `TONIC_REFERENCE.md`. |
-| Current lexer tests included a rejection path for text-block interpolation | fix-now | Replaced with positive token-flow coverage plus a malformed interpolation diagnostic test. |
-| Worktree contains many unrelated edits outside this loop | out-of-scope | Review only the files listed below; do not stage or rely on unrelated dirty paths. |
-| Formatter support for `~t` remains tempting follow-up work | deferred | Still intentionally out of scope for this slice. |
+### Surface 3 — Clippy failures in cmd_install.rs
 
-## Files changed in this slice
-- `src/lexer/string_scan.rs`
-- `src/lexer/tests.rs`
-- `tests/check_dump_ast_string_interpolation.rs`
-- `tests/run_primitives_smoke.rs`
-- `TONIC_REFERENCE.md`
-- `plan.md`
-- `progress.md`
+5 warnings (all `-D warnings` promoted to errors):
 
-## Verification run for review target current HEAD (`feat(lexer): support interpolation in text blocks`)
-- `mkdir -p logs && cargo test text_block -- --nocapture > logs/text_block_lexer.log 2>&1`
-- `mkdir -p logs && cargo test --test check_dump_ast_string_interpolation -- --nocapture > logs/text_block_ast_interpolation.log 2>&1`
-- `mkdir -p logs && cargo test --test run_primitives_smoke text_block -- --nocapture > logs/text_block_runtime_interpolation.log 2>&1`
-- `mkdir -p logs && cargo test heredoc -- --nocapture > logs/text_block_heredoc_regression.log 2>&1`
-- manual smoke: `cargo run --bin tonic -- run /var/folders/s9/x5s6jsl12p3f371gpx8cw7cc0000gn/T/tmp.GbDkz0RlhA/examples/text_block_manual.tn`
+1. **Line 90**: `while let Some(arg) = iter.next()` → should be `for arg in iter` (`while_let_on_iterator`)
+2. **Line 142**: useless `format!("registry install not yet supported...")` → use `.to_string()` (`useless_format`)
+3. **Lines 162-164**: useless `format!("path does not appear to be a tonic project...")` → use `.to_string()` (`useless_format`)
+4. **Lines 334-336**: useless `format!("no installable binaries found...")` → use `.to_string()` (`useless_format`)
+5. **Line 526**: print literal `"INSTALLED"` can be inlined into format string (`print_literal`)
 
-## Verification artifacts
-- `logs/text_block_lexer.log`
-- `logs/text_block_ast_interpolation.log`
-- `logs/text_block_runtime_interpolation.log`
-- `logs/text_block_heredoc_regression.log`
-- `logs/text_block_manual_interpolation.log`
-- `logs/text_block_manual_fixture_path.txt`
+Note: pre-existing clippy warnings also exist in `src/interop/bitwise_mod.rs` and `src/name_resolve.rs` (not related to recent changes).
 
-## Handoff note for critic
-Review current HEAD. The changed path is entirely in text-block lexing: the builder now buffers `~t` fragments, computes dedent over logical output lines, and emits the existing interpolated-string token sequence with original-expression spans shifted back into the source file. Independently rerun the listed verification and smoke an interpolated fixture with `cargo run --bin tonic -- run <fixture>` before passing.
+### Surface 5 — Structural review (passed)
+
+- Wiring in main.rs correct: dispatches install/uninstall/installed to handlers.
+- All error paths return proper exit codes via CliDiagnostic.
+- No path traversal risk: bin_name comes from `read_dir`, not user input.
+- Shim `exec` uses single-quoted paths — safe against shell injection.
+- `copy_dir_recursive` follows symlinks (acceptable for local install tool).
+
+### Surface 6 — Shim correctness (passed)
+
+- Shims: `#!/bin/sh`, `set -eu`, `exec` — correct pattern.
+- Single-quoted paths prevent injection.
+- Both bin/-delegating and fallback (`tonic run`) shim variants well-formed.
+- Permissions 0o755 on Unix — correct.
+
+## Current Step
+QA report compiled at `.miniloop/qa-report.md`. All 6 surfaces fully validated; clippy is the sole failure with 5 mechanical warnings fully characterized above.
+
+## Next Role / Next Action
+inspector (routed from qa.failed) — All surfaces have been inspected and executed. No new surfaces to discover. The 5 clippy warnings are fully documented in the QA report and require fixes outside this QA loop. Expected action: emit `task.complete` with the unresolved clippy gaps summary.
