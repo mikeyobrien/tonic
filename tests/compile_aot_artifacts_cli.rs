@@ -186,6 +186,78 @@ fn compiled_elf_output_matches_interpreter_for_arithmetic() {
     );
 }
 
+#[test]
+fn compiled_elf_supports_list_and_tuple_kernel_builtins() {
+    let temp_dir = common::unique_temp_dir("compile-kernel-builtins");
+    let source_path = temp_dir.join("builtins.tn");
+    fs::write(
+        &source_path,
+        "defmodule Demo do\n  def run() do\n    pair = {[1, 2, 3], :ok}\n    updated = put_elem(pair, 1, elem({\"x\", 5}, 1))\n    length(tl(elem(updated, 0))) + tuple_size(updated) + hd(elem(updated, 0))\n  end\nend\n",
+    )
+    .unwrap();
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "builtins.tn"])
+        .assert()
+        .success();
+
+    let exe_path = temp_dir.join(".tonic/build/builtins");
+    let run_output = std::process::Command::new(&exe_path)
+        .output()
+        .expect("compiled builtins binary should execute");
+
+    assert!(
+        run_output.status.success(),
+        "compiled builtins program should succeed, stderr: {}",
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run_output.stdout).trim_end(), "5");
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_abs_max_min_round_and_trunc() {
+    let temp_dir = common::unique_temp_dir("compile-math-builtins-focused");
+    let source_path = temp_dir.join("main.tn");
+    fs::write(
+        &source_path,
+        "defmodule Demo do\n  def run() do\n    [\n      abs(-42),\n      max(-5, -1),\n      min(-5, -1),\n      max(3.5, 2.1),\n      min(3.5, 2.1),\n      round(3.7),\n      round(3.2),\n      trunc(3.7),\n      trunc(3.2)\n    ]\n  end\nend\n",
+    )
+    .unwrap();
+
+    let interp_output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "main.tn"])
+        .output()
+        .expect("tonic run should execute focused math builtins program");
+    assert!(
+        interp_output.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interp_output.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "main.tn"])
+        .assert()
+        .success();
+
+    let exe_path = temp_dir.join(".tonic/build/main");
+    let native_output = std::process::Command::new(&exe_path)
+        .output()
+        .expect("compiled math builtins binary should execute");
+
+    assert_eq!(
+        native_output.status.code(),
+        interp_output.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        native_output.stdout, interp_output.stdout,
+        "stdout must match between interpreter and native ELF"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // --out contract
 // ---------------------------------------------------------------------------

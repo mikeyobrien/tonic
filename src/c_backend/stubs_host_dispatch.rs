@@ -355,7 +355,112 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("    return (TnVal)churn;\n");
     out.push_str("  }\n\n");
     out.push_str(
-        r###"  if (strcmp(key, "str_split") == 0) {
+        r###"  if (strcmp(key, "enum_join") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Enum.join expects exactly 2 arguments, found %zu", argc - 1);
+    }
+
+    TnObj *list_obj = tn_expect_host_list_arg("Enum.join", args[1], 1);
+    const char *separator = tn_expect_host_string_arg("Enum.join", args[2], 2);
+    size_t separator_len = strlen(separator);
+    size_t buffer_cap = 64;
+    size_t buffer_len = 0;
+    char *buffer = (char *)malloc(buffer_cap + 1);
+    if (buffer == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    buffer[0] = '\0';
+
+    for (size_t i = 0; i < list_obj->as.list.len; i += 1) {
+      TnVal item = list_obj->as.list.items[i];
+      const char *part = NULL;
+      size_t part_len = 0;
+      char int_buffer[32];
+      char atom_buffer[256];
+      char bool_buffer[6];
+      char nil_buffer[4];
+      TnObj *item_obj = tn_get_obj(item);
+
+      if (!tn_is_boxed(item)) {
+        int written = snprintf(int_buffer, sizeof(int_buffer), "%lld", (long long)item);
+        if (written < 0 || (size_t)written >= sizeof(int_buffer)) {
+          free(buffer);
+          return tn_runtime_fail("host error: Enum.join integer formatting failed");
+        }
+        part = int_buffer;
+        part_len = (size_t)written;
+      } else if (item_obj != NULL && item_obj->kind == TN_OBJ_STRING) {
+        part = item_obj->as.text.text;
+        part_len = strlen(part);
+      } else if (item_obj != NULL && item_obj->kind == TN_OBJ_FLOAT) {
+        part = item_obj->as.text.text;
+        part_len = strlen(part);
+      } else if (item_obj != NULL && item_obj->kind == TN_OBJ_ATOM) {
+        int written = snprintf(atom_buffer, sizeof(atom_buffer), ":%s", item_obj->as.text.text);
+        if (written < 0 || (size_t)written >= sizeof(atom_buffer)) {
+          free(buffer);
+          return tn_runtime_fail("host error: Enum.join atom formatting failed");
+        }
+        part = atom_buffer;
+        part_len = (size_t)written;
+      } else if (item_obj != NULL && item_obj->kind == TN_OBJ_BOOL) {
+        const char *text = item_obj->as.bool_value ? "true" : "false";
+        int written = snprintf(bool_buffer, sizeof(bool_buffer), "%s", text);
+        if (written < 0 || (size_t)written >= sizeof(bool_buffer)) {
+          free(buffer);
+          return tn_runtime_fail("host error: Enum.join bool formatting failed");
+        }
+        part = bool_buffer;
+        part_len = (size_t)written;
+      } else if (item_obj != NULL && item_obj->kind == TN_OBJ_NIL) {
+        int written = snprintf(nil_buffer, sizeof(nil_buffer), "nil");
+        if (written < 0 || (size_t)written >= sizeof(nil_buffer)) {
+          free(buffer);
+          return tn_runtime_fail("host error: Enum.join nil formatting failed");
+        }
+        part = nil_buffer;
+        part_len = (size_t)written;
+      } else {
+        free(buffer);
+        return tn_runtime_failf("host error: Enum.join cannot render element %zu of type %s", i + 1, tn_runtime_value_kind(item));
+      }
+
+      size_t required = buffer_len + part_len + (i == 0 ? 0 : separator_len);
+      if (required > buffer_cap) {
+        size_t next_cap = buffer_cap;
+        while (required > next_cap) {
+          next_cap = next_cap > SIZE_MAX / 2 ? required : next_cap * 2;
+          if (next_cap < required) {
+            next_cap = required;
+          }
+        }
+        char *next_buffer = (char *)realloc(buffer, next_cap + 1);
+        if (next_buffer == NULL) {
+          free(buffer);
+          fprintf(stderr, "error: native runtime allocation failure\n");
+          exit(1);
+        }
+        buffer = next_buffer;
+        buffer_cap = next_cap;
+      }
+
+      if (i > 0) {
+        memcpy(buffer + buffer_len, separator, separator_len);
+        buffer_len += separator_len;
+      }
+      memcpy(buffer + buffer_len, part, part_len);
+      buffer_len += part_len;
+      buffer[buffer_len] = '\0';
+    }
+
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)buffer);
+    free(buffer);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_split") == 0) {
     if (argc != 3) {
       return tn_runtime_failf("host error: String.split expects exactly 2 arguments, found %zu", argc - 1);
     }

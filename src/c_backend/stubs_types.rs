@@ -262,9 +262,10 @@ static TnVal tn_nil_value = 0;
 
 static const uint64_t TN_BOX_TAG = UINT64_C(0x7ff0000000000000);
 static const uint64_t TN_BOX_PAYLOAD_MASK = UINT64_C(0x0000ffffffffffff);
+static const uint64_t TN_BOX_MASK = UINT64_C(0xfff0000000000000);
 
 static int tn_is_boxed(TnVal value) {
-  return ((((uint64_t)value) & TN_BOX_TAG) == TN_BOX_TAG) != 0;
+  return ((((uint64_t)value) & TN_BOX_MASK) == TN_BOX_TAG) != 0;
 }
 
 static size_t tn_box_id(TnVal value) {

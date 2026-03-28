@@ -242,6 +242,208 @@ static TnVal tn_runtime_bit_size(TnVal value) {
   return (TnVal)(obj->as.list.len * 8);
 }
 
+static int tn_runtime_number_to_f64(TnVal value, double *out) {
+  if (!tn_is_boxed(value)) {
+    *out = (double)(int64_t)value;
+    return 1;
+  }
+
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_FLOAT) {
+    return 0;
+  }
+
+  errno = 0;
+  char *end = NULL;
+  double parsed = strtod(obj->as.text.text, &end);
+  if (errno != 0 || end == obj->as.text.text || end == NULL || *end != '\0') {
+    return 0;
+  }
+
+  *out = parsed;
+  return 1;
+}
+
+static TnVal tn_runtime_float_from_f64(double value) {
+  char formatted[64];
+  int formatted_len = snprintf(formatted, sizeof(formatted), "%.15g", value);
+  if (formatted_len < 0 || (size_t)formatted_len >= sizeof(formatted)) {
+    return tn_runtime_fail("float formatting failed");
+  }
+  return tn_runtime_const_float((TnVal)(intptr_t)formatted);
+}
+
+static TnVal tn_runtime_abs(TnVal value) {
+  if (!tn_is_boxed(value)) {
+    return value < 0 ? (TnVal)(-(int64_t)value) : value;
+  }
+
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_FLOAT) {
+    return tn_runtime_failf("abs expects a number, found %s", tn_runtime_value_kind(value));
+  }
+
+  double parsed;
+  if (!tn_runtime_number_to_f64(value, &parsed)) {
+    return tn_runtime_failf("abs expects a number, found %s", tn_runtime_value_kind(value));
+  }
+  return tn_runtime_float_from_f64(fabs(parsed));
+}
+
+static TnVal tn_runtime_max(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left > right ? left : right;
+  }
+
+  double left_number;
+  double right_number;
+  if (!tn_runtime_number_to_f64(left, &left_number) || !tn_runtime_number_to_f64(right, &right_number)) {
+    return tn_runtime_failf("max expects two numbers, found %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+
+  return tn_runtime_float_from_f64(fmax(left_number, right_number));
+}
+
+static TnVal tn_runtime_min(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left < right ? left : right;
+  }
+
+  double left_number;
+  double right_number;
+  if (!tn_runtime_number_to_f64(left, &left_number) || !tn_runtime_number_to_f64(right, &right_number)) {
+    return tn_runtime_failf("min expects two numbers, found %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+
+  return tn_runtime_float_from_f64(fmin(left_number, right_number));
+}
+
+static TnVal tn_runtime_round(TnVal value) {
+  if (!tn_is_boxed(value)) {
+    return value;
+  }
+
+  double parsed;
+  if (!tn_runtime_number_to_f64(value, &parsed)) {
+    return tn_runtime_failf("round expects a number, found %s", tn_runtime_value_kind(value));
+  }
+  return (TnVal)(int64_t)round(parsed);
+}
+
+static TnVal tn_runtime_trunc(TnVal value) {
+  if (!tn_is_boxed(value)) {
+    return value;
+  }
+
+  double parsed;
+  if (!tn_runtime_number_to_f64(value, &parsed)) {
+    return tn_runtime_failf("trunc expects a number, found %s", tn_runtime_value_kind(value));
+  }
+  return (TnVal)(int64_t)trunc(parsed);
+}
+
+static TnVal tn_runtime_length(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("length expects a list, found %s", tn_runtime_value_kind(value));
+  }
+  return (TnVal)obj->as.list.len;
+}
+
+static TnVal tn_runtime_hd(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("hd expects a list, found %s", tn_runtime_value_kind(value));
+  }
+  if (obj->as.list.len == 0) {
+    return tn_runtime_fail("hd expects a non-empty list");
+  }
+  TnVal result = obj->as.list.items[0];
+  tn_runtime_retain(result);
+  return result;
+}
+
+static TnVal tn_runtime_tl(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_LIST) {
+    return tn_runtime_failf("tl expects a list, found %s", tn_runtime_value_kind(value));
+  }
+  if (obj->as.list.len == 0) {
+    return tn_runtime_fail("tl expects a non-empty list");
+  }
+
+  size_t len = obj->as.list.len - 1;
+  TnObj *rest = tn_new_obj(TN_OBJ_LIST);
+  rest->as.list.len = len;
+  rest->as.list.items = len == 0 ? NULL : (TnVal *)calloc(len, sizeof(TnVal));
+  if (len > 0 && rest->as.list.items == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  for (size_t i = 0; i < len; i += 1) {
+    rest->as.list.items[i] = obj->as.list.items[i + 1];
+    tn_runtime_retain(rest->as.list.items[i]);
+  }
+
+  return tn_heap_store(rest);
+}
+
+static TnVal tn_runtime_elem(TnVal tuple, TnVal index) {
+  TnObj *obj = tn_get_obj(tuple);
+  if (obj == NULL || obj->kind != TN_OBJ_TUPLE) {
+    return tn_runtime_failf("elem expects a tuple, found %s", tn_runtime_value_kind(tuple));
+  }
+  if (tn_is_boxed(index)) {
+    return tn_runtime_failf("elem expects an integer index, found %s", tn_runtime_value_kind(index));
+  }
+
+  TnVal result;
+  if (index == 0) {
+    result = obj->as.tuple.left;
+  } else if (index == 1) {
+    result = obj->as.tuple.right;
+  } else {
+    return tn_runtime_failf("elem index out of bounds: %lld", (long long)index);
+  }
+
+  tn_runtime_retain(result);
+  return result;
+}
+
+static TnVal tn_runtime_tuple_size(TnVal tuple) {
+  TnObj *obj = tn_get_obj(tuple);
+  if (obj == NULL || obj->kind != TN_OBJ_TUPLE) {
+    return tn_runtime_failf("tuple_size expects a tuple, found %s", tn_runtime_value_kind(tuple));
+  }
+  return (TnVal)2;
+}
+
+static TnVal tn_runtime_put_elem(TnVal tuple, TnVal index, TnVal value) {
+  TnObj *obj = tn_get_obj(tuple);
+  if (obj == NULL || obj->kind != TN_OBJ_TUPLE) {
+    return tn_runtime_failf("put_elem expects a tuple, found %s", tn_runtime_value_kind(tuple));
+  }
+  if (tn_is_boxed(index)) {
+    return tn_runtime_failf("put_elem expects an integer index, found %s", tn_runtime_value_kind(index));
+  }
+
+  TnObj *updated = tn_new_obj(TN_OBJ_TUPLE);
+  if (index == 0) {
+    updated->as.tuple.left = value;
+    updated->as.tuple.right = obj->as.tuple.right;
+  } else if (index == 1) {
+    updated->as.tuple.left = obj->as.tuple.left;
+    updated->as.tuple.right = value;
+  } else {
+    return tn_runtime_failf("put_elem index out of bounds: %lld", (long long)index);
+  }
+
+  tn_runtime_retain(updated->as.tuple.left);
+  tn_runtime_retain(updated->as.tuple.right);
+  return tn_heap_store(updated);
+}
+
 "###,
     );
 }
