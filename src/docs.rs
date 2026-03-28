@@ -1,7 +1,8 @@
 use crate::cli_diag::{CliDiagnostic, EXIT_OK};
 use crate::lexer::scan_tokens;
-use crate::manifest::{load_run_source, STDLIB_SOURCES};
+use crate::manifest::load_run_source;
 use crate::parser::{parse_ast, Expr, Module};
+use crate::stdlib_catalog::STDLIB_SOURCES;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_OUTPUT_DIR: &str = "docs/api";
@@ -451,6 +452,15 @@ end
         assert!(names.contains(&"List"), "expected List in {names:?}");
         assert!(names.contains(&"Map"), "expected Map in {names:?}");
         assert!(names.contains(&"Enum"), "expected Enum in {names:?}");
+    }
+
+    #[test]
+    fn collect_stdlib_modules_matches_catalog_module_names() {
+        let modules = collect_stdlib_modules();
+        let module_names: Vec<&str> = modules.iter().map(|module| module.name.as_str()).collect();
+        let catalog_names: Vec<&str> = crate::stdlib_catalog::stdlib_module_names().collect();
+
+        assert_eq!(module_names, catalog_names);
     }
 
     #[test]

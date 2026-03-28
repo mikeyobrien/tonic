@@ -66,9 +66,8 @@ This generates:
 - `src/runtime_eval.rs` — expression evaluation
 - `src/interop.rs` — stdlib host function registration
 - `src/interop/*.rs` — individual stdlib module implementations
-- `src/manifest.rs` — stdlib source embedding and module lists
-- `src/manifest_stdlib.rs` — stdlib loading
-- `src/stdlib_sources.rs` — embedded stdlib Tonic sources
+- `src/manifest.rs` — stdlib source embedding and lazy-load analysis
+- `src/stdlib_catalog.rs` — shared embedded stdlib catalog for runtime/docs
 - `src/cli_diag.rs` — error message formatting
 
 ### Documentation

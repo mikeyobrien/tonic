@@ -122,8 +122,7 @@ cargo test --quiet --bin tonic test_runner && cargo test --quiet --test test_run
 - `src/cmd_test.rs` — CLI argument handling for `tonic test`
 - `src/cmd_deps.rs` — Help text for `tonic test`
 - `src/interop.rs` — Host call dispatch (for assertion builtins)
-- `src/manifest_stdlib.rs` — Stdlib source registry
-- `src/stdlib_sources.rs` — Stdlib module source constants
+- `src/stdlib_catalog.rs` — Shared embedded stdlib catalog for runtime/docs
 - `tests/test_runner_rich_diagnostics.rs` — Integration tests for test runner
 
 ### Constraints
@@ -182,8 +181,7 @@ cargo test --quiet json 2>&1 | tail -5
 
 ### Files in Scope
 
-- `src/manifest_stdlib.rs` — stdlib source registration
-- `src/stdlib_sources.rs` — stdlib source constants (alternative location)
+- `src/stdlib_catalog.rs` — shared stdlib source registration for runtime/docs
 - `src/interop.rs` — host_call dispatch
 - `src/interop/system.rs` — system interop module
 - `src/interop_tests.rs` — interop tests
@@ -277,8 +275,7 @@ cargo test --quiet cli_module 2>&1 | tail -5
 
 ### Files in Scope
 
-- `src/stdlib_sources.rs` — stdlib source registration
-- `src/manifest_stdlib.rs` — stdlib source constants (alternative location)
+- `src/stdlib_catalog.rs` — shared stdlib source registration for runtime/docs
 - `src/interop.rs` — host_call dispatch
 - `src/interop/system.rs` — system interop module (for host call registration)
 - `src/interop_tests.rs` — interop tests

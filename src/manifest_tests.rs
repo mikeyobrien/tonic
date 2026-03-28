@@ -4,6 +4,17 @@ use crate::parser::parse_ast;
 use std::path::{Path, PathBuf};
 
 #[test]
+fn embedded_stdlib_shadow_catalog_file_is_absent() {
+    let shadow_catalog_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/stdlib_sources.rs");
+
+    assert!(
+        !shadow_catalog_path.exists(),
+        "shadow stdlib catalog should stay absent: {}",
+        shadow_catalog_path.display()
+    );
+}
+
+#[test]
 fn parse_manifest_requires_project_entry() {
     assert_eq!(
         parse_manifest("[project]\nname = \"demo\"\n", Path::new(".")),

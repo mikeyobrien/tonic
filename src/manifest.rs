@@ -1,12 +1,9 @@
 use crate::deps::Lockfile;
 use crate::lexer::scan_tokens;
 use crate::parser::{parse_ast, Ast, Expr};
+use crate::stdlib_catalog::{stdlib_module_names, STDLIB_SOURCES};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-
-#[path = "manifest_stdlib.rs"]
-mod stdlib;
-pub(crate) use stdlib::STDLIB_SOURCES;
 
 #[path = "manifest_parse.rs"]
 mod parse;
@@ -190,14 +187,10 @@ struct ProjectSourceAnalysis {
     referenced_modules: Vec<String>,
 }
 
-const STDLIB_MODULE_NAMES: &[&str] = &[
-    "System", "String", "Path", "IO", "List", "Map", "Enum", "Integer", "Float", "Tuple", "Assert",
-];
-
 fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String> {
     let Some(ast) = parse_project_ast(source) else {
         let mut referenced_modules = Vec::new();
-        for module_name in STDLIB_MODULE_NAMES {
+        for module_name in stdlib_module_names() {
             if source.contains(&format!("{module_name}.")) {
                 referenced_modules.push(module_name.to_string());
             }
@@ -216,7 +209,7 @@ fn analyze_project_source(source: &str) -> Result<ProjectSourceAnalysis, String>
     }
 
     let mut referenced_modules = Vec::new();
-    for module_name in STDLIB_MODULE_NAMES {
+    for module_name in stdlib_module_names() {
         if ast_references_module(&ast, module_name) {
             referenced_modules.push(module_name.to_string());
         }

@@ -1,4 +1,4 @@
-// Stdlib source constants for lazy-loaded optional modules.
+// Shared embedded stdlib catalog for runtime lazy-loading and generated docs.
 
 pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("System", OPTIONAL_STDLIB_SYSTEM_SOURCE),
@@ -13,6 +13,10 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Tuple", OPTIONAL_STDLIB_TUPLE_SOURCE),
     ("Assert", OPTIONAL_STDLIB_ASSERT_SOURCE),
 ];
+
+pub(crate) fn stdlib_module_names() -> impl Iterator<Item = &'static str> {
+    STDLIB_SOURCES.iter().map(|(module_name, _)| *module_name)
+}
 
 pub(super) const OPTIONAL_STDLIB_IO_SOURCE: &str =
     "defmodule IO do\n  def puts(value) do\n    host_call(:io_puts, value)\n  end\n\n  def inspect(value) do\n    host_call(:io_inspect, value)\n  end\n\n  def gets(prompt) do\n    host_call(:io_gets, prompt)\n  end\n\n  def render_markdown(markdown) do\n    host_call(:io_render_markdown, markdown)\n  end\n\n  def ansi_red(value) do\n    host_call(:io_ansi_red, value)\n  end\n\n  def ansi_green(value) do\n    host_call(:io_ansi_green, value)\n  end\n\n  def ansi_yellow(value) do\n    host_call(:io_ansi_yellow, value)\n  end\n\n  def ansi_blue(value) do\n    host_call(:io_ansi_blue, value)\n  end\n\n  def ansi_reset() do\n    host_call(:io_ansi_reset)\n  end\nend\n";

@@ -24,6 +24,7 @@ mod repl;
 mod resolver;
 mod resolver_diag;
 mod runtime;
+mod stdlib_catalog;
 mod target;
 mod test_runner;
 mod typing;
