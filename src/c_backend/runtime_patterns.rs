@@ -171,6 +171,11 @@ fn collect_patterns(mir: &MirProgram) -> Result<BTreeMap<i64, IrPattern>, CBacke
                     MirInstruction::MatchPattern { pattern, .. } => {
                         register_pattern(pattern, &mut patterns)?;
                     }
+                    MirInstruction::MakeClosure { ops, .. } => {
+                        for op in ops {
+                            register_patterns_from_op(op, &mut patterns)?;
+                        }
+                    }
                     MirInstruction::Legacy { source, .. } => {
                         register_patterns_from_op(source, &mut patterns)?;
                     }
