@@ -1,3 +1,220 @@
+use std::fmt::Write as _;
+use std::sync::OnceLock;
+
+struct UnicodeCaseMappingEntry {
+    codepoint: u32,
+    mapped: Vec<u32>,
+}
+
+fn collect_unicode_case_mappings<F>(map_case: F) -> Vec<UnicodeCaseMappingEntry>
+where
+    F: Fn(char) -> Vec<char>,
+{
+    let mut mappings = Vec::new();
+    for codepoint in 0..=0x10FFFF {
+        if (0xD800..=0xDFFF).contains(&codepoint) {
+            continue;
+        }
+        let Some(ch) = char::from_u32(codepoint) else {
+            continue;
+        };
+        let mapped_chars = map_case(ch);
+        if mapped_chars.len() == 1 && mapped_chars[0] == ch {
+            continue;
+        }
+        mappings.push(UnicodeCaseMappingEntry {
+            codepoint,
+            mapped: mapped_chars.into_iter().map(u32::from).collect(),
+        });
+    }
+    mappings
+}
+
+fn emit_unicode_case_mapping_table(
+    out: &mut String,
+    name: &str,
+    mappings: &[UnicodeCaseMappingEntry],
+    mapping_slots: usize,
+) {
+    writeln!(out, "static const TnUnicodeCaseMapping {name}[] = {{").unwrap();
+    for mapping in mappings {
+        let mut slots = vec!["0u".to_string(); mapping_slots];
+        for (index, codepoint) in mapping.mapped.iter().enumerate() {
+            slots[index] = format!("0x{codepoint:06X}u");
+        }
+        writeln!(
+            out,
+            "  {{ 0x{:06X}u, {}, {{{}}} }},",
+            mapping.codepoint,
+            mapping.mapped.len(),
+            slots.join(", ")
+        )
+        .unwrap();
+    }
+    out.push_str("};\n");
+    writeln!(
+        out,
+        "static const size_t {name}_len = sizeof({name}) / sizeof({name}[0]);\n"
+    )
+    .unwrap();
+}
+
+fn unicode_case_helpers() -> &'static str {
+    static HELPERS: OnceLock<String> = OnceLock::new();
+    HELPERS
+        .get_or_init(|| {
+            let uppercase_mappings =
+                collect_unicode_case_mappings(|ch| ch.to_uppercase().collect());
+            let lowercase_mappings =
+                collect_unicode_case_mappings(|ch| ch.to_lowercase().collect());
+            let mapping_slots = uppercase_mappings
+                .iter()
+                .chain(lowercase_mappings.iter())
+                .map(|mapping| mapping.mapped.len())
+                .max()
+                .unwrap_or(1);
+
+            let mut out = String::new();
+            writeln!(
+                &mut out,
+                "#define TN_UNICODE_CASE_MAPPING_SLOTS {mapping_slots}\n"
+            )
+            .unwrap();
+            out.push_str(
+                r#"typedef struct {
+  uint32_t codepoint;
+  size_t len;
+  uint32_t mapped[TN_UNICODE_CASE_MAPPING_SLOTS];
+} TnUnicodeCaseMapping;
+
+static size_t tn_utf8_encoded_len(uint32_t codepoint) {
+  if (codepoint > 0x10FFFFu || (codepoint >= 0xD800u && codepoint <= 0xDFFFu)) {
+    codepoint = 0xFFFDu;
+  }
+  if (codepoint <= 0x7Fu) {
+    return 1;
+  }
+  if (codepoint <= 0x7FFu) {
+    return 2;
+  }
+  if (codepoint <= 0xFFFFu) {
+    return 3;
+  }
+  return 4;
+}
+
+static size_t tn_utf8_encode(uint32_t codepoint, char *out) {
+  if (codepoint > 0x10FFFFu || (codepoint >= 0xD800u && codepoint <= 0xDFFFu)) {
+    codepoint = 0xFFFDu;
+  }
+  if (codepoint <= 0x7Fu) {
+    out[0] = (char)codepoint;
+    return 1;
+  }
+  if (codepoint <= 0x7FFu) {
+    out[0] = (char)(0xC0u | (codepoint >> 6));
+    out[1] = (char)(0x80u | (codepoint & 0x3Fu));
+    return 2;
+  }
+  if (codepoint <= 0xFFFFu) {
+    out[0] = (char)(0xE0u | (codepoint >> 12));
+    out[1] = (char)(0x80u | ((codepoint >> 6) & 0x3Fu));
+    out[2] = (char)(0x80u | (codepoint & 0x3Fu));
+    return 3;
+  }
+  out[0] = (char)(0xF0u | (codepoint >> 18));
+  out[1] = (char)(0x80u | ((codepoint >> 12) & 0x3Fu));
+  out[2] = (char)(0x80u | ((codepoint >> 6) & 0x3Fu));
+  out[3] = (char)(0x80u | (codepoint & 0x3Fu));
+  return 4;
+}
+
+static const TnUnicodeCaseMapping *tn_unicode_case_mapping_lookup(
+    const TnUnicodeCaseMapping *mappings,
+    size_t mapping_len,
+    uint32_t codepoint
+) {
+  size_t left = 0;
+  size_t right = mapping_len;
+  while (left < right) {
+    size_t mid = left + ((right - left) / 2);
+    uint32_t mid_codepoint = mappings[mid].codepoint;
+    if (codepoint < mid_codepoint) {
+      right = mid;
+    } else if (codepoint > mid_codepoint) {
+      left = mid + 1;
+    } else {
+      return &mappings[mid];
+    }
+  }
+  return NULL;
+}
+
+static char *tn_utf8_map_case(
+    const char *text,
+    const TnUnicodeCaseMapping *mappings,
+    size_t mapping_len
+) {
+  size_t text_len = strlen(text);
+  size_t mapped_len = 0;
+  size_t index = 0;
+  while (index < text_len) {
+    uint32_t codepoint = tn_utf8_decode_next(text, text_len, &index);
+    const TnUnicodeCaseMapping *mapping =
+        tn_unicode_case_mapping_lookup(mappings, mapping_len, codepoint);
+    if (mapping == NULL) {
+      mapped_len += tn_utf8_encoded_len(codepoint);
+      continue;
+    }
+    for (size_t mapping_index = 0; mapping_index < mapping->len; mapping_index += 1) {
+      mapped_len += tn_utf8_encoded_len(mapping->mapped[mapping_index]);
+    }
+  }
+
+  char *mapped = (char *)malloc(mapped_len + 1);
+  if (mapped == NULL) {
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  char *cursor = mapped;
+  index = 0;
+  while (index < text_len) {
+    uint32_t codepoint = tn_utf8_decode_next(text, text_len, &index);
+    const TnUnicodeCaseMapping *mapping =
+        tn_unicode_case_mapping_lookup(mappings, mapping_len, codepoint);
+    if (mapping == NULL) {
+      cursor += tn_utf8_encode(codepoint, cursor);
+      continue;
+    }
+    for (size_t mapping_index = 0; mapping_index < mapping->len; mapping_index += 1) {
+      cursor += tn_utf8_encode(mapping->mapped[mapping_index], cursor);
+    }
+  }
+
+  *cursor = '\0';
+  return mapped;
+}
+
+"#,
+            );
+            emit_unicode_case_mapping_table(
+                &mut out,
+                "tn_uppercase_mappings",
+                &uppercase_mappings,
+                mapping_slots,
+            );
+            emit_unicode_case_mapping_table(
+                &mut out,
+                "tn_lowercase_mappings",
+                &lowercase_mappings,
+                mapping_slots,
+            );
+            out
+        })
+        .as_str()
+}
+
 pub(super) fn emit_stubs_host_dispatch(out: &mut String) {
     out.push_str(
         "static TnVal tn_runtime_call_compiled_closure(TnVal descriptor_hash, const TnVal *argv, size_t argc);\n\n",
@@ -27,7 +244,11 @@ pub(super) fn emit_stubs_host_dispatch(out: &mut String) {
     out.push_str("}\n\n");
 
     out.push_str(
-        "typedef struct {\n  char **items;\n  size_t len;\n  size_t cap;\n} TnPathStringList;\n\nstatic int tn_path_string_compare(const void *left, const void *right) {\n  const char *const *left_item = (const char *const *)left;\n  const char *const *right_item = (const char *const *)right;\n  return strcmp(*left_item, *right_item);\n}\n\nstatic void tn_path_string_list_free(TnPathStringList *list) {\n  if (list == NULL) {\n    return;\n  }\n  for (size_t i = 0; i < list->len; i += 1) {\n    free(list->items[i]);\n  }\n  free(list->items);\n  list->items = NULL;\n  list->len = 0;\n  list->cap = 0;\n}\n\nstatic int tn_path_string_list_push(TnPathStringList *list, const char *value) {\n  if (list->len == list->cap) {\n    size_t next_cap = list->cap == 0 ? 8 : list->cap * 2;\n    char **next_items = (char **)realloc(list->items, next_cap * sizeof(char *));\n    if (next_items == NULL) {\n      return 0;\n    }\n    list->items = next_items;\n    list->cap = next_cap;\n  }\n\n  size_t value_len = strlen(value);\n  char *copy = (char *)malloc(value_len + 1);\n  if (copy == NULL) {\n    return 0;\n  }\n  memcpy(copy, value, value_len + 1);\n  list->items[list->len] = copy;\n  list->len += 1;\n  return 1;\n}\n\nstatic int tn_collect_relative_files_recursive(const char *root_path, const char *relative_path, TnPathStringList *files, char *error_message, size_t error_cap) {\n  char directory_path[PATH_MAX];\n  if (relative_path[0] == '\\0') {\n    if (snprintf(directory_path, sizeof(directory_path), \"%s\", root_path) >= (int)sizeof(directory_path)) {\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n  } else {\n    if (snprintf(directory_path, sizeof(directory_path), \"%s/%s\", root_path, relative_path) >= (int)sizeof(directory_path)) {\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n  }\n\n  DIR *directory = opendir(directory_path);\n  if (directory == NULL) {\n    snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': %s\", root_path, strerror(errno));\n    return 0;\n  }\n\n  TnPathStringList entry_names = {0};\n  struct dirent *entry = NULL;\n  while ((entry = readdir(directory)) != NULL) {\n    if (strcmp(entry->d_name, \".\") == 0 || strcmp(entry->d_name, \"..\") == 0) {\n      continue;\n    }\n    if (!tn_path_string_list_push(&entry_names, entry->d_name)) {\n      tn_path_string_list_free(&entry_names);\n      closedir(directory);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': out of memory\", root_path);\n      return 0;\n    }\n  }\n  closedir(directory);\n\n  qsort(entry_names.items, entry_names.len, sizeof(char *), tn_path_string_compare);\n\n  for (size_t i = 0; i < entry_names.len; i += 1) {\n    char child_relative[PATH_MAX];\n    if (relative_path[0] == '\\0') {\n      if (snprintf(child_relative, sizeof(child_relative), \"%s\", entry_names.items[i]) >= (int)sizeof(child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n        return 0;\n      }\n    } else {\n      if (snprintf(child_relative, sizeof(child_relative), \"%s/%s\", relative_path, entry_names.items[i]) >= (int)sizeof(child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n        return 0;\n      }\n    }\n\n    char child_path[PATH_MAX];\n    if (snprintf(child_path, sizeof(child_path), \"%s/%s\", root_path, child_relative) >= (int)sizeof(child_path)) {\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n\n    struct stat child_stat;\n    if (lstat(child_path, &child_stat) != 0) {\n      int stat_errno = errno;\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': %s\", root_path, strerror(stat_errno));\n      return 0;\n    }\n\n    if (S_ISDIR(child_stat.st_mode)) {\n      if (!tn_collect_relative_files_recursive(root_path, child_relative, files, error_message, error_cap)) {\n        tn_path_string_list_free(&entry_names);\n        return 0;\n      }\n    } else if (S_ISREG(child_stat.st_mode)) {\n      if (!tn_path_string_list_push(files, child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': out of memory\", root_path);\n        return 0;\n      }\n    }\n  }\n\n  tn_path_string_list_free(&entry_names);\n  return 1;\n}\n\nstatic int tn_remove_path_recursive(const char *path, char *error_message, size_t error_cap) {\n  struct stat path_stat;\n  if (lstat(path, &path_stat) != 0) {\n    if (errno == ENOENT) {\n      return 2;\n    }\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  if (!S_ISDIR(path_stat.st_mode)) {\n    if (unlink(path) != 0) {\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n      return 0;\n    }\n    return 1;\n  }\n\n  DIR *directory = opendir(path);\n  if (directory == NULL) {\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  TnPathStringList entry_names = {0};\n  struct dirent *entry = NULL;\n  while ((entry = readdir(directory)) != NULL) {\n    if (strcmp(entry->d_name, \".\") == 0 || strcmp(entry->d_name, \"..\") == 0) {\n      continue;\n    }\n    if (!tn_path_string_list_push(&entry_names, entry->d_name)) {\n      tn_path_string_list_free(&entry_names);\n      closedir(directory);\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': out of memory\", path);\n      return 0;\n    }\n  }\n  closedir(directory);\n\n  qsort(entry_names.items, entry_names.len, sizeof(char *), tn_path_string_compare);\n\n  for (size_t i = 0; i < entry_names.len; i += 1) {\n    char child_path[PATH_MAX];\n    if (snprintf(child_path, sizeof(child_path), \"%s/%s\", path, entry_names.items[i]) >= (int)sizeof(child_path)) {\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': path is too long\", path);\n      return 0;\n    }\n\n    int child_result = tn_remove_path_recursive(child_path, error_message, error_cap);\n    if (child_result == 0) {\n      tn_path_string_list_free(&entry_names);\n      return 0;\n    }\n  }\n\n  tn_path_string_list_free(&entry_names);\n\n  if (rmdir(path) != 0) {\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  return 1;\n}\n\nstatic size_t tn_utf8_codepoint_count(const char *text) {\n  size_t count = 0;\n  size_t index = 0;\n  size_t len = strlen(text);\n\n  while (index < len) {\n    unsigned char lead = (unsigned char)text[index];\n    size_t advance = 1;\n\n    if ((lead & 0x80u) == 0) {\n      advance = 1;\n    } else if ((lead & 0xE0u) == 0xC0u && index + 1 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u) {\n      advance = 2;\n    } else if ((lead & 0xF0u) == 0xE0u && index + 2 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 2]) & 0xC0u) == 0x80u) {\n      advance = 3;\n    } else if ((lead & 0xF8u) == 0xF0u && index + 3 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 2]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 3]) & 0xC0u) == 0x80u) {\n      advance = 4;\n    }\n\n    index += advance;\n    count += 1;\n  }\n\n  return count;\n}\n\nstatic uint32_t tn_utf8_decode_next(const char *text, size_t len, size_t *index) {\n  unsigned char lead = (unsigned char)text[*index];\n\n  if ((lead & 0x80u) == 0) {\n    *index += 1;\n    return (uint32_t)lead;\n  }\n\n  if ((lead & 0xE0u) == 0xC0u && *index + 1 < len) {\n    unsigned char b1 = (unsigned char)text[*index + 1];\n    if ((b1 & 0xC0u) == 0x80u) {\n      *index += 2;\n      return ((uint32_t)(lead & 0x1Fu) << 6) | (uint32_t)(b1 & 0x3Fu);\n    }\n  }\n\n  if ((lead & 0xF0u) == 0xE0u && *index + 2 < len) {\n    unsigned char b1 = (unsigned char)text[*index + 1];\n    unsigned char b2 = (unsigned char)text[*index + 2];\n    if ((b1 & 0xC0u) == 0x80u && (b2 & 0xC0u) == 0x80u) {\n      *index += 3;\n      return ((uint32_t)(lead & 0x0Fu) << 12) | ((uint32_t)(b1 & 0x3Fu) << 6) | (uint32_t)(b2 & 0x3Fu);\n    }\n  }\n\n  if ((lead & 0xF8u) == 0xF0u && *index + 3 < len) {\n    unsigned char b1 = (unsigned char)text[*index + 1];\n    unsigned char b2 = (unsigned char)text[*index + 2];\n    unsigned char b3 = (unsigned char)text[*index + 3];\n    if ((b1 & 0xC0u) == 0x80u && (b2 & 0xC0u) == 0x80u && (b3 & 0xC0u) == 0x80u) {\n      *index += 4;\n      return ((uint32_t)(lead & 0x07u) << 18) | ((uint32_t)(b1 & 0x3Fu) << 12) | ((uint32_t)(b2 & 0x3Fu) << 6) | (uint32_t)(b3 & 0x3Fu);\n    }\n  }\n\n  *index += 1;\n  return (uint32_t)lead;\n}\n\n// Globals for sys_argv
+        "typedef struct {\n  char **items;\n  size_t len;\n  size_t cap;\n} TnPathStringList;\n\nstatic int tn_path_string_compare(const void *left, const void *right) {\n  const char *const *left_item = (const char *const *)left;\n  const char *const *right_item = (const char *const *)right;\n  return strcmp(*left_item, *right_item);\n}\n\nstatic void tn_path_string_list_free(TnPathStringList *list) {\n  if (list == NULL) {\n    return;\n  }\n  for (size_t i = 0; i < list->len; i += 1) {\n    free(list->items[i]);\n  }\n  free(list->items);\n  list->items = NULL;\n  list->len = 0;\n  list->cap = 0;\n}\n\nstatic int tn_path_string_list_push(TnPathStringList *list, const char *value) {\n  if (list->len == list->cap) {\n    size_t next_cap = list->cap == 0 ? 8 : list->cap * 2;\n    char **next_items = (char **)realloc(list->items, next_cap * sizeof(char *));\n    if (next_items == NULL) {\n      return 0;\n    }\n    list->items = next_items;\n    list->cap = next_cap;\n  }\n\n  size_t value_len = strlen(value);\n  char *copy = (char *)malloc(value_len + 1);\n  if (copy == NULL) {\n    return 0;\n  }\n  memcpy(copy, value, value_len + 1);\n  list->items[list->len] = copy;\n  list->len += 1;\n  return 1;\n}\n\nstatic int tn_collect_relative_files_recursive(const char *root_path, const char *relative_path, TnPathStringList *files, char *error_message, size_t error_cap) {\n  char directory_path[PATH_MAX];\n  if (relative_path[0] == '\\0') {\n    if (snprintf(directory_path, sizeof(directory_path), \"%s\", root_path) >= (int)sizeof(directory_path)) {\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n  } else {\n    if (snprintf(directory_path, sizeof(directory_path), \"%s/%s\", root_path, relative_path) >= (int)sizeof(directory_path)) {\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n  }\n\n  DIR *directory = opendir(directory_path);\n  if (directory == NULL) {\n    snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': %s\", root_path, strerror(errno));\n    return 0;\n  }\n\n  TnPathStringList entry_names = {0};\n  struct dirent *entry = NULL;\n  while ((entry = readdir(directory)) != NULL) {\n    if (strcmp(entry->d_name, \".\") == 0 || strcmp(entry->d_name, \"..\") == 0) {\n      continue;\n    }\n    if (!tn_path_string_list_push(&entry_names, entry->d_name)) {\n      tn_path_string_list_free(&entry_names);\n      closedir(directory);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': out of memory\", root_path);\n      return 0;\n    }\n  }\n  closedir(directory);\n\n  qsort(entry_names.items, entry_names.len, sizeof(char *), tn_path_string_compare);\n\n  for (size_t i = 0; i < entry_names.len; i += 1) {\n    char child_relative[PATH_MAX];\n    if (relative_path[0] == '\\0') {\n      if (snprintf(child_relative, sizeof(child_relative), \"%s\", entry_names.items[i]) >= (int)sizeof(child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n        return 0;\n      }\n    } else {\n      if (snprintf(child_relative, sizeof(child_relative), \"%s/%s\", relative_path, entry_names.items[i]) >= (int)sizeof(child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n        return 0;\n      }\n    }\n\n    char child_path[PATH_MAX];\n    if (snprintf(child_path, sizeof(child_path), \"%s/%s\", root_path, child_relative) >= (int)sizeof(child_path)) {\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': path is too long\", root_path);\n      return 0;\n    }\n\n    struct stat child_stat;\n    if (lstat(child_path, &child_stat) != 0) {\n      int stat_errno = errno;\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': %s\", root_path, strerror(stat_errno));\n      return 0;\n    }\n\n    if (S_ISDIR(child_stat.st_mode)) {\n      if (!tn_collect_relative_files_recursive(root_path, child_relative, files, error_message, error_cap)) {\n        tn_path_string_list_free(&entry_names);\n        return 0;\n      }\n    } else if (S_ISREG(child_stat.st_mode)) {\n      if (!tn_path_string_list_push(files, child_relative)) {\n        tn_path_string_list_free(&entry_names);\n        snprintf(error_message, error_cap, \"host error: sys_list_files_recursive failed for '%s': out of memory\", root_path);\n        return 0;\n      }\n    }\n  }\n\n  tn_path_string_list_free(&entry_names);\n  return 1;\n}\n\nstatic int tn_remove_path_recursive(const char *path, char *error_message, size_t error_cap) {\n  struct stat path_stat;\n  if (lstat(path, &path_stat) != 0) {\n    if (errno == ENOENT) {\n      return 2;\n    }\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  if (!S_ISDIR(path_stat.st_mode)) {\n    if (unlink(path) != 0) {\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n      return 0;\n    }\n    return 1;\n  }\n\n  DIR *directory = opendir(path);\n  if (directory == NULL) {\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  TnPathStringList entry_names = {0};\n  struct dirent *entry = NULL;\n  while ((entry = readdir(directory)) != NULL) {\n    if (strcmp(entry->d_name, \".\") == 0 || strcmp(entry->d_name, \"..\") == 0) {\n      continue;\n    }\n    if (!tn_path_string_list_push(&entry_names, entry->d_name)) {\n      tn_path_string_list_free(&entry_names);\n      closedir(directory);\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': out of memory\", path);\n      return 0;\n    }\n  }\n  closedir(directory);\n\n  qsort(entry_names.items, entry_names.len, sizeof(char *), tn_path_string_compare);\n\n  for (size_t i = 0; i < entry_names.len; i += 1) {\n    char child_path[PATH_MAX];\n    if (snprintf(child_path, sizeof(child_path), \"%s/%s\", path, entry_names.items[i]) >= (int)sizeof(child_path)) {\n      tn_path_string_list_free(&entry_names);\n      snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': path is too long\", path);\n      return 0;\n    }\n\n    int child_result = tn_remove_path_recursive(child_path, error_message, error_cap);\n    if (child_result == 0) {\n      tn_path_string_list_free(&entry_names);\n      return 0;\n    }\n  }\n\n  tn_path_string_list_free(&entry_names);\n\n  if (rmdir(path) != 0) {\n    snprintf(error_message, error_cap, \"host error: sys_remove_tree failed for '%s': %s\", path, strerror(errno));\n    return 0;\n  }\n\n  return 1;\n}\n\nstatic size_t tn_utf8_codepoint_count(const char *text) {\n  size_t count = 0;\n  size_t index = 0;\n  size_t len = strlen(text);\n\n  while (index < len) {\n    unsigned char lead = (unsigned char)text[index];\n    size_t advance = 1;\n\n    if ((lead & 0x80u) == 0) {\n      advance = 1;\n    } else if ((lead & 0xE0u) == 0xC0u && index + 1 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u) {\n      advance = 2;\n    } else if ((lead & 0xF0u) == 0xE0u && index + 2 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 2]) & 0xC0u) == 0x80u) {\n      advance = 3;\n    } else if ((lead & 0xF8u) == 0xF0u && index + 3 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 2]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 3]) & 0xC0u) == 0x80u) {\n      advance = 4;\n    }\n\n    index += advance;\n    count += 1;\n  }\n\n  return count;\n}\n\nstatic uint32_t tn_utf8_decode_next(const char *text, size_t len, size_t *index) {\n  unsigned char lead = (unsigned char)text[*index];\n\n  if ((lead & 0x80u) == 0) {\n    *index += 1;\n    return (uint32_t)lead;\n  }\n\n  if ((lead & 0xE0u) == 0xC0u && *index + 1 < len) {\n    unsigned char b1 = (unsigned char)text[*index + 1];\n    if ((b1 & 0xC0u) == 0x80u) {\n      *index += 2;\n      return ((uint32_t)(lead & 0x1Fu) << 6) | (uint32_t)(b1 & 0x3Fu);\n    }\n  }\n\n  if ((lead & 0xF0u) == 0xE0u && *index + 2 < len) {\n    unsigned char b1 = (unsigned char)text[*index + 1];\n    unsigned char b2 = (unsigned char)text[*index + 2];\n    if ((b1 & 0xC0u) == 0x80u && (b2 & 0xC0u) == 0x80u) {\n      *index += 3;\n      return ((uint32_t)(lead & 0x0Fu) << 12) | ((uint32_t)(b1 & 0x3Fu) << 6) | (uint32_t)(b2 & 0x3Fu);\n    }\n  }\n\n  if ((lead & 0xF8u) == 0xF0u && *index + 3 < len) {\n    unsigned char b1 = (unsigned char)text[*index + 1];\n    unsigned char b2 = (unsigned char)text[*index + 2];\n    unsigned char b3 = (unsigned char)text[*index + 3];\n    if ((b1 & 0xC0u) == 0x80u && (b2 & 0xC0u) == 0x80u && (b3 & 0xC0u) == 0x80u) {\n      *index += 4;\n      return ((uint32_t)(lead & 0x07u) << 18) | ((uint32_t)(b1 & 0x3Fu) << 12) | ((uint32_t)(b2 & 0x3Fu) << 6) | (uint32_t)(b3 & 0x3Fu);\n    }\n  }\n\n  *index += 1;\n  return (uint32_t)lead;\n}\n\n",
+    );
+    out.push_str(unicode_case_helpers());
+    out.push_str(
+        "// Globals for sys_argv
 int tn_global_argc = 0;
 char **tn_global_argv = NULL;
 
@@ -464,6 +685,97 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     return tn_runtime_const_bool((TnVal)(strstr(text_obj->as.text.text, substr_obj->as.text.text) != NULL));
   }
 
+  if (strcmp(key, "str_upcase") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.upcase expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.upcase expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    char *mapped = tn_utf8_map_case(
+      text_obj->as.text.text,
+      tn_uppercase_mappings,
+      tn_uppercase_mappings_len
+    );
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)mapped);
+    free(mapped);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_downcase") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.downcase expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.downcase expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    char *mapped = tn_utf8_map_case(
+      text_obj->as.text.text,
+      tn_lowercase_mappings,
+      tn_lowercase_mappings_len
+    );
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)mapped);
+    free(mapped);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "str_length") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: String.length expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.length expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    free(args);
+    return (TnVal)(int64_t)tn_utf8_codepoint_count(text_obj->as.text.text);
+  }
+
+  if (strcmp(key, "str_at") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: String.at expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnObj *text_obj = tn_get_obj(args[1]);
+    if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: String.at expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (tn_get_obj(args[2]) != NULL) {
+      return tn_runtime_failf("host error: String.at expects int argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    const char *text = text_obj->as.text.text;
+    size_t text_len = strlen(text);
+    size_t char_count = tn_utf8_codepoint_count(text);
+    int64_t index = (int64_t)args[2];
+    int64_t resolved = index < 0 ? (int64_t)char_count + index : index;
+    if (resolved < 0 || (size_t)resolved >= char_count) {
+      free(args);
+      return tn_runtime_const_nil();
+    }
+
+    size_t byte_start = 0;
+    for (int64_t current = 0; current < resolved; current += 1) {
+      tn_utf8_decode_next(text, text_len, &byte_start);
+    }
+    size_t byte_end = byte_start;
+    tn_utf8_decode_next(text, text_len, &byte_end);
+    size_t char_len = byte_end - byte_start;
+    char *slice = (char *)malloc(char_len + 1);
+    if (slice == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    memcpy(slice, text + byte_start, char_len);
+    slice[char_len] = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)slice);
+    free(slice);
+    free(args);
+    return result;
+  }
+
   if (strcmp(key, "str_to_charlist") == 0) {
     if (argc != 2) {
       return tn_runtime_failf("host error: String.to_charlist expects exactly 1 argument, found %zu", argc - 1);
@@ -498,35 +810,46 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     if (text_obj == NULL || text_obj->kind != TN_OBJ_STRING) {
       return tn_runtime_failf("host error: String.slice expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
     }
-    if (tn_is_boxed(args[2])) {
+    if (tn_get_obj(args[2]) != NULL) {
       return tn_runtime_failf("host error: String.slice expects int argument 2; found %s", tn_runtime_value_kind(args[2]));
     }
-    if (tn_is_boxed(args[3])) {
+    if (tn_get_obj(args[3]) != NULL) {
       return tn_runtime_failf("host error: String.slice expects int argument 3; found %s", tn_runtime_value_kind(args[3]));
     }
     const char *text = text_obj->as.text.text;
     size_t text_len = strlen(text);
+    size_t char_count = tn_utf8_codepoint_count(text);
     int64_t start = (int64_t)args[2];
     int64_t len = (int64_t)args[3];
-    int64_t resolved_start = start < 0 ? (int64_t)text_len + start : start;
+    int64_t resolved_start = start < 0 ? (int64_t)char_count + start : start;
     if (resolved_start < 0) {
       resolved_start = 0;
     }
-    if ((size_t)resolved_start > text_len) {
-      resolved_start = (int64_t)text_len;
+    if ((size_t)resolved_start > char_count) {
+      resolved_start = (int64_t)char_count;
     }
     size_t resolved_len = len < 0 ? 0 : (size_t)len;
-    size_t max_len = text_len - (size_t)resolved_start;
+    size_t max_len = char_count - (size_t)resolved_start;
     if (resolved_len > max_len) {
       resolved_len = max_len;
     }
-    char *slice = (char *)malloc(resolved_len + 1);
+
+    size_t byte_start = 0;
+    for (int64_t current = 0; current < resolved_start; current += 1) {
+      tn_utf8_decode_next(text, text_len, &byte_start);
+    }
+    size_t byte_end = byte_start;
+    for (size_t current = 0; current < resolved_len; current += 1) {
+      tn_utf8_decode_next(text, text_len, &byte_end);
+    }
+    size_t slice_len = byte_end - byte_start;
+    char *slice = (char *)malloc(slice_len + 1);
     if (slice == NULL) {
       fprintf(stderr, "error: native runtime allocation failure\n");
       exit(1);
     }
-    memcpy(slice, text + resolved_start, resolved_len);
-    slice[resolved_len] = '\0';
+    memcpy(slice, text + byte_start, slice_len);
+    slice[slice_len] = '\0';
     TnVal result = tn_runtime_const_string((TnVal)(intptr_t)slice);
     free(slice);
     free(args);

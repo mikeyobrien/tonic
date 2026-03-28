@@ -122,6 +122,56 @@ fn compiled_runtime_supports_string_stdlib_frontmatter_helper_set_on_literals() 
             "true\n",
         ),
         (
+            "upcase",
+            "defmodule Demo do\n  def run() do\n    String.upcase(\"hello\")\n  end\nend\n",
+            "\"HELLO\"\n",
+        ),
+        (
+            "upcase-unicode",
+            "defmodule Demo do\n  def run() do\n    String.upcase(\"héß\")\n  end\nend\n",
+            "\"HÉSS\"\n",
+        ),
+        (
+            "downcase",
+            "defmodule Demo do\n  def run() do\n    String.downcase(\"HELLO\")\n  end\nend\n",
+            "\"hello\"\n",
+        ),
+        (
+            "downcase-unicode",
+            "defmodule Demo do\n  def run() do\n    String.downcase(\"İÉ\")\n  end\nend\n",
+            "\"i̇é\"\n",
+        ),
+        (
+            "length-unicode",
+            "defmodule Demo do\n  def run() do\n    String.length(\"hé🙂\")\n  end\nend\n",
+            "3\n",
+        ),
+        (
+            "at-unicode",
+            "defmodule Demo do\n  def run() do\n    String.at(\"hé🙂\", 1)\n  end\nend\n",
+            "\"é\"\n",
+        ),
+        (
+            "at-negative",
+            "defmodule Demo do\n  def run() do\n    String.at(\"hello\", -1)\n  end\nend\n",
+            "\"o\"\n",
+        ),
+        (
+            "at-out-of-bounds",
+            "defmodule Demo do\n  def run() do\n    String.at(\"hello\", 99)\n  end\nend\n",
+            "nil\n",
+        ),
+        (
+            "capitalize",
+            "defmodule Demo do\n  def run() do\n    String.capitalize(\"tONIC\")\n  end\nend\n",
+            "\"Tonic\"\n",
+        ),
+        (
+            "capitalize-unicode-rest",
+            "defmodule Demo do\n  def run() do\n    String.capitalize(\"hÉß\")\n  end\nend\n",
+            "\"Héß\"\n",
+        ),
+        (
             "to-charlist-ascii",
             "defmodule Demo do\n  def run() do\n    String.to_charlist(\"tonic\")\n  end\nend\n",
             "[116, 111, 110, 105, 99]\n",
@@ -135,6 +185,11 @@ fn compiled_runtime_supports_string_stdlib_frontmatter_helper_set_on_literals() 
             "slice",
             "defmodule Demo do\n  def run() do\n    String.slice(\"hello\", 1, 3)\n  end\nend\n",
             "\"ell\"\n",
+        ),
+        (
+            "slice-unicode",
+            "defmodule Demo do\n  def run() do\n    String.slice(\"hé🙂\", 1, 2)\n  end\nend\n",
+            "\"é🙂\"\n",
         ),
         (
             "to-integer",
