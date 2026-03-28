@@ -449,7 +449,7 @@ fn emit_c_builtin_call(
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push_str(&format!(
-                "  v{dest} = tn_runtime_host_call_varargs({count_then_args});\n"
+                "  v{dest} = tn_runtime_host_call_with_offset({offset}, {count_then_args});\n"
             ));
         }
         "protocol_dispatch" => {

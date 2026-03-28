@@ -96,7 +96,11 @@ pub(super) fn emit_try_ops(
                 terminated = true;
                 break;
             }
-            IrOp::Call { callee, argc, .. } => {
+            IrOp::Call {
+                callee,
+                argc,
+                offset,
+            } => {
                 let mut args = Vec::with_capacity(*argc);
                 for _ in 0..*argc {
                     args.push(pop_stack_value(&mut stack, "try call argument")?);
@@ -186,7 +190,7 @@ pub(super) fn emit_try_ops(
                                 .collect::<Vec<_>>()
                                 .join(", ");
                             out.push_str(&format!(
-                                "{indent}  TnVal {temp} = tn_runtime_host_call_varargs({count_then_args});\n"
+                                "{indent}  TnVal {temp} = tn_runtime_host_call_with_offset({offset}, {count_then_args});\n"
                             ));
                         }
                         "protocol_dispatch" => {

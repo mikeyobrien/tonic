@@ -1,7 +1,155 @@
-pub(super) fn emit_stubs_types(out: &mut String) {
-    out.push_str(
+use super::stubs::c_string_literal;
+
+pub(super) fn emit_stubs_types(source_path: &str, source: &str, out: &mut String) {
+    let escaped_source_path = c_string_literal(source_path);
+    let escaped_source = c_string_literal(source);
+    out.push_str(&format!(
         r###"/* runtime helpers */
-static TnVal tn_stub_abort(const char *name) {
+static const char *tn_runtime_source_path = {escaped_source_path};
+static const char *tn_runtime_source = {escaped_source};
+
+typedef struct {{
+  size_t offset;
+  int active;
+}} TnErrorContext;
+
+static size_t tn_runtime_error_offset = 0;
+static int tn_runtime_error_offset_active = 0;
+
+static size_t tn_runtime_utf8_advance(const char *text, size_t len, size_t index) {{
+  unsigned char lead = (unsigned char)text[index];
+
+  if ((lead & 0x80u) == 0) {{
+    return 1;
+  }}
+
+  if ((lead & 0xE0u) == 0xC0u && index + 1 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u) {{
+    return 2;
+  }}
+
+  if ((lead & 0xF0u) == 0xE0u && index + 2 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 2]) & 0xC0u) == 0x80u) {{
+    return 3;
+  }}
+
+  if ((lead & 0xF8u) == 0xF0u && index + 3 < len && (((unsigned char)text[index + 1]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 2]) & 0xC0u) == 0x80u && (((unsigned char)text[index + 3]) & 0xC0u) == 0x80u) {{
+    return 4;
+  }}
+
+  return 1;
+}}
+
+static size_t tn_runtime_utf8_codepoint_count(const char *text, size_t len) {{
+  size_t count = 0;
+  size_t index = 0;
+
+  while (index < len) {{
+    index += tn_runtime_utf8_advance(text, len, index);
+    count += 1;
+  }}
+
+  return count;
+}}
+
+static int tn_runtime_is_char_boundary(const char *text, size_t len, size_t offset) {{
+  if (offset > len) {{
+    return 0;
+  }}
+
+  if (offset == len) {{
+    return 1;
+  }}
+
+  return ((((unsigned char)text[offset]) & 0xC0u) != 0x80u) ? 1 : 0;
+}}
+
+static void tn_runtime_emit_source_context(void) {{
+  if (!tn_runtime_error_offset_active || tn_runtime_source == NULL) {{
+    return;
+  }}
+
+  size_t source_len = strlen(tn_runtime_source);
+  size_t offset = tn_runtime_error_offset;
+  if (offset > source_len || !tn_runtime_is_char_boundary(tn_runtime_source, source_len, offset)) {{
+    return;
+  }}
+
+  size_t line_start = 0;
+  for (size_t i = 0; i < offset; i += 1) {{
+    if (tn_runtime_source[i] == '\n') {{
+      line_start = i + 1;
+    }}
+  }}
+
+  size_t line_end = source_len;
+  for (size_t i = offset; i < source_len; i += 1) {{
+    if (tn_runtime_source[i] == '\n') {{
+      line_end = i;
+      break;
+    }}
+  }}
+
+  size_t line_number = 1;
+  for (size_t i = 0; i < line_start; i += 1) {{
+    if (tn_runtime_source[i] == '\n') {{
+      line_number += 1;
+    }}
+  }}
+
+  size_t column_number =
+      tn_runtime_utf8_codepoint_count(tn_runtime_source + line_start, offset - line_start) + 1;
+
+  if (tn_runtime_source_path != NULL && tn_runtime_source_path[0] != '\0') {{
+    fprintf(stderr, " --> %s:%zu:%zu\n", tn_runtime_source_path, line_number, column_number);
+  }} else {{
+    fprintf(stderr, " --> line %zu, column %zu\n", line_number, column_number);
+  }}
+
+  fprintf(
+      stderr,
+      "%4zu | %.*s\n",
+      line_number,
+      (int)(line_end - line_start),
+      tn_runtime_source + line_start);
+  fputs("     | ", stderr);
+  for (size_t index = line_start; index < offset;) {{
+    if (tn_runtime_source[index] == '\t') {{
+      fputc('\t', stderr);
+      index += 1;
+      continue;
+    }}
+
+    fputc(' ', stderr);
+    index += tn_runtime_utf8_advance(tn_runtime_source, source_len, index);
+  }}
+  fputs("^\n", stderr);
+}}
+
+static void tn_runtime_emit_failure(const char *message) {{
+  if (tn_runtime_error_offset_active) {{
+    fprintf(stderr, "error: %s at offset %zu\n", message, tn_runtime_error_offset);
+    tn_runtime_emit_source_context();
+    return;
+  }}
+
+  fprintf(stderr, "error: %s\n", message);
+}}
+
+static TnErrorContext tn_runtime_push_error_context(size_t offset) {{
+  TnErrorContext previous = {{tn_runtime_error_offset, tn_runtime_error_offset_active}};
+  tn_runtime_error_offset = offset;
+  tn_runtime_error_offset_active = 1;
+  return previous;
+}}
+
+static void tn_runtime_pop_error_context(TnErrorContext previous) {{
+  tn_runtime_error_offset = previous.offset;
+  tn_runtime_error_offset_active = previous.active;
+}}
+
+"###,
+    ));
+    out.push_str(
+        r###"static TnVal tn_stub_abort(const char *name) {
   fprintf(stderr, "error: native runtime not available for '%s'\n", name);
   exit(1);
 }
@@ -307,17 +455,36 @@ static TnVal tn_runtime_guard_is_nil(TnVal value);
 static void tn_render_value(FILE *out, TnVal value);
 
 static TnVal tn_runtime_fail(const char *message) {
-  fprintf(stderr, "error: %s\n", message);
+  tn_runtime_emit_failure(message);
   exit(1);
 }
 
 static TnVal tn_runtime_failf(const char *format, ...) {
-  fprintf(stderr, "error: ");
   va_list args;
   va_start(args, format);
-  vfprintf(stderr, format, args);
+
+  va_list count_args;
+  va_copy(count_args, args);
+  int needed = vsnprintf(NULL, 0, format, count_args);
+  va_end(count_args);
+
+  if (needed < 0) {
+    va_end(args);
+    tn_runtime_emit_failure("native runtime formatting failure");
+    exit(1);
+  }
+
+  char *message = (char *)malloc((size_t)needed + 1);
+  if (message == NULL) {
+    va_end(args);
+    fprintf(stderr, "error: native runtime allocation failure\n");
+    exit(1);
+  }
+
+  vsnprintf(message, (size_t)needed + 1, format, args);
   va_end(args);
-  fputc('\n', stderr);
+  tn_runtime_emit_failure(message);
+  free(message);
   exit(1);
 }
 

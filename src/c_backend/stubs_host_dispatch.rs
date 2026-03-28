@@ -258,7 +258,7 @@ static int tn_http_listeners_count = 0;
 static int tn_http_connections[1024];
 static int tn_http_connections_count = 0;
 
-static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
+static TnVal tn_runtime_host_call_varargs_impl(TnVal count, va_list vargs) {\n",
     );
     out.push_str("  if (count < 1) {\n");
     out.push_str(
@@ -271,12 +271,9 @@ static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {\n",
     out.push_str("    fprintf(stderr, \"error: native runtime allocation failure\\n\");\n");
     out.push_str("    exit(1);\n");
     out.push_str("  }\n\n");
-    out.push_str("  va_list vargs;\n");
-    out.push_str("  va_start(vargs, count);\n");
     out.push_str("  for (size_t i = 0; i < argc; i += 1) {\n");
     out.push_str("    args[i] = va_arg(vargs, TnVal);\n");
-    out.push_str("  }\n");
-    out.push_str("  va_end(vargs);\n\n");
+    out.push_str("  }\n\n");
     out.push_str("  TnObj *key_obj = tn_get_obj(args[0]);\n");
     out.push_str("  if (key_obj == NULL || key_obj->kind != TN_OBJ_ATOM) {\n");
     out.push_str(

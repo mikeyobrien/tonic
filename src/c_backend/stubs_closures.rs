@@ -283,8 +283,12 @@ fn emit_closure_ops(
                 out.push_str(&format!("  TnVal {temp} = tn_runtime_raise({input});\n"));
                 stack.push(temp);
             }
-            IrOp::Call { callee, argc, .. } => {
-                emit_closure_call(callee, *argc, stack, temp_index, out)?;
+            IrOp::Call {
+                callee,
+                argc,
+                offset,
+            } => {
+                emit_closure_call(callee, *argc, *offset, stack, temp_index, out)?;
             }
             IrOp::CallValue { argc, .. } => {
                 let mut args = Vec::with_capacity(*argc);
@@ -640,6 +644,7 @@ fn emit_closure_binary(
 fn emit_closure_call(
     callee: &IrCallTarget,
     argc: usize,
+    offset: usize,
     stack: &mut Vec<String>,
     temp_index: &mut usize,
     out: &mut String,
@@ -717,7 +722,7 @@ fn emit_closure_call(
                     .collect::<Vec<_>>()
                     .join(", ");
                 out.push_str(&format!(
-                    "  TnVal {temp} = tn_runtime_host_call_varargs({count_then_args});\n"
+                    "  TnVal {temp} = tn_runtime_host_call_with_offset({offset}, {count_then_args});\n"
                 ));
             }
             "protocol_dispatch" => {

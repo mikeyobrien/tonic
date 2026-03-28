@@ -49,7 +49,7 @@ pub(super) fn emit_runtime_stubs(
     source: &str,
     out: &mut String,
 ) -> Result<(), CBackendError> {
-    emit_stubs_types(out);
+    emit_stubs_types(source_path, source, out);
     emit_stubs_memory(out);
     emit_stubs_constructors(out);
     emit_stubs_map(out);
@@ -59,6 +59,27 @@ pub(super) fn emit_runtime_stubs(
     emit_stubs_host_path(out);
     emit_stubs_host_sys(out);
     emit_stubs_host_http(out);
+    out.push_str(
+        r###"static TnVal tn_runtime_host_call_varargs(TnVal count, ...) {
+  va_list vargs;
+  va_start(vargs, count);
+  TnVal result = tn_runtime_host_call_varargs_impl(count, vargs);
+  va_end(vargs);
+  return result;
+}
+
+static TnVal tn_runtime_host_call_with_offset(size_t offset, TnVal count, ...) {
+  TnErrorContext previous = tn_runtime_push_error_context(offset);
+  va_list vargs;
+  va_start(vargs, count);
+  TnVal result = tn_runtime_host_call_varargs_impl(count, vargs);
+  va_end(vargs);
+  tn_runtime_pop_error_context(previous);
+  return result;
+}
+
+"###,
+    );
     emit_stubs_results(out);
     emit_runtime_pattern_helpers(mir, out)?;
     emit_runtime_try_helpers(mir, out)?;
