@@ -275,6 +275,212 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
     return tn_runtime_const_bool((TnVal)1);
   }
 
+  if (strcmp(key, "sys_write_text_atomic") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: sys_write_text_atomic expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    TnObj *content_obj = tn_get_obj(args[2]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_write_text_atomic expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (content_obj == NULL || content_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_write_text_atomic expects string argument 2; found %s", tn_runtime_value_kind(args[2]));
+    }
+    const char *path = path_obj->as.text.text;
+    const char *content = content_obj->as.text.text;
+    const char *last_slash = strrchr(path, '/');
+    if (last_slash != NULL) {
+      size_t parent_len = (size_t)(last_slash - path);
+      if (parent_len > 0) {
+        char *parent = (char *)malloc(parent_len + 1);
+        if (parent == NULL) {
+          fprintf(stderr, "error: native runtime allocation failure\n");
+          exit(1);
+        }
+        memcpy(parent, path, parent_len);
+        parent[parent_len] = '\0';
+        for (size_t i = 1; i < parent_len; i += 1) {
+          if (parent[i] != '/') {
+            continue;
+          }
+          parent[i] = '\0';
+          if (parent[0] != '\0' && mkdir(parent, 0777) != 0 && errno != EEXIST) {
+            int mkdir_errno = errno;
+            free(parent);
+            return tn_runtime_failf("host error: sys_write_text_atomic failed for '%s': %s", path, strerror(mkdir_errno));
+          }
+          parent[i] = '/';
+        }
+        if (mkdir(parent, 0777) != 0 && errno != EEXIST) {
+          int mkdir_errno = errno;
+          free(parent);
+          return tn_runtime_failf("host error: sys_write_text_atomic failed for '%s': %s", path, strerror(mkdir_errno));
+        }
+        free(parent);
+      }
+    }
+    const char *base_name = last_slash == NULL ? path : last_slash + 1;
+    const char *temp_base = base_name[0] == '\0' ? "tmp" : base_name;
+    char *temp_path = NULL;
+    if (last_slash == NULL) {
+      size_t temp_len = strlen(temp_base) + strlen("..tmp.XXXXXX") + 1;
+      temp_path = (char *)malloc(temp_len);
+      if (temp_path == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      snprintf(temp_path, temp_len, ".%s.tmp.XXXXXX", temp_base);
+    } else {
+      size_t dir_len = (size_t)(last_slash - path + 1);
+      size_t temp_len = dir_len + 1 + strlen(temp_base) + strlen(".tmp.XXXXXX") + 1;
+      temp_path = (char *)malloc(temp_len);
+      if (temp_path == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      snprintf(temp_path, temp_len, "%.*s.%s.tmp.XXXXXX", (int)dir_len, path, temp_base);
+    }
+    int temp_fd = mkstemp(temp_path);
+    if (temp_fd < 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      free(temp_path);
+      return tn_runtime_failf("host error: sys_write_text_atomic failed for '%s': %s", path, strerror(io_errno));
+    }
+    const char *cursor = content;
+    size_t remaining = strlen(content);
+    while (remaining > 0) {
+      ssize_t written = write(temp_fd, cursor, remaining);
+      if (written < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        int io_errno = errno != 0 ? errno : EIO;
+        close(temp_fd);
+        unlink(temp_path);
+        free(temp_path);
+        return tn_runtime_failf("host error: sys_write_text_atomic failed for '%s': %s", path, strerror(io_errno));
+      }
+      cursor += (size_t)written;
+      remaining -= (size_t)written;
+    }
+    if (fsync(temp_fd) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      close(temp_fd);
+      unlink(temp_path);
+      free(temp_path);
+      return tn_runtime_failf("host error: sys_write_text_atomic failed for '%s': %s", path, strerror(io_errno));
+    }
+    if (close(temp_fd) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      unlink(temp_path);
+      free(temp_path);
+      return tn_runtime_failf("host error: sys_write_text_atomic failed for '%s': %s", path, strerror(io_errno));
+    }
+    if (rename(temp_path, path) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      unlink(temp_path);
+      free(temp_path);
+      return tn_runtime_failf("host error: sys_write_text_atomic failed for '%s': %s", path, strerror(io_errno));
+    }
+    free(temp_path);
+    free(args);
+    return tn_runtime_const_bool((TnVal)1);
+  }
+
+  if (strcmp(key, "sys_lock_acquire") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_lock_acquire expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_lock_acquire expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *path = path_obj->as.text.text;
+    const char *last_slash = strrchr(path, '/');
+    if (last_slash != NULL) {
+      size_t parent_len = (size_t)(last_slash - path);
+      if (parent_len > 0) {
+        char *parent = (char *)malloc(parent_len + 1);
+        if (parent == NULL) {
+          fprintf(stderr, "error: native runtime allocation failure\n");
+          exit(1);
+        }
+        memcpy(parent, path, parent_len);
+        parent[parent_len] = '\0';
+        for (size_t i = 1; i < parent_len; i += 1) {
+          if (parent[i] != '/') {
+            continue;
+          }
+          parent[i] = '\0';
+          if (parent[0] != '\0' && mkdir(parent, 0777) != 0 && errno != EEXIST) {
+            int mkdir_errno = errno;
+            free(parent);
+            return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(mkdir_errno));
+          }
+          parent[i] = '/';
+        }
+        if (mkdir(parent, 0777) != 0 && errno != EEXIST) {
+          int mkdir_errno = errno;
+          free(parent);
+          return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(mkdir_errno));
+        }
+        free(parent);
+      }
+    }
+    FILE *handle = fopen(path, "wx");
+    if (handle == NULL) {
+      if (errno == EEXIST) {
+        free(args);
+        return tn_runtime_const_bool((TnVal)0);
+      }
+      return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(errno));
+    }
+    char marker[128];
+    int marker_len = snprintf(marker, sizeof(marker), "pid=%d timestamp_ms=0\n", getpid());
+    if (marker_len < 0 || fputs(marker, handle) < 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      fclose(handle);
+      return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(io_errno));
+    }
+    if (fflush(handle) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      fclose(handle);
+      return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(io_errno));
+    }
+    if (fsync(fileno(handle)) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      fclose(handle);
+      return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(io_errno));
+    }
+    if (fclose(handle) != 0) {
+      int io_errno = errno != 0 ? errno : EIO;
+      return tn_runtime_failf("host error: sys_lock_acquire failed for '%s': %s", path, strerror(io_errno));
+    }
+    free(args);
+    return tn_runtime_const_bool((TnVal)1);
+  }
+
+  if (strcmp(key, "sys_lock_release") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: sys_lock_release expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: sys_lock_release expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *path = path_obj->as.text.text;
+    if (unlink(path) == 0) {
+      free(args);
+      return tn_runtime_const_bool((TnVal)1);
+    }
+    if (errno == ENOENT) {
+      free(args);
+      return tn_runtime_const_bool((TnVal)0);
+    }
+    return tn_runtime_failf("host error: sys_lock_release failed for '%s': %s", path, strerror(errno));
+  }
+
   if (strcmp(key, "sys_read_text") == 0) {
     if (argc != 2) {
       return tn_runtime_failf("host error: sys_read_text expects exactly 1 argument, found %zu", argc - 1);

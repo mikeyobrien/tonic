@@ -311,6 +311,103 @@ fn compiled_runtime_supports_system_append_text() {
 }
 
 #[test]
+fn compiled_runtime_supports_system_write_text_atomic_and_lock_primitives() {
+    let fixture_root = common::unique_fixture_root("runtime-llvm-system-persistence-locks");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    System.write_text_atomic(\"state/payload.txt\", \"snapshot-v1\")\n    [\n      System.write_text_atomic(\"state/payload.txt\", \"snapshot-v2\"),\n      System.read_text(\"state/payload.txt\"),\n      System.lock_acquire(\"locks/proposal.lock\"),\n      System.lock_acquire(\"locks/proposal.lock\"),\n      System.lock_release(\"locks/proposal.lock\"),\n      System.lock_release(\"locks/proposal.lock\")\n    ]\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok"));
+
+    let executable = fixture_root.join(".tonic/build/main");
+    let output = std::process::Command::new(&executable)
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        output.status.success(),
+        "expected compiled executable success, got status {:?} and stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "[true, \"snapshot-v2\", true, false, true, false]\n"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture_root.join("state").join("payload.txt"))
+            .expect("payload.txt should exist after atomic write"),
+        "snapshot-v2"
+    );
+    assert!(
+        !fixture_root.join("locks").join("proposal.lock").exists(),
+        "expected lock file to be absent after release"
+    );
+}
+
+#[test]
+fn compiled_runtime_system_write_text_atomic_rejects_non_string_content_deterministically() {
+    let fixture_root =
+        common::unique_fixture_root("runtime-llvm-system-write-text-atomic-type-error");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    host_call(:sys_write_text_atomic, \"payload.txt\", true)\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success()
+        .stdout(contains("compile: ok"));
+
+    let executable = fixture_root.join(".tonic/build/main");
+    let output = std::process::Command::new(&executable)
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+
+    assert!(
+        !output.status.success(),
+        "expected compiled executable failure for wrong argument type"
+    );
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains(
+            "error: host error: sys_write_text_atomic expects string argument 2; found bool"
+        ),
+        "expected deterministic type-error message, got: {stderr}"
+    );
+}
+
+#[test]
 fn compiled_runtime_system_read_text_rejects_non_string_argument_deterministically() {
     let fixture_root = common::unique_fixture_root("runtime-llvm-system-read-text-type-error");
     let src_dir = fixture_root.join("src");
