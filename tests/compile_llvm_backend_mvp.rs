@@ -43,7 +43,7 @@ fn compile_llvm_backend_emits_executable_artifact_for_subset_program() {
 
     let elf_bytes = fs::read(&exe_path).expect("should read executable binary");
     assert!(
-        is_native_executable(&elf_bytes),
+        common::is_native_executable(&elf_bytes),
         "output must be a native executable, got {:?}",
         &elf_bytes[..4]
     );
@@ -98,20 +98,4 @@ fn compile_rejects_backend_flag_as_unexpected_argument() {
         .assert()
         .failure()
         .stderr(contains("error: unexpected argument '--backend'"));
-}
-
-fn is_native_executable(bytes: &[u8]) -> bool {
-    if bytes.len() < 4 {
-        return false;
-    }
-    if &bytes[..4] == b"\x7fELF" {
-        return true;
-    }
-    if bytes[..4] == [0xCF, 0xFA, 0xED, 0xFE] {
-        return true;
-    }
-    if bytes[..4] == [0xCE, 0xFA, 0xED, 0xFE] {
-        return true;
-    }
-    false
 }

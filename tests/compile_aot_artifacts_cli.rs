@@ -60,7 +60,7 @@ fn compile_llvm_produces_real_elf_executable() {
 
     let elf_bytes = fs::read(&exe_path).expect("should be able to read executable file");
     assert!(
-        is_native_executable(&elf_bytes),
+        common::is_native_executable(&elf_bytes),
         "output file must start with native executable magic bytes, got {:?}",
         &elf_bytes[..4]
     );
@@ -221,7 +221,7 @@ fn compile_llvm_out_flag_writes_executable_at_specified_path() {
 
     let elf_bytes = fs::read(&exe_path).expect("should read executable");
     assert!(
-        is_native_executable(&elf_bytes),
+        common::is_native_executable(&elf_bytes),
         "output must be a native executable, got {:?}",
         &elf_bytes[..4]
     );
@@ -413,23 +413,4 @@ mod linker_diagnostic_format {
             install gcc or clang to enable native compilation"
         )
     }
-}
-
-fn is_native_executable(bytes: &[u8]) -> bool {
-    if bytes.len() < 4 {
-        return false;
-    }
-    // ELF (Linux)
-    if &bytes[..4] == b"\x7fELF" {
-        return true;
-    }
-    // Mach-O 64-bit (macOS)
-    if bytes[..4] == [0xCF, 0xFA, 0xED, 0xFE] {
-        return true;
-    }
-    // Mach-O 32-bit
-    if bytes[..4] == [0xCE, 0xFA, 0xED, 0xFE] {
-        return true;
-    }
-    false
 }

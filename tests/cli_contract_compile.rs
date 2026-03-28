@@ -126,7 +126,7 @@ fn compile_single_file_success() {
     let artifact_path = temp_dir.join(".tonic/build/single");
     assert!(artifact_path.exists());
     let bytes = fs::read(&artifact_path).unwrap();
-    assert!(is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
+    assert!(common::is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn compile_project_root_success() {
     let artifact_path = temp_dir.join(".tonic/build/main");
     assert!(artifact_path.exists());
     let bytes = fs::read(&artifact_path).unwrap();
-    assert!(is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
+    assert!(common::is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn compile_custom_out_path() {
 
     assert!(custom_out_path.exists());
     let bytes = fs::read(&custom_out_path).unwrap();
-    assert!(is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
+    assert!(common::is_native_executable(&bytes), "expected native executable magic bytes, got {:?}", &bytes[..4]);
 }
 
 #[test]
@@ -241,21 +241,3 @@ fn compile_failure_invalid_source() {
         .stderr(contains("error:"));
 }
 
-fn is_native_executable(bytes: &[u8]) -> bool {
-    if bytes.len() < 4 {
-        return false;
-    }
-    // ELF (Linux)
-    if &bytes[..4] == b"\x7fELF" {
-        return true;
-    }
-    // Mach-O 64-bit (macOS)
-    if bytes[..4] == [0xCF, 0xFA, 0xED, 0xFE] {
-        return true;
-    }
-    // Mach-O 32-bit
-    if bytes[..4] == [0xCE, 0xFA, 0xED, 0xFE] {
-        return true;
-    }
-    false
-}

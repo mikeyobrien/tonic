@@ -46,3 +46,23 @@ pub fn isolated_tonic_home(test_name: &str) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&home).unwrap();
     (dir, home)
 }
+
+/// Returns true if `bytes` starts with ELF or Mach-O magic bytes.
+pub fn is_native_executable(bytes: &[u8]) -> bool {
+    if bytes.len() < 4 {
+        return false;
+    }
+    // ELF (Linux)
+    if &bytes[..4] == b"\x7fELF" {
+        return true;
+    }
+    // Mach-O 64-bit (macOS)
+    if bytes[..4] == [0xCF, 0xFA, 0xED, 0xFE] {
+        return true;
+    }
+    // Mach-O 32-bit
+    if bytes[..4] == [0xCE, 0xFA, 0xED, 0xFE] {
+        return true;
+    }
+    false
+}
