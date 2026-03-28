@@ -320,6 +320,16 @@ fn emit_closure_ops(
                 out.push_str(&format!("  tn_runtime_release({temp});\n"));
                 stack.push(temp);
             }
+            IrOp::Match { pattern, .. } => {
+                let value = pop_stack_value(stack, "closure match value")?;
+                let pattern_hash = hash_pattern_i64(pattern)?;
+                let temp = format!("tmp_{temp_index}");
+                *temp_index += 1;
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_match_operator({value}, (TnVal){pattern_hash}LL);\n"
+                ));
+                stack.push(temp);
+            }
             IrOp::Case { branches, .. } => {
                 emit_closure_case(branches, params, stack, temp_index, out)?;
             }

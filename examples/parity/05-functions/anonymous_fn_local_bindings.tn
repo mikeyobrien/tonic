@@ -1,0 +1,13 @@
+defmodule Demo do
+  def run() do
+    step1 = 99
+
+    compute = fn val -> do
+      step1 = val * 3
+      step2 = step1 + 10
+      tuple(step1, step2)
+    end end
+
+    tuple(step1, compute.(5))
+  end
+end

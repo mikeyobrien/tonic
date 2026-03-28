@@ -290,6 +290,14 @@ stdout = '''{10, 6}
 status = "active"
 
 [[example]]
+path = "examples/parity/05-functions/anonymous_fn_local_bindings.tn"
+check_exit = 0
+run_exit = 0
+stdout = '''{99, {15, 25}}
+'''
+status = "active"
+
+[[example]]
 path = "examples/parity/05-functions/function_capture_named_arity.tn"
 check_exit = 0
 run_exit = 0

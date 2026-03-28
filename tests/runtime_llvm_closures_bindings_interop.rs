@@ -104,6 +104,10 @@ fn fixture_contracts() -> Vec<(&'static str, &'static str)> {
             "{10, 6}\n",
         ),
         (
+            "examples/parity/05-functions/anonymous_fn_local_bindings.tn",
+            "{99, {15, 25}}\n",
+        ),
+        (
             "examples/parity/05-functions/function_capture_named_arity.tn",
             "42\n",
         ),

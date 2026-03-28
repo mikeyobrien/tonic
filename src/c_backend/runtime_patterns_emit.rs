@@ -21,11 +21,15 @@ pub(super) fn emit_pattern_case(
             let name_hash = hash_text_i64(name);
             out.push_str("  TnVal existing = 0;\n");
             out.push_str(&format!("  TnVal key = (TnVal){name_hash}LL;\n"));
-            out.push_str("  if (tn_binding_get(key, &existing)) {\n");
+            out.push_str("  if (tn_pattern_local_key_contains(key)) {\n");
+            out.push_str("    if (!tn_binding_get(key, &existing)) {\n");
+            out.push_str("      return 0;\n");
+            out.push_str("    }\n");
             out.push_str("    return tn_runtime_value_equal(existing, value);\n");
             out.push_str("  }\n");
             out.push('\n');
             out.push_str("  tn_binding_set(key, value);\n");
+            out.push_str("  tn_pattern_local_key_push(key);\n");
             out.push_str("  return 1;\n");
         }
         IrPattern::Pin { name } => {
