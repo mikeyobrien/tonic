@@ -1244,6 +1244,63 @@ static TnVal tn_runtime_host_call_varargs_impl(TnVal count, va_list vargs) {\n",
     return tn_heap_store(list_obj);
   }
 
+  if (strcmp(key, "integer_parse") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Integer.parse expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: Integer.parse expects string argument; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *src = str_obj->as.text.text;
+    /* skip leading whitespace */
+    while (*src == ' ' || *src == '\t' || *src == '\n' || *src == '\r' || *src == '\x0b' || *src == '\x0c') {
+      src++;
+    }
+    if (*src == '\0') {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"error");
+    }
+    const char *start = src;
+    if (*src == '+' || *src == '-') {
+      src++;
+    }
+    /* require at least one digit after optional sign */
+    if (*src < '0' || *src > '9') {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"error");
+    }
+    while (*src >= '0' && *src <= '9') {
+      src++;
+    }
+    /* parse the numeric prefix */
+    size_t num_len = (size_t)(src - start);
+    char num_buf[32];
+    if (num_len >= sizeof(num_buf)) {
+      /* too many digits — overflow */
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"error");
+    }
+    memcpy(num_buf, start, num_len);
+    num_buf[num_len] = '\0';
+    char *endptr = NULL;
+    long long parsed = strtoll(num_buf, &endptr, 10);
+    if (endptr != num_buf + num_len) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"error");
+    }
+    /* check for overflow (strtoll returns LLONG_MIN/MAX and sets errno) */
+    if ((parsed == LLONG_MAX || parsed == LLONG_MIN) && errno == ERANGE) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"error");
+    }
+    TnVal int_val = (TnVal)parsed;
+    TnVal rest_val = tn_runtime_const_string((TnVal)(intptr_t)src);
+    TnVal tuple_val = tn_runtime_make_tuple(int_val, rest_val);
+    free(args);
+    return tuple_val;
+  }
+
 "###,
     );
 }

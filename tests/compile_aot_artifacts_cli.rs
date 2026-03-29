@@ -484,6 +484,86 @@ fn compiled_elf_matches_interpreter_for_string_processing_length_host() {
     );
 }
 
+#[test]
+fn compiled_elf_matches_interpreter_for_integer_parse() {
+    let temp_dir = common::unique_temp_dir("compile-integer-parse");
+    let source_path = temp_dir.join("integer_parse_test.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    case Integer.parse("123abc") do
+      {n, rest} -> IO.puts(rest)
+      _ -> IO.puts("fail")
+    end
+    case Integer.parse("456") do
+      {n, rest} -> IO.puts("whole")
+      _ -> IO.puts("fail")
+    end
+    case Integer.parse("abc") do
+      {n, rest} -> IO.puts("fail")
+      _ -> IO.puts("error")
+    end
+    case Integer.parse("  -42xyz") do
+      {n, rest} -> IO.puts(rest)
+      _ -> IO.puts("fail")
+    end
+  end
+end
+"#,
+    )
+    .unwrap();
+    let exe_path = temp_dir.join("integer_parse_native");
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", source_path.to_str().unwrap()])
+        .output()
+        .expect("tonic run should execute integer parse example");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interpreted_stdout =
+        String::from_utf8(interpreted.stdout.clone()).expect("interpreter stdout should be utf8");
+    assert!(
+        interpreted_stdout.contains("abc") && interpreted_stdout.contains("error"),
+        "interpreter output must include parse results, got: {interpreted_stdout}"
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            source_path.to_str().unwrap(),
+            "--out",
+            exe_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(&exe_path)
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled integer parse binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled integer parse binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        native_output.stdout, interpreted.stdout,
+        "stdout must match between interpreter and native ELF"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // --out contract
 // ---------------------------------------------------------------------------
