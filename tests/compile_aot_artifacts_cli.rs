@@ -416,6 +416,74 @@ fn compiled_elf_matches_interpreter_for_abs_max_min_round_and_trunc() {
     );
 }
 
+#[test]
+fn compiled_elf_matches_interpreter_for_string_processing_length_host() {
+    let temp_dir = common::unique_temp_dir("compile-string-processing-length-host");
+    let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/apps/string_processing/src/main.tn");
+    let exe_path = temp_dir.join("string_processing_native");
+
+    assert!(
+        source_path.exists(),
+        "string processing example must exist at {}",
+        source_path.display()
+    );
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", source_path.to_str().unwrap()])
+        .output()
+        .expect("tonic run should execute string processing example");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interpreted_stdout =
+        String::from_utf8(interpreted.stdout.clone()).expect("interpreter stdout should be utf8");
+    assert!(
+        interpreted_stdout.contains("length: 8"),
+        "interpreter output must include String.length evidence, got: {interpreted_stdout}"
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            source_path.to_str().unwrap(),
+            "--out",
+            exe_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(&exe_path)
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled string processing binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled string processing binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    let native_stdout =
+        String::from_utf8(native_output.stdout.clone()).expect("native stdout should be utf8");
+    assert!(
+        native_stdout.contains("length: 8"),
+        "native output must include String.length evidence, got: {native_stdout}"
+    );
+
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        native_output.stdout, interpreted.stdout,
+        "stdout must match between interpreter and native ELF"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // --out contract
 // ---------------------------------------------------------------------------
