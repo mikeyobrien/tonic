@@ -141,7 +141,7 @@ Reads and returns the full contents of `path`.  Raises if the file cannot be rea
 
 **Support status:** interpreter + native compiled runtime
 
-**Regression coverage:** `tests/system_stdlib_http_input_smoke.rs`, `tests/runtime_llvm_system_stdlib_smoke.rs`
+**Regression coverage:** `tests/system_stdlib_http_input_smoke.rs` plus native compiled runtime smoke coverage.
 
 **Error contract**
 
@@ -164,7 +164,7 @@ Reads all bytes from stdin until EOF and returns them as a string.
 
 **Support status:** interpreter + native compiled runtime
 
-**Regression coverage:** `tests/system_stdlib_http_input_smoke.rs`, `tests/runtime_llvm_system_stdlib_smoke.rs`
+**Regression coverage:** `tests/system_stdlib_http_input_smoke.rs` plus native compiled runtime smoke coverage.
 
 ```elixir
 input = System.read_stdin()
@@ -370,7 +370,7 @@ The following four primitives enable tonic programs to run minimal HTTP/1.1 serv
 - Response-write timeout: **30 seconds** (not configurable).
 - There is no explicit `http_close_listener` — listener handles remain open for the process lifetime.
 
-Parity coverage: interpreter/native differential checks for deterministic error contracts live in `tests/runtime_llvm_http_server_smoke.rs`.
+Parity coverage: interpreter/native differential checks cover deterministic error contracts in the native compiled runtime smoke suite.
 
 ### `System.http_listen(host: String, port: Int) → %{status: :ok, listener_id: String}`
 

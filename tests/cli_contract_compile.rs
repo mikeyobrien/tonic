@@ -46,7 +46,7 @@ fn compile_rejects_emit_any_value_as_unexpected_argument() {
     )
     .unwrap();
 
-    for emit_value in &["ir", "llvm-ir", "object", "executable"] {
+    for emit_value in &["ir", "c-source", "object", "executable"] {
         let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"));
         cmd.current_dir(&temp_dir);
         cmd.arg("compile")
@@ -75,7 +75,7 @@ fn compile_rejects_backend_flag_as_unexpected_argument() {
     cmd.arg("compile")
         .arg("hello.tn")
         .arg("--backend")
-        .arg("llvm")
+        .arg("legacy")
         .assert()
         .failure()
         .stderr(contains("error: unexpected argument '--backend'"));

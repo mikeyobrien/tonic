@@ -1,4 +1,4 @@
-use crate::llvm_backend::mangle_function_name;
+use crate::backend_names::mangle_function_name;
 use crate::mir::MirProgram;
 use std::collections::BTreeMap;
 

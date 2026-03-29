@@ -30,9 +30,6 @@ tonic_obs_run_step 'cargo test' cargo test
 printf '%s\n' '[native-gates] scripts/differential-enforce.sh'
 tonic_obs_run_step 'scripts/differential-enforce.sh' "$script_dir/differential-enforce.sh"
 
-printf '%s\n' '[native-gates] scripts/llvm-catalog-parity-enforce.sh (experimental - informational only)'
-tonic_obs_run_step 'scripts/llvm-catalog-parity-enforce.sh' "$script_dir/llvm-catalog-parity-enforce.sh"
-
 printf '%s\n' '[native-gates] scripts/bench-native-contract-enforce.sh (interpreter)'
 tonic_obs_run_step 'scripts/bench-native-contract-enforce.sh (interpreter)' \
   env \

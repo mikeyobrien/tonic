@@ -61,7 +61,7 @@ The honest baseline today is a workload-backed `String` + `System` core profile,
 - Frontend pipeline: lexer → parser → resolver → type inference
 - IR + MIR lowering
 - Interpreter runtime (`tonic run`)
-- Native compile flow with C/LLVM sidecars (`tonic compile`)
+- Native compile flow with C sidecars (`tonic compile`)
 - Multi-file project entry via `tonic.toml`
 - `.tn` test runner with text/JSON output (`tonic test`)
 - Formatting and static checking (`tonic fmt`, `tonic check`)
@@ -129,7 +129,6 @@ cargo run --bin tonic -- run path/to/file.tn
 By default, compile outputs are written to `.tonic/build/<stem>`:
 
 - Executable: `<stem>`
-- LLVM IR sidecar: `<stem>.ll`
 - C source sidecar: `<stem>.c`
 - Tonic IR sidecar: `<stem>.tir.json`
 - Native artifact manifest: `<stem>.tnx.json`
@@ -149,15 +148,12 @@ graph TD
     IR --> INTERP[interpreter runtime]
     IR --> MIR[MIR lowering]
     MIR --> OPT[optimization]
-    OPT --> CBACK[C backend - primary]
-    OPT --> LLVM[LLVM backend - experimental]
+    OPT --> CBACK[C backend]
     CBACK --> LINK[system compiler/linker]
     LINK --> EXE[native executable]
 ```
 
-The **C backend** is the primary native backend: portable, complete, and used for all production builds.
-The **LLVM backend** is experimental: it covers a partial subset of constructs, targets `x86_64-unknown-linux-gnu` only, and parity failures are non-blocking.
-See [docs/llvm-backend-status.md](docs/llvm-backend-status.md) for details.
+The native backend is the **C backend**: portable, complete, and used for production builds.
 
 ## Engineering quality gates
 
@@ -165,7 +161,6 @@ Tonic ships with high-signal validation workflows:
 
 ```bash
 ./scripts/differential-enforce.sh
-./scripts/llvm-catalog-parity-enforce.sh
 ./scripts/native-gates.sh
 ```
 
@@ -208,7 +203,6 @@ See [docs/observability.md](docs/observability.md) for bundle layout, task corre
 - [PARITY.md](PARITY.md) — syntax parity, not stdlib breadth
 - [docs/core-stdlib-profile.md](docs/core-stdlib-profile.md) — current supported stdlib profile and parity policy
 - [docs/system-stdlib.md](docs/system-stdlib.md) — `System` module contract and host-backed APIs
-- [docs/app-authoring-gaps.md](docs/app-authoring-gaps.md) — workload-driven runtime and parser limitations
 - [docs/native-runtime.md](docs/native-runtime.md)
 - [docs/runtime-abi.md](docs/runtime-abi.md)
 - [docs/observability.md](docs/observability.md)

@@ -47,8 +47,8 @@ This baseline is grounded in:
 - `src/interop/enum_mod.rs`
 - `src/c_backend/stubs.rs`
 - `tests/run_lazy_stdlib_loading_smoke.rs`
-- `tests/runtime_llvm_map_stdlib_smoke.rs`
-- `tests/runtime_llvm_io_stdlib_smoke.rs`
+- native compiled runtime smoke coverage for Map stdlib
+- native compiled runtime smoke coverage for IO stdlib
 - `examples/apps/stdlib_showcase`
 
 The original profile work was driven by `tonic-sitegen-stress`, but the current baseline is broader than that one workload. The support bar is now: exposed surface + interpreter behavior + native behavior + regression coverage + docs that match reality.

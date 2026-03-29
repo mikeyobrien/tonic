@@ -9,7 +9,6 @@ Read this alongside:
 
 - [core-stdlib-profile.md](core-stdlib-profile.md)
 - [text-binary-parser-contract.md](text-binary-parser-contract.md)
-- [app-authoring-gaps.md](app-authoring-gaps.md)
 
 The rule for this list is simple:
 

@@ -1,10 +1,9 @@
 use crate::ir::IrProgram;
-use crate::llvm_backend::LLVM_COMPATIBILITY_VERSION;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub(crate) const NATIVE_ARTIFACT_SCHEMA_VERSION: u32 = 1;
-pub(crate) const NATIVE_BACKEND_LLVM: &str = "llvm";
+pub(crate) const NATIVE_ARTIFACT_SCHEMA_VERSION: u32 = 2;
+pub(crate) const NATIVE_BACKEND_C: &str = "c";
 pub(crate) const NATIVE_EMIT_EXECUTABLE: &str = "executable";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -14,7 +13,6 @@ pub(crate) struct NativeArtifactManifest {
     pub(crate) emit: String,
     pub(crate) target_triple: String,
     pub(crate) tonic_version: String,
-    pub(crate) llvm_compatibility: String,
     pub(crate) source_hash: String,
     pub(crate) cache_key: String,
     pub(crate) artifacts: NativeArtifactFiles,
@@ -23,8 +21,8 @@ pub(crate) struct NativeArtifactManifest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct NativeArtifactFiles {
     pub(crate) ir: String,
-    pub(crate) llvm_ir: String,
-    pub(crate) object: String,
+    pub(crate) c_source: String,
+    pub(crate) executable: String,
 }
 
 pub(crate) fn is_native_artifact_path(path: &str) -> bool {
@@ -51,39 +49,37 @@ pub(crate) fn native_artifact_cache_key(
         target_triple,
         emit,
         env!("CARGO_PKG_VERSION"),
-        LLVM_COMPATIBILITY_VERSION,
     ])
 }
 
 pub(crate) fn build_executable_manifest(
     source: &str,
     manifest_path: &Path,
-    llvm_ir_path: &Path,
-    object_path: &Path,
+    c_source_path: &Path,
+    executable_path: &Path,
     ir_path: &Path,
 ) -> NativeArtifactManifest {
     let source_hash = source_hash(source);
     let target_triple = host_target_triple();
     let cache_key = native_artifact_cache_key(
         &source_hash,
-        NATIVE_BACKEND_LLVM,
+        NATIVE_BACKEND_C,
         &target_triple,
         NATIVE_EMIT_EXECUTABLE,
     );
 
     NativeArtifactManifest {
         schema_version: NATIVE_ARTIFACT_SCHEMA_VERSION,
-        backend: NATIVE_BACKEND_LLVM.to_string(),
+        backend: NATIVE_BACKEND_C.to_string(),
         emit: NATIVE_EMIT_EXECUTABLE.to_string(),
         target_triple,
         tonic_version: env!("CARGO_PKG_VERSION").to_string(),
-        llvm_compatibility: LLVM_COMPATIBILITY_VERSION.to_string(),
         source_hash,
         cache_key,
         artifacts: NativeArtifactFiles {
             ir: relative_artifact_path(manifest_path, ir_path),
-            llvm_ir: relative_artifact_path(manifest_path, llvm_ir_path),
-            object: relative_artifact_path(manifest_path, object_path),
+            c_source: relative_artifact_path(manifest_path, c_source_path),
+            executable: relative_artifact_path(manifest_path, executable_path),
         },
     }
 }
@@ -127,10 +123,10 @@ pub(crate) fn validate_manifest_for_host(manifest: &NativeArtifactManifest) -> R
         ));
     }
 
-    if manifest.backend != NATIVE_BACKEND_LLVM {
+    if manifest.backend != NATIVE_BACKEND_C {
         return Err(format!(
             "native artifact backend mismatch: expected {}, found {}",
-            NATIVE_BACKEND_LLVM, manifest.backend
+            NATIVE_BACKEND_C, manifest.backend
         ));
     }
 
@@ -154,13 +150,6 @@ pub(crate) fn validate_manifest_for_host(manifest: &NativeArtifactManifest) -> R
             "native artifact tonic version mismatch: artifact={} host={}",
             manifest.tonic_version,
             env!("CARGO_PKG_VERSION")
-        ));
-    }
-
-    if manifest.llvm_compatibility != LLVM_COMPATIBILITY_VERSION {
-        return Err(format!(
-            "native artifact llvm compatibility mismatch: artifact={} host={}",
-            manifest.llvm_compatibility, LLVM_COMPATIBILITY_VERSION
         ));
     }
 
@@ -258,7 +247,7 @@ fn stable_hash(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        native_artifact_cache_key, source_hash, NATIVE_BACKEND_LLVM, NATIVE_EMIT_EXECUTABLE,
+        native_artifact_cache_key, source_hash, NATIVE_BACKEND_C, NATIVE_EMIT_EXECUTABLE,
     };
 
     #[test]
@@ -266,15 +255,15 @@ mod tests {
         let source_hash = source_hash("defmodule Demo do\nend\n");
         let target = "linux-x86_64";
 
-        let llvm_key = native_artifact_cache_key(
+        let native_key = native_artifact_cache_key(
             &source_hash,
-            NATIVE_BACKEND_LLVM,
+            NATIVE_BACKEND_C,
             target,
             NATIVE_EMIT_EXECUTABLE,
         );
         let interp_key = native_artifact_cache_key(&source_hash, "interp", target, "ir");
 
-        assert_ne!(llvm_key, interp_key);
+        assert_ne!(native_key, interp_key);
     }
 
     #[test]
@@ -283,13 +272,13 @@ mod tests {
 
         let linux_key = native_artifact_cache_key(
             &source_hash,
-            NATIVE_BACKEND_LLVM,
+            NATIVE_BACKEND_C,
             "linux-x86_64",
             NATIVE_EMIT_EXECUTABLE,
         );
         let darwin_key = native_artifact_cache_key(
             &source_hash,
-            NATIVE_BACKEND_LLVM,
+            NATIVE_BACKEND_C,
             "darwin-aarch64",
             NATIVE_EMIT_EXECUTABLE,
         );

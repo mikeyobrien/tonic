@@ -1,6 +1,6 @@
 # Native Runtime Helpers (Task 04)
 
-This runtime layer provides semantics helpers for LLVM/native codegen while preserving
+This runtime layer provides semantics helpers for native codegen while preserving
 current interpreter behavior.
 
 ## Modules
@@ -47,9 +47,9 @@ Helpers return deterministic messages that mirror existing runtime semantics, in
 source offset attachment when provided by caller (e.g. `"division by zero at offset 44"`,
 `"badarg at offset <n>"`, map key/update contract errors).
 
-## LLVM closure helper contract (Task 09)
+## Closure helper contract (Task 09)
 
-LLVM lowering now reserves runtime helper symbols for closure semantics:
+Native lowering reserves runtime helper symbols for closure semantics:
 
 - `tn_runtime_make_closure(i64 descriptor_hash, i64 arity, i64 capture_count)`
 - `tn_runtime_call_closure(i64 closure_value, i64 argc, ...)`
@@ -57,9 +57,9 @@ LLVM lowering now reserves runtime helper symbols for closure semantics:
 These symbols preserve deterministic compile-time contracts for anonymous function creation,
 lexical capture metadata, and function-value invocation in the native backend.
 
-## LLVM host interop helper contract (Task 10)
+## Host interop helper contract (Task 10)
 
-LLVM lowering now reserves host interop helper symbols for native backend calls:
+Native lowering reserves host interop helper symbols for native backend calls:
 
 - `tn_runtime_host_call(i64 argc, ...)`
 - `tn_runtime_protocol_dispatch(i64 value)`

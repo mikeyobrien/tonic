@@ -1,4 +1,5 @@
 mod acceptance;
+mod backend_names;
 mod c_backend;
 mod cache;
 mod cli_diag;
@@ -10,7 +11,6 @@ mod interop;
 mod ir;
 mod lexer;
 mod linker;
-mod llvm_backend;
 #[cfg(feature = "lsp")]
 mod lsp;
 mod manifest;

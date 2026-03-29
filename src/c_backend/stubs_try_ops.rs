@@ -1,5 +1,5 @@
 use crate::ir::{IrCallTarget, IrOp, IrPattern};
-use crate::llvm_backend::mangle_function_name;
+use crate::backend_names::mangle_function_name;
 
 use super::super::error::CBackendError;
 use super::super::hash::{hash_pattern_i64, hash_text_i64};

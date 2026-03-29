@@ -20,7 +20,7 @@ Use this checklist before cutting a version tag.
 This command enforces all blocking checks:
 - clean git working tree
 - changelog presence + version heading
-- `./scripts/native-gates.sh` (fmt, clippy, tests, differential, LLVM parity, strict policy)
+- `./scripts/native-gates.sh` (fmt, clippy, tests, differential, strict policy)
 - required benchmark artifacts exist
 
 Tag cut is blocked unless readiness output ends with `alpha-readiness: pass`.

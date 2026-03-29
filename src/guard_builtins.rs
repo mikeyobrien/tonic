@@ -60,6 +60,3 @@ pub(crate) fn c_helper_name(name: &str) -> Option<&'static str> {
         .map(|builtin| builtin.c_helper)
 }
 
-pub(crate) fn llvm_helper_name(name: &str) -> Option<&'static str> {
-    c_helper_name(name)
-}

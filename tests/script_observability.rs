@@ -200,10 +200,6 @@ fn setup_native_gates_fixture(test_name: &str) -> NativeGatesFixture {
         "printf '%s\\n' 'differential ok'\n",
     );
     write_stub_script(
-        &scripts_dir.join("llvm-catalog-parity-enforce.sh"),
-        "printf '%s\\n' 'llvm parity ok'\n",
-    );
-    write_stub_script(
         &scripts_dir.join("bench-native-contract-enforce.sh"),
         "json_out=\"${TONIC_BENCH_JSON_OUT:?}\"\nmarkdown_out=\"${TONIC_BENCH_MARKDOWN_OUT:?}\"\nmkdir -p \"$(dirname \"$json_out\")\" \"$(dirname \"$markdown_out\")\"\nprintf '%s\\n' '{\"status\":\"pass\"}' > \"$json_out\"\nprintf '%s\\n' '# summary' > \"$markdown_out\"\n",
     );

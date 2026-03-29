@@ -3,8 +3,8 @@ use std::fs;
 mod common;
 
 #[test]
-fn llvm_compile_profiles_phases_and_folds_constant_int_ops() {
-    let temp_dir = common::unique_temp_dir("llvm-optimization-profile");
+fn native_compile_profiles_phases_and_folds_constant_int_ops() {
+    let temp_dir = common::unique_temp_dir("native-optimization-profile");
     let source_path = temp_dir.join("demo.tn");
     let profile_path = temp_dir.join("profiles/compile-run.jsonl");
     let artifact_base = temp_dir.join("build/demo");
@@ -37,23 +37,25 @@ fn llvm_compile_profiles_phases_and_folds_constant_int_ops() {
 
     assert!(
         compile_output.status.success(),
-        "expected llvm compile to succeed, got stderr: {}",
+        "expected native compile to succeed, got stderr: {}",
         String::from_utf8_lossy(&compile_output.stderr)
     );
 
     // Sidecar artifacts always land in .tonic/build/ regardless of --out path.
-    let llvm_ir = fs::read_to_string(temp_dir.join(".tonic/build/demo.ll"))
-        .expect("llvm ir sidecar should exist at default build location");
+    let c_source = fs::read_to_string(temp_dir.join(".tonic/build/demo.c"))
+        .expect("c source sidecar should exist at default build location");
 
     assert!(
-        llvm_ir.contains("%v2 = add i64 0, 3"),
-        "expected folded constant result in llvm ir, got:\n{}",
-        llvm_ir
+        c_source.contains("v2 = (TnVal)3LL;")
+            || c_source.contains("v2 = (TnVal)3;")
+            || c_source.contains("= (TnVal)(1 + 2);"),
+        "expected folded constant result in c source, got:\n{}",
+        c_source
     );
     assert!(
-        !llvm_ir.contains("%v2 = add i64 %v0, %v1"),
+        !c_source.contains("v2 = (TnVal)(v0 + v1);"),
         "expected constant folding to remove runtime add instruction, got:\n{}",
-        llvm_ir
+        c_source
     );
 
     let run_output = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::guard_builtins;
 use crate::ir::{CmpKind, IrCallTarget, IrCaseBranch, IrOp, IrPattern};
-use crate::llvm_backend::mangle_function_name;
+use crate::backend_names::mangle_function_name;
 use crate::mir::{MirInstruction, MirProgram};
 
 use super::error::CBackendError;

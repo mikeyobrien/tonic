@@ -12,7 +12,7 @@ The Tonic compiler has a growing codebase (254 crates in `Cargo.lock`, 177 integ
 - **177 test binaries.** Each of the 177 `tests/*.rs` files compiles as a separate binary linked against the full dependency tree. A clean `cargo test` links 177 binaries × 2-5s each.
 - **Unconditional heavy dependencies.** `tower-lsp`, `tokio`, `reqwest`, and `ed25519-dalek` are compiled for every target despite being used in only 7 source files. Tests never import them (subprocess-based via `assert_cmd`), yet every `cargo test` compiles their full transitive closure.
 - **CI rebuilds from source 4×.** `native-gates.yml` has 4 jobs, each independently restoring cache, installing toolchain, and rebuilding — no artifact passing between the build job and 3 downstream jobs.
-- **Benchmark binaries carry full dep tree.** `benchsuite` and `llvm_catalog_parity` in `src/bin/` use only `serde`/`serde_json`/`toml`/`std` but compile against all 16+ crate dependencies.
+- **Benchmark binaries carry full dep tree.** `benchsuite` in `src/bin/` uses only `serde`/`serde_json`/`toml`/`std` but compiles against all 16+ crate dependencies.
 - **Manual release process.** No git tagging, GitHub Release creation, cross-platform builds, or `cargo publish` automation. Single-platform (Linux) only.
 - **Dev/CI flag divergence.** `devenv.nix` test alias runs bare `cargo test` while CI runs `cargo test --all-features` — a silent correctness gap.
 
@@ -135,19 +135,16 @@ Filtering remains: `cargo test --test check check_dump_ast`.
 
 ### Work Stream 4: Benchmark Binary Extraction to Workspace (P1)
 
-**Problem**: `benchsuite` (9 files) and `llvm_catalog_parity` (2 files) in `src/bin/` use only `serde`/`serde_json`/`toml`/`std` but compile against the full 16+ crate dependency tree.
+**Problem**: `benchsuite` (9 files) in `src/bin/` uses only `serde`/`serde_json`/`toml`/`std` but compiles against the full 16+ crate dependency tree.
 
-**Approach**: Convert to a Cargo workspace and extract both binaries:
+**Approach**: Convert to a Cargo workspace and extract the benchmark binary:
 
 ```
-Cargo.toml          # [workspace] members = [".", "tools/benchsuite", "tools/llvm-catalog-parity"]
+Cargo.toml          # [workspace] members = [".", "tools/benchsuite"]
 tools/
   benchsuite/
     Cargo.toml      # deps: serde, serde_json, toml only
     src/main.rs     # + 8 submodules moved from src/bin/benchsuite/
-  llvm-catalog-parity/
-    Cargo.toml      # deps: serde, serde_json, toml only
-    src/main.rs
 ```
 
 Root `Cargo.toml` becomes a workspace root. The main `tonic` crate stays at `.` as a workspace member. `Cargo.lock` is shared.
@@ -212,7 +209,7 @@ Run `cargo dist init` to generate a release workflow:
 
 - No implementation code in this RFC — planning artifacts only
 - No changes to the `tonic-dev-toolchain` RFC or its work streams
-- No new language features, parser changes, or LLVM backend changes
+- No new language features, parser changes, or native backend architecture changes
 - No registry install support or self-hosting work
 - No full CI pipeline rewrite — incremental improvements only
 - No migration of existing test code to new helpers (that's covered by `tonic-dev-toolchain`)

@@ -151,7 +151,7 @@ This is documentation-only — no behavioral changes to stdlib functions.
 - No new language features or parser changes
 - No registry install support (already scoped out in install RFC)
 - No self-hosting work
-- No LLVM backend changes
+- No native backend architecture changes
 
 ## Priority Order
 

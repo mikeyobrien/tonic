@@ -140,7 +140,6 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
         p.push(&artifact_stem);
         p
     };
-    let ll_path = sidecar_base.with_extension("ll");
     let c_path = sidecar_base.with_extension("c");
     let ir_path = sidecar_base.with_extension("tir.json");
     let manifest_path = sidecar_base.with_extension("tnx.json");
@@ -166,7 +165,7 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
         );
     }
 
-    for path in [&ll_path, &c_path, &ir_path, &manifest_path, &exe_path] {
+    for path in [&c_path, &ir_path, &manifest_path, &exe_path] {
         if let Err(message) = ensure_artifact_parent(path) {
             let exit_code = CliDiagnostic::failure(message.clone()).emit();
             return finalize_observed_run(
@@ -180,56 +179,6 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
                 )),
             );
         }
-    }
-
-    llvm_backend::warn_experimental();
-    let llvm_ir = match observe_phase_result(
-        &mut profiler,
-        &mut observed_run,
-        "backend.lower_llvm",
-        || llvm_backend::lower_mir_subset_to_llvm_ir(&optimized_mir, &target),
-    ) {
-        Ok(llvm_ir) => llvm_ir,
-        Err(error) => {
-            let message = error.to_string();
-            let exit_code = CliDiagnostic::failure(message.clone()).emit();
-            return finalize_observed_run(
-                &mut observed_run,
-                exit_code,
-                Some(make_observability_error(
-                    "backend_error",
-                    "backend.lower_llvm",
-                    message,
-                    None,
-                )),
-            );
-        }
-    };
-
-    if let Err(error) = observe_phase_result(
-        &mut profiler,
-        &mut observed_run,
-        "backend.write_llvm_ir",
-        || crate::cache::write_atomic(&ll_path, &llvm_ir),
-    ) {
-        let message = format!(
-            "failed to write llvm ir sidecar to {}: {error}",
-            ll_path.display()
-        );
-        let exit_code = CliDiagnostic::failure(message.clone()).emit();
-        return finalize_observed_run(
-            &mut observed_run,
-            exit_code,
-            Some(make_observability_error(
-                "io_error",
-                "backend.write_llvm_ir",
-                message,
-                None,
-            )),
-        );
-    }
-    if let Some(observed_run) = observed_run.as_mut() {
-        observed_run.record_artifact("llvm-ir", &ll_path);
     }
 
     let serialized_ir = match serde_json::to_string(&ir) {
@@ -278,7 +227,7 @@ pub(super) fn handle_compile(args: Vec<String>) -> i32 {
     let manifest = native_artifact::build_executable_manifest(
         &source,
         &manifest_path,
-        &ll_path,
+        &c_path,
         &exe_path,
         &ir_path,
     );

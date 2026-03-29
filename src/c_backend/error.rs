@@ -1,4 +1,4 @@
-use crate::llvm_backend::instruction_name;
+use crate::backend_names::instruction_name;
 use crate::mir::MirInstruction;
 use std::fmt;
 

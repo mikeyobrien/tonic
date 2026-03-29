@@ -72,13 +72,6 @@ cross-compilation.
 
 [osxcross]: https://github.com/tpoechtrager/osxcross
 
-## LLVM IR Sidecar
-
-Tonic also emits a `.ll` LLVM IR sidecar alongside the compiled binary. The
-`target triple` directive in the emitted LLVM IR reflects the `--target` value,
-making it compatible with the correct LLVM backend if you wish to use `llc`
-or `opt` on the sidecar.
-
 ## Testing Cross-Compilation
 
 The unit tests in `src/target.rs` and `src/linker.rs` verify:

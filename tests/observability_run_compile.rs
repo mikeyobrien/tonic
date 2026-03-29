@@ -139,7 +139,6 @@ fn compile_with_observability_records_artifacts_and_keeps_legacy_profile_output(
         Some("ok")
     );
     assert!(kinds.contains(&"native-executable"));
-    assert!(kinds.contains(&"llvm-ir"));
     assert!(kinds.contains(&"c-source"));
     assert!(kinds.contains(&"ir-sidecar"));
     assert!(kinds.contains(&"native-manifest"));

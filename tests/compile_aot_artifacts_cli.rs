@@ -9,12 +9,12 @@ mod common;
 // Core artifact contract
 // ---------------------------------------------------------------------------
 
-/// `tonic compile` MUST produce a real ELF executable at the
-/// reported path.  Sidecar artifacts (.ll, .tir.json, .tnx.json) are internal
+/// `tonic compile` MUST produce a real native executable at the
+/// reported path. Sidecar artifacts (.c, .tir.json, .tnx.json) are internal
 /// implementation details and are kept for compatibility.
 #[test]
-fn compile_llvm_produces_real_elf_executable() {
-    let temp_dir = common::unique_temp_dir("compile-llvm-elf");
+fn compile_produces_real_native_executable() {
+    let temp_dir = common::unique_temp_dir("compile-native-executable");
     let source_path = temp_dir.join("native.tn");
     fs::write(
         &source_path,
@@ -30,7 +30,7 @@ fn compile_llvm_produces_real_elf_executable() {
 
     assert!(
         output.status.success(),
-        "expected llvm compile to succeed, got stderr: {}",
+        "expected native compile to succeed, got stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -88,8 +88,8 @@ fn compile_llvm_produces_real_elf_executable() {
         "IR sidecar should exist"
     );
     assert!(
-        temp_dir.join(".tonic/build/native.ll").exists(),
-        "LLVM IR sidecar should exist"
+        temp_dir.join(".tonic/build/native.c").exists(),
+        "C source sidecar should exist"
     );
 }
 
@@ -101,7 +101,7 @@ fn compile_llvm_produces_real_elf_executable() {
 /// without requiring `tonic run`.
 #[test]
 fn compiled_elf_runs_directly_with_expected_output() {
-    let temp_dir = common::unique_temp_dir("compile-llvm-direct-run");
+    let temp_dir = common::unique_temp_dir("compile-native-direct-run");
     let source_path = temp_dir.join("demo.tn");
     fs::write(
         &source_path,
@@ -146,7 +146,7 @@ fn compiled_elf_runs_directly_with_expected_output() {
 fn compiled_elf_output_matches_interpreter_for_arithmetic() {
     let source = "defmodule Demo do\n  def run() do\n    3 * 7 + 1\n  end\nend\n";
 
-    let temp_dir = common::unique_temp_dir("compile-llvm-parity");
+    let temp_dir = common::unique_temp_dir("compile-native-parity");
     let source_path = temp_dir.join("arith.tn");
     fs::write(&source_path, source).unwrap();
 
@@ -423,8 +423,8 @@ fn compiled_elf_matches_interpreter_for_abs_max_min_round_and_trunc() {
 /// `tonic compile --out ./someexe` writes the ELF exactly at
 /// that path and the binary is directly executable.
 #[test]
-fn compile_llvm_out_flag_writes_executable_at_specified_path() {
-    let temp_dir = common::unique_temp_dir("compile-llvm-out");
+fn compile_out_flag_writes_executable_at_specified_path() {
+    let temp_dir = common::unique_temp_dir("compile-native-out");
     let source_path = temp_dir.join("out_test.tn");
     fs::write(
         &source_path,
@@ -469,8 +469,8 @@ fn compile_llvm_out_flag_writes_executable_at_specified_path() {
 /// `--out ./someexe` should honor the exact relative output path and support
 /// idiomatic direct execution as `./someexe` from the working directory.
 #[test]
-fn compile_llvm_out_relative_path_supports_dot_slash_execution_contract() {
-    let temp_dir = common::unique_temp_dir("compile-llvm-out-relative-dot-slash");
+fn compile_out_relative_path_supports_dot_slash_execution_contract() {
+    let temp_dir = common::unique_temp_dir("compile-native-out-relative-dot-slash");
     let source_path = temp_dir.join("dot_out.tn");
     fs::write(
         &source_path,

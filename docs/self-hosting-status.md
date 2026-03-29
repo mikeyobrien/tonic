@@ -35,7 +35,7 @@ The current milestone is evidenced by targeted verification over the touched sur
 
 - `cargo test --bin tonic str_to_charlist`
 - `cargo test --test run_lazy_stdlib_loading_smoke run_trace_supports_string_to_charlist_in_project_mode`
-- `cargo test --test runtime_llvm_string_stdlib_smoke compiled_runtime_supports_string_stdlib_frontmatter_helper_set_on_literals`
+- native compiled runtime smoke coverage for string stdlib frontmatter helpers on literals
 - `cargo test --test check_dump_tokens_json`
 - `cargo test --test run_self_hosted_lexer_scaffold_example`
 - `cargo test --test self_hosted_lexer_parity`
