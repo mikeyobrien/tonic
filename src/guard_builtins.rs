@@ -59,4 +59,3 @@ pub(crate) fn c_helper_name(name: &str) -> Option<&'static str> {
         .find(|builtin| builtin.name == name)
         .map(|builtin| builtin.c_helper)
 }
-

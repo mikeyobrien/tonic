@@ -188,6 +188,109 @@ fn compiled_elf_output_matches_interpreter_for_arithmetic() {
 }
 
 #[test]
+fn compiled_elf_matches_interpreter_for_native_boolean_negation() {
+    let temp_dir = common::unique_temp_dir("compile-native-boolean-negation");
+
+    let success_path = temp_dir.join("boolean_negation.tn");
+    fs::write(
+        &success_path,
+        "defmodule Demo do\n  def run() do\n    flag = false\n    missing = nil\n    truthy = :ok\n    [not flag, !missing, !flag, !truthy]\n  end\nend\n",
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "boolean_negation.tn"])
+        .output()
+        .expect("interpreter run should execute boolean negation program");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&interpreted.stdout).trim_end(),
+        "[true, true, true, false]"
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "boolean_negation.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/boolean_negation"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled boolean negation binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled boolean negation binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        native_output.stdout, interpreted.stdout,
+        "stdout must match between interpreter and native ELF"
+    );
+    assert_eq!(
+        native_output.stderr, interpreted.stderr,
+        "stderr must match between interpreter and native ELF"
+    );
+
+    let strict_path = temp_dir.join("strict_not_badarg.tn");
+    fs::write(
+        &strict_path,
+        "defmodule Demo do\n  def run() do\n    value = nil\n    not value\n  end\nend\n",
+    )
+    .unwrap();
+
+    let interpreted_badarg = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "strict_not_badarg.tn"])
+        .output()
+        .expect("interpreter run should execute strict-not badarg program");
+    assert!(
+        !interpreted_badarg.status.success(),
+        "interpreter strict-not badarg program should fail"
+    );
+    assert!(
+        String::from_utf8_lossy(&interpreted_badarg.stderr).contains("error: badarg"),
+        "interpreter strict-not badarg stderr should mention badarg, got: {}",
+        String::from_utf8_lossy(&interpreted_badarg.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "strict_not_badarg.tn"])
+        .assert()
+        .success();
+
+    let native_badarg = std::process::Command::new(temp_dir.join(".tonic/build/strict_not_badarg"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled strict-not badarg binary should execute");
+    assert!(
+        !native_badarg.status.success(),
+        "compiled strict-not badarg binary should fail"
+    );
+    assert!(
+        String::from_utf8_lossy(&native_badarg.stderr).contains("error: badarg"),
+        "compiled strict-not badarg stderr should mention badarg, got: {}",
+        String::from_utf8_lossy(&native_badarg.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&native_badarg.stderr).contains("tn_runtime_not"),
+        "compiled strict-not badarg stderr should not mention missing tn_runtime_not helper, got: {}",
+        String::from_utf8_lossy(&native_badarg.stderr)
+    );
+}
+
+#[test]
 fn compiled_elf_suppresses_final_value_after_stdout_side_effects() {
     let fixture_root = common::unique_fixture_root("compile-stdout-contract-puts");
     let src_dir = fixture_root.join("src");

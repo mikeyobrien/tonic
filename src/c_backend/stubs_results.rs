@@ -118,8 +118,18 @@ pub(super) fn emit_stubs_results(out: &mut String) {
   }
 }
 
-static TnVal tn_runtime_not(TnVal _a) { return tn_stub_abort("tn_runtime_not"); }
-static TnVal tn_runtime_bang(TnVal _a) { return tn_stub_abort("tn_runtime_bang"); }
+static TnVal tn_runtime_not(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL || obj->kind != TN_OBJ_BOOL) {
+    return tn_runtime_fail("badarg");
+  }
+
+  return tn_runtime_const_bool((TnVal)(obj->as.bool_value ? 0 : 1));
+}
+
+static TnVal tn_runtime_bang(TnVal value) {
+  return tn_runtime_const_bool((TnVal)(tn_runtime_is_truthy(value) ? 0 : 1));
+}
 
 static TnVal tn_runtime_concat(TnVal left, TnVal right) {
   TnObj *left_obj = tn_get_obj(left);

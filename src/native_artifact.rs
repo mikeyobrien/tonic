@@ -246,9 +246,7 @@ fn stable_hash(content: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        native_artifact_cache_key, source_hash, NATIVE_BACKEND_C, NATIVE_EMIT_EXECUTABLE,
-    };
+    use super::{native_artifact_cache_key, source_hash, NATIVE_BACKEND_C, NATIVE_EMIT_EXECUTABLE};
 
     #[test]
     fn native_cache_key_changes_when_backend_changes() {

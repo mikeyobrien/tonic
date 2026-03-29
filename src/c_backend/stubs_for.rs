@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
+use crate::backend_names::mangle_function_name;
 use crate::cli_diag::failure_message_lines_with_filename_and_source;
 use crate::ir::{CmpKind, IrCallTarget, IrCaseBranch, IrForGenerator, IrOp};
-use crate::backend_names::mangle_function_name;
 use crate::mir::{MirInstruction, MirProgram};
 
 use super::error::CBackendError;
