@@ -823,6 +823,10 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
 
     const char *command_text = tn_expect_host_string_arg("sys_run", args[1], 1);
     int stream_output = 0;
+    long long timeout_ms = 0;
+    const long long timeout_max_ms = 3600000;
+    const long long timeout_poll_ms = 50;
+    int timed_out = 0;
     if (argc == 3) {
       TnObj *opts_obj = tn_expect_host_map_arg("sys_run", args[2], 2);
       for (size_t i = 0; i < opts_obj->as.map_like.len; i += 1) {
@@ -844,35 +848,52 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
                 tn_runtime_value_kind(opt_value));
           }
           stream_output = stream_obj->as.bool_value ? 1 : 0;
+        } else if (strcmp(opt_name, "timeout_ms") == 0) {
+          if (tn_get_obj(opt_value) != NULL) {
+            return tn_runtime_failf(
+                "host error: sys_run opts.timeout_ms expects int; found %s",
+                tn_runtime_value_kind(opt_value));
+          }
+          timeout_ms = (long long)opt_value;
         } else {
           return tn_runtime_failf("host error: sys_run unsupported opts key: %s", opt_name);
         }
       }
     }
 
+    if (timeout_ms < 0) {
+      return tn_runtime_failf("host error: sys_run opts.timeout_ms must be >= 0, found %lld", timeout_ms);
+    }
+    if (timeout_ms > timeout_max_ms) {
+      return tn_runtime_failf("host error: sys_run opts.timeout_ms out of range: %lld", timeout_ms);
+    }
+
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
     if (pipe(stdout_pipe) != 0) {
-      return tn_runtime_fail("host error: sys_run failed to spawn shell");
+      return tn_runtime_failf("host error: sys_run failed to execute shell command: %s", strerror(errno));
     }
     if (pipe(stderr_pipe) != 0) {
+      int pipe_errno = errno;
       close(stdout_pipe[0]);
       close(stdout_pipe[1]);
-      return tn_runtime_fail("host error: sys_run failed to spawn shell");
+      return tn_runtime_failf("host error: sys_run failed to execute shell command: %s", strerror(pipe_errno));
     }
 
     pid_t child_pid = fork();
     if (child_pid < 0) {
+      int fork_errno = errno;
       close(stdout_pipe[0]);
       close(stdout_pipe[1]);
       close(stderr_pipe[0]);
       close(stderr_pipe[1]);
-      return tn_runtime_fail("host error: sys_run failed to spawn shell");
+      return tn_runtime_failf("host error: sys_run failed to execute shell command: %s", strerror(fork_errno));
     }
 
     if (child_pid == 0) {
       close(stdout_pipe[0]);
       close(stderr_pipe[0]);
+      setpgid(0, 0);
       if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0 || dup2(stderr_pipe[1], STDERR_FILENO) < 0) {
         _exit(127);
       }
@@ -880,6 +901,16 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
       close(stderr_pipe[1]);
       execl("/bin/sh", "sh", "-lc", command_text, (char *)NULL);
       _exit(127);
+    }
+
+    if (setpgid(child_pid, child_pid) != 0 && errno != EACCES && errno != ESRCH) {
+      int group_errno = errno;
+      close(stdout_pipe[0]);
+      close(stdout_pipe[1]);
+      close(stderr_pipe[0]);
+      close(stderr_pipe[1]);
+      waitpid(child_pid, NULL, 0);
+      return tn_runtime_failf("host error: sys_run failed to execute shell command: %s", strerror(group_errno));
     }
 
     close(stdout_pipe[1]);
@@ -895,6 +926,20 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
       exit(1);
     }
     buffer[0] = '\0';
+
+    long long deadline_us = 0;
+    if (timeout_ms > 0) {
+      struct timeval now;
+      if (gettimeofday(&now, NULL) != 0) {
+        int time_errno = errno != 0 ? errno : EIO;
+        close(stdout_pipe[0]);
+        close(stderr_pipe[0]);
+        waitpid(child_pid, NULL, 0);
+        free(buffer);
+        return tn_runtime_failf("host error: sys_run failed to read timeout clock: %s", strerror(time_errno));
+      }
+      deadline_us = ((long long)now.tv_sec * 1000000LL) + (long long)now.tv_usec + (timeout_ms * 1000LL);
+    }
 
     int stdout_fd = stdout_pipe[0];
     int stderr_fd = stderr_pipe[0];
@@ -915,7 +960,35 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
         }
       }
 
-      int ready = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
+      struct timeval select_timeout;
+      struct timeval *select_timeout_ptr = NULL;
+      if (timeout_ms > 0 && !timed_out) {
+        struct timeval now;
+        if (gettimeofday(&now, NULL) != 0) {
+          int time_errno = errno != 0 ? errno : EIO;
+          if (stdout_fd >= 0) close(stdout_fd);
+          if (stderr_fd >= 0) close(stderr_fd);
+          waitpid(child_pid, NULL, 0);
+          free(buffer);
+          return tn_runtime_failf("host error: sys_run failed to read timeout clock: %s", strerror(time_errno));
+        }
+        long long now_us = ((long long)now.tv_sec * 1000000LL) + (long long)now.tv_usec;
+        long long remaining_us = deadline_us - now_us;
+        if (remaining_us <= 0) {
+          select_timeout.tv_sec = 0;
+          select_timeout.tv_usec = 0;
+        } else {
+          long long wait_us = remaining_us;
+          if (wait_us > timeout_poll_ms * 1000LL) {
+            wait_us = timeout_poll_ms * 1000LL;
+          }
+          select_timeout.tv_sec = (time_t)(wait_us / 1000000LL);
+          select_timeout.tv_usec = (suseconds_t)(wait_us % 1000000LL);
+        }
+        select_timeout_ptr = &select_timeout;
+      }
+
+      int ready = select(max_fd + 1, &read_fds, NULL, NULL, select_timeout_ptr);
       if (ready < 0) {
         if (errno == EINTR) {
           continue;
@@ -925,6 +998,33 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
         waitpid(child_pid, NULL, 0);
         free(buffer);
         return tn_runtime_failf("host error: sys_run failed to read stdout: %s", strerror(errno));
+      }
+
+      if (ready == 0) {
+        if (timeout_ms > 0 && !timed_out) {
+          struct timeval now;
+          if (gettimeofday(&now, NULL) != 0) {
+            int time_errno = errno != 0 ? errno : EIO;
+            if (stdout_fd >= 0) close(stdout_fd);
+            if (stderr_fd >= 0) close(stderr_fd);
+            waitpid(child_pid, NULL, 0);
+            free(buffer);
+            return tn_runtime_failf("host error: sys_run failed to read timeout clock: %s", strerror(time_errno));
+          }
+          long long now_us = ((long long)now.tv_sec * 1000000LL) + (long long)now.tv_usec;
+          if (now_us >= deadline_us) {
+            timed_out = 1;
+            if (kill(-child_pid, SIGKILL) != 0 && kill(child_pid, SIGKILL) != 0 && errno != ESRCH) {
+              int kill_errno = errno;
+              if (stdout_fd >= 0) close(stdout_fd);
+              if (stderr_fd >= 0) close(stderr_fd);
+              waitpid(child_pid, NULL, 0);
+              free(buffer);
+              return tn_runtime_failf("host error: sys_run failed to kill timed out shell command: %s", strerror(kill_errno));
+            }
+          }
+        }
+        continue;
       }
 
       int active_fds[2] = {stdout_fd, stderr_fd};
@@ -1007,6 +1107,9 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
 #else
     exit_code = status;
 #endif
+    if (timed_out) {
+      exit_code = 124;
+    }
 
     TnVal result = tn_runtime_make_map(
       tn_runtime_const_atom((TnVal)(intptr_t)"exit_code"),
@@ -1016,6 +1119,11 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
       result,
       tn_runtime_const_atom((TnVal)(intptr_t)"output"),
       tn_runtime_const_string((TnVal)(intptr_t)buffer)
+    );
+    result = tn_runtime_map_put(
+      result,
+      tn_runtime_const_atom((TnVal)(intptr_t)"timed_out"),
+      tn_runtime_const_bool((TnVal)(timed_out != 0))
     );
 
     free(buffer);

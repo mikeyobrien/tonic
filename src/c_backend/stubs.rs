@@ -29,6 +29,7 @@ pub(super) fn emit_header(out: &mut String) {
          #include <sys/stat.h>\n\
          #include <sys/wait.h>\n\
          #include <unistd.h>\n\
+         #include <signal.h>\n\
          #include <time.h>\n\
          #include <sys/time.h>\n\
          #include <sys/socket.h>\n\

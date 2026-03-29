@@ -2,6 +2,7 @@ use assert_cmd::assert::OutputAssertExt;
 use predicates::str::contains;
 use serde_json::Value;
 use std::fs;
+use std::time::{Duration, Instant};
 
 mod common;
 
@@ -401,6 +402,93 @@ fn compiled_elf_system_run_stream_matches_interpreter_for_stderr_only_output() {
     assert_eq!(
         compiled.stderr, interpreted.stderr,
         "stderr must match interpreter"
+    );
+}
+
+#[test]
+fn compiled_elf_system_run_timeout_matches_interpreter() {
+    let fixture_root = common::unique_fixture_root("compile-system-run-timeout");
+    let src_dir = fixture_root.join("src");
+
+    fs::create_dir_all(&src_dir).expect("fixture setup should create src directory");
+    fs::write(
+        fixture_root.join("tonic.toml"),
+        "[project]\nname = \"demo\"\nentry = \"src/main.tn\"\n",
+    )
+    .expect("fixture setup should write tonic.toml");
+    fs::write(
+        src_dir.join("main.tn"),
+        "defmodule Demo do\n  def run() do\n    result = System.run(\"printf 'before\\n'; sleep 5; printf 'after\\n'\", %{timeout_ms: 150, stream: true})\n    IO.puts(\"exit=#{Map.get(result, :exit_code, -1)}\")\n    IO.puts(\"timed_out=#{Map.get(result, :timed_out, false)}\")\n    IO.puts(\"output=#{Map.get(result, :output, \"\")}\")\n  end\nend\n",
+    )
+    .expect("fixture setup should write entry source");
+
+    let interpreted_started = Instant::now();
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["run", "."])
+        .output()
+        .expect("interpreter run should execute");
+    let interpreted_elapsed = interpreted_started.elapsed();
+
+    assert!(
+        interpreted.status.success(),
+        "expected interpreter success, got status {:?} and stderr: {}",
+        interpreted.status.code(),
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    assert!(
+        interpreted_elapsed < Duration::from_secs(3),
+        "expected interpreter timeout to return quickly, got {interpreted_elapsed:?}"
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&fixture_root)
+        .args(["compile", "."])
+        .assert()
+        .success();
+
+    let compiled_started = Instant::now();
+    let compiled = std::process::Command::new(fixture_root.join(".tonic/build/main"))
+        .current_dir(&fixture_root)
+        .output()
+        .expect("compiled executable should run");
+    let compiled_elapsed = compiled_started.elapsed();
+
+    assert!(
+        compiled.status.success(),
+        "expected compiled executable success, got status {:?} and stderr: {}",
+        compiled.status.code(),
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    assert!(
+        compiled_elapsed < Duration::from_secs(3),
+        "expected compiled timeout to return quickly, got {compiled_elapsed:?}"
+    );
+    assert_eq!(
+        compiled.stdout, interpreted.stdout,
+        "stdout must match interpreter"
+    );
+    assert_eq!(
+        compiled.stderr, interpreted.stderr,
+        "stderr must match interpreter"
+    );
+
+    let stdout = String::from_utf8(compiled.stdout.clone()).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("before\n"),
+        "expected pre-timeout output, got: {stdout:?}"
+    );
+    assert!(
+        stdout.contains("exit=124\n"),
+        "expected timeout exit code, got: {stdout:?}"
+    );
+    assert!(
+        stdout.contains("timed_out=true\n"),
+        "expected timeout flag, got: {stdout:?}"
+    );
+    assert!(
+        stdout.contains("output=before\n"),
+        "expected partial captured output, got: {stdout:?}"
     );
 }
 
