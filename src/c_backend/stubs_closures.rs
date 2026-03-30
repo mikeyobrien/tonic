@@ -204,16 +204,16 @@ fn emit_closure_ops(
                 stack.push(temp);
             }
             IrOp::AddInt { .. } => {
-                emit_closure_binary("+", stack, temp_index, out)?;
+                emit_closure_binary("tn_runtime_arith_add", stack, temp_index, out)?;
             }
             IrOp::SubInt { .. } => {
-                emit_closure_binary("-", stack, temp_index, out)?;
+                emit_closure_binary("tn_runtime_arith_sub", stack, temp_index, out)?;
             }
             IrOp::MulInt { .. } => {
-                emit_closure_binary("*", stack, temp_index, out)?;
+                emit_closure_binary("tn_runtime_arith_mul", stack, temp_index, out)?;
             }
             IrOp::DivInt { .. } => {
-                emit_closure_binary("/", stack, temp_index, out)?;
+                emit_closure_binary("tn_runtime_arith_div", stack, temp_index, out)?;
             }
             IrOp::CmpInt { kind, .. } => {
                 let right = pop_stack_value(stack, "cmp_int right operand")?;
@@ -232,16 +232,14 @@ fn emit_closure_ops(
                         ));
                     }
                     CmpKind::Lt | CmpKind::Lte | CmpKind::Gt | CmpKind::Gte => {
-                        let operator = match kind {
-                            CmpKind::Lt => "<",
-                            CmpKind::Lte => "<=",
-                            CmpKind::Gt => ">",
-                            CmpKind::Gte => ">=",
+                        let helper = match kind {
+                            CmpKind::Lt => "tn_runtime_cmp_lt",
+                            CmpKind::Lte => "tn_runtime_cmp_lte",
+                            CmpKind::Gt => "tn_runtime_cmp_gt",
+                            CmpKind::Gte => "tn_runtime_cmp_gte",
                             _ => unreachable!(),
                         };
-                        out.push_str(&format!(
-                            "  TnVal {temp} = tn_runtime_const_bool(({left} {operator} {right}) ? 1 : 0);\n"
-                        ));
+                        out.push_str(&format!("  TnVal {temp} = {helper}({left}, {right});\n"));
                     }
                 }
                 stack.push(temp);
@@ -529,15 +527,15 @@ fn emit_closure_guard_ops(
                         ));
                     }
                     CmpKind::Lt | CmpKind::Lte | CmpKind::Gt | CmpKind::Gte => {
-                        let operator = match kind {
-                            CmpKind::Lt => "<",
-                            CmpKind::Lte => "<=",
-                            CmpKind::Gt => ">",
-                            CmpKind::Gte => ">=",
+                        let helper = match kind {
+                            CmpKind::Lt => "tn_runtime_raw_cmp_lt",
+                            CmpKind::Lte => "tn_runtime_raw_cmp_lte",
+                            CmpKind::Gt => "tn_runtime_raw_cmp_gt",
+                            CmpKind::Gte => "tn_runtime_raw_cmp_gte",
                             _ => unreachable!(),
                         };
                         out.push_str(&format!(
-                            "  TnVal {temp} = ({left} {operator} {right}) ? 1 : 0;\n"
+                            "  TnVal {temp} = {helper}({left}, {right}) ? 1 : 0;\n"
                         ));
                     }
                 }
@@ -627,7 +625,7 @@ fn emit_closure_return_value(value: &str, out: &mut String) {
 }
 
 fn emit_closure_binary(
-    operator: &str,
+    helper: &str,
     stack: &mut Vec<String>,
     temp_index: &mut usize,
     out: &mut String,
@@ -636,7 +634,7 @@ fn emit_closure_binary(
     let left = pop_stack_value(stack, "binary left operand")?;
     let temp = format!("tmp_{}", *temp_index);
     *temp_index += 1;
-    out.push_str(&format!("  TnVal {temp} = {left} {operator} {right};\n"));
+    out.push_str(&format!("  TnVal {temp} = {helper}({left}, {right});\n"));
     stack.push(temp);
     Ok(())
 }
@@ -738,6 +736,115 @@ fn emit_closure_call(
             "err" => {
                 out.push_str(&format!(
                     "  TnVal {temp} = tn_runtime_make_err({rendered_args});\n"
+                ));
+            }
+            "abs" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_abs({rendered_args});\n"
+                ));
+            }
+            "length" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_length({rendered_args});\n"
+                ));
+            }
+            "hd" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_hd({rendered_args});\n"
+                ));
+            }
+            "tl" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_tl({rendered_args});\n"
+                ));
+            }
+            "tuple_size" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_tuple_size({rendered_args});\n"
+                ));
+            }
+            "byte_size" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_byte_size({rendered_args});\n"
+                ));
+            }
+            "bit_size" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_bit_size({rendered_args});\n"
+                ));
+            }
+            "round" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_round({rendered_args});\n"
+                ));
+            }
+            "trunc" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_trunc({rendered_args});\n"
+                ));
+            }
+            "map_size" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_map_size({rendered_args});\n"
+                ));
+            }
+            "inspect" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_inspect({rendered_args});\n"
+                ));
+            }
+            "to_string" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_to_string({rendered_args});\n"
+                ));
+            }
+            "max" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_max({rendered_args});\n"
+                ));
+            }
+            "min" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_min({rendered_args});\n"
+                ));
+            }
+            "elem" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_elem({rendered_args});\n"
+                ));
+            }
+            "put_elem" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_put_elem({rendered_args});\n"
+                ));
+            }
+            "div" => {
+                let div_args: Vec<&str> = rendered_args.split(", ").collect();
+                out.push_str(&format!(
+                    "  TnVal {temp} = (TnVal)({} / {});\n",
+                    div_args[0], div_args[1]
+                ));
+            }
+            "rem" => {
+                let rem_args: Vec<&str> = rendered_args.split(", ").collect();
+                out.push_str(&format!(
+                    "  TnVal {temp} = (TnVal)({} % {});\n",
+                    rem_args[0], rem_args[1]
+                ));
+            }
+            "bitstring" => {
+                let count_then_args = std::iter::once(format!("(TnVal){argc}"))
+                    .chain(args)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_make_bitstring_varargs({count_then_args});\n"
+                ));
+            }
+            "is_integer" | "is_float" | "is_number" | "is_atom" | "is_binary" | "is_list"
+            | "is_tuple" | "is_map" | "is_nil" | "is_boolean" => {
+                out.push_str(&format!(
+                    "  TnVal {temp} = tn_runtime_const_bool(tn_runtime_guard_{name}({rendered_args}));\n"
                 ));
             }
             other => {

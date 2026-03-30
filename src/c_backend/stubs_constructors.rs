@@ -399,6 +399,11 @@ static TnVal tn_runtime_guard_is_nil(TnVal value) {
   return (obj != NULL && obj->kind == TN_OBJ_NIL) ? 1 : 0;
 }
 
+static TnVal tn_runtime_guard_is_boolean(TnVal value) {
+  TnObj *obj = tn_get_obj(value);
+  return (obj != NULL && obj->kind == TN_OBJ_BOOL) ? 1 : 0;
+}
+
 "###,
     );
 }

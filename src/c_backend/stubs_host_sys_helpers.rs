@@ -375,6 +375,65 @@ static char *tn_sys_base64url_encode(const unsigned char *buffer, size_t len) {
   return encoded;
 }
 
+static long long tn_sys_retry_clamp_delay(long long delay_ms, long long max_delay_ms) {
+  if (delay_ms < 0) return 0;
+  if (delay_ms > max_delay_ms) return max_delay_ms;
+  return delay_ms;
+}
+
+static long long tn_sys_retry_exponential_backoff(long long attempt, long long base_delay_ms, long long max_delay_ms) {
+  long long exponent = attempt - 1;
+  if (exponent < 0) exponent = 0;
+  if (exponent > 62) exponent = 62;
+  long long multiplier = 1LL << exponent;
+  long long raw_delay_ms = base_delay_ms * multiplier;
+  if (base_delay_ms != 0 && raw_delay_ms / base_delay_ms != multiplier) {
+    raw_delay_ms = max_delay_ms;
+  }
+  return tn_sys_retry_clamp_delay(raw_delay_ms, max_delay_ms);
+}
+
+static long long tn_sys_retry_deterministic_jitter(long long attempt, long long status_code, long long max_jitter_ms) {
+  if (max_jitter_ms == 0) return 0;
+  unsigned long long abs_attempt = (unsigned long long)(attempt < 0 ? -attempt : attempt);
+  unsigned long long abs_status = (unsigned long long)(status_code < 0 ? -status_code : status_code);
+  unsigned long long seed = abs_attempt * 1103515245ULL + abs_status + 12345ULL;
+  return (long long)(seed % ((unsigned long long)max_jitter_ms + 1));
+}
+
+static long long tn_sys_retry_parse_retry_after(const char *value, long long max_delay_ms) {
+  while (*value != '\0' && isspace((unsigned char)*value)) value++;
+  if (*value == '\0') return -1;
+  char *end = NULL;
+  errno = 0;
+  long long seconds = strtoll(value, &end, 10);
+  if (errno == 0 && end != value && (*end == '\0' || isspace((unsigned char)*end))) {
+    if (seconds < 0) return 0;
+    long long delay_ms = seconds * 1000;
+    if (seconds != 0 && delay_ms / seconds != 1000) delay_ms = max_delay_ms;
+    return tn_sys_retry_clamp_delay(delay_ms, max_delay_ms);
+  }
+  return -1;
+}
+
+static TnVal tn_sys_retry_plan_result(int retry, long long delay_ms, const char *source) {
+  TnVal result = tn_runtime_make_map(
+    tn_runtime_const_atom((TnVal)(intptr_t)"retry"),
+    tn_runtime_const_bool((TnVal)(retry != 0))
+  );
+  result = tn_runtime_map_put(
+    result,
+    tn_runtime_const_atom((TnVal)(intptr_t)"delay_ms"),
+    (TnVal)delay_ms
+  );
+  result = tn_runtime_map_put(
+    result,
+    tn_runtime_const_atom((TnVal)(intptr_t)"source"),
+    tn_runtime_const_atom((TnVal)(intptr_t)source)
+  );
+  return result;
+}
+
 "###,
     );
 }

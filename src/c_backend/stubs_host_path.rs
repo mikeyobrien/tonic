@@ -247,6 +247,125 @@ pub(super) fn emit_stubs_host_path(out: &mut String) {
     return tn_runtime_const_string((TnVal)(intptr_t)path);
   }
 
+  if (strcmp(key, "path_rootname") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Path.rootname expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: Path.rootname expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *path = path_obj->as.text.text;
+    size_t len = strlen(path);
+    /* strip trailing slashes (except root) */
+    while (len > 1 && path[len - 1] == '/') {
+      len -= 1;
+    }
+    /* find the start of the filename component */
+    size_t fname_start = 0;
+    for (size_t i = len; i > 0; i -= 1) {
+      if (path[i - 1] == '/') {
+        fname_start = i;
+        break;
+      }
+    }
+    /* find the last dot in the filename */
+    size_t dot_index = len;
+    for (size_t i = len; i > fname_start; i -= 1) {
+      if (path[i - 1] == '.') {
+        dot_index = i - 1;
+        break;
+      }
+    }
+    /* if no dot found, or dot is the first char of filename, keep whole path */
+    size_t result_len;
+    if (dot_index == len || dot_index == fname_start) {
+      result_len = len;
+    } else {
+      /* parent + stem (everything before the dot) */
+      result_len = dot_index;
+    }
+    char *result_str = (char *)malloc(result_len + 1);
+    if (result_str == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    memcpy(result_str, path, result_len);
+    result_str[result_len] = '\0';
+    TnVal result = tn_runtime_const_string((TnVal)(intptr_t)result_str);
+    free(result_str);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "path_split") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Path.split expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnObj *path_obj = tn_get_obj(args[1]);
+    if (path_obj == NULL || path_obj->kind != TN_OBJ_STRING) {
+      return tn_runtime_failf("host error: Path.split expects string argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    const char *path = path_obj->as.text.text;
+    size_t path_len = strlen(path);
+    /* count components: leading / is one component, then each non-empty segment */
+    size_t count = 0;
+    size_t pos = 0;
+    if (path_len > 0 && path[0] == '/') {
+      count += 1;
+      pos = 1;
+    }
+    while (pos < path_len) {
+      if (path[pos] == '/') {
+        pos += 1;
+        continue;
+      }
+      count += 1;
+      while (pos < path_len && path[pos] != '/') {
+        pos += 1;
+      }
+    }
+    TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+    list_obj->as.list.len = count;
+    list_obj->as.list.items = count == 0 ? NULL : (TnVal *)calloc(count, sizeof(TnVal));
+    if (count > 0 && list_obj->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    size_t idx = 0;
+    pos = 0;
+    if (path_len > 0 && path[0] == '/') {
+      list_obj->as.list.items[idx] = tn_runtime_const_string((TnVal)(intptr_t)"/");
+      tn_runtime_retain(list_obj->as.list.items[idx]);
+      idx += 1;
+      pos = 1;
+    }
+    while (pos < path_len) {
+      if (path[pos] == '/') {
+        pos += 1;
+        continue;
+      }
+      size_t start = pos;
+      while (pos < path_len && path[pos] != '/') {
+        pos += 1;
+      }
+      size_t seg_len = pos - start;
+      char *seg = (char *)malloc(seg_len + 1);
+      if (seg == NULL) {
+        fprintf(stderr, "error: native runtime allocation failure\n");
+        exit(1);
+      }
+      memcpy(seg, path + start, seg_len);
+      seg[seg_len] = '\0';
+      list_obj->as.list.items[idx] = tn_runtime_const_string((TnVal)(intptr_t)seg);
+      tn_runtime_retain(list_obj->as.list.items[idx]);
+      free(seg);
+      idx += 1;
+    }
+    free(args);
+    return tn_heap_store(list_obj);
+  }
+
   if (strcmp(key, "io_puts") == 0) {
     if (argc != 2) {
       return tn_runtime_failf("host error: IO.puts expects exactly 1 argument, found %zu", argc - 1);

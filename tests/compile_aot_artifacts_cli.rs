@@ -756,6 +756,325 @@ end
 }
 
 // ---------------------------------------------------------------------------
+// IO.puts auto-coercion parity (non-string values)
+// ---------------------------------------------------------------------------
+
+/// Native `IO.puts` must auto-coerce non-string values (Int, Float, Bool)
+/// identically to the interpreter's `value_to_string()`.
+#[test]
+fn compiled_elf_matches_interpreter_for_io_puts_auto_coercion() {
+    let temp_dir = common::unique_temp_dir("compile-io-puts-coerce");
+    let source_path = temp_dir.join("io_coerce.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    IO.puts(2 + 3)
+    IO.puts(10 - 4)
+    IO.puts(3 * 7)
+    IO.puts(true)
+    IO.puts(false)
+    IO.puts(3 > 2)
+    IO.puts(1 < 0)
+    IO.puts(:hello)
+    IO.puts(nil)
+    IO.puts("done")
+  end
+end
+"#,
+    )
+    .unwrap();
+    let exe_path = temp_dir.join("io_coerce_native");
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", source_path.to_str().unwrap()])
+        .output()
+        .expect("tonic run should execute io coerce example");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            source_path.to_str().unwrap(),
+            "--out",
+            exe_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(&exe_path)
+        .output()
+        .expect("compiled io coerce binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled io coerce binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        native_output.stdout, interpreted.stdout,
+        "stdout must match between interpreter and native ELF"
+    );
+}
+
+/// Native float arithmetic (add, sub, mul, mixed int/float, comparisons) must
+/// produce identical stdout to the interpreter.
+#[test]
+fn compiled_elf_matches_interpreter_for_float_arithmetic() {
+    let temp_dir = common::unique_temp_dir("compile-float-arith");
+    let source_path = temp_dir.join("float_arith.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    IO.puts(1.5 + 2.5)
+    IO.puts(5.0 - 2.0)
+    IO.puts(3.0 * 2.5)
+    IO.puts(1 + 2.5)
+    IO.puts(2.5 + 1)
+    IO.puts(10 - 3.5)
+    IO.puts(3 * 2.5)
+    IO.puts(1.5 + 2.5 - 1.0)
+    IO.puts(3.14 > 2.0)
+    IO.puts(1.5 < 2.5)
+    IO.puts(2.0 >= 2.0)
+    IO.puts(1.0 <= 0.5)
+    IO.puts(3 > 2.5)
+    IO.puts(2 < 2.5)
+    IO.puts(-1.5 + 2.5)
+    IO.puts(-3.0 * 2.0)
+    IO.puts(2 + 3)
+    IO.puts(10 - 4)
+    IO.puts(3 * 7)
+  end
+end
+"#,
+    )
+    .unwrap();
+    let exe_path = temp_dir.join("float_arith_native");
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", source_path.to_str().unwrap()])
+        .output()
+        .expect("tonic run should execute float arith example");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            source_path.to_str().unwrap(),
+            "--out",
+            exe_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(&exe_path)
+        .output()
+        .expect("compiled float arith binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled float arith binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout),
+        "stdout must match between interpreter and native for float arithmetic"
+    );
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_type_checking() {
+    let temp_dir = common::unique_temp_dir("compile-type-checking");
+    let source_path = temp_dir.join("type_checking.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    IO.puts(is_integer(42))
+    IO.puts(is_integer(3.14))
+    IO.puts(is_float(3.14))
+    IO.puts(is_float(42))
+    IO.puts(is_number(42))
+    IO.puts(is_number(3.14))
+    IO.puts(is_number(:ok))
+    IO.puts(is_atom(:ok))
+    IO.puts(is_atom("hello"))
+    IO.puts(is_binary("hello"))
+    IO.puts(is_binary(42))
+    IO.puts(is_list([1, 2]))
+    IO.puts(is_list(42))
+    IO.puts(is_nil(nil))
+    IO.puts(is_nil(42))
+    IO.puts(is_boolean(true))
+    IO.puts(is_boolean(false))
+    IO.puts(is_boolean(42))
+    t = {1, 2}
+    IO.puts(is_tuple(t))
+    IO.puts(is_tuple(42))
+    m = %{a: 1}
+    IO.puts(is_map(m))
+    IO.puts(is_map(42))
+  end
+end
+"#,
+    )
+    .unwrap();
+    let exe_path = temp_dir.join("type_checking_native");
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", source_path.to_str().unwrap()])
+        .output()
+        .expect("tonic run should execute type_checking example");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            source_path.to_str().unwrap(),
+            "--out",
+            exe_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(&exe_path)
+        .output()
+        .expect("compiled type_checking binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled type_checking binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout),
+        "stdout must match between interpreter and native for type checking builtins"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Parity: inspect + map_size builtins
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_inspect_and_map_size() {
+    let temp_dir = common::unique_temp_dir("compile-inspect-map-size");
+    let source_path = temp_dir.join("inspect_map_size.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # inspect various types
+    IO.puts(inspect(42))
+    IO.puts(inspect(3.14))
+    IO.puts(inspect("hello"))
+    IO.puts(inspect(true))
+    IO.puts(inspect(nil))
+    IO.puts(inspect(:ok))
+    IO.puts(inspect([1, 2, 3]))
+    IO.puts(inspect({:ok, 42}))
+    IO.puts(inspect(%{a: 1, b: 2}))
+
+    # inspect in interpolation
+    list = [1, 2, 3]
+    IO.puts("list is: #{inspect(list)}")
+
+    # inspect empty collections
+    IO.puts(inspect([]))
+    IO.puts(inspect(%{}))
+
+    # map_size
+    IO.puts(map_size(%{}))
+    IO.puts(map_size(%{a: 1, b: 2, c: 3}))
+    IO.puts(map_size(%{x: 10, y: 20}))
+  end
+end
+"#,
+    )
+    .unwrap();
+    let exe_path = temp_dir.join("inspect_map_size_native");
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", source_path.to_str().unwrap()])
+        .output()
+        .expect("tonic run should execute inspect_map_size example");
+    assert!(
+        interpreted.status.success(),
+        "interpreter run should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args([
+            "compile",
+            source_path.to_str().unwrap(),
+            "--out",
+            exe_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(&exe_path)
+        .output()
+        .expect("compiled inspect_map_size binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled inspect_map_size binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+
+    assert_eq!(
+        native_output.status.code(),
+        interpreted.status.code(),
+        "exit codes must match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout),
+        "stdout must match between interpreter and native for inspect and map_size"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // --out contract
 // ---------------------------------------------------------------------------
 
@@ -973,6 +1292,1616 @@ fn run_native_artifact_rejects_target_mismatch_with_deterministic_diagnostic() {
 
 // ---------------------------------------------------------------------------
 // Helper module for testing diagnostic format without subprocess tricks
+// ---------------------------------------------------------------------------
+// Experiment 5: builtins inside closures parity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_builtins_in_closures() {
+    let temp_dir = common::unique_temp_dir("compile-closure-builtins");
+
+    let source = temp_dir.join("closure_builtins.tn");
+    fs::write(
+        &source,
+        r#"defmodule Demo do
+  def run() do
+    nums = [-3, 1, -2, 4]
+    mapped_abs = Enum.map(nums, fn x -> abs(x) end)
+    IO.puts(inspect(mapped_abs))
+
+    floats = [1.5, 2.7, 3.1]
+    mapped_round = Enum.map(floats, fn f -> round(f) end)
+    IO.puts(inspect(mapped_round))
+
+    mapped_trunc = Enum.map(floats, fn f -> trunc(f) end)
+    IO.puts(inspect(mapped_trunc))
+
+    lists = [[1, 2], [3], [4, 5, 6]]
+    mapped_length = Enum.map(lists, fn l -> length(l) end)
+    IO.puts(inspect(mapped_length))
+
+    mapped_hd = Enum.map(lists, fn l -> hd(l) end)
+    IO.puts(inspect(mapped_hd))
+
+    vals = [1, :hello, "str", nil, true]
+    mapped_types = Enum.map(vals, fn v -> is_integer(v) end)
+    IO.puts(inspect(mapped_types))
+
+    maxed = Enum.map(nums, fn x -> max(x, 0) end)
+    IO.puts(inspect(maxed))
+
+    mined = Enum.map(nums, fn x -> min(x, 0) end)
+    IO.puts(inspect(mined))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "closure_builtins.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "closure_builtins.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/closure_builtins"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled closure-builtins binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Math module host dispatch parity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_math_module() {
+    let temp_dir = common::unique_temp_dir("compile-math-module");
+
+    let source = temp_dir.join("math_parity.tn");
+    fs::write(
+        &source,
+        r#"defmodule Demo do
+  def run() do
+    IO.puts(host_call(:math_pow, 2, 10))
+    IO.puts(host_call(:math_abs, -42))
+    IO.puts(host_call(:math_min, 5, 3))
+    IO.puts(host_call(:math_max, 5, 3))
+    IO.puts(host_call(:math_ceil, 2.3))
+    IO.puts(host_call(:math_floor, 2.7))
+    IO.puts(host_call(:math_round, 2.5))
+    IO.puts(host_call(:math_round, 2.4))
+    IO.puts(host_call(:math_abs, -3.14))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "math_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "math_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/math_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled math binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_integer_module() {
+    let temp_dir = common::unique_temp_dir("compile-integer-module");
+
+    let source = temp_dir.join("integer_parity.tn");
+    fs::write(
+        &source,
+        r#"defmodule Demo do
+  def run() do
+    # integer_to_string
+    IO.puts(host_call(:integer_to_string, 42))
+    IO.puts(host_call(:integer_to_string, -7))
+    IO.puts(host_call(:integer_to_string, 0))
+
+    # integer_to_string_base
+    IO.puts(host_call(:integer_to_string_base, 255, 16))
+    IO.puts(host_call(:integer_to_string_base, 10, 2))
+    IO.puts(host_call(:integer_to_string_base, -255, 16))
+    IO.puts(host_call(:integer_to_string_base, 0, 8))
+
+    # integer_digits
+    IO.puts(inspect(host_call(:integer_digits, 1234)))
+    IO.puts(inspect(host_call(:integer_digits, 0)))
+    IO.puts(inspect(host_call(:integer_digits, -42)))
+
+    # integer_undigits
+    IO.puts(host_call(:integer_undigits, [1, 2, 3, 4]))
+    IO.puts(host_call(:integer_undigits, [0]))
+
+    # integer_gcd
+    IO.puts(host_call(:integer_gcd, 12, 8))
+    IO.puts(host_call(:integer_gcd, 7, 13))
+    IO.puts(host_call(:integer_gcd, 5, 0))
+    IO.puts(host_call(:integer_gcd, -12, 8))
+
+    # integer_is_even / integer_is_odd
+    IO.puts(host_call(:integer_is_even, 4))
+    IO.puts(host_call(:integer_is_even, 3))
+    IO.puts(host_call(:integer_is_odd, 7))
+    IO.puts(host_call(:integer_is_odd, 8))
+
+    # integer_pow
+    IO.puts(host_call(:integer_pow, 2, 10))
+    IO.puts(host_call(:integer_pow, 99, 0))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "integer_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "integer_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/integer_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled integer binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Map module parity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_map_module() {
+    let temp_dir = common::unique_temp_dir("parity-map-module");
+    let source_path = temp_dir.join("map_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    m = %{"a" => 1, "b" => 2, "c" => 3}
+
+    # map_keys
+    IO.puts(inspect(host_call(:map_keys, m)))
+
+    # map_values
+    IO.puts(inspect(host_call(:map_values, m)))
+
+    # map_merge
+    IO.puts(inspect(host_call(:map_merge, m, %{"b" => 99, "d" => 4})))
+
+    # map_drop
+    IO.puts(inspect(host_call(:map_drop, m, ["a", "c"])))
+
+    # map_take
+    IO.puts(inspect(host_call(:map_take, m, ["a", "c"])))
+
+    # map_has_key
+    IO.puts(host_call(:map_has_key, m, "b"))
+    IO.puts(host_call(:map_has_key, m, "z"))
+
+    # map_get with default
+    IO.puts(host_call(:map_get, m, "a", 0))
+    IO.puts(host_call(:map_get, m, "z", 42))
+
+    # map_put (new key)
+    IO.puts(inspect(host_call(:map_put, m, "d", 4)))
+    # map_put (existing key)
+    IO.puts(inspect(host_call(:map_put, m, "a", 99)))
+
+    # map_delete
+    IO.puts(inspect(host_call(:map_delete, m, "b")))
+    IO.puts(inspect(host_call(:map_delete, m, "z")))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "map_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "map_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/map_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled map binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Float module parity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_float_module() {
+    let temp_dir = common::unique_temp_dir("parity-float-module");
+    let source_path = temp_dir.join("float_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # float_to_string
+    IO.puts(host_call(:float_to_string, 3.14))
+    IO.puts(host_call(:float_to_string, 42))
+
+    # float_round
+    IO.puts(host_call(:float_round, 3.14159, 2))
+    IO.puts(host_call(:float_round, 2.5, 0))
+
+    # float_ceil
+    IO.puts(host_call(:float_ceil, 2.1))
+    IO.puts(host_call(:float_ceil, -2.9))
+
+    # float_floor
+    IO.puts(host_call(:float_floor, 2.9))
+    IO.puts(host_call(:float_floor, -2.1))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "float_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "float_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/float_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled float binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Bitwise module parity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_bitwise_module() {
+    let temp_dir = common::unique_temp_dir("parity-bitwise-module");
+    let source_path = temp_dir.join("bitwise_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # bitwise_band
+    IO.puts(host_call(:bitwise_band, 12, 10))
+
+    # bitwise_bor
+    IO.puts(host_call(:bitwise_bor, 12, 10))
+
+    # bitwise_bxor
+    IO.puts(host_call(:bitwise_bxor, 12, 10))
+
+    # bitwise_bnot
+    IO.puts(host_call(:bitwise_bnot, 0))
+
+    # bitwise_bsl
+    IO.puts(host_call(:bitwise_bsl, 1, 4))
+
+    # bitwise_bsr
+    IO.puts(host_call(:bitwise_bsr, 16, 4))
+
+    # negative operand
+    IO.puts(host_call(:bitwise_band, -1, 255))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "bitwise_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "bitwise_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/bitwise_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled bitwise binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_path_rootname_and_split() {
+    let temp_dir = common::unique_temp_dir("parity-path-rootname-split");
+    let source_path = temp_dir.join("path_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # path_rootname: strip extension
+    IO.puts(host_call(:path_rootname, "/tmp/foo/bar.txt"))
+
+    # path_rootname: no extension
+    IO.puts(host_call(:path_rootname, "/tmp/foo/bar"))
+
+    # path_rootname: bare filename
+    IO.puts(host_call(:path_rootname, "bar.txt"))
+
+    # path_split: absolute path
+    IO.puts(inspect(host_call(:path_split, "/tmp/foo/bar.txt")))
+
+    # path_split: relative path
+    IO.puts(inspect(host_call(:path_split, "foo/bar/baz")))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "path_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "path_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/path_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled path binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_hex_encode_decode() {
+    let temp_dir = common::unique_temp_dir("parity-hex");
+    let source_path = temp_dir.join("hex_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # hex_encode: ASCII string
+    IO.puts(host_call(:hex_encode, "hello"))
+
+    # hex_encode: empty string
+    IO.puts(host_call(:hex_encode, ""))
+
+    # hex_encode_upper
+    IO.puts(host_call(:hex_encode_upper, "hello"))
+
+    # hex_decode: valid lowercase
+    IO.puts(inspect(host_call(:hex_decode, "68656c6c6f")))
+
+    # hex_decode: valid uppercase
+    IO.puts(inspect(host_call(:hex_decode, "68656C6C6F")))
+
+    # hex_decode: round-trip
+    encoded = host_call(:hex_encode, "Tonic!")
+    IO.puts(inspect(host_call(:hex_decode, encoded)))
+
+    # hex_decode: odd-length error
+    IO.puts(inspect(host_call(:hex_decode, "abc")))
+
+    # hex_decode: invalid char error
+    IO.puts(inspect(host_call(:hex_decode, "zz")))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "hex_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "hex_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/hex_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled hex binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_base64_encode_decode() {
+    let temp_dir = common::unique_temp_dir("parity-base64");
+    let source_path = temp_dir.join("base64_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # base64_encode: simple string
+    IO.puts(host_call(:base64_encode, "hello"))
+
+    # base64_encode: empty string
+    IO.puts(host_call(:base64_encode, ""))
+
+    # base64_encode: padding (1 byte → YQ==)
+    IO.puts(host_call(:base64_encode, "a"))
+
+    # base64_encode: padding (2 bytes → YWI=)
+    IO.puts(host_call(:base64_encode, "ab"))
+
+    # base64_decode: simple
+    IO.puts(host_call(:base64_decode, "aGVsbG8="))
+
+    # base64_decode: empty
+    IO.puts(host_call(:base64_decode, ""))
+
+    # base64_decode: round-trip
+    encoded = host_call(:base64_encode, "Tonic lang!")
+    IO.puts(host_call(:base64_decode, encoded))
+
+    # base64_url_encode: simple (no padding)
+    IO.puts(host_call(:base64_url_encode, "hello"))
+
+    # base64_url_encode: 1 byte (no padding)
+    IO.puts(host_call(:base64_url_encode, "a"))
+
+    # base64_url_decode: simple
+    IO.puts(host_call(:base64_url_decode, "aGVsbG8"))
+
+    # base64_url_decode: round-trip
+    url_enc = host_call(:base64_url_encode, "data+with/special=chars")
+    IO.puts(host_call(:base64_url_decode, url_enc))
+
+    # base64_url_encode: empty
+    IO.puts(host_call(:base64_url_encode, ""))
+
+    # base64_url_decode: empty
+    IO.puts(host_call(:base64_url_decode, ""))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "base64_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "base64_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/base64_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled base64 binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_url_encode_decode() {
+    let temp_dir = common::unique_temp_dir("parity-url");
+    let source_path = temp_dir.join("url_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # url_encode: simple string with spaces
+    IO.puts(host_call(:url_encode, "hello world"))
+
+    # url_encode: unreserved chars pass through (RFC 3986)
+    IO.puts(host_call(:url_encode, "hello-world_2.0~test"))
+
+    # url_encode: special chars
+    IO.puts(host_call(:url_encode, "a=1&b=2"))
+
+    # url_encode: empty string
+    IO.puts(host_call(:url_encode, ""))
+
+    # url_decode: percent-encoded
+    IO.puts(host_call(:url_decode, "hello%20world"))
+
+    # url_decode: plus to space
+    IO.puts(host_call(:url_decode, "hello+world"))
+
+    # url_decode: empty
+    IO.puts(host_call(:url_decode, ""))
+
+    # round-trip
+    encoded = host_call(:url_encode, "café & thé")
+    IO.puts(host_call(:url_decode, encoded))
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "url_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "url_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/url_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled url binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_tuple_enum_datetime() {
+    let temp_dir = common::unique_temp_dir("parity-tuple-enum-dt");
+    let source_path = temp_dir.join("tuple_enum_dt_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # tuple_to_list: basic
+    t = {10, 20}
+    IO.puts(inspect(host_call(:tuple_to_list, t)))
+
+    # list_to_tuple: basic
+    l = [30, 40]
+    IO.puts(inspect(host_call(:list_to_tuple, l)))
+
+    # tuple round-trip
+    original = {"hello", 42}
+    listed = host_call(:tuple_to_list, original)
+    back = host_call(:list_to_tuple, listed)
+    IO.puts(inspect(back))
+
+    # enum_sort: integers
+    IO.puts(inspect(host_call(:enum_sort, [5, 1, 3, 2, 4])))
+
+    # enum_sort: strings
+    IO.puts(inspect(host_call(:enum_sort, ["banana", "apple", "cherry"])))
+
+    # enum_sort: empty
+    IO.puts(inspect(host_call(:enum_sort, [])))
+
+    # enum_slice: middle
+    IO.puts(inspect(host_call(:enum_slice, [10, 20, 30, 40, 50], 1, 3)))
+
+    # enum_slice: from start
+    IO.puts(inspect(host_call(:enum_slice, [1, 2, 3, 4], 0, 2)))
+
+    # enum_slice: past end (clamp)
+    IO.puts(inspect(host_call(:enum_slice, [1, 2, 3], 1, 100)))
+
+    # enum_slice: empty result
+    IO.puts(inspect(host_call(:enum_slice, [1, 2, 3], 0, 0)))
+
+    # datetime_unix_now: returns an integer > 0
+    ts = host_call(:datetime_unix_now)
+    IO.puts(ts > 1000000000)
+
+    # datetime_unix_now_ms: returns an integer > unix_now * 1000
+    ts_ms = host_call(:datetime_unix_now_ms)
+    IO.puts(ts_ms > ts * 1000 - 1000)
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "tuple_enum_dt_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "tuple_enum_dt_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output =
+        std::process::Command::new(temp_dir.join(".tonic/build/tuple_enum_dt_parity"))
+            .current_dir(&temp_dir)
+            .output()
+            .expect("compiled tuple/enum/datetime binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    assert_eq!(
+        native_output.stdout,
+        interpreted.stdout,
+        "stdout must match between interpreter and native: native={}, interp={}",
+        String::from_utf8_lossy(&native_output.stdout),
+        String::from_utf8_lossy(&interpreted.stdout)
+    );
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_random_uuid_shell() {
+    let temp_dir = common::unique_temp_dir("parity-random-uuid-shell");
+    let source_path = temp_dir.join("random_uuid_shell_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # shell_quote: simple
+    IO.puts(host_call(:shell_quote, "hello"))
+
+    # shell_quote: empty
+    IO.puts(host_call(:shell_quote, ""))
+
+    # shell_quote: with single quote
+    IO.puts(host_call(:shell_quote, "it's"))
+
+    # shell_quote: with spaces and special chars
+    IO.puts(host_call(:shell_quote, "hello world $HOME"))
+
+    # shell_join: simple list
+    IO.puts(host_call(:shell_join, ["echo", "hello", "world"]))
+
+    # shell_join: empty list
+    IO.puts(host_call(:shell_join, []))
+
+    # shell_join: with special chars
+    IO.puts(host_call(:shell_join, ["grep", "-r", "it's a $var"]))
+
+    # random_boolean: returns a boolean (true or false)
+    rb = host_call(:random_boolean)
+    IO.puts(is_boolean(rb))
+
+    # random_float: returns a float string
+    rf = host_call(:random_float)
+    IO.puts(is_float(rf))
+
+    # random_integer: returns integer in range
+    ri = host_call(:random_integer, 1, 10)
+    IO.puts(ri >= 1 and ri <= 10)
+
+    # random_integer: single value range
+    ri2 = host_call(:random_integer, 42, 42)
+    IO.puts(ri2 == 42)
+
+    # uuid_v4: format check (36 chars, 8-4-4-4-12 with dashes)
+    u = host_call(:uuid_v4)
+    IO.puts(host_call(:str_length, u) == 36)
+
+    # enum_random: returns element from list
+    items = [10, 20, 30]
+    er = host_call(:enum_random, items)
+    IO.puts(er == 10 or er == 20 or er == 30)
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "random_uuid_shell_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interp_stdout = String::from_utf8_lossy(&interpreted.stdout);
+    // All lines should be deterministic except we verify structure
+    // Shell functions are deterministic so we compare those lines exactly
+    let interp_lines: Vec<&str> = interp_stdout.lines().collect();
+    // Lines 0-7: shell_quote and shell_join (deterministic)
+    assert_eq!(interp_lines[0], "'hello'");
+    assert_eq!(interp_lines[1], "''");
+    assert_eq!(interp_lines[2], "'it'\"'\"'s'");
+    assert_eq!(interp_lines[3], "'hello world $HOME'");
+    assert_eq!(interp_lines[4], "'echo' 'hello' 'world'");
+    assert_eq!(interp_lines[5], "");
+    assert_eq!(interp_lines[6], "'grep' '-r' 'it'\"'\"'s a $var'");
+    // Lines 7-12: boolean/float/int/uuid/enum_random checks → all "true"
+    for i in 7..13 {
+        assert_eq!(
+            interp_lines[i], "true",
+            "interpreter line {} should be 'true', got '{}'",
+            i, interp_lines[i]
+        );
+    }
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "random_uuid_shell_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output =
+        std::process::Command::new(temp_dir.join(".tonic/build/random_uuid_shell_parity"))
+            .current_dir(&temp_dir)
+            .output()
+            .expect("compiled random/uuid/shell binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    let native_stdout = String::from_utf8_lossy(&native_output.stdout);
+    let native_lines: Vec<&str> = native_stdout.lines().collect();
+    // Deterministic shell lines must match exactly
+    for i in 0..7 {
+        assert_eq!(
+            native_lines[i], interp_lines[i],
+            "native line {} should match interpreter: native='{}', interp='{}'",
+            i, native_lines[i], interp_lines[i]
+        );
+    }
+    // Non-deterministic lines: verify all are "true"
+    for i in 7..13 {
+        assert_eq!(
+            native_lines[i], "true",
+            "native line {} should be 'true', got '{}'",
+            i, native_lines[i]
+        );
+    }
+}
+
+#[test]
+fn compiled_elf_matches_interpreter_for_env_shuffle_datetime() {
+    let temp_dir = common::unique_temp_dir("parity-env-shuffle-datetime");
+    let source_path = temp_dir.join("env_shuffle_datetime_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # env_set / env_has_key / env_delete round-trip
+    host_call(:env_set, "_TN_PARITY_TEST_KEY", "hello123")
+    IO.puts(host_call(:env_has_key, "_TN_PARITY_TEST_KEY"))
+    host_call(:env_delete, "_TN_PARITY_TEST_KEY")
+    IO.puts(not host_call(:env_has_key, "_TN_PARITY_TEST_KEY"))
+
+    # env_all returns a map containing PATH
+    all = host_call(:env_all)
+    IO.puts(is_map(all))
+
+    # enum_shuffle: same elements when sorted, returns a list
+    shuffled = host_call(:enum_shuffle, [1, 2, 3, 4, 5])
+    IO.puts(host_call(:enum_sort, shuffled) == [1, 2, 3, 4, 5])
+    IO.puts(is_list(shuffled))
+
+    # enum_shuffle: empty list
+    empty_shuf = host_call(:enum_shuffle, [])
+    IO.puts(empty_shuf == [])
+
+    # enum_shuffle: single element
+    single_shuf = host_call(:enum_shuffle, [42])
+    IO.puts(single_shuf == [42])
+
+    # datetime_utc_now: returns a string of length 20 (YYYY-MM-DDTHH:MM:SSZ)
+    dt = host_call(:datetime_utc_now)
+    IO.puts(is_binary(dt))
+    IO.puts(host_call(:str_length, dt) == 20)
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "env_shuffle_datetime_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interp_stdout = String::from_utf8_lossy(&interpreted.stdout);
+    let interp_lines: Vec<&str> = interp_stdout.lines().collect();
+    // All lines should be "true"
+    assert_eq!(
+        interp_lines.len(),
+        9,
+        "expected 9 output lines, got {}",
+        interp_lines.len()
+    );
+    for (i, line) in interp_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "interpreter line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "env_shuffle_datetime_parity.tn"])
+        .assert()
+        .success();
+
+    let native_output =
+        std::process::Command::new(temp_dir.join(".tonic/build/env_shuffle_datetime_parity"))
+            .current_dir(&temp_dir)
+            .output()
+            .expect("compiled env/shuffle/datetime binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    let native_stdout = String::from_utf8_lossy(&native_output.stdout);
+    let native_lines: Vec<&str> = native_stdout.lines().collect();
+    assert_eq!(
+        native_lines.len(),
+        9,
+        "expected 9 native output lines, got {}",
+        native_lines.len()
+    );
+    for (i, line) in native_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "native line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Logger module parity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_logger_module() {
+    let temp_dir = common::unique_temp_dir("parity-logger");
+    let source_path = temp_dir.join("logger_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # logger_info at default level (info=1) — should print to stderr
+    result1 = host_call(:logger_info, "hello world")
+    IO.puts(result1 == :ok)
+
+    # logger_debug at default level — should be suppressed
+    result2 = host_call(:logger_debug, "hidden")
+    IO.puts(result2 == :ok)
+
+    # logger_error at default level — should print to stderr
+    result3 = host_call(:logger_error, "boom")
+    IO.puts(result3 == :ok)
+
+    # logger_warn at default level — should print to stderr
+    result4 = host_call(:logger_warn, "careful")
+    IO.puts(result4 == :ok)
+
+    # set_level / get_level round-trip
+    IO.puts(host_call(:logger_get_level) == :info)
+    host_call(:logger_set_level, :error)
+    IO.puts(host_call(:logger_get_level) == :error)
+
+    # logger_warn should now be suppressed at error level
+    result5 = host_call(:logger_warn, "suppressed")
+    IO.puts(result5 == :ok)
+
+    # logger_error still shown at error level
+    result6 = host_call(:logger_error, "still shown")
+    IO.puts(result6 == :ok)
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    // --- Interpreter ---
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "logger_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interp_stdout = String::from_utf8_lossy(&interpreted.stdout);
+    let interp_lines: Vec<&str> = interp_stdout.lines().collect();
+    assert_eq!(
+        interp_lines.len(),
+        8,
+        "expected 8 output lines, got: {:?}",
+        interp_lines
+    );
+    for (i, line) in interp_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "interpreter line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+
+    // Check interpreter stderr for expected logger output
+    let interp_stderr = String::from_utf8_lossy(&interpreted.stderr);
+    assert!(
+        interp_stderr.contains("[info] hello world"),
+        "interpreter stderr should contain '[info] hello world', got: {}",
+        interp_stderr
+    );
+    assert!(
+        !interp_stderr.contains("[debug] hidden"),
+        "interpreter stderr should NOT contain '[debug] hidden'"
+    );
+    assert!(
+        interp_stderr.contains("[error] boom"),
+        "interpreter stderr should contain '[error] boom'"
+    );
+    assert!(
+        interp_stderr.contains("[warn] careful"),
+        "interpreter stderr should contain '[warn] careful'"
+    );
+    assert!(
+        !interp_stderr.contains("[warn] suppressed"),
+        "interpreter stderr should NOT contain '[warn] suppressed'"
+    );
+    assert!(
+        interp_stderr.contains("[error] still shown"),
+        "interpreter stderr should contain '[error] still shown'"
+    );
+
+    // --- Compile ---
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "logger_parity.tn"])
+        .assert()
+        .success();
+
+    // --- Native ---
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/logger_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled logger binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    let native_stdout = String::from_utf8_lossy(&native_output.stdout);
+    let native_lines: Vec<&str> = native_stdout.lines().collect();
+    assert_eq!(
+        native_lines.len(),
+        8,
+        "expected 8 native output lines, got: {:?}",
+        native_lines
+    );
+    for (i, line) in native_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "native line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+
+    // Check native stderr matches interpreter stderr behavior
+    let native_stderr = String::from_utf8_lossy(&native_output.stderr);
+    assert!(
+        native_stderr.contains("[info] hello world"),
+        "native stderr should contain '[info] hello world', got: {}",
+        native_stderr
+    );
+    assert!(
+        !native_stderr.contains("[debug] hidden"),
+        "native stderr should NOT contain '[debug] hidden'"
+    );
+    assert!(
+        native_stderr.contains("[error] boom"),
+        "native stderr should contain '[error] boom'"
+    );
+    assert!(
+        native_stderr.contains("[warn] careful"),
+        "native stderr should contain '[warn] careful'"
+    );
+    assert!(
+        !native_stderr.contains("[warn] suppressed"),
+        "native stderr should NOT contain '[warn] suppressed'"
+    );
+    assert!(
+        native_stderr.contains("[error] still shown"),
+        "native stderr should contain '[error] still shown'"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Experiment 19: File module + URL query + sys_constant_time_eq parity
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_file_url_query_constant_time_eq() {
+    let temp_dir = common::unique_temp_dir("parity-file-url-ctimeq");
+    let source_path = temp_dir.join("file_url_ctimeq.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # --- file_cp / file_rename / file_stat ---
+    # test_src.txt is pre-created by the test harness
+
+    # file_cp
+    cp_result = host_call(:file_cp, "test_src.txt", "test_copy.txt")
+    IO.puts(cp_result == :ok)
+
+    # file_stat on the copy
+    {stat_tag, stat_map} = host_call(:file_stat, "test_copy.txt")
+    IO.puts(stat_tag == :ok)
+    IO.puts(stat_map["size"] == 10)
+    IO.puts(stat_map["is_file"] == true)
+    IO.puts(stat_map["is_dir"] == false)
+
+    # file_rename
+    rename_result = host_call(:file_rename, "test_copy.txt", "test_moved.txt")
+    IO.puts(rename_result == :ok)
+
+    # stat on moved file should succeed
+    {stat2_tag, _} = host_call(:file_stat, "test_moved.txt")
+    IO.puts(stat2_tag == :ok)
+
+    # stat on old name should fail
+    {stat3_tag, _} = host_call(:file_stat, "test_copy.txt")
+    IO.puts(stat3_tag == :error)
+
+    # --- url_encode_query / url_decode_query ---
+    encoded = host_call(:url_encode_query, %{"name" => "John Doe", "age" => 30})
+    # The query string should contain both pairs
+    IO.puts(host_call(:str_contains, encoded, "name=John+Doe"))
+    IO.puts(host_call(:str_contains, encoded, "age=30"))
+    IO.puts(host_call(:str_contains, encoded, "&"))
+
+    decoded = host_call(:url_decode_query, "color=red&size=42")
+    IO.puts(decoded["color"] == "red")
+    IO.puts(decoded["size"] == "42")
+
+    # empty query string should return empty map
+    empty_map = host_call(:url_decode_query, "")
+    IO.puts(empty_map == %{})
+
+    # --- sys_constant_time_eq ---
+    IO.puts(host_call(:sys_constant_time_eq, "abc", "abc") == true)
+    IO.puts(host_call(:sys_constant_time_eq, "abc", "xyz") == false)
+    IO.puts(host_call(:sys_constant_time_eq, "short", "longer") == false)
+    IO.puts(host_call(:sys_constant_time_eq, "", "") == true)
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    // Pre-create test file for file_cp/file_stat tests
+    fs::write(temp_dir.join("test_src.txt"), "hello file").unwrap();
+
+    // --- Interpreter ---
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "file_url_ctimeq.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interp_stdout = String::from_utf8_lossy(&interpreted.stdout);
+    let interp_lines: Vec<&str> = interp_stdout.lines().collect();
+    assert_eq!(
+        interp_lines.len(),
+        18,
+        "expected 18 output lines, got: {:?}",
+        interp_lines
+    );
+    for (i, line) in interp_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "interpreter line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+
+    // Clean up test files and re-create source for native run
+    let _ = fs::remove_file(temp_dir.join("test_src.txt"));
+    let _ = fs::remove_file(temp_dir.join("test_moved.txt"));
+    fs::write(temp_dir.join("test_src.txt"), "hello file").unwrap();
+
+    // --- Compile ---
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "file_url_ctimeq.tn"])
+        .assert()
+        .success();
+
+    // --- Native ---
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/file_url_ctimeq"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled file_url_ctimeq binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    let native_stdout = String::from_utf8_lossy(&native_output.stdout);
+    let native_lines: Vec<&str> = native_stdout.lines().collect();
+    assert_eq!(
+        native_lines.len(),
+        18,
+        "expected 18 native output lines, got: {:?}",
+        native_lines
+    );
+    for (i, line) in native_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "native line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_assert_module() {
+    let temp_dir = common::unique_temp_dir("parity-assert");
+    let source_path = temp_dir.join("assert_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # assert — truthy passes
+    IO.puts(host_call(:assert, true) == :ok)
+    IO.puts(host_call(:assert, 42) == :ok)
+
+    # assert — falsy fails (result err)
+    IO.puts(host_call(:assert, false) != :ok)
+    IO.puts(host_call(:assert, nil) != :ok)
+
+    # refute — falsy passes
+    IO.puts(host_call(:refute, false) == :ok)
+    IO.puts(host_call(:refute, nil) == :ok)
+
+    # refute — truthy fails
+    IO.puts(host_call(:refute, true) != :ok)
+
+    # assert_equal — equal passes
+    IO.puts(host_call(:assert_equal, 42, 42) == :ok)
+    IO.puts(host_call(:assert_equal, "hello", "hello") == :ok)
+
+    # assert_equal — not equal fails
+    IO.puts(host_call(:assert_equal, 1, 2) != :ok)
+
+    # assert_not_equal — different passes
+    IO.puts(host_call(:assert_not_equal, 1, 2) == :ok)
+
+    # assert_not_equal — same fails
+    IO.puts(host_call(:assert_not_equal, 1, 1) != :ok)
+
+    # assert_contains — string substring
+    IO.puts(host_call(:assert_contains, "hello world", "world") == :ok)
+
+    # assert_contains — list membership
+    IO.puts(host_call(:assert_contains, [1, 2, 3], 2) == :ok)
+
+    # assert_contains — not found fails
+    IO.puts(host_call(:assert_contains, "hello", "xyz") != :ok)
+
+    # skip — returns err result with test_skipped
+    IO.puts(inspect(host_call(:skip, "not ready")) == "err({:test_skipped, \"not ready\"})")
+
+    # assert_raises_check — match passes
+    IO.puts(host_call(:assert_raises_check, "key not found: foo", "key not found") == :ok)
+
+    # assert_raises_check — no match fails
+    IO.puts(host_call(:assert_raises_check, "something else", "key not found") != :ok)
+
+    # assert_match — equal non-maps
+    IO.puts(host_call(:assert_match, 42, 42) == :ok)
+
+    # assert_match — non-equal non-maps fail
+    IO.puts(host_call(:assert_match, 1, 2) != :ok)
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    // --- Interpreter ---
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "assert_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interp_stdout = String::from_utf8_lossy(&interpreted.stdout);
+    let interp_lines: Vec<&str> = interp_stdout.lines().collect();
+    assert_eq!(
+        interp_lines.len(),
+        20,
+        "expected 20 output lines, got: {:?}",
+        interp_lines
+    );
+    for (i, line) in interp_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "interpreter line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+
+    // --- Compile ---
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "assert_parity.tn"])
+        .assert()
+        .success();
+
+    // --- Native ---
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/assert_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled assert binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    let native_stdout = String::from_utf8_lossy(&native_output.stdout);
+    let native_lines: Vec<&str> = native_stdout.lines().collect();
+    assert_eq!(
+        native_lines.len(),
+        20,
+        "expected 20 native output lines, got: {:?}",
+        native_lines
+    );
+    for (i, line) in native_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "native line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compiled_elf_matches_interpreter_for_sys_retry_plan() {
+    let temp_dir = common::unique_temp_dir("parity-retry-plan");
+    let source_path = temp_dir.join("retry_plan_parity.tn");
+    fs::write(
+        &source_path,
+        r#"defmodule Demo do
+  def run() do
+    # exhausted: attempt >= max_attempts
+    result1 = System.retry_plan(500, 3, 3, 1000, 10000, 0, nil)
+    IO.puts(result1[:retry] == false)
+    IO.puts(result1[:delay_ms] == 0)
+    IO.puts(result1[:source] == :exhausted)
+
+    # non_retryable: 200 is not retryable
+    result2 = System.retry_plan(200, 1, 5, 1000, 10000, 0, nil)
+    IO.puts(result2[:retry] == false)
+    IO.puts(result2[:delay_ms] == 0)
+    IO.puts(result2[:source] == :non_retryable)
+
+    # backoff: 500 status, attempt 1, base 1000, max 10000, jitter 0
+    result3 = System.retry_plan(500, 1, 5, 1000, 10000, 0, nil)
+    IO.puts(result3[:retry] == true)
+    IO.puts(result3[:delay_ms] == 1000)
+    IO.puts(result3[:source] == :backoff)
+
+    # backoff: 502 status, attempt 2, base 1000, max 10000, jitter 0
+    result4 = System.retry_plan(502, 2, 5, 1000, 10000, 0, nil)
+    IO.puts(result4[:retry] == true)
+    IO.puts(result4[:delay_ms] == 2000)
+    IO.puts(result4[:source] == :backoff)
+
+    # retry_after: 429 with Retry-After header "3"
+    result5 = System.retry_plan(429, 1, 5, 1000, 10000, 0, "3")
+    IO.puts(result5[:retry] == true)
+    IO.puts(result5[:delay_ms] == 3000)
+    IO.puts(result5[:source] == :retry_after)
+
+    # 429 without valid retry_after falls back to backoff
+    result6 = System.retry_plan(429, 1, 5, 1000, 10000, 0, nil)
+    IO.puts(result6[:retry] == true)
+    IO.puts(result6[:source] == :backoff)
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    // --- Interpreter ---
+    let interpreted = std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["run", "retry_plan_parity.tn"])
+        .output()
+        .expect("interpreter run");
+    assert!(
+        interpreted.status.success(),
+        "interpreter should succeed, stderr: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let interp_stdout = String::from_utf8_lossy(&interpreted.stdout);
+    let interp_lines: Vec<&str> = interp_stdout.lines().collect();
+    assert_eq!(
+        interp_lines.len(),
+        17,
+        "expected 17 output lines, got: {:?}",
+        interp_lines
+    );
+    for (i, line) in interp_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "interpreter line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+
+    // --- Compile ---
+    std::process::Command::new(env!("CARGO_BIN_EXE_tonic"))
+        .current_dir(&temp_dir)
+        .args(["compile", "retry_plan_parity.tn"])
+        .assert()
+        .success();
+
+    // --- Native ---
+    let native_output = std::process::Command::new(temp_dir.join(".tonic/build/retry_plan_parity"))
+        .current_dir(&temp_dir)
+        .output()
+        .expect("compiled retry_plan binary should execute");
+    assert!(
+        native_output.status.success(),
+        "compiled binary should succeed, stderr: {}",
+        String::from_utf8_lossy(&native_output.stderr)
+    );
+    let native_stdout = String::from_utf8_lossy(&native_output.stdout);
+    let native_lines: Vec<&str> = native_stdout.lines().collect();
+    assert_eq!(
+        native_lines.len(),
+        17,
+        "expected 17 native output lines, got: {:?}",
+        native_lines
+    );
+    for (i, line) in native_lines.iter().enumerate() {
+        assert_eq!(
+            *line, "true",
+            "native line {} should be 'true', got '{}'",
+            i, line
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 mod linker_diagnostic_format {

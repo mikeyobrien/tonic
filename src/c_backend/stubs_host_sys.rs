@@ -1131,6 +1131,87 @@ pub(super) fn emit_stubs_host_sys(out: &mut String) {
     return result;
   }
 
+  if (strcmp(key, "sys_retry_plan") == 0) {
+    if (argc != 8) {
+      return tn_runtime_failf("host error: sys_retry_plan expects exactly 7 arguments, found %zu", argc - 1);
+    }
+    long long status_code = tn_expect_host_int_arg("sys_retry_plan", args[1], 1);
+    long long attempt = tn_expect_host_int_arg("sys_retry_plan", args[2], 2);
+    long long max_attempts = tn_expect_host_int_arg("sys_retry_plan", args[3], 3);
+    long long base_delay_ms = tn_expect_host_int_arg("sys_retry_plan", args[4], 4);
+    long long max_delay_ms = tn_expect_host_int_arg("sys_retry_plan", args[5], 5);
+    long long jitter_ms = tn_expect_host_int_arg("sys_retry_plan", args[6], 6);
+
+    /* arg 7: retry_after — string or nil */
+    const char *retry_after = "";
+    TnObj *ra_obj = tn_get_obj(args[7]);
+    if (ra_obj != NULL) {
+      if (ra_obj->kind == TN_OBJ_STRING) {
+        retry_after = ra_obj->as.text.text;
+      } else if (ra_obj->kind != TN_OBJ_NIL) {
+        return tn_runtime_failf("host error: sys_retry_plan expects string-or-nil argument 7; found %s", tn_runtime_value_kind(args[7]));
+      }
+    }
+
+    /* validation */
+    if (status_code < 100 || status_code > 599) {
+      return tn_runtime_failf("host error: sys_retry_plan status out of range: %lld", status_code);
+    }
+    if (attempt < 1) {
+      return tn_runtime_failf("host error: sys_retry_plan attempt must be >= 1, found %lld", attempt);
+    }
+    if (max_attempts < 1 || max_attempts > 20) {
+      return tn_runtime_failf("host error: sys_retry_plan max_attempts out of range: %lld", max_attempts);
+    }
+    if (base_delay_ms < 1 || base_delay_ms > 300000) {
+      return tn_runtime_failf("host error: sys_retry_plan base_delay_ms out of range: %lld", base_delay_ms);
+    }
+    if (max_delay_ms < 1 || max_delay_ms > 300000) {
+      return tn_runtime_failf("host error: sys_retry_plan max_delay_ms out of range: %lld", max_delay_ms);
+    }
+    if (max_delay_ms < base_delay_ms) {
+      return tn_runtime_failf("host error: sys_retry_plan max_delay_ms must be >= base_delay_ms; found %lld < %lld", max_delay_ms, base_delay_ms);
+    }
+    if (jitter_ms < 0 || jitter_ms > 60000) {
+      return tn_runtime_failf("host error: sys_retry_plan jitter_ms out of range: %lld", jitter_ms);
+    }
+    if (jitter_ms > max_delay_ms) {
+      return tn_runtime_failf("host error: sys_retry_plan jitter_ms must be <= max_delay_ms; found %lld > %lld", jitter_ms, max_delay_ms);
+    }
+
+    /* exhausted */
+    if (attempt >= max_attempts) {
+      free(args);
+      return tn_sys_retry_plan_result(0, 0, "exhausted");
+    }
+
+    /* non-retryable status */
+    int retryable = (status_code == 429) || (status_code >= 500 && status_code <= 599);
+    if (!retryable) {
+      free(args);
+      return tn_sys_retry_plan_result(0, 0, "non_retryable");
+    }
+
+    /* retry_after header for 429 */
+    if (status_code == 429) {
+      long long ra_delay = tn_sys_retry_parse_retry_after(retry_after, max_delay_ms);
+      if (ra_delay >= 0) {
+        free(args);
+        return tn_sys_retry_plan_result(1, ra_delay, "retry_after");
+      }
+    }
+
+    /* exponential backoff + jitter */
+    long long backoff = tn_sys_retry_exponential_backoff(attempt, base_delay_ms, max_delay_ms);
+    long long jitter = tn_sys_retry_deterministic_jitter(attempt, status_code, jitter_ms);
+    long long total = backoff + jitter;
+    if (total < backoff) total = max_delay_ms; /* overflow */
+    long long bounded = tn_sys_retry_clamp_delay(total, max_delay_ms);
+
+    free(args);
+    return tn_sys_retry_plan_result(1, bounded, "backoff");
+  }
+
 "###,
     );
 }

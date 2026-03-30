@@ -276,11 +276,155 @@ static int tn_runtime_number_to_f64(TnVal value, double *out) {
 
 static TnVal tn_runtime_float_from_f64(double value) {
   char formatted[64];
-  int formatted_len = snprintf(formatted, sizeof(formatted), "%.15g", value);
+  int formatted_len;
+  double frac_part = value - (double)(long long)value;
+  if ((frac_part == 0.0 || frac_part == -0.0) && isfinite(value)) {
+    formatted_len = snprintf(formatted, sizeof(formatted), "%.1f", value);
+  } else {
+    formatted_len = snprintf(formatted, sizeof(formatted), "%.15g", value);
+  }
   if (formatted_len < 0 || (size_t)formatted_len >= sizeof(formatted)) {
     return tn_runtime_fail("float formatting failed");
   }
   return tn_runtime_const_float((TnVal)(intptr_t)formatted);
+}
+
+static TnVal tn_runtime_arith_add(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left + right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for +: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  return tn_runtime_float_from_f64(l + r);
+}
+
+static TnVal tn_runtime_arith_sub(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left - right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for -: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  return tn_runtime_float_from_f64(l - r);
+}
+
+static TnVal tn_runtime_arith_mul(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left * right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for *: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  return tn_runtime_float_from_f64(l * r);
+}
+
+static TnVal tn_runtime_arith_div(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    if (right == 0) {
+      return tn_runtime_fail("division by zero");
+    }
+    return left / right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for /: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  if (r == 0.0) {
+    return tn_runtime_fail("division by zero");
+  }
+  return tn_runtime_float_from_f64(l / r);
+}
+
+static int tn_runtime_raw_cmp_lt(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left < right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return 0;
+  }
+  return l < r;
+}
+
+static int tn_runtime_raw_cmp_lte(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left <= right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return 0;
+  }
+  return l <= r;
+}
+
+static int tn_runtime_raw_cmp_gt(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left > right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return 0;
+  }
+  return l > r;
+}
+
+static int tn_runtime_raw_cmp_gte(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return left >= right;
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return 0;
+  }
+  return l >= r;
+}
+
+static TnVal tn_runtime_cmp_lt(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return tn_runtime_const_bool((left < right) ? 1 : 0);
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for <: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  return tn_runtime_const_bool((l < r) ? 1 : 0);
+}
+
+static TnVal tn_runtime_cmp_lte(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return tn_runtime_const_bool((left <= right) ? 1 : 0);
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for <=: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  return tn_runtime_const_bool((l <= r) ? 1 : 0);
+}
+
+static TnVal tn_runtime_cmp_gt(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return tn_runtime_const_bool((left > right) ? 1 : 0);
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for >: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  return tn_runtime_const_bool((l > r) ? 1 : 0);
+}
+
+static TnVal tn_runtime_cmp_gte(TnVal left, TnVal right) {
+  if (!tn_is_boxed(left) && !tn_is_boxed(right)) {
+    return tn_runtime_const_bool((left >= right) ? 1 : 0);
+  }
+  double l, r;
+  if (!tn_runtime_number_to_f64(left, &l) || !tn_runtime_number_to_f64(right, &r)) {
+    return tn_runtime_failf("bad argument for >=: %s and %s", tn_runtime_value_kind(left), tn_runtime_value_kind(right));
+  }
+  return tn_runtime_const_bool((l >= r) ? 1 : 0);
 }
 
 static TnVal tn_runtime_abs(TnVal value) {

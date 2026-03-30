@@ -1,9 +1,38 @@
 pub(super) fn emit_stubs_io(out: &mut String) {
     out.push_str(
         r###"static TnVal tn_host_io_puts(TnVal value) {
-  const char *text = tn_expect_host_string_arg("IO.puts", value, 1);
   tn_runtime_observe_stdout();
-  fputs(text, stdout);
+  /* Auto-coerce non-string values, matching interpreter value_to_string(). */
+  if (!tn_is_boxed(value)) {
+    fprintf(stdout, "%" PRId64 "\n", (int64_t)value);
+    return tn_runtime_const_nil();
+  }
+  TnObj *obj = tn_get_obj(value);
+  if (obj == NULL) {
+    fprintf(stdout, "%" PRId64 "\n", (int64_t)value);
+    return tn_runtime_const_nil();
+  }
+  switch (obj->kind) {
+    case TN_OBJ_STRING:
+      fputs(obj->as.text.text, stdout);
+      break;
+    case TN_OBJ_FLOAT:
+      fputs(obj->as.text.text, stdout);
+      break;
+    case TN_OBJ_BOOL:
+      fputs(obj->as.bool_value ? "true" : "false", stdout);
+      break;
+    case TN_OBJ_NIL:
+      /* interpreter returns empty string for nil */
+      break;
+    case TN_OBJ_ATOM:
+      /* interpreter returns atom name without colon prefix */
+      fputs(obj->as.text.text, stdout);
+      break;
+    default:
+      tn_render_value(stdout, value);
+      break;
+  }
   fputc('\n', stdout);
   return tn_runtime_const_nil();
 }
@@ -303,6 +332,23 @@ static void tn_render_value(FILE *out, TnVal value) {
       fputs("<unknown>", out);
       return;
   }
+}
+
+static TnVal tn_runtime_inspect(TnVal value) {
+  /* Render the value into a heap buffer via open_memstream, then wrap as a
+     Tonic string object. */
+  char *buf = NULL;
+  size_t buf_len = 0;
+  FILE *stream = open_memstream(&buf, &buf_len);
+  if (stream == NULL) {
+    fprintf(stderr, "error: native runtime open_memstream failure\n");
+    exit(1);
+  }
+  tn_render_value(stream, value);
+  fclose(stream);
+  TnVal result = tn_runtime_const_string((TnVal)(intptr_t)buf);
+  free(buf);
+  return result;
 }
 
 static void tn_runtime_println(TnVal value) {

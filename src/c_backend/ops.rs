@@ -231,10 +231,18 @@ pub(super) fn emit_c_instructions(
 
 fn emit_c_binary(dest: u32, kind: &MirBinaryKind, left: u32, right: u32, out: &mut String) {
     match kind {
-        MirBinaryKind::AddInt => out.push_str(&format!("  v{dest} = v{left} + v{right};\n")),
-        MirBinaryKind::SubInt => out.push_str(&format!("  v{dest} = v{left} - v{right};\n")),
-        MirBinaryKind::MulInt => out.push_str(&format!("  v{dest} = v{left} * v{right};\n")),
-        MirBinaryKind::DivInt => out.push_str(&format!("  v{dest} = v{left} / v{right};\n")),
+        MirBinaryKind::AddInt => out.push_str(&format!(
+            "  v{dest} = tn_runtime_arith_add(v{left}, v{right});\n"
+        )),
+        MirBinaryKind::SubInt => out.push_str(&format!(
+            "  v{dest} = tn_runtime_arith_sub(v{left}, v{right});\n"
+        )),
+        MirBinaryKind::MulInt => out.push_str(&format!(
+            "  v{dest} = tn_runtime_arith_mul(v{left}, v{right});\n"
+        )),
+        MirBinaryKind::DivInt => out.push_str(&format!(
+            "  v{dest} = tn_runtime_arith_div(v{left}, v{right});\n"
+        )),
         MirBinaryKind::IntDiv => out.push_str(&format!("  v{dest} = v{left} / v{right};\n")),
         MirBinaryKind::RemInt => out.push_str(&format!("  v{dest} = v{left} % v{right};\n")),
         MirBinaryKind::CmpIntEq => out.push_str(&format!(
@@ -244,16 +252,16 @@ fn emit_c_binary(dest: u32, kind: &MirBinaryKind, left: u32, right: u32, out: &m
             "  v{dest} = tn_runtime_const_bool(tn_runtime_value_equal(v{left}, v{right}) ? 0 : 1);\n"
         )),
         MirBinaryKind::CmpIntLt => out.push_str(&format!(
-            "  v{dest} = tn_runtime_const_bool((v{left} < v{right}) ? 1 : 0);\n"
+            "  v{dest} = tn_runtime_cmp_lt(v{left}, v{right});\n"
         )),
         MirBinaryKind::CmpIntLte => out.push_str(&format!(
-            "  v{dest} = tn_runtime_const_bool((v{left} <= v{right}) ? 1 : 0);\n"
+            "  v{dest} = tn_runtime_cmp_lte(v{left}, v{right});\n"
         )),
         MirBinaryKind::CmpIntGt => out.push_str(&format!(
-            "  v{dest} = tn_runtime_const_bool((v{left} > v{right}) ? 1 : 0);\n"
+            "  v{dest} = tn_runtime_cmp_gt(v{left}, v{right});\n"
         )),
         MirBinaryKind::CmpIntGte => out.push_str(&format!(
-            "  v{dest} = tn_runtime_const_bool((v{left} >= v{right}) ? 1 : 0);\n"
+            "  v{dest} = tn_runtime_cmp_gte(v{left}, v{right});\n"
         )),
         MirBinaryKind::Concat => out.push_str(&format!(
             "  v{dest} = tn_runtime_concat(v{left}, v{right});\n"
@@ -623,6 +631,17 @@ fn emit_c_builtin_call(
             }
             out.push_str(&format!(
                 "  v{dest} = tn_runtime_inspect({rendered_args});\n"
+            ));
+        }
+        "is_integer" | "is_float" | "is_number" | "is_atom" | "is_binary" | "is_list"
+        | "is_tuple" | "is_map" | "is_nil" | "is_boolean" => {
+            if args.len() != 1 {
+                return Err(CBackendError::new(format!(
+                    "c backend builtin {builtin} arity mismatch in function {function_name} at offset {offset}"
+                )));
+            }
+            out.push_str(&format!(
+                "  v{dest} = tn_runtime_const_bool(tn_runtime_guard_{builtin}({rendered_args}));\n"
             ));
         }
         other => {

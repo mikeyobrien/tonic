@@ -452,6 +452,7 @@ static TnVal tn_runtime_guard_is_list(TnVal value);
 static TnVal tn_runtime_guard_is_tuple(TnVal value);
 static TnVal tn_runtime_guard_is_map(TnVal value);
 static TnVal tn_runtime_guard_is_nil(TnVal value);
+static TnVal tn_runtime_guard_is_boolean(TnVal value);
 static TnVal tn_runtime_length(TnVal value);
 static TnVal tn_runtime_hd(TnVal value);
 static TnVal tn_runtime_tl(TnVal value);
@@ -459,6 +460,7 @@ static TnVal tn_runtime_elem(TnVal tuple, TnVal index);
 static TnVal tn_runtime_tuple_size(TnVal tuple);
 static TnVal tn_runtime_put_elem(TnVal tuple, TnVal index, TnVal value);
 static void tn_render_value(FILE *out, TnVal value);
+static TnVal tn_runtime_make_err(TnVal value);
 
 static TnVal tn_runtime_fail(const char *message) {
   tn_runtime_emit_failure(message);

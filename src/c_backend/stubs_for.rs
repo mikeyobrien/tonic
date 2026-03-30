@@ -526,16 +526,16 @@ fn emit_dynamic_for_ops(
                 stack.push(temp);
             }
             IrOp::AddInt { .. } => {
-                emit_dynamic_for_binary("+", label, temp_index, &mut stack, out)?
+                emit_dynamic_for_binary("tn_runtime_arith_add", label, temp_index, &mut stack, out)?
             }
             IrOp::SubInt { .. } => {
-                emit_dynamic_for_binary("-", label, temp_index, &mut stack, out)?
+                emit_dynamic_for_binary("tn_runtime_arith_sub", label, temp_index, &mut stack, out)?
             }
             IrOp::MulInt { .. } => {
-                emit_dynamic_for_binary("*", label, temp_index, &mut stack, out)?
+                emit_dynamic_for_binary("tn_runtime_arith_mul", label, temp_index, &mut stack, out)?
             }
             IrOp::DivInt { .. } => {
-                emit_dynamic_for_binary("/", label, temp_index, &mut stack, out)?
+                emit_dynamic_for_binary("tn_runtime_arith_div", label, temp_index, &mut stack, out)?
             }
             IrOp::Range { .. } => {
                 let right = pop_dynamic_for_value(&mut stack, "range right")?;
@@ -576,16 +576,14 @@ fn emit_dynamic_for_ops(
                         ));
                     }
                     CmpKind::Lt | CmpKind::Lte | CmpKind::Gt | CmpKind::Gte => {
-                        let operator = match kind {
-                            CmpKind::Lt => "<",
-                            CmpKind::Lte => "<=",
-                            CmpKind::Gt => ">",
-                            CmpKind::Gte => ">=",
+                        let helper = match kind {
+                            CmpKind::Lt => "tn_runtime_cmp_lt",
+                            CmpKind::Lte => "tn_runtime_cmp_lte",
+                            CmpKind::Gt => "tn_runtime_cmp_gt",
+                            CmpKind::Gte => "tn_runtime_cmp_gte",
                             _ => unreachable!(),
                         };
-                        out.push_str(&format!(
-                            "  TnVal {temp} = tn_runtime_const_bool(({left} {operator} {right}) ? 1 : 0);\n"
-                        ));
+                        out.push_str(&format!("  TnVal {temp} = {helper}({left}, {right});\n"));
                     }
                 }
                 out.push_str(&format!("  tn_runtime_root_register({temp});\n"));
@@ -715,7 +713,7 @@ fn emit_dynamic_for_case_expr(
 }
 
 fn emit_dynamic_for_binary(
-    operator: &str,
+    helper: &str,
     label: &str,
     temp_index: &mut usize,
     stack: &mut Vec<String>,
@@ -725,7 +723,7 @@ fn emit_dynamic_for_binary(
     let left = pop_dynamic_for_value(stack, "binary left operand")?;
     let temp = format!("{label}_tmp_{temp_index}");
     *temp_index += 1;
-    out.push_str(&format!("  TnVal {temp} = {left} {operator} {right};\n"));
+    out.push_str(&format!("  TnVal {temp} = {helper}({left}, {right});\n"));
     out.push_str(&format!("  tn_runtime_root_register({temp});\n"));
     stack.push(temp);
     Ok(())

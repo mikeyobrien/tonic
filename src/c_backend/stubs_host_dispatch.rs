@@ -217,8 +217,10 @@ static char *tn_utf8_map_case(
 
 pub(super) fn emit_stubs_host_dispatch(out: &mut String) {
     out.push_str(
-        "static TnVal tn_runtime_call_compiled_closure(TnVal descriptor_hash, const TnVal *argv, size_t argc);\n\n",
+        "static TnVal tn_runtime_call_compiled_closure(TnVal descriptor_hash, const TnVal *argv, size_t argc);\n",
     );
+    out.push_str("static int tn_runtime_number_to_f64(TnVal value, double *out);\n");
+    out.push_str("static TnVal tn_runtime_float_from_f64(double value);\n\n");
 
     out.push_str(
         "static TnVal tn_runtime_make_closure(TnVal descriptor_hash, TnVal param_count, TnVal capture_count) {\n",
@@ -1299,6 +1301,2244 @@ static TnVal tn_runtime_host_call_varargs_impl(TnVal count, va_list vargs) {\n",
     TnVal tuple_val = tn_runtime_make_tuple(int_val, rest_val);
     free(args);
     return tuple_val;
+  }
+
+  /* ── Integer module ── */
+
+  if (strcmp(key, "integer_to_string") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Integer.to_string expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal arg = args[1];
+    free(args);
+    if (tn_is_boxed(arg)) {
+      return tn_runtime_fail("host error: Integer.to_string expects integer argument");
+    }
+    int64_t n = (int64_t)arg;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lld", (long long)n);
+    return tn_runtime_const_string((TnVal)(intptr_t)buf);
+  }
+
+  if (strcmp(key, "integer_to_string_base") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Integer.to_string_base expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    if (tn_is_boxed(a0) || tn_is_boxed(a1)) {
+      return tn_runtime_fail("host error: Integer.to_string_base expects integer arguments");
+    }
+    int64_t n = (int64_t)a0;
+    int64_t base = (int64_t)a1;
+    if (base < 2 || base > 36) {
+      return tn_runtime_failf("Integer.to_string: base must be 2..36, got %lld", (long long)base);
+    }
+    int negative = n < 0;
+    uint64_t val = negative ? (uint64_t)(-(n + 1)) + 1u : (uint64_t)n;
+    if (val == 0) {
+      return tn_runtime_const_string((TnVal)(intptr_t)"0");
+    }
+    char buf[66]; /* 64 bits + sign + NUL */
+    int pos = 65;
+    buf[pos] = '\0';
+    while (val > 0) {
+      uint64_t d = val % (uint64_t)base;
+      buf[--pos] = (char)(d < 10 ? '0' + d : 'a' + d - 10);
+      val /= (uint64_t)base;
+    }
+    if (negative) {
+      buf[--pos] = '-';
+    }
+    return tn_runtime_const_string((TnVal)(intptr_t)&buf[pos]);
+  }
+
+  if (strcmp(key, "integer_digits") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Integer.digits expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal arg = args[1];
+    free(args);
+    if (tn_is_boxed(arg)) {
+      return tn_runtime_fail("host error: Integer.digits expects integer argument");
+    }
+    int64_t n = (int64_t)arg;
+    uint64_t abs_n = n < 0 ? (uint64_t)(-(n + 1)) + 1u : (uint64_t)n;
+    if (abs_n == 0) {
+      TnVal zero = (TnVal)0;
+      TnObj *list_obj = (TnObj *)malloc(sizeof(TnObj));
+      list_obj->kind = TN_OBJ_LIST;
+      list_obj->as.list.items = (TnVal *)malloc(sizeof(TnVal));
+      list_obj->as.list.items[0] = zero;
+      list_obj->as.list.len = 1;
+      return tn_heap_store(list_obj);
+    }
+    TnVal dbuf[20]; /* max 20 digits for u64 */
+    int count = 0;
+    uint64_t tmp = abs_n;
+    while (tmp > 0) {
+      dbuf[count++] = (TnVal)(int64_t)(tmp % 10);
+      tmp /= 10;
+    }
+    /* reverse */
+    TnObj *list_obj = (TnObj *)malloc(sizeof(TnObj));
+    list_obj->kind = TN_OBJ_LIST;
+    list_obj->as.list.items = (TnVal *)malloc(sizeof(TnVal) * (size_t)count);
+    list_obj->as.list.len = (size_t)count;
+    for (int i = 0; i < count; i++) {
+      list_obj->as.list.items[i] = dbuf[count - 1 - i];
+    }
+    return tn_heap_store(list_obj);
+  }
+
+  if (strcmp(key, "integer_undigits") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Integer.undigits expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal arg = args[1];
+    free(args);
+    TnObj *list_obj = tn_get_obj(arg);
+    if (list_obj == NULL || list_obj->kind != TN_OBJ_LIST) {
+      return tn_runtime_fail("host error: Integer.undigits expects a list");
+    }
+    int64_t result = 0;
+    for (size_t i = 0; i < list_obj->as.list.len; i++) {
+      TnVal item = list_obj->as.list.items[i];
+      if (tn_is_boxed(item)) {
+        return tn_runtime_failf("Integer.undigits: element %zu is not an integer", i);
+      }
+      int64_t d = (int64_t)item;
+      if (d < 0 || d > 9) {
+        return tn_runtime_failf("Integer.undigits: digit out of range 0..9, got %lld", (long long)d);
+      }
+      int64_t next = result * 10 + d;
+      if (next / 10 != result) {
+        return tn_runtime_fail("Integer.undigits: overflow");
+      }
+      result = next;
+    }
+    return (TnVal)result;
+  }
+
+  if (strcmp(key, "integer_gcd") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Integer.gcd expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    if (tn_is_boxed(a0) || tn_is_boxed(a1)) {
+      return tn_runtime_fail("host error: Integer.gcd expects integer arguments");
+    }
+    int64_t x = (int64_t)a0;
+    int64_t y = (int64_t)a1;
+    uint64_t a = x < 0 ? (uint64_t)(-(x + 1)) + 1u : (uint64_t)x;
+    uint64_t b = y < 0 ? (uint64_t)(-(y + 1)) + 1u : (uint64_t)y;
+    while (b != 0) {
+      uint64_t t = b;
+      b = a % b;
+      a = t;
+    }
+    return (TnVal)(int64_t)a;
+  }
+
+  if (strcmp(key, "integer_is_even") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Integer.is_even expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal arg = args[1];
+    free(args);
+    if (tn_is_boxed(arg)) {
+      return tn_runtime_fail("host error: Integer.is_even expects integer argument");
+    }
+    int64_t n = (int64_t)arg;
+    return tn_runtime_const_bool((TnVal)(n % 2 == 0 ? 1 : 0));
+  }
+
+  if (strcmp(key, "integer_is_odd") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Integer.is_odd expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal arg = args[1];
+    free(args);
+    if (tn_is_boxed(arg)) {
+      return tn_runtime_fail("host error: Integer.is_odd expects integer argument");
+    }
+    int64_t n = (int64_t)arg;
+    return tn_runtime_const_bool((TnVal)(n % 2 != 0 ? 1 : 0));
+  }
+
+  if (strcmp(key, "integer_pow") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Integer.pow expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    if (tn_is_boxed(a0) || tn_is_boxed(a1)) {
+      return tn_runtime_fail("host error: Integer.pow expects integer arguments");
+    }
+    int64_t base_val = (int64_t)a0;
+    int64_t exp_val = (int64_t)a1;
+    if (exp_val < 0) {
+      return tn_runtime_fail("Integer.pow: exponent must be non-negative");
+    }
+    int64_t result = 1;
+    for (int64_t i = 0; i < exp_val; i++) {
+      int64_t prev = result;
+      result *= base_val;
+      if (base_val != 0 && result / base_val != prev) {
+        return tn_runtime_fail("Integer.pow: overflow");
+      }
+    }
+    return (TnVal)result;
+  }
+
+  /* ── Math module ── */
+
+  if (strcmp(key, "math_pow") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Math.pow expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    double base_d, exp_d;
+    if (!tn_runtime_number_to_f64(args[1], &base_d) || !tn_runtime_number_to_f64(args[2], &exp_d)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.pow expects numeric arguments");
+    }
+    int both_int = !tn_is_boxed(args[1]) && !tn_is_boxed(args[2]);
+    free(args);
+    double result = pow(base_d, exp_d);
+    if (both_int && result == floor(result) && isfinite(result) && fabs(result) <= (double)INT64_MAX) {
+      return (TnVal)(int64_t)result;
+    }
+    return tn_runtime_float_from_f64(result);
+  }
+
+  if (strcmp(key, "math_sqrt") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.sqrt expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.sqrt expects numeric argument");
+    }
+    free(args);
+    if (val < 0.0) {
+      return tn_runtime_fail("Math.sqrt: cannot take square root of negative number");
+    }
+    return tn_runtime_float_from_f64(sqrt(val));
+  }
+
+  if (strcmp(key, "math_abs") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.abs expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal arg = args[1];
+    free(args);
+    if (!tn_is_boxed(arg)) {
+      int64_t n = (int64_t)arg;
+      return (TnVal)(n < 0 ? -n : n);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(arg, &val)) {
+      return tn_runtime_fail("host error: Math.abs expects numeric argument");
+    }
+    return tn_runtime_float_from_f64(fabs(val));
+  }
+
+  if (strcmp(key, "math_min") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Math.min expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    double a, b;
+    if (!tn_runtime_number_to_f64(args[1], &a) || !tn_runtime_number_to_f64(args[2], &b)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.min expects numeric arguments");
+    }
+    TnVal result = (a <= b) ? args[1] : args[2];
+    tn_runtime_retain(result);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "math_max") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Math.max expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    double a, b;
+    if (!tn_runtime_number_to_f64(args[1], &a) || !tn_runtime_number_to_f64(args[2], &b)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.max expects numeric arguments");
+    }
+    TnVal result = (a >= b) ? args[1] : args[2];
+    tn_runtime_retain(result);
+    free(args);
+    return result;
+  }
+
+  if (strcmp(key, "math_log") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.log expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.log expects numeric argument");
+    }
+    free(args);
+    if (val <= 0.0) {
+      return tn_runtime_fail("Math.log: argument must be positive");
+    }
+    return tn_runtime_float_from_f64(log(val));
+  }
+
+  if (strcmp(key, "math_log2") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.log2 expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.log2 expects numeric argument");
+    }
+    free(args);
+    if (val <= 0.0) {
+      return tn_runtime_fail("Math.log2: argument must be positive");
+    }
+    return tn_runtime_float_from_f64(log2(val));
+  }
+
+  if (strcmp(key, "math_log10") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.log10 expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.log10 expects numeric argument");
+    }
+    free(args);
+    if (val <= 0.0) {
+      return tn_runtime_fail("Math.log10: argument must be positive");
+    }
+    return tn_runtime_float_from_f64(log10(val));
+  }
+
+  if (strcmp(key, "math_sin") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.sin expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.sin expects numeric argument");
+    }
+    free(args);
+    return tn_runtime_float_from_f64(sin(val));
+  }
+
+  if (strcmp(key, "math_cos") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.cos expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.cos expects numeric argument");
+    }
+    free(args);
+    return tn_runtime_float_from_f64(cos(val));
+  }
+
+  if (strcmp(key, "math_tan") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.tan expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.tan expects numeric argument");
+    }
+    free(args);
+    return tn_runtime_float_from_f64(tan(val));
+  }
+
+  if (strcmp(key, "math_ceil") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.ceil expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.ceil expects numeric argument");
+    }
+    free(args);
+    return (TnVal)(int64_t)ceil(val);
+  }
+
+  if (strcmp(key, "math_floor") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.floor expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.floor expects numeric argument");
+    }
+    free(args);
+    return (TnVal)(int64_t)floor(val);
+  }
+
+  if (strcmp(key, "math_round") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Math.round expects exactly 1 argument, found %zu", argc - 1);
+    }
+    double val;
+    if (!tn_runtime_number_to_f64(args[1], &val)) {
+      free(args);
+      return tn_runtime_fail("host error: Math.round expects numeric argument");
+    }
+    free(args);
+    return (TnVal)(int64_t)round(val);
+  }
+
+  /* ── Map module ── */
+
+  if (strcmp(key, "map_keys") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Map.keys expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1];
+    free(args);
+    return tn_host_map_keys(a0);
+  }
+
+  if (strcmp(key, "map_values") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Map.values expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1];
+    free(args);
+    return tn_host_map_values(a0);
+  }
+
+  if (strcmp(key, "map_merge") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.merge expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    return tn_host_map_merge(a0, a1);
+  }
+
+  if (strcmp(key, "map_drop") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.drop expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    return tn_host_map_filter_keys(a0, a1, 0);
+  }
+
+  if (strcmp(key, "map_take") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.take expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    return tn_host_map_filter_keys(a0, a1, 1);
+  }
+
+  if (strcmp(key, "map_has_key") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.has_key? expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    return tn_host_map_has_key(a0, a1);
+  }
+
+  if (strcmp(key, "map_get") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: Map.get expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2], a2 = args[3];
+    free(args);
+    return tn_host_map_get(a0, a1, a2);
+  }
+
+  if (strcmp(key, "map_put") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: Map.put expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2], a2 = args[3];
+    free(args);
+    return tn_runtime_map_put(a0, a1, a2);
+  }
+
+  if (strcmp(key, "map_delete") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Map.delete expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    return tn_host_map_delete(a0, a1);
+  }
+
+  /* ── Float module ── */
+
+  if (strcmp(key, "float_to_string") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Float.to_string expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1];
+    free(args);
+    double val;
+    if (!tn_is_boxed(a0)) {
+      /* integer → float string like "42.0" */
+      char buf[64];
+      snprintf(buf, sizeof(buf), "%lld.0", (long long)(int64_t)a0);
+      return tn_runtime_const_string((TnVal)(intptr_t)buf);
+    }
+    if (!tn_runtime_number_to_f64(a0, &val)) {
+      return tn_runtime_fail("host error: Float.to_string expects numeric argument");
+    }
+    /* already a float object — return its string representation */
+    TnObj *fobj = tn_get_obj(a0);
+    if (fobj != NULL && fobj->kind == TN_OBJ_STRING) {
+      tn_runtime_retain(a0);
+      return a0;
+    }
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%g", val);
+    return tn_runtime_const_string((TnVal)(intptr_t)buf);
+  }
+
+  if (strcmp(key, "float_round") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Float.round expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1], a1 = args[2];
+    free(args);
+    double val;
+    if (!tn_runtime_number_to_f64(a0, &val)) {
+      return tn_runtime_fail("host error: Float.round expects numeric argument 1");
+    }
+    if (tn_is_boxed(a1)) {
+      return tn_runtime_fail("host error: Float.round expects integer precision");
+    }
+    int64_t precision = (int64_t)a1;
+    double factor = pow(10.0, (double)precision);
+    double rounded = round(val * factor) / factor;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%g", rounded);
+    return tn_runtime_const_float((TnVal)(intptr_t)buf);
+  }
+
+  if (strcmp(key, "float_ceil") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Float.ceil expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1];
+    free(args);
+    double val;
+    if (!tn_runtime_number_to_f64(a0, &val)) {
+      return tn_runtime_fail("host error: Float.ceil expects numeric argument");
+    }
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%g", ceil(val));
+    return tn_runtime_const_float((TnVal)(intptr_t)buf);
+  }
+
+  if (strcmp(key, "float_floor") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Float.floor expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal a0 = args[1];
+    free(args);
+    double val;
+    if (!tn_runtime_number_to_f64(a0, &val)) {
+      return tn_runtime_fail("host error: Float.floor expects numeric argument");
+    }
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%g", floor(val));
+    return tn_runtime_const_float((TnVal)(intptr_t)buf);
+  }
+
+  /* ── Bitwise module ── */
+
+  if (strcmp(key, "bitwise_band") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Bitwise.band expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    if (tn_is_boxed(args[1]) || tn_is_boxed(args[2])) {
+      return tn_runtime_fail("host error: Bitwise.band expects integer arguments");
+    }
+    int64_t result = (int64_t)args[1] & (int64_t)args[2];
+    free(args);
+    return (TnVal)result;
+  }
+
+  if (strcmp(key, "bitwise_bor") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Bitwise.bor expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    if (tn_is_boxed(args[1]) || tn_is_boxed(args[2])) {
+      return tn_runtime_fail("host error: Bitwise.bor expects integer arguments");
+    }
+    int64_t result = (int64_t)args[1] | (int64_t)args[2];
+    free(args);
+    return (TnVal)result;
+  }
+
+  if (strcmp(key, "bitwise_bxor") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Bitwise.bxor expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    if (tn_is_boxed(args[1]) || tn_is_boxed(args[2])) {
+      return tn_runtime_fail("host error: Bitwise.bxor expects integer arguments");
+    }
+    int64_t result = (int64_t)args[1] ^ (int64_t)args[2];
+    free(args);
+    return (TnVal)result;
+  }
+
+  if (strcmp(key, "bitwise_bnot") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Bitwise.bnot expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (tn_is_boxed(args[1])) {
+      return tn_runtime_fail("host error: Bitwise.bnot expects integer argument");
+    }
+    int64_t result = ~(int64_t)args[1];
+    free(args);
+    return (TnVal)result;
+  }
+
+  if (strcmp(key, "bitwise_bsl") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Bitwise.bsl expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    if (tn_is_boxed(args[1]) || tn_is_boxed(args[2])) {
+      return tn_runtime_fail("host error: Bitwise.bsl expects integer arguments");
+    }
+    int64_t shift = (int64_t)args[2];
+    if (shift < 0 || shift > 63) {
+      free(args);
+      return tn_runtime_failf("host error: Bitwise.bsl: shift amount must be 0..63, got %lld", (long long)shift);
+    }
+    int64_t result = (int64_t)args[1] << shift;
+    free(args);
+    return (TnVal)result;
+  }
+
+  if (strcmp(key, "bitwise_bsr") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Bitwise.bsr expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    if (tn_is_boxed(args[1]) || tn_is_boxed(args[2])) {
+      return tn_runtime_fail("host error: Bitwise.bsr expects integer arguments");
+    }
+    int64_t shift = (int64_t)args[2];
+    if (shift < 0 || shift > 63) {
+      free(args);
+      return tn_runtime_failf("host error: Bitwise.bsr: shift amount must be 0..63, got %lld", (long long)shift);
+    }
+    int64_t result = (int64_t)args[1] >> shift;
+    free(args);
+    return (TnVal)result;
+  }
+
+  if (strcmp(key, "hex_encode") == 0 || strcmp(key, "hex_encode_upper") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Hex.encode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Hex.encode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Hex.encode expects a string argument");
+    }
+    const char *input = str_obj->as.text.text;
+    size_t input_len = strlen(input);
+    int upper = (strcmp(key, "hex_encode_upper") == 0);
+    const char *fmt = upper ? "%02X" : "%02x";
+    size_t hex_len = input_len * 2;
+    char *hex_buf = (char *)malloc(hex_len + 1);
+    if (hex_buf == NULL) {
+      free(args);
+      return tn_runtime_fail("host error: Hex.encode: out of memory");
+    }
+    for (size_t i = 0; i < input_len; i++) {
+      sprintf(hex_buf + i * 2, fmt, (unsigned char)input[i]);
+    }
+    hex_buf[hex_len] = '\0';
+    TnObj *result_obj = tn_new_obj(TN_OBJ_STRING);
+    result_obj->as.text.text = hex_buf;
+    free(args);
+    return tn_heap_store(result_obj);
+  }
+
+  if (strcmp(key, "hex_decode") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Hex.decode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Hex.decode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Hex.decode expects a string argument");
+    }
+    const char *input = str_obj->as.text.text;
+    size_t input_len = strlen(input);
+    if (input_len % 2 != 0) {
+      free(args);
+      TnVal err_tag = tn_runtime_const_atom((TnVal)(intptr_t)"error");
+      TnVal msg_val = tn_runtime_const_string((TnVal)(intptr_t)"odd-length hex string");
+      return tn_runtime_make_tuple(err_tag, msg_val);
+    }
+    size_t out_len = input_len / 2;
+    char *out_buf = (char *)malloc(out_len + 1);
+    if (out_buf == NULL) {
+      free(args);
+      return tn_runtime_fail("host error: Hex.decode: out of memory");
+    }
+    for (size_t i = 0; i < input_len; i += 2) {
+      int hi = -1, lo = -1;
+      unsigned char c = (unsigned char)input[i];
+      if (c >= '0' && c <= '9') hi = c - '0';
+      else if (c >= 'a' && c <= 'f') hi = c - 'a' + 10;
+      else if (c >= 'A' && c <= 'F') hi = c - 'A' + 10;
+      c = (unsigned char)input[i + 1];
+      if (c >= '0' && c <= '9') lo = c - '0';
+      else if (c >= 'a' && c <= 'f') lo = c - 'a' + 10;
+      else if (c >= 'A' && c <= 'F') lo = c - 'A' + 10;
+      if (hi < 0 || lo < 0) {
+        free(out_buf);
+        free(args);
+        char err_msg[128];
+        snprintf(err_msg, sizeof(err_msg), "invalid hex character at position %zu", hi < 0 ? i : i + 1);
+        TnVal err_tag = tn_runtime_const_atom((TnVal)(intptr_t)"error");
+        TnVal msg_val = tn_runtime_const_string((TnVal)(intptr_t)err_msg);
+        return tn_runtime_make_tuple(err_tag, msg_val);
+      }
+      out_buf[i / 2] = (char)((hi << 4) | lo);
+    }
+    out_buf[out_len] = '\0';
+    free(args);
+    TnVal ok_tag = tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    TnObj *decoded_obj = tn_new_obj(TN_OBJ_STRING);
+    decoded_obj->as.text.text = out_buf;
+    TnVal decoded_val = tn_heap_store(decoded_obj);
+    return tn_runtime_make_tuple(ok_tag, decoded_val);
+  }
+
+  /* ---- Base64 encode (standard, with = padding) ---- */
+  if (strcmp(key, "base64_encode") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Base64.encode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.encode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.encode expects a string argument");
+    }
+    const char *input = str_obj->as.text.text;
+    size_t input_len = strlen(input);
+    static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t full_groups = input_len / 3;
+    size_t remainder = input_len % 3;
+    size_t encoded_len = (remainder == 0) ? full_groups * 4 : (full_groups + 1) * 4;
+    char *enc = (char *)malloc(encoded_len + 1);
+    if (enc == NULL) { free(args); return tn_runtime_fail("host error: Base64.encode: out of memory"); }
+    const unsigned char *src = (const unsigned char *)input;
+    size_t si = 0, di = 0;
+    while (si + 3 <= input_len) {
+      unsigned int chunk = ((unsigned int)src[si] << 16) | ((unsigned int)src[si+1] << 8) | (unsigned int)src[si+2];
+      enc[di++] = b64_table[(chunk >> 18) & 0x3f];
+      enc[di++] = b64_table[(chunk >> 12) & 0x3f];
+      enc[di++] = b64_table[(chunk >> 6) & 0x3f];
+      enc[di++] = b64_table[chunk & 0x3f];
+      si += 3;
+    }
+    if (remainder == 1) {
+      unsigned int chunk = ((unsigned int)src[si] << 16);
+      enc[di++] = b64_table[(chunk >> 18) & 0x3f];
+      enc[di++] = b64_table[(chunk >> 12) & 0x3f];
+      enc[di++] = '=';
+      enc[di++] = '=';
+    } else if (remainder == 2) {
+      unsigned int chunk = ((unsigned int)src[si] << 16) | ((unsigned int)src[si+1] << 8);
+      enc[di++] = b64_table[(chunk >> 18) & 0x3f];
+      enc[di++] = b64_table[(chunk >> 12) & 0x3f];
+      enc[di++] = b64_table[(chunk >> 6) & 0x3f];
+      enc[di++] = '=';
+    }
+    enc[di] = '\0';
+    TnObj *result_obj = tn_new_obj(TN_OBJ_STRING);
+    result_obj->as.text.text = enc;
+    free(args);
+    return tn_heap_store(result_obj);
+  }
+
+  /* ---- Base64 decode (standard) ---- */
+  if (strcmp(key, "base64_decode") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Base64.decode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.decode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.decode expects a string argument");
+    }
+    const char *input = str_obj->as.text.text;
+    size_t input_len = strlen(input);
+    free(args);
+    if (input_len == 0) {
+      TnObj *empty_obj = tn_new_obj(TN_OBJ_STRING);
+      empty_obj->as.text.text = strdup("");
+      return tn_heap_store(empty_obj);
+    }
+    /* Build reverse lookup */
+    static const char b64_std[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int b64_rev[256];
+    for (int i = 0; i < 256; i++) b64_rev[i] = -1;
+    for (int i = 0; i < 64; i++) b64_rev[(unsigned char)b64_std[i]] = i;
+    b64_rev[(unsigned char)'='] = 0; /* padding treated as 0 */
+    /* Strip trailing padding to count real chars */
+    size_t pad = 0;
+    if (input_len >= 1 && input[input_len - 1] == '=') pad++;
+    if (input_len >= 2 && input[input_len - 2] == '=') pad++;
+    size_t out_len = (input_len / 4) * 3 - pad;
+    char *out = (char *)malloc(out_len + 1);
+    if (out == NULL) return tn_runtime_fail("host error: Base64.decode: out of memory");
+    size_t oi = 0;
+    for (size_t i = 0; i < input_len; i += 4) {
+      int a = b64_rev[(unsigned char)input[i]];
+      int b = (i+1 < input_len) ? b64_rev[(unsigned char)input[i+1]] : -1;
+      int c = (i+2 < input_len) ? b64_rev[(unsigned char)input[i+2]] : -1;
+      int d = (i+3 < input_len) ? b64_rev[(unsigned char)input[i+3]] : -1;
+      if (a < 0 || b < 0 || c < 0 || d < 0) {
+        free(out);
+        return tn_runtime_fail("host error: Base64.decode: invalid base64 input");
+      }
+      unsigned int triple = ((unsigned int)a << 18) | ((unsigned int)b << 12) | ((unsigned int)c << 6) | (unsigned int)d;
+      if (oi < out_len) out[oi++] = (char)((triple >> 16) & 0xff);
+      if (oi < out_len) out[oi++] = (char)((triple >> 8) & 0xff);
+      if (oi < out_len) out[oi++] = (char)(triple & 0xff);
+    }
+    out[out_len] = '\0';
+    TnObj *dec_obj = tn_new_obj(TN_OBJ_STRING);
+    dec_obj->as.text.text = out;
+    return tn_heap_store(dec_obj);
+  }
+
+  /* ---- Base64 URL-safe encode (no padding) ---- */
+  if (strcmp(key, "base64_url_encode") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Base64.url_encode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.url_encode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.url_encode expects a string argument");
+    }
+    const char *input = str_obj->as.text.text;
+    size_t input_len = strlen(input);
+    static const char url_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    size_t full_groups = input_len / 3;
+    size_t remainder = input_len % 3;
+    size_t encoded_len = full_groups * 4 + (remainder == 0 ? 0 : (remainder + 1));
+    char *enc = (char *)malloc(encoded_len + 1);
+    if (enc == NULL) { free(args); return tn_runtime_fail("host error: Base64.url_encode: out of memory"); }
+    const unsigned char *src = (const unsigned char *)input;
+    size_t si = 0, di = 0;
+    while (si + 3 <= input_len) {
+      unsigned int chunk = ((unsigned int)src[si] << 16) | ((unsigned int)src[si+1] << 8) | (unsigned int)src[si+2];
+      enc[di++] = url_table[(chunk >> 18) & 0x3f];
+      enc[di++] = url_table[(chunk >> 12) & 0x3f];
+      enc[di++] = url_table[(chunk >> 6) & 0x3f];
+      enc[di++] = url_table[chunk & 0x3f];
+      si += 3;
+    }
+    if (remainder == 1) {
+      unsigned int chunk = ((unsigned int)src[si] << 16);
+      enc[di++] = url_table[(chunk >> 18) & 0x3f];
+      enc[di++] = url_table[(chunk >> 12) & 0x3f];
+    } else if (remainder == 2) {
+      unsigned int chunk = ((unsigned int)src[si] << 16) | ((unsigned int)src[si+1] << 8);
+      enc[di++] = url_table[(chunk >> 18) & 0x3f];
+      enc[di++] = url_table[(chunk >> 12) & 0x3f];
+      enc[di++] = url_table[(chunk >> 6) & 0x3f];
+    }
+    enc[di] = '\0';
+    TnObj *result_obj = tn_new_obj(TN_OBJ_STRING);
+    result_obj->as.text.text = enc;
+    free(args);
+    return tn_heap_store(result_obj);
+  }
+
+  /* ---- Base64 URL-safe decode (no padding) ---- */
+  if (strcmp(key, "base64_url_decode") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Base64.url_decode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.url_decode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Base64.url_decode expects a string argument");
+    }
+    const char *input = str_obj->as.text.text;
+    size_t input_len = strlen(input);
+    free(args);
+    if (input_len == 0) {
+      TnObj *empty_obj = tn_new_obj(TN_OBJ_STRING);
+      empty_obj->as.text.text = strdup("");
+      return tn_heap_store(empty_obj);
+    }
+    static const char url_alpha[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    int url_rev[256];
+    for (int i = 0; i < 256; i++) url_rev[i] = -1;
+    for (int i = 0; i < 64; i++) url_rev[(unsigned char)url_alpha[i]] = i;
+    /* Pad input to multiple of 4 for decoding */
+    size_t padded_len = input_len;
+    if (padded_len % 4 != 0) padded_len += 4 - (padded_len % 4);
+    size_t pad = padded_len - input_len;
+    size_t out_len = (padded_len / 4) * 3 - pad;
+    char *out = (char *)malloc(out_len + 1);
+    if (out == NULL) return tn_runtime_fail("host error: Base64.url_decode: out of memory");
+    size_t oi = 0;
+    for (size_t i = 0; i < input_len; i += 4) {
+      int vals[4] = {0, 0, 0, 0};
+      size_t chunk_len = 0;
+      for (size_t j = 0; j < 4 && (i + j) < input_len; j++) {
+        int v = url_rev[(unsigned char)input[i + j]];
+        if (v < 0) {
+          free(out);
+          return tn_runtime_fail("host error: Base64.url_decode: invalid base64url input");
+        }
+        vals[j] = v;
+        chunk_len++;
+      }
+      unsigned int triple = ((unsigned int)vals[0] << 18) | ((unsigned int)vals[1] << 12) | ((unsigned int)vals[2] << 6) | (unsigned int)vals[3];
+      if (oi < out_len) out[oi++] = (char)((triple >> 16) & 0xff);
+      if (chunk_len > 2 && oi < out_len) out[oi++] = (char)((triple >> 8) & 0xff);
+      if (chunk_len > 3 && oi < out_len) out[oi++] = (char)(triple & 0xff);
+    }
+    out[out_len] = '\0';
+    TnObj *dec_obj = tn_new_obj(TN_OBJ_STRING);
+    dec_obj->as.text.text = out;
+    return tn_heap_store(dec_obj);
+  }
+
+  /* ---- URL percent-encode (RFC 3986) ---- */
+  if (strcmp(key, "url_encode") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Url.encode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Url.encode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Url.encode expects a string argument");
+    }
+    const char *src = str_obj->as.text.text;
+    size_t slen = strlen(src);
+    /* Worst case: every byte becomes %XX (3x) */
+    char *enc = (char *)malloc(slen * 3 + 1);
+    if (enc == NULL) { free(args); return tn_runtime_fail("host error: Url.encode: out of memory"); }
+    size_t di = 0;
+    static const char hex_upper[] = "0123456789ABCDEF";
+    for (size_t si = 0; si < slen; si++) {
+      unsigned char c = (unsigned char)src[si];
+      /* RFC 3986 unreserved: ALPHA / DIGIT / - / . / _ / ~ */
+      if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+          c == '-' || c == '.' || c == '_' || c == '~') {
+        enc[di++] = (char)c;
+      } else {
+        enc[di++] = '%';
+        enc[di++] = hex_upper[(c >> 4) & 0x0f];
+        enc[di++] = hex_upper[c & 0x0f];
+      }
+    }
+    enc[di] = '\0';
+    TnObj *result_obj = tn_new_obj(TN_OBJ_STRING);
+    result_obj->as.text.text = enc;
+    free(args);
+    return tn_heap_store(result_obj);
+  }
+
+  /* ---- URL percent-decode ---- */
+  if (strcmp(key, "url_decode") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Url.decode expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Url.decode expects a string argument");
+    }
+    TnObj *str_obj = tn_get_obj(args[1]);
+    if (str_obj == NULL || str_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Url.decode expects a string argument");
+    }
+    const char *src = str_obj->as.text.text;
+    size_t slen = strlen(src);
+    char *dec = (char *)malloc(slen + 1);
+    if (dec == NULL) { free(args); return tn_runtime_fail("host error: Url.decode: out of memory"); }
+    size_t di = 0;
+    for (size_t si = 0; si < slen; ) {
+      if (src[si] == '%') {
+        if (si + 2 >= slen) {
+          free(dec);
+          free(args);
+          return tn_runtime_failf("host error: Url.decode: incomplete percent-encoding at position %zu", si);
+        }
+        unsigned char hi = (unsigned char)src[si + 1];
+        unsigned char lo = (unsigned char)src[si + 2];
+        /* Convert hex chars to nibble values */
+        int h = -1, l = -1;
+        if (hi >= '0' && hi <= '9') h = hi - '0';
+        else if (hi >= 'A' && hi <= 'F') h = hi - 'A' + 10;
+        else if (hi >= 'a' && hi <= 'f') h = hi - 'a' + 10;
+        if (lo >= '0' && lo <= '9') l = lo - '0';
+        else if (lo >= 'A' && lo <= 'F') l = lo - 'A' + 10;
+        else if (lo >= 'a' && lo <= 'f') l = lo - 'a' + 10;
+        if (h >= 0 && l >= 0) {
+          dec[di++] = (char)((h << 4) | l);
+          si += 3;
+        } else {
+          /* Invalid hex — pass through the % literally */
+          free(dec);
+          free(args);
+          return tn_runtime_failf("host error: Url.decode: invalid hex digits at position %zu", si);
+        }
+      } else if (src[si] == '+') {
+        dec[di++] = ' ';
+        si++;
+      } else {
+        dec[di++] = src[si++];
+      }
+    }
+    dec[di] = '\0';
+    TnObj *result_obj = tn_new_obj(TN_OBJ_STRING);
+    result_obj->as.text.text = dec;
+    free(args);
+    return tn_heap_store(result_obj);
+  }
+
+  /* tuple_to_list: converts a 2-element tuple into a 2-element list */
+  if (strcmp(key, "tuple_to_list") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Tuple.to_list expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Tuple.to_list expects tuple argument; found number");
+    }
+    TnObj *tup = tn_get_obj(args[1]);
+    if (tup == NULL || tup->kind != TN_OBJ_TUPLE) {
+      free(args);
+      return tn_runtime_failf("host error: Tuple.to_list expects tuple argument; found %s", tn_runtime_value_kind(args[1]));
+    }
+    TnObj *list_obj = tn_new_obj(TN_OBJ_LIST);
+    list_obj->as.list.len = 2;
+    list_obj->as.list.items = (TnVal *)calloc(2, sizeof(TnVal));
+    if (list_obj->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    list_obj->as.list.items[0] = tup->as.tuple.left;
+    list_obj->as.list.items[1] = tup->as.tuple.right;
+    free(args);
+    return tn_heap_store(list_obj);
+  }
+
+  /* list_to_tuple: converts a 2-element list into a tuple */
+  if (strcmp(key, "list_to_tuple") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: List.to_tuple expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: List.to_tuple expects list argument; found number");
+    }
+    TnObj *list = tn_get_obj(args[1]);
+    if (list == NULL || list->kind != TN_OBJ_LIST) {
+      free(args);
+      return tn_runtime_failf("host error: List.to_tuple expects list argument; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (list->as.list.len != 2) {
+      free(args);
+      return tn_runtime_failf("host error: List.to_tuple expects a 2-element list, found %zu elements", list->as.list.len);
+    }
+    TnObj *tup_obj = tn_new_obj(TN_OBJ_TUPLE);
+    tup_obj->as.tuple.left = list->as.list.items[0];
+    tup_obj->as.tuple.right = list->as.list.items[1];
+    free(args);
+    return tn_heap_store(tup_obj);
+  }
+
+  /* enum_sort: sorts a list (ints by value, strings lexicographically) */
+  if (strcmp(key, "enum_sort") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Enum.sort expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Enum.sort expects list argument; found number");
+    }
+    TnObj *src_list = tn_get_obj(args[1]);
+    if (src_list == NULL || src_list->kind != TN_OBJ_LIST) {
+      free(args);
+      return tn_runtime_failf("host error: Enum.sort expects list argument; found %s", tn_runtime_value_kind(args[1]));
+    }
+    size_t len = src_list->as.list.len;
+    TnObj *sorted_obj = tn_new_obj(TN_OBJ_LIST);
+    sorted_obj->as.list.len = len;
+    sorted_obj->as.list.items = len == 0 ? NULL : (TnVal *)calloc(len, sizeof(TnVal));
+    if (len > 0 && sorted_obj->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    for (size_t i = 0; i < len; i++) {
+      sorted_obj->as.list.items[i] = src_list->as.list.items[i];
+    }
+    /* insertion sort — stable, simple, fine for typical list sizes */
+    for (size_t i = 1; i < len; i++) {
+      TnVal key_val = sorted_obj->as.list.items[i];
+      size_t j = i;
+      while (j > 0) {
+        TnVal a = sorted_obj->as.list.items[j - 1];
+        TnVal b = key_val;
+        int cmp = 0;
+        /* both unboxed → integer comparison */
+        if (!tn_is_boxed(a) && !tn_is_boxed(b)) {
+          int64_t ia = (int64_t)a;
+          int64_t ib = (int64_t)b;
+          cmp = (ia > ib) - (ia < ib);
+        } else if (tn_is_boxed(a) && tn_is_boxed(b)) {
+          TnObj *oa = tn_get_obj(a);
+          TnObj *ob = tn_get_obj(b);
+          if (oa != NULL && ob != NULL && oa->kind == TN_OBJ_STRING && ob->kind == TN_OBJ_STRING) {
+            cmp = strcmp(oa->as.text.text, ob->as.text.text);
+          }
+          /* floats */
+          if (oa != NULL && ob != NULL && oa->kind == TN_OBJ_FLOAT && ob->kind == TN_OBJ_FLOAT) {
+            double fa = strtod(oa->as.text.text, NULL);
+            double fb = strtod(ob->as.text.text, NULL);
+            cmp = (fa > fb) - (fa < fb);
+          }
+        }
+        if (cmp <= 0) break;
+        sorted_obj->as.list.items[j] = sorted_obj->as.list.items[j - 1];
+        j--;
+      }
+      sorted_obj->as.list.items[j] = key_val;
+    }
+    free(args);
+    return tn_heap_store(sorted_obj);
+  }
+
+  /* enum_slice: returns a sub-list from start index with given count */
+  if (strcmp(key, "enum_slice") == 0) {
+    if (argc != 4) {
+      return tn_runtime_failf("host error: Enum.slice expects exactly 3 arguments, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Enum.slice expects list argument 1; found number");
+    }
+    TnObj *src_list = tn_get_obj(args[1]);
+    if (src_list == NULL || src_list->kind != TN_OBJ_LIST) {
+      free(args);
+      return tn_runtime_failf("host error: Enum.slice expects list argument 1; found %s", tn_runtime_value_kind(args[1]));
+    }
+    if (tn_is_boxed(args[2])) {
+      free(args);
+      return tn_runtime_fail("host error: Enum.slice expects int start; found non-integer");
+    }
+    if (tn_is_boxed(args[3])) {
+      free(args);
+      return tn_runtime_fail("host error: Enum.slice expects int count; found non-integer");
+    }
+    int64_t start = (int64_t)args[2];
+    int64_t count = (int64_t)args[3];
+    size_t src_len = src_list->as.list.len;
+    size_t actual_start = (start < 0 || (size_t)start >= src_len) ? src_len : (size_t)start;
+    size_t remaining = src_len - actual_start;
+    size_t actual_count = (count < 0) ? 0 : ((size_t)count > remaining ? remaining : (size_t)count);
+    TnObj *slice_obj = tn_new_obj(TN_OBJ_LIST);
+    slice_obj->as.list.len = actual_count;
+    slice_obj->as.list.items = actual_count == 0 ? NULL : (TnVal *)calloc(actual_count, sizeof(TnVal));
+    if (actual_count > 0 && slice_obj->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    for (size_t i = 0; i < actual_count; i++) {
+      slice_obj->as.list.items[i] = src_list->as.list.items[actual_start + i];
+    }
+    free(args);
+    return tn_heap_store(slice_obj);
+  }
+
+  /* datetime_unix_now: returns seconds since Unix epoch as integer */
+  if (strcmp(key, "datetime_unix_now") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: DateTime.unix_now expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL) != 0) {
+      free(args);
+      return tn_runtime_fail("host error: DateTime.unix_now: gettimeofday failed");
+    }
+    free(args);
+    return (TnVal)((int64_t)tv.tv_sec);
+  }
+
+  /* datetime_unix_now_ms: returns milliseconds since Unix epoch as integer */
+  if (strcmp(key, "datetime_unix_now_ms") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: DateTime.unix_now_ms expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL) != 0) {
+      free(args);
+      return tn_runtime_fail("host error: DateTime.unix_now_ms: gettimeofday failed");
+    }
+    int64_t ms = (int64_t)tv.tv_sec * 1000 + (int64_t)tv.tv_usec / 1000;
+    free(args);
+    return (TnVal)ms;
+  }
+
+  /* random_boolean: returns true or false randomly */
+  if (strcmp(key, "random_boolean") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: Random.boolean expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    free(args);
+    static int tn_random_seeded = 0;
+    if (!tn_random_seeded) { srand((unsigned)time(NULL)); tn_random_seeded = 1; }
+    return tn_runtime_const_bool(rand() % 2 == 0 ? 1 : 0);
+  }
+
+  /* random_float: returns random float 0.0..1.0 */
+  if (strcmp(key, "random_float") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: Random.float expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    free(args);
+    static int tn_rfloat_seeded = 0;
+    if (!tn_rfloat_seeded) { srand((unsigned)time(NULL)); tn_rfloat_seeded = 1; }
+    double val = (double)rand() / (double)RAND_MAX;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%g", val);
+    TnObj *rf_obj = tn_new_obj(TN_OBJ_FLOAT);
+    rf_obj->as.text.text = strdup(buf);
+    return tn_heap_store(rf_obj);
+  }
+
+  /* random_integer: returns random int in range [min, max] */
+  if (strcmp(key, "random_integer") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Random.integer expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    int64_t rmin = (int64_t)args[1];
+    int64_t rmax = (int64_t)args[2];
+    free(args);
+    if (rmin > rmax) {
+      return tn_runtime_failf("host error: Random.integer: min (%lld) must be <= max (%lld)", (long long)rmin, (long long)rmax);
+    }
+    static int tn_rint_seeded = 0;
+    if (!tn_rint_seeded) { srand((unsigned)time(NULL)); tn_rint_seeded = 1; }
+    int64_t range = rmax - rmin + 1;
+    int64_t result = rmin + (int64_t)((unsigned long long)rand() % (unsigned long long)range);
+    return (TnVal)result;
+  }
+
+  /* uuid_v4: returns UUID v4 string from random bytes */
+  if (strcmp(key, "uuid_v4") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: Uuid.v4 expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    free(args);
+    static int tn_uuid_seeded = 0;
+    if (!tn_uuid_seeded) { srand((unsigned)time(NULL)); tn_uuid_seeded = 1; }
+    unsigned char bytes[16];
+    for (int i = 0; i < 16; i++) bytes[i] = (unsigned char)(rand() & 0xFF);
+    /* version 4 */
+    bytes[6] = (bytes[6] & 0x0F) | 0x40;
+    /* variant RFC 4122 */
+    bytes[8] = (bytes[8] & 0x3F) | 0x80;
+    char uuid[37];
+    snprintf(uuid, sizeof(uuid),
+      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+      bytes[0], bytes[1], bytes[2], bytes[3],
+      bytes[4], bytes[5], bytes[6], bytes[7],
+      bytes[8], bytes[9], bytes[10], bytes[11],
+      bytes[12], bytes[13], bytes[14], bytes[15]);
+    TnObj *uuid_obj = tn_new_obj(TN_OBJ_STRING);
+    uuid_obj->as.text.text = strdup(uuid);
+    return tn_heap_store(uuid_obj);
+  }
+
+  /* shell_quote: wraps string in single quotes, escapes inner single quotes */
+  if (strcmp(key, "shell_quote") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Shell.quote expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal sarg = args[1];
+    free(args);
+    if (!tn_is_boxed(sarg)) {
+      return tn_runtime_fail("host error: Shell.quote expects a string argument");
+    }
+    TnObj* sobj = tn_get_obj(sarg);
+    if (sobj == NULL || sobj->kind != TN_OBJ_STRING) {
+      return tn_runtime_fail("host error: Shell.quote expects a string argument");
+    }
+    const char* s = sobj->as.text.text;
+    size_t slen = strlen(s);
+    /* worst case: every char is a single quote → 4x + 2 + 1 */
+    size_t cap = slen * 5 + 3;
+    char* out = (char*)malloc(cap);
+    size_t pos = 0;
+    out[pos++] = '\'';
+    for (size_t i = 0; i < slen; i++) {
+      if (s[i] == '\'') {
+        out[pos++] = '\'';   /* close quote */
+        out[pos++] = '"';    /* open double-quote */
+        out[pos++] = '\'';   /* the single quote */
+        out[pos++] = '"';    /* close double-quote */
+        out[pos++] = '\'';   /* reopen single-quote */
+      } else {
+        out[pos++] = s[i];
+      }
+    }
+    out[pos++] = '\'';
+    out[pos] = '\0';
+    TnObj *sq_result_obj = tn_new_obj(TN_OBJ_STRING);
+    sq_result_obj->as.text.text = strdup(out);
+    free(out);
+    return tn_heap_store(sq_result_obj);
+  }
+
+  /* shell_join: joins list of strings with shell quoting */
+  if (strcmp(key, "shell_join") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Shell.join expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal list_val = args[1];
+    free(args);
+    if (!tn_is_boxed(list_val)) {
+      return tn_runtime_fail("host error: Shell.join expects a list argument");
+    }
+    TnObj *list_obj = tn_get_obj(list_val);
+    if (list_obj == NULL || list_obj->kind != TN_OBJ_LIST) {
+      return tn_runtime_fail("host error: Shell.join expects a list argument");
+    }
+    size_t count = list_obj->as.list.len;
+    TnVal* items = list_obj->as.list.items;
+    if (count == 0) {
+      TnObj *empty_obj = tn_new_obj(TN_OBJ_STRING);
+      empty_obj->as.text.text = strdup("");
+      return tn_heap_store(empty_obj);
+    }
+    /* Build result by quoting each element and joining with spaces */
+    size_t total_cap = 256;
+    char* result = (char*)malloc(total_cap);
+    size_t rpos = 0;
+    for (size_t i = 0; i < count; i++) {
+      if (i > 0) { result[rpos++] = ' '; }
+      if (!tn_is_boxed(items[i])) {
+        free(result);
+        return tn_runtime_failf("host error: Shell.join element %zu is not a string", i);
+      }
+      TnObj *elem = tn_get_obj(items[i]);
+      if (elem == NULL || elem->kind != TN_OBJ_STRING) {
+        free(result);
+        return tn_runtime_failf("host error: Shell.join element %zu is not a string", i);
+      }
+      const char* es = elem->as.text.text;
+      size_t eslen = strlen(es);
+      size_t needed = rpos + eslen * 5 + 4;
+      if (needed >= total_cap) {
+        total_cap = needed * 2;
+        result = (char*)realloc(result, total_cap);
+      }
+      result[rpos++] = '\'';
+      for (size_t j = 0; j < eslen; j++) {
+        size_t need2 = rpos + 6;
+        if (need2 >= total_cap) { total_cap = need2 * 2; result = (char*)realloc(result, total_cap); }
+        if (es[j] == '\'') {
+          result[rpos++] = '\'';
+          result[rpos++] = '"';
+          result[rpos++] = '\'';
+          result[rpos++] = '"';
+          result[rpos++] = '\'';
+        } else {
+          result[rpos++] = es[j];
+        }
+      }
+      result[rpos++] = '\'';
+    }
+    result[rpos] = '\0';
+    TnObj *sj_result_obj = tn_new_obj(TN_OBJ_STRING);
+    sj_result_obj->as.text.text = strdup(result);
+    free(result);
+    return tn_heap_store(sj_result_obj);
+  }
+
+  /* enum_random: returns a random element from a list */
+  if (strcmp(key, "enum_random") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Enum.random expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal list_val = args[1];
+    free(args);
+    if (!tn_is_boxed(list_val)) {
+      return tn_runtime_fail("host error: Enum.random expects a list argument");
+    }
+    TnObj *list_obj = tn_get_obj(list_val);
+    if (list_obj == NULL || list_obj->kind != TN_OBJ_LIST) {
+      return tn_runtime_fail("host error: Enum.random expects a list argument");
+    }
+    size_t count = list_obj->as.list.len;
+    if (count == 0) {
+      return tn_runtime_fail("host error: Enum.random called on empty list");
+    }
+    static int tn_erand_seeded = 0;
+    if (!tn_erand_seeded) { srand((unsigned)time(NULL)); tn_erand_seeded = 1; }
+    size_t idx = (size_t)rand() % count;
+    return list_obj->as.list.items[idx];
+  }
+
+  /* env_set: sets an environment variable, returns :ok atom */
+  if (strcmp(key, "env_set") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: Env.set expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1]) || !tn_is_boxed(args[2])) {
+      free(args);
+      return tn_runtime_fail("host error: Env.set expects string arguments");
+    }
+    TnObj *key_obj = tn_get_obj(args[1]);
+    TnObj *val_obj = tn_get_obj(args[2]);
+    if (key_obj == NULL || key_obj->kind != TN_OBJ_STRING ||
+        val_obj == NULL || val_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Env.set expects string arguments");
+    }
+    setenv(key_obj->as.text.text, val_obj->as.text.text, 1);
+    free(args);
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  /* env_delete: unsets an environment variable, returns :ok atom */
+  if (strcmp(key, "env_delete") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Env.delete expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Env.delete expects a string argument");
+    }
+    TnObj *key_obj = tn_get_obj(args[1]);
+    if (key_obj == NULL || key_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Env.delete expects a string argument");
+    }
+    unsetenv(key_obj->as.text.text);
+    free(args);
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  /* env_has_key: checks if an environment variable exists, returns boolean */
+  if (strcmp(key, "env_has_key") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Env.has_key expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Env.has_key expects a string argument");
+    }
+    TnObj *key_obj = tn_get_obj(args[1]);
+    if (key_obj == NULL || key_obj->kind != TN_OBJ_STRING) {
+      free(args);
+      return tn_runtime_fail("host error: Env.has_key expects a string argument");
+    }
+    char *val = getenv(key_obj->as.text.text);
+    free(args);
+    return tn_runtime_const_bool(val != NULL ? 1 : 0);
+  }
+
+  /* env_all: returns all environment variables as a map of string->string */
+  if (strcmp(key, "env_all") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: Env.all expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    free(args);
+    extern char **environ;
+    size_t count = 0;
+    for (char **ep = environ; *ep != NULL; ep++) count++;
+    TnObj *map_obj = tn_new_obj(TN_OBJ_MAP);
+    map_obj->as.map_like.len = count;
+    map_obj->as.map_like.items = count == 0 ? NULL : (TnPair *)calloc(count, sizeof(TnPair));
+    if (count > 0 && map_obj->as.map_like.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    for (size_t i = 0; i < count; i++) {
+      char *entry = environ[i];
+      char *eq = strchr(entry, '=');
+      size_t key_len = eq ? (size_t)(eq - entry) : strlen(entry);
+      char *k = (char *)malloc(key_len + 1);
+      if (k == NULL) { fprintf(stderr, "error: native runtime allocation failure\n"); exit(1); }
+      memcpy(k, entry, key_len);
+      k[key_len] = '\0';
+      TnObj *k_obj = tn_new_obj(TN_OBJ_STRING);
+      k_obj->as.text.text = k;
+      char *v_src = eq ? eq + 1 : "";
+      size_t v_len = strlen(v_src);
+      char *v = (char *)malloc(v_len + 1);
+      if (v == NULL) { fprintf(stderr, "error: native runtime allocation failure\n"); exit(1); }
+      memcpy(v, v_src, v_len + 1);
+      TnObj *v_obj = tn_new_obj(TN_OBJ_STRING);
+      v_obj->as.text.text = v;
+      map_obj->as.map_like.items[i].key = tn_heap_store(k_obj);
+      map_obj->as.map_like.items[i].value = tn_heap_store(v_obj);
+    }
+    return tn_heap_store(map_obj);
+  }
+
+  /* enum_shuffle: Fisher-Yates shuffle on a list */
+  if (strcmp(key, "enum_shuffle") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Enum.shuffle expects exactly 1 argument, found %zu", argc - 1);
+    }
+    TnVal list_val = args[1];
+    free(args);
+    if (!tn_is_boxed(list_val)) {
+      return tn_runtime_fail("host error: Enum.shuffle expects a list argument");
+    }
+    TnObj *src = tn_get_obj(list_val);
+    if (src == NULL || src->kind != TN_OBJ_LIST) {
+      return tn_runtime_fail("host error: Enum.shuffle expects a list argument");
+    }
+    size_t n = src->as.list.len;
+    TnObj *result = tn_new_obj(TN_OBJ_LIST);
+    result->as.list.len = n;
+    result->as.list.items = n == 0 ? NULL : (TnVal *)calloc(n, sizeof(TnVal));
+    if (n > 0 && result->as.list.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    for (size_t i = 0; i < n; i++) {
+      result->as.list.items[i] = src->as.list.items[i];
+    }
+    if (n > 1) {
+      static int tn_shuf_seeded = 0;
+      if (!tn_shuf_seeded) { srand((unsigned)time(NULL)); tn_shuf_seeded = 1; }
+      for (size_t i = n - 1; i >= 1; i--) {
+        size_t j = (size_t)rand() % (i + 1);
+        TnVal tmp = result->as.list.items[i];
+        result->as.list.items[i] = result->as.list.items[j];
+        result->as.list.items[j] = tmp;
+      }
+    }
+    return tn_heap_store(result);
+  }
+
+  /* datetime_utc_now: returns ISO 8601 UTC string like "2026-03-29T12:34:56Z" */
+  if (strcmp(key, "datetime_utc_now") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: DateTime.utc_now expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    free(args);
+    time_t now = time(NULL);
+    struct tm utc;
+    gmtime_r(&now, &utc);
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &utc);
+    size_t slen = strlen(buf);
+    char *result = (char *)malloc(slen + 1);
+    if (result == NULL) { fprintf(stderr, "error: native runtime allocation failure\n"); exit(1); }
+    memcpy(result, buf, slen + 1);
+    TnObj *str_obj = tn_new_obj(TN_OBJ_STRING);
+    str_obj->as.text.text = result;
+    return tn_heap_store(str_obj);
+  }
+
+  /* Logger module — global level (debug=0, info=1 default, warn=2, error=3, none=4) */
+  static int tn_logger_level = 1;
+
+  if (strcmp(key, "logger_debug") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Logger.debug expects exactly 1 argument, found %zu", argc - 1);
+    }
+    const char *msg = tn_expect_host_string_arg("Logger.debug", args[1], 1);
+    free(args);
+    if (tn_logger_level <= 0) {
+      fprintf(stderr, "[debug] %s\n", msg);
+    }
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  if (strcmp(key, "logger_info") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Logger.info expects exactly 1 argument, found %zu", argc - 1);
+    }
+    const char *msg = tn_expect_host_string_arg("Logger.info", args[1], 1);
+    free(args);
+    if (tn_logger_level <= 1) {
+      fprintf(stderr, "[info] %s\n", msg);
+    }
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  if (strcmp(key, "logger_warn") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Logger.warn expects exactly 1 argument, found %zu", argc - 1);
+    }
+    const char *msg = tn_expect_host_string_arg("Logger.warn", args[1], 1);
+    free(args);
+    if (tn_logger_level <= 2) {
+      fprintf(stderr, "[warn] %s\n", msg);
+    }
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  if (strcmp(key, "logger_error") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Logger.error expects exactly 1 argument, found %zu", argc - 1);
+    }
+    const char *msg = tn_expect_host_string_arg("Logger.error", args[1], 1);
+    free(args);
+    if (tn_logger_level <= 3) {
+      fprintf(stderr, "[error] %s\n", msg);
+    }
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  if (strcmp(key, "logger_set_level") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Logger.set_level expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Logger.set_level expects an atom (:debug, :info, :warn, :error, :none)");
+    }
+    TnObj *atom_obj = tn_get_obj(args[1]);
+    if (atom_obj == NULL || atom_obj->kind != TN_OBJ_ATOM) {
+      free(args);
+      return tn_runtime_fail("host error: Logger.set_level expects an atom (:debug, :info, :warn, :error, :none)");
+    }
+    const char *lvl = atom_obj->as.text.text;
+    if (strcmp(lvl, "debug") == 0) { tn_logger_level = 0; }
+    else if (strcmp(lvl, "info") == 0) { tn_logger_level = 1; }
+    else if (strcmp(lvl, "warn") == 0) { tn_logger_level = 2; }
+    else if (strcmp(lvl, "error") == 0) { tn_logger_level = 3; }
+    else if (strcmp(lvl, "none") == 0) { tn_logger_level = 4; }
+    else {
+      free(args);
+      return tn_runtime_failf("host error: Logger.set_level expects :debug, :info, :warn, :error, or :none, got :%s", lvl);
+    }
+    free(args);
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  if (strcmp(key, "logger_get_level") == 0) {
+    if (argc != 1) {
+      return tn_runtime_failf("host error: Logger.get_level expects exactly 0 arguments, found %zu", argc - 1);
+    }
+    free(args);
+    const char *name;
+    switch (tn_logger_level) {
+      case 0: name = "debug"; break;
+      case 1: name = "info"; break;
+      case 2: name = "warn"; break;
+      case 3: name = "error"; break;
+      default: name = "none"; break;
+    }
+    return tn_runtime_const_atom((TnVal)(intptr_t)name);
+  }
+
+  /* ---- file_cp: copy a file ---- */
+  if (strcmp(key, "file_cp") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: File.cp expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    const char *src_path = tn_expect_host_string_arg("File.cp", args[1], 1);
+    const char *dst_path = tn_expect_host_string_arg("File.cp", args[2], 2);
+    FILE *fin = fopen(src_path, "rb");
+    if (fin == NULL) {
+      char err_buf[512];
+      snprintf(err_buf, sizeof(err_buf), "%s", strerror(errno));
+      free(args);
+      TnVal err_str = tn_runtime_const_string((TnVal)(intptr_t)err_buf);
+      TnVal atom = tn_runtime_const_atom((TnVal)(intptr_t)"error");
+      return tn_runtime_make_tuple(atom, err_str);
+    }
+    FILE *fout = fopen(dst_path, "wb");
+    if (fout == NULL) {
+      char err_buf[512];
+      snprintf(err_buf, sizeof(err_buf), "%s", strerror(errno));
+      fclose(fin);
+      free(args);
+      TnVal err_str = tn_runtime_const_string((TnVal)(intptr_t)err_buf);
+      TnVal atom = tn_runtime_const_atom((TnVal)(intptr_t)"error");
+      return tn_runtime_make_tuple(atom, err_str);
+    }
+    char cp_buf[8192];
+    size_t n;
+    while ((n = fread(cp_buf, 1, sizeof(cp_buf), fin)) > 0) {
+      if (fwrite(cp_buf, 1, n, fout) != n) {
+        char err_buf[512];
+        snprintf(err_buf, sizeof(err_buf), "%s", strerror(errno));
+        fclose(fin);
+        fclose(fout);
+        free(args);
+        TnVal err_str = tn_runtime_const_string((TnVal)(intptr_t)err_buf);
+        TnVal atom = tn_runtime_const_atom((TnVal)(intptr_t)"error");
+        return tn_runtime_make_tuple(atom, err_str);
+      }
+    }
+    fclose(fin);
+    fclose(fout);
+    free(args);
+    return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+  }
+
+  /* ---- file_rename: rename/move a file ---- */
+  if (strcmp(key, "file_rename") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: File.rename expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    const char *src_path = tn_expect_host_string_arg("File.rename", args[1], 1);
+    const char *dst_path = tn_expect_host_string_arg("File.rename", args[2], 2);
+    if (rename(src_path, dst_path) == 0) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    } else {
+      char err_buf[512];
+      snprintf(err_buf, sizeof(err_buf), "%s", strerror(errno));
+      free(args);
+      TnVal err_str = tn_runtime_const_string((TnVal)(intptr_t)err_buf);
+      TnVal atom = tn_runtime_const_atom((TnVal)(intptr_t)"error");
+      return tn_runtime_make_tuple(atom, err_str);
+    }
+  }
+
+  /* ---- file_stat: return {ok, %{size, is_dir, is_file}} or {error, msg} ---- */
+  if (strcmp(key, "file_stat") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: File.stat expects exactly 1 argument, found %zu", argc - 1);
+    }
+    const char *path = tn_expect_host_string_arg("File.stat", args[1], 1);
+    struct stat st;
+    if (stat(path, &st) != 0) {
+      char err_buf[512];
+      snprintf(err_buf, sizeof(err_buf), "%s", strerror(errno));
+      free(args);
+      TnVal err_str = tn_runtime_const_string((TnVal)(intptr_t)err_buf);
+      TnVal atom = tn_runtime_const_atom((TnVal)(intptr_t)"error");
+      return tn_runtime_make_tuple(atom, err_str);
+    }
+    /* Build map with 3 entries: size, is_dir, is_file */
+    TnObj *map_obj = tn_new_obj(TN_OBJ_MAP);
+    map_obj->as.map_like.len = 3;
+    map_obj->as.map_like.items = (TnPair *)calloc(3, sizeof(TnPair));
+    if (map_obj->as.map_like.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    map_obj->as.map_like.items[0].key = tn_runtime_const_string((TnVal)(intptr_t)"size");
+    map_obj->as.map_like.items[0].value = (TnVal)((int64_t)st.st_size);
+    tn_runtime_retain(map_obj->as.map_like.items[0].key);
+    map_obj->as.map_like.items[1].key = tn_runtime_const_string((TnVal)(intptr_t)"is_dir");
+    map_obj->as.map_like.items[1].value = tn_runtime_const_bool(S_ISDIR(st.st_mode) ? 1 : 0);
+    tn_runtime_retain(map_obj->as.map_like.items[1].key);
+    tn_runtime_retain(map_obj->as.map_like.items[1].value);
+    map_obj->as.map_like.items[2].key = tn_runtime_const_string((TnVal)(intptr_t)"is_file");
+    map_obj->as.map_like.items[2].value = tn_runtime_const_bool(S_ISREG(st.st_mode) ? 1 : 0);
+    tn_runtime_retain(map_obj->as.map_like.items[2].key);
+    tn_runtime_retain(map_obj->as.map_like.items[2].value);
+    TnVal map_val = tn_heap_store(map_obj);
+    free(args);
+    TnVal ok_atom = tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    return tn_runtime_make_tuple(ok_atom, map_val);
+  }
+
+  /* ---- url_encode_query: encode a map as a query string ---- */
+  if (strcmp(key, "url_encode_query") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Url.encode_query expects exactly 1 argument, found %zu", argc - 1);
+    }
+    if (!tn_is_boxed(args[1])) {
+      free(args);
+      return tn_runtime_fail("host error: Url.encode_query expects a map or keyword list, found number");
+    }
+    TnObj *map_obj = tn_get_obj(args[1]);
+    if (map_obj == NULL || (map_obj->kind != TN_OBJ_MAP && map_obj->kind != TN_OBJ_KEYWORD)) {
+      free(args);
+      return tn_runtime_failf("host error: Url.encode_query expects a map or keyword list, found %s", tn_runtime_value_kind(args[1]));
+    }
+    /* Build query string using open_memstream */
+    char *qs_buf = NULL;
+    size_t qs_len = 0;
+    FILE *qs_stream = open_memstream(&qs_buf, &qs_len);
+    if (qs_stream == NULL) {
+      free(args);
+      return tn_runtime_fail("host error: Url.encode_query: open_memstream failed");
+    }
+    static const char qhex[] = "0123456789ABCDEF";
+    for (size_t i = 0; i < map_obj->as.map_like.len; i++) {
+      if (i > 0) fputc('&', qs_stream);
+      /* Helper: render key and value to temp strings, then query-encode them */
+      TnVal parts[2] = { map_obj->as.map_like.items[i].key, map_obj->as.map_like.items[i].value };
+      for (int p = 0; p < 2; p++) {
+        if (p == 1) fputc('=', qs_stream);
+        /* Get string representation of the value */
+        char *repr = NULL;
+        size_t repr_len = 0;
+        FILE *repr_stream = open_memstream(&repr, &repr_len);
+        if (repr_stream == NULL) { fclose(qs_stream); free(qs_buf); free(args); return tn_runtime_fail("host error: Url.encode_query: open_memstream failed"); }
+        /* For strings, use raw text; for others, use render */
+        TnVal pv = parts[p];
+        int wrote_raw = 0;
+        if (tn_is_boxed(pv)) {
+          TnObj *pobj = tn_get_obj(pv);
+          if (pobj != NULL && (pobj->kind == TN_OBJ_STRING || pobj->kind == TN_OBJ_ATOM)) {
+            fputs(pobj->as.text.text, repr_stream);
+            wrote_raw = 1;
+          }
+        }
+        if (!wrote_raw) {
+          if (!tn_is_boxed(pv)) {
+            fprintf(repr_stream, "%" PRId64, (int64_t)pv);
+          } else {
+            TnObj *pobj = tn_get_obj(pv);
+            if (pobj != NULL && pobj->kind == TN_OBJ_BOOL) {
+              fputs(pobj->as.bool_value ? "true" : "false", repr_stream);
+            } else if (pobj != NULL && pobj->kind == TN_OBJ_FLOAT) {
+              fputs(pobj->as.text.text, repr_stream);
+            } else if (pobj != NULL && pobj->kind == TN_OBJ_NIL) {
+              /* empty string for nil */
+            } else {
+              tn_render_value(repr_stream, pv);
+            }
+          }
+        }
+        fclose(repr_stream);
+        /* Query-encode the repr string */
+        for (size_t ci = 0; ci < repr_len; ci++) {
+          unsigned char c = (unsigned char)repr[ci];
+          if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+              c == '-' || c == '_' || c == '.') {
+            fputc((char)c, qs_stream);
+          } else if (c == ' ') {
+            fputc('+', qs_stream);
+          } else {
+            fputc('%', qs_stream);
+            fputc(qhex[(c >> 4) & 0x0f], qs_stream);
+            fputc(qhex[c & 0x0f], qs_stream);
+          }
+        }
+        free(repr);
+      }
+    }
+    fclose(qs_stream);
+    TnObj *result_obj = tn_new_obj(TN_OBJ_STRING);
+    result_obj->as.text.text = qs_buf;
+    free(args);
+    return tn_heap_store(result_obj);
+  }
+
+  /* ---- url_decode_query: decode a query string to a map ---- */
+  if (strcmp(key, "url_decode_query") == 0) {
+    if (argc != 2) {
+      return tn_runtime_failf("host error: Url.decode_query expects exactly 1 argument, found %zu", argc - 1);
+    }
+    const char *qs = tn_expect_host_string_arg("Url.decode_query", args[1], 1);
+    size_t qs_slen = strlen(qs);
+    if (qs_slen == 0) {
+      /* Return empty map */
+      TnObj *map_obj = tn_new_obj(TN_OBJ_MAP);
+      map_obj->as.map_like.len = 0;
+      map_obj->as.map_like.items = NULL;
+      free(args);
+      return tn_heap_store(map_obj);
+    }
+    /* Count pairs (number of & + 1) */
+    size_t pair_count = 1;
+    for (size_t i = 0; i < qs_slen; i++) { if (qs[i] == '&') pair_count++; }
+    TnObj *map_obj = tn_new_obj(TN_OBJ_MAP);
+    map_obj->as.map_like.items = (TnPair *)calloc(pair_count, sizeof(TnPair));
+    if (map_obj->as.map_like.items == NULL) {
+      fprintf(stderr, "error: native runtime allocation failure\n");
+      exit(1);
+    }
+    map_obj->as.map_like.len = 0;
+    /* Parse pairs */
+    const char *cursor = qs;
+    while (*cursor) {
+      /* Find end of this pair */
+      const char *amp = strchr(cursor, '&');
+      size_t pair_len = amp ? (size_t)(amp - cursor) : strlen(cursor);
+      /* Find = within pair */
+      const char *eq = NULL;
+      for (size_t i = 0; i < pair_len; i++) {
+        if (cursor[i] == '=') { eq = cursor + i; break; }
+      }
+      const char *key_start = cursor;
+      size_t key_len = eq ? (size_t)(eq - cursor) : pair_len;
+      const char *val_start = eq ? eq + 1 : cursor + pair_len;
+      size_t val_len = eq ? pair_len - key_len - 1 : 0;
+      /* Percent-decode key */
+      char *dk = (char *)malloc(key_len + 1);
+      size_t dki = 0;
+      for (size_t i = 0; i < key_len; ) {
+        if (key_start[i] == '%' && i + 2 < key_len) {
+          unsigned char hi = (unsigned char)key_start[i+1], lo = (unsigned char)key_start[i+2];
+          int h = -1, l = -1;
+          if (hi >= '0' && hi <= '9') h = hi - '0'; else if (hi >= 'A' && hi <= 'F') h = hi - 'A' + 10; else if (hi >= 'a' && hi <= 'f') h = hi - 'a' + 10;
+          if (lo >= '0' && lo <= '9') l = lo - '0'; else if (lo >= 'A' && lo <= 'F') l = lo - 'A' + 10; else if (lo >= 'a' && lo <= 'f') l = lo - 'a' + 10;
+          if (h >= 0 && l >= 0) { dk[dki++] = (char)((h << 4) | l); i += 3; } else { dk[dki++] = key_start[i++]; }
+        } else if (key_start[i] == '+') { dk[dki++] = ' '; i++; }
+        else { dk[dki++] = key_start[i++]; }
+      }
+      dk[dki] = '\0';
+      /* Percent-decode value */
+      char *dv = (char *)malloc(val_len + 1);
+      size_t dvi = 0;
+      for (size_t i = 0; i < val_len; ) {
+        if (val_start[i] == '%' && i + 2 < val_len) {
+          unsigned char hi = (unsigned char)val_start[i+1], lo = (unsigned char)val_start[i+2];
+          int h = -1, l = -1;
+          if (hi >= '0' && hi <= '9') h = hi - '0'; else if (hi >= 'A' && hi <= 'F') h = hi - 'A' + 10; else if (hi >= 'a' && hi <= 'f') h = hi - 'a' + 10;
+          if (lo >= '0' && lo <= '9') l = lo - '0'; else if (lo >= 'A' && lo <= 'F') l = lo - 'A' + 10; else if (lo >= 'a' && lo <= 'f') l = lo - 'a' + 10;
+          if (h >= 0 && l >= 0) { dv[dvi++] = (char)((h << 4) | l); i += 3; } else { dv[dvi++] = val_start[i++]; }
+        } else if (val_start[i] == '+') { dv[dvi++] = ' '; i++; }
+        else { dv[dvi++] = val_start[i++]; }
+      }
+      dv[dvi] = '\0';
+      size_t idx = map_obj->as.map_like.len;
+      map_obj->as.map_like.items[idx].key = tn_runtime_const_string((TnVal)(intptr_t)dk);
+      map_obj->as.map_like.items[idx].value = tn_runtime_const_string((TnVal)(intptr_t)dv);
+      tn_runtime_retain(map_obj->as.map_like.items[idx].key);
+      tn_runtime_retain(map_obj->as.map_like.items[idx].value);
+      map_obj->as.map_like.len++;
+      free(dk);
+      free(dv);
+      cursor += pair_len;
+      if (*cursor == '&') cursor++;
+    }
+    free(args);
+    return tn_heap_store(map_obj);
+  }
+
+  /* ---- sys_constant_time_eq: constant-time string comparison ---- */
+  if (strcmp(key, "sys_constant_time_eq") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: sys_constant_time_eq expects exactly 2 arguments, found %zu", argc - 1);
+    }
+    const char *left = tn_expect_host_string_arg("sys_constant_time_eq", args[1], 1);
+    const char *right = tn_expect_host_string_arg("sys_constant_time_eq", args[2], 2);
+    size_t left_len = strlen(left);
+    size_t right_len = strlen(right);
+    /* Use volatile to prevent compiler from short-circuiting */
+    volatile unsigned char result = (left_len != right_len) ? 1 : 0;
+    size_t cmp_len = left_len < right_len ? left_len : right_len;
+    for (size_t i = 0; i < cmp_len; i++) {
+      result |= (unsigned char)((unsigned char)left[i] ^ (unsigned char)right[i]);
+    }
+    free(args);
+    return tn_runtime_const_bool(result == 0 ? 1 : 0);
+  }
+
+  /* ---- assert: check truthiness ---- */
+  if (strcmp(key, "assert") == 0) {
+    if (argc < 2 || argc > 3) {
+      return tn_runtime_failf("host error: Assert.assert expects 1-2 arguments, found %zu", argc - 1);
+    }
+    TnVal value = args[1];
+    int is_falsy = 0;
+    TnObj *val_obj = tn_get_obj(value);
+    if (val_obj != NULL && val_obj->kind == TN_OBJ_NIL) is_falsy = 1;
+    if (val_obj != NULL && val_obj->kind == TN_OBJ_BOOL && val_obj->as.bool_value == 0) is_falsy = 1;
+    if (!is_falsy) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    }
+    const char *msg = (argc == 3) ? tn_expect_host_string_arg("Assert.assert", args[2], 2) : "assertion failed: expected truthy value";
+    TnVal assert_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal type_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assert");
+    TnVal msg_val = tn_runtime_const_string((TnVal)(intptr_t)msg);
+    TnVal inner = tn_runtime_make_tuple(type_atom, msg_val);
+    TnVal detail = tn_runtime_make_tuple(assert_atom, inner);
+    free(args);
+    return tn_runtime_make_err(detail);
+  }
+
+  /* ---- refute: check falsiness ---- */
+  if (strcmp(key, "refute") == 0) {
+    if (argc < 2 || argc > 3) {
+      return tn_runtime_failf("host error: Assert.refute expects 1-2 arguments, found %zu", argc - 1);
+    }
+    TnVal value = args[1];
+    int is_falsy = 0;
+    TnObj *val_obj = tn_get_obj(value);
+    if (val_obj != NULL && val_obj->kind == TN_OBJ_NIL) is_falsy = 1;
+    if (val_obj != NULL && val_obj->kind == TN_OBJ_BOOL && val_obj->as.bool_value == 0) is_falsy = 1;
+    if (is_falsy) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    }
+    const char *msg = (argc == 3) ? tn_expect_host_string_arg("Assert.refute", args[2], 2) : "refute failed: expected falsy value";
+    TnVal assert_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal type_atom = tn_runtime_const_atom((TnVal)(intptr_t)"refute");
+    TnVal msg_val = tn_runtime_const_string((TnVal)(intptr_t)msg);
+    TnVal inner = tn_runtime_make_tuple(type_atom, msg_val);
+    TnVal detail = tn_runtime_make_tuple(assert_atom, inner);
+    free(args);
+    return tn_runtime_make_err(detail);
+  }
+
+  /* ---- assert_equal: deep equality check ---- */
+  if (strcmp(key, "assert_equal") == 0) {
+    if (argc < 3 || argc > 4) {
+      return tn_runtime_failf("host error: Assert.assert_equal expects 2-3 arguments, found %zu", argc - 1);
+    }
+    TnVal left = args[1];
+    TnVal right = args[2];
+    if (tn_runtime_value_equal(left, right)) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    }
+    const char *msg = (argc == 4) ? tn_expect_host_string_arg("Assert.assert_equal", args[3], 3) : "values are not equal";
+    TnVal af_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal detail = tn_runtime_make_list_varargs((TnVal)4,
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"type"), tn_runtime_const_atom((TnVal)(intptr_t)"assert_equal")),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"left"), left),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"right"), right),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"message"), tn_runtime_const_string((TnVal)(intptr_t)msg))
+    );
+    TnVal result = tn_runtime_make_tuple(af_atom, detail);
+    free(args);
+    return tn_runtime_make_err(result);
+  }
+
+  /* ---- assert_not_equal: deep inequality check ---- */
+  if (strcmp(key, "assert_not_equal") == 0) {
+    if (argc < 3 || argc > 4) {
+      return tn_runtime_failf("host error: Assert.assert_not_equal expects 2-3 arguments, found %zu", argc - 1);
+    }
+    TnVal left = args[1];
+    TnVal right = args[2];
+    if (!tn_runtime_value_equal(left, right)) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    }
+    const char *msg = (argc == 4) ? tn_expect_host_string_arg("Assert.assert_not_equal", args[3], 3) : "values should not be equal";
+    TnVal af_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal detail = tn_runtime_make_list_varargs((TnVal)4,
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"type"), tn_runtime_const_atom((TnVal)(intptr_t)"assert_not_equal")),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"left"), left),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"right"), right),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"message"), tn_runtime_const_string((TnVal)(intptr_t)msg))
+    );
+    TnVal result = tn_runtime_make_tuple(af_atom, detail);
+    free(args);
+    return tn_runtime_make_err(result);
+  }
+
+  /* ---- assert_contains: string substring or list membership ---- */
+  if (strcmp(key, "assert_contains") == 0) {
+    if (argc < 3 || argc > 4) {
+      return tn_runtime_failf("host error: Assert.assert_contains expects 2-3 arguments, found %zu", argc - 1);
+    }
+    TnVal container = args[1];
+    TnVal element = args[2];
+    TnObj *cont_obj = tn_get_obj(container);
+    int found = 0;
+    if (cont_obj != NULL && cont_obj->kind == TN_OBJ_STRING) {
+      TnObj *elem_obj = tn_get_obj(element);
+      if (elem_obj != NULL && elem_obj->kind == TN_OBJ_STRING) {
+        found = (strstr(cont_obj->as.text.text, elem_obj->as.text.text) != NULL) ? 1 : 0;
+      }
+    } else if (cont_obj != NULL && cont_obj->kind == TN_OBJ_LIST) {
+      for (size_t i = 0; i < cont_obj->as.list.len; i++) {
+        if (tn_runtime_value_equal(cont_obj->as.list.items[i], element)) {
+          found = 1;
+          break;
+        }
+      }
+    }
+    if (found) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    }
+    const char *msg = (argc == 4) ? tn_expect_host_string_arg("Assert.assert_contains", args[3], 3) : "element not found in container";
+    TnVal af_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal detail = tn_runtime_make_list_varargs((TnVal)4,
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"type"), tn_runtime_const_atom((TnVal)(intptr_t)"assert_contains")),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"container"), container),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"element"), element),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"message"), tn_runtime_const_string((TnVal)(intptr_t)msg))
+    );
+    TnVal result = tn_runtime_make_tuple(af_atom, detail);
+    free(args);
+    return tn_runtime_make_err(result);
+  }
+
+  /* ---- assert_in_delta: numeric |left - right| <= delta ---- */
+  if (strcmp(key, "assert_in_delta") == 0) {
+    if (argc < 4 || argc > 5) {
+      return tn_runtime_failf("host error: Assert.assert_in_delta expects 3-4 arguments, found %zu", argc - 1);
+    }
+    /* Extract numeric values as doubles */
+    double left_f = 0.0, right_f = 0.0, delta_f = 0.0;
+    for (int ai = 0; ai < 3; ai++) {
+      TnObj *num_obj = tn_get_obj(args[1 + ai]);
+      double *target = (ai == 0) ? &left_f : (ai == 1) ? &right_f : &delta_f;
+      if (num_obj == NULL) {
+        /* Non-boxed value = integer stored as raw TnVal */
+        *target = (double)(intptr_t)args[1 + ai];
+      } else if (num_obj->kind == TN_OBJ_FLOAT) {
+        *target = strtod(num_obj->as.text.text, NULL);
+      } else {
+        return tn_runtime_failf("host error: Assert.assert_in_delta arg %d must be a number", ai + 1);
+      }
+    }
+    double diff = left_f - right_f;
+    if (diff < 0) diff = -diff;
+    if (diff <= delta_f) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    }
+    const char *msg = (argc == 5) ? tn_expect_host_string_arg("Assert.assert_in_delta", args[4], 4) : "values are not within delta";
+    TnVal af_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal detail = tn_runtime_make_list_varargs((TnVal)5,
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"type"), tn_runtime_const_atom((TnVal)(intptr_t)"assert_in_delta")),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"left"), args[1]),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"right"), args[2]),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"delta"), args[3]),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"message"), tn_runtime_const_string((TnVal)(intptr_t)msg))
+    );
+    TnVal result = tn_runtime_make_tuple(af_atom, detail);
+    free(args);
+    return tn_runtime_make_err(result);
+  }
+
+  /* ---- skip: return {:err, {:test_skipped, reason}} ---- */
+  if (strcmp(key, "skip") == 0) {
+    if (argc > 2) {
+      return tn_runtime_failf("host error: Assert.skip expects 0-1 arguments, found %zu", argc - 1);
+    }
+    const char *reason = (argc == 2) ? tn_expect_host_string_arg("Assert.skip", args[1], 1) : "";
+    TnVal skip_atom = tn_runtime_const_atom((TnVal)(intptr_t)"test_skipped");
+    TnVal reason_val = tn_runtime_const_string((TnVal)(intptr_t)reason);
+    TnVal detail = tn_runtime_make_tuple(skip_atom, reason_val);
+    free(args);
+    return tn_runtime_make_err(detail);
+  }
+
+  /* ---- assert_match: map subset matching or equality fallback ---- */
+  if (strcmp(key, "assert_match") == 0) {
+    if (argc < 3 || argc > 4) {
+      return tn_runtime_failf("host error: Assert.assert_match expects 2-3 arguments, found %zu", argc - 1);
+    }
+    TnVal expected = args[1];
+    TnVal actual = args[2];
+    TnObj *exp_obj = tn_get_obj(expected);
+    TnObj *act_obj = tn_get_obj(actual);
+    if (exp_obj != NULL && exp_obj->kind == TN_OBJ_MAP && act_obj != NULL && act_obj->kind == TN_OBJ_MAP) {
+      /* Map subset matching: every key in expected must exist in actual with equal value */
+      int all_match = 1;
+      for (size_t ei = 0; ei < exp_obj->as.map_like.len; ei++) {
+        TnVal ek = exp_obj->as.map_like.items[ei].key;
+        TnVal ev = exp_obj->as.map_like.items[ei].value;
+        int found = 0;
+        for (size_t ai = 0; ai < act_obj->as.map_like.len; ai++) {
+          if (tn_runtime_value_equal(act_obj->as.map_like.items[ai].key, ek)) {
+            if (tn_runtime_value_equal(act_obj->as.map_like.items[ai].value, ev)) {
+              found = 1;
+            }
+            break;
+          }
+        }
+        if (!found) { all_match = 0; break; }
+      }
+      if (all_match) {
+        free(args);
+        return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+      }
+    } else {
+      /* Non-map fallback: equality */
+      if (tn_runtime_value_equal(expected, actual)) {
+        free(args);
+        return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+      }
+    }
+    const char *msg = (argc == 4) ? tn_expect_host_string_arg("Assert.assert_match", args[3], 3) : "values do not match";
+    TnVal af_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal detail = tn_runtime_make_list_varargs((TnVal)4,
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"type"), tn_runtime_const_atom((TnVal)(intptr_t)"assert_match")),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"expected"), expected),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"actual"), actual),
+      tn_runtime_make_tuple(tn_runtime_const_atom((TnVal)(intptr_t)"message"), tn_runtime_const_string((TnVal)(intptr_t)msg))
+    );
+    TnVal result = tn_runtime_make_tuple(af_atom, detail);
+    free(args);
+    return tn_runtime_make_err(result);
+  }
+
+  /* ---- assert_raises_check: string contains check ---- */
+  if (strcmp(key, "assert_raises_check") == 0) {
+    if (argc != 3) {
+      return tn_runtime_failf("host error: assert_raises_check expects 2 arguments, found %zu", argc - 1);
+    }
+    const char *raised = tn_expect_host_string_arg("assert_raises_check", args[1], 1);
+    const char *expected = tn_expect_host_string_arg("assert_raises_check", args[2], 2);
+    if (strstr(raised, expected) != NULL) {
+      free(args);
+      return tn_runtime_const_atom((TnVal)(intptr_t)"ok");
+    }
+    /* Build error message */
+    size_t msg_len = strlen("expected raise matching \"") + strlen(expected) + strlen("\", got: ") + strlen(raised) + 1;
+    char *msg_buf = (char *)malloc(msg_len);
+    snprintf(msg_buf, msg_len, "expected raise matching \"%s\", got: %s", expected, raised);
+    TnVal af_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assertion_failed");
+    TnVal type_atom = tn_runtime_const_atom((TnVal)(intptr_t)"assert_raises");
+    TnVal msg_val = tn_runtime_const_string((TnVal)(intptr_t)msg_buf);
+    free(msg_buf);
+    TnVal inner = tn_runtime_make_tuple(type_atom, msg_val);
+    TnVal detail = tn_runtime_make_tuple(af_atom, inner);
+    free(args);
+    return tn_runtime_make_err(detail);
   }
 
 "###,
