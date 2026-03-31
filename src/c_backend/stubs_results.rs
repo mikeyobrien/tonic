@@ -113,13 +113,55 @@ pub(super) fn emit_stubs_results(out: &mut String) {
     case TN_OBJ_STRING:
     case TN_OBJ_FLOAT:
       return tn_runtime_const_string((TnVal)(intptr_t)obj->as.text.text);
+    case TN_OBJ_TUPLE:
+    case TN_OBJ_LIST:
+    case TN_OBJ_MAP:
+    case TN_OBJ_KEYWORD:
+    case TN_OBJ_RANGE:
+    case TN_OBJ_RESULT:
+    case TN_OBJ_BINARY:
+    case TN_OBJ_CLOSURE: {
+      /* render via tn_render_value into a memstream, then capture as owned string */
+      char *mem_buf = NULL;
+      size_t mem_len = 0;
+      FILE *fp = open_memstream(&mem_buf, &mem_len);
+      if (fp == NULL) {
+        return tn_runtime_fail("to_string: open_memstream failed");
+      }
+      tn_render_value(fp, value);
+      fflush(fp);
+      fclose(fp);
+      /* mem_buf is allocated by the C library; transfer to the tonic allocator */
+      char *owned = (char *)malloc(mem_len + 1);
+      if (owned == NULL) {
+        free(mem_buf);
+        return tn_runtime_fail("to_string: allocation failed");
+      }
+      memcpy(owned, mem_buf, mem_len);
+      owned[mem_len] = '\0';
+      free(mem_buf);
+      /* tn_runtime_const_string calls tn_strdup_or_die, so we must NOT free owned after this */
+      TnVal result = tn_runtime_const_string((TnVal)(intptr_t)owned);
+      return result;
+    }
     default:
-      return tn_runtime_failf("to_string expects scalar value, found %s", tn_runtime_value_kind(value));
+      return tn_runtime_failf("to_string expects value, found %s", tn_runtime_value_kind(value));
   }
 }
 
-static TnVal tn_runtime_not(TnVal _a) { return tn_stub_abort("tn_runtime_not"); }
-static TnVal tn_runtime_bang(TnVal _a) { return tn_stub_abort("tn_runtime_bang"); }
+/* strict boolean negation — errors on non-boolean */
+static TnVal tn_runtime_not(TnVal a) {
+  TnObj *obj = tn_get_obj(a);
+  if (obj == NULL || obj->kind != TN_OBJ_BOOL) {
+    return tn_runtime_failf("not expects boolean, found %s", tn_runtime_value_kind(a));
+  }
+  return tn_runtime_const_bool(obj->as.bool_value ? 0 : 1);
+}
+
+/* Elixir ! — truthy/falsy negation */
+static TnVal tn_runtime_bang(TnVal a) {
+  return tn_runtime_const_bool(tn_runtime_is_truthy(a) ? 0 : 1);
+}
 
 static TnVal tn_runtime_concat(TnVal left, TnVal right) {
   TnObj *left_obj = tn_get_obj(left);
