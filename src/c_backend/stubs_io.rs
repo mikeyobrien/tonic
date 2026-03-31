@@ -15,6 +15,11 @@ static TnVal tn_host_io_inspect(TnVal value) {
   return value;
 }
 
+/* alias so ops.rs builtin "inspect" can call tn_runtime_inspect */
+static TnVal tn_runtime_inspect(TnVal value) {
+  return tn_host_io_inspect(value);
+}
+
 static TnVal tn_host_io_gets(TnVal prompt_value) {
   const char *prompt = tn_expect_host_string_arg("IO.gets", prompt_value, 1);
   tn_runtime_observe_stdout();
