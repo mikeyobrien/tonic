@@ -722,6 +722,33 @@ Path.basename(path)        # Filename part
 Path.extname(path)         # Extension
 ```
 
+### Json
+
+```
+Json.decode(text)                    # Decode JSON string to value
+Json.encode(value)                   # Encode value as JSON string
+Json.encode_pretty(value)            # Encode with indentation
+Json.extract_field(json_text, key)   # Extract top-level field
+Json.extract_path(json_text, path)   # Extract nested field via dot path
+Json.parse_object(text)              # Decode, require object → {:ok, map} | {:error, reason}
+Json.parse_array(text)               # Decode, require array → {:ok, list} | {:error, reason}
+Json.stream_parse(lines, init, handler)  # Fold over JSONL lines
+```
+
+`extract_path` uses dot notation for nested access:
+
+```elixir
+json = "{\"event\":{\"delta\":\"hello\"}}"
+Json.extract_path(json, "event.delta")  # "hello"
+```
+
+`stream_parse` processes lines one at a time, skipping malformed lines:
+
+```elixir
+lines = ["{\"v\":1}", "{\"v\":2}"]
+Json.stream_parse(lines, 0, fn parsed, acc -> acc + parsed["v"] end)  # 3
+```
+
 ## Formatting Lists for Output
 
 String interpolation works for all types including lists, maps, and tuples:

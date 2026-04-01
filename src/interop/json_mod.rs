@@ -138,10 +138,72 @@ fn host_json_encode_pretty(args: &[RuntimeValue]) -> Result<RuntimeValue, HostEr
     Ok(RuntimeValue::String(pretty))
 }
 
+fn host_json_extract_field(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("Json.extract_field", args, 2)?;
+    let text = match &args[0] {
+        RuntimeValue::String(s) => s,
+        other => {
+            return Err(HostError::new(format!(
+                "Json.extract_field expects a string as first argument, found {}",
+                host_value_kind(other)
+            )));
+        }
+    };
+    let key = match &args[1] {
+        RuntimeValue::String(s) => s,
+        other => {
+            return Err(HostError::new(format!(
+                "Json.extract_field expects a string key as second argument, found {}",
+                host_value_kind(other)
+            )));
+        }
+    };
+    let parsed: JsonValue = serde_json::from_str(text)
+        .map_err(|e| HostError::new(format!("Json.extract_field: {e}")))?;
+    match parsed.get(key.as_str()) {
+        Some(value) => Ok(json_to_runtime(value)),
+        None => Ok(RuntimeValue::Nil),
+    }
+}
+
+fn host_json_extract_path(args: &[RuntimeValue]) -> Result<RuntimeValue, HostError> {
+    expect_exact_args("Json.extract_path", args, 2)?;
+    let text = match &args[0] {
+        RuntimeValue::String(s) => s,
+        other => {
+            return Err(HostError::new(format!(
+                "Json.extract_path expects a string as first argument, found {}",
+                host_value_kind(other)
+            )));
+        }
+    };
+    let path = match &args[1] {
+        RuntimeValue::String(s) => s,
+        other => {
+            return Err(HostError::new(format!(
+                "Json.extract_path expects a string path as second argument, found {}",
+                host_value_kind(other)
+            )));
+        }
+    };
+    let parsed: JsonValue = serde_json::from_str(text)
+        .map_err(|e| HostError::new(format!("Json.extract_path: {e}")))?;
+    let mut current = &parsed;
+    for segment in path.split('.') {
+        match current.get(segment) {
+            Some(value) => current = value,
+            None => return Ok(RuntimeValue::Nil),
+        }
+    }
+    Ok(json_to_runtime(current))
+}
+
 pub fn register_json_host_functions(registry: &HostRegistry) {
     registry.register("json_encode", host_json_encode);
     registry.register("json_decode", host_json_decode);
     registry.register("json_encode_pretty", host_json_encode_pretty);
+    registry.register("json_extract_field", host_json_extract_field);
+    registry.register("json_extract_path", host_json_extract_path);
 }
 
 #[cfg(test)]
@@ -358,5 +420,103 @@ mod tests {
             text.contains("  "),
             "pretty output should contain indentation"
         );
+    }
+
+    #[test]
+    fn json_extract_field_returns_value() {
+        let result = HOST_REGISTRY
+            .call(
+                "json_extract_field",
+                &[s(r#"{"name":"alice","age":30}"#), s("name")],
+            )
+            .expect("json_extract_field should succeed");
+        assert_eq!(result, s("alice"));
+    }
+
+    #[test]
+    fn json_extract_field_returns_nil_for_missing_key() {
+        let result = HOST_REGISTRY
+            .call(
+                "json_extract_field",
+                &[s(r#"{"name":"alice"}"#), s("missing")],
+            )
+            .expect("json_extract_field should succeed");
+        assert_eq!(result, RuntimeValue::Nil);
+    }
+
+    #[test]
+    fn json_extract_field_returns_nested_object() {
+        let result = HOST_REGISTRY
+            .call(
+                "json_extract_field",
+                &[s(r#"{"data":{"id":1}}"#), s("data")],
+            )
+            .expect("json_extract_field should succeed");
+        match result {
+            RuntimeValue::Map(entries) => assert_eq!(entries.len(), 1),
+            other => panic!("expected map, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn json_extract_field_error_on_invalid_json() {
+        let err = HOST_REGISTRY
+            .call("json_extract_field", &[s("{bad"), s("key")])
+            .expect_err("should fail on invalid JSON");
+        assert!(err.to_string().contains("Json.extract_field"));
+    }
+
+    #[test]
+    fn json_extract_path_nested() {
+        let json = r#"{"assistantMessageEvent":{"delta":"hello","meta":{"id":42}}}"#;
+        let result = HOST_REGISTRY
+            .call(
+                "json_extract_path",
+                &[s(json), s("assistantMessageEvent.delta")],
+            )
+            .expect("json_extract_path should succeed");
+        assert_eq!(result, s("hello"));
+    }
+
+    #[test]
+    fn json_extract_path_deeply_nested() {
+        let json = r#"{"assistantMessageEvent":{"delta":"hello","meta":{"id":42}}}"#;
+        let result = HOST_REGISTRY
+            .call(
+                "json_extract_path",
+                &[s(json), s("assistantMessageEvent.meta.id")],
+            )
+            .expect("json_extract_path should succeed");
+        assert_eq!(result, RuntimeValue::Int(42));
+    }
+
+    #[test]
+    fn json_extract_path_returns_nil_for_missing() {
+        let result = HOST_REGISTRY
+            .call(
+                "json_extract_path",
+                &[s(r#"{"a":{"b":1}}"#), s("a.c")],
+            )
+            .expect("json_extract_path should succeed");
+        assert_eq!(result, RuntimeValue::Nil);
+    }
+
+    #[test]
+    fn json_extract_path_single_segment() {
+        let result = HOST_REGISTRY
+            .call(
+                "json_extract_path",
+                &[s(r#"{"key":"value"}"#), s("key")],
+            )
+            .expect("json_extract_path should succeed");
+        assert_eq!(result, s("value"));
+    }
+
+    #[test]
+    fn json_extract_path_error_on_invalid_json() {
+        let err = HOST_REGISTRY
+            .call("json_extract_path", &[s("{bad"), s("key")])
+            .expect_err("should fail on invalid JSON");
+        assert!(err.to_string().contains("Json.extract_path"));
     }
 }

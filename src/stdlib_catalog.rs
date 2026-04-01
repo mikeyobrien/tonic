@@ -12,6 +12,7 @@ pub(crate) const STDLIB_SOURCES: &[(&str, &str)] = &[
     ("Float", OPTIONAL_STDLIB_FLOAT_SOURCE),
     ("Tuple", OPTIONAL_STDLIB_TUPLE_SOURCE),
     ("Assert", OPTIONAL_STDLIB_ASSERT_SOURCE),
+    ("Json", OPTIONAL_STDLIB_JSON_SOURCE),
 ];
 
 pub(crate) fn stdlib_module_names() -> impl Iterator<Item = &'static str> {
@@ -1348,3 +1349,124 @@ end
 
 pub(super) const OPTIONAL_STDLIB_ASSERT_SOURCE: &str =
     "defmodule Assert do\n  def assert(value, message \\\\ nil) do\n    host_call(:assert, value, message)\n  end\n\n  def refute(value, message \\\\ nil) do\n    host_call(:refute, value, message)\n  end\n\n  def assert_equal(left, right, message \\\\ nil) do\n    host_call(:assert_equal, left, right, message)\n  end\n\n  def assert_not_equal(left, right, message \\\\ nil) do\n    host_call(:assert_not_equal, left, right, message)\n  end\n\n  def assert_contains(container, element, message \\\\ nil) do\n    host_call(:assert_contains, container, element, message)\n  end\n\n  def assert_in_delta(left, right, delta, message \\\\ nil) do\n    host_call(:assert_in_delta, left, right, delta, message)\n  end\n\n  def skip(reason \\\\ nil) do\n    host_call(:skip, reason)\n  end\n\n  def assert_match(expected, actual, message \\\\ nil) do\n    host_call(:assert_match, expected, actual, message)\n  end\n\n  def assert_raises(fun, expected \\\\ nil) do\n    check_raises(do_try_raises(fun), expected)\n  end\n\n  defp do_try_raises(fun) do\n    try do\n      fun.()\n      {:no_raise, :ok}\n    rescue\n      e -> {:raised, to_string(e)}\n    end\n  end\n\n  defp check_raises({:raised, _msg}, nil) do\n    :ok\n  end\n\n  defp check_raises({:raised, msg}, expected) do\n    host_call(:assert_raises_check, msg, expected)\n  end\n\n  defp check_raises(_, _expected) do\n    err({:assertion_failed, {:assert_raises, \"expected function to raise, but it returned normally\"}})\n  end\nend\n";
+
+pub(super) const OPTIONAL_STDLIB_JSON_SOURCE: &str = r#"defmodule Json do
+  ## Decodes a JSON string into a Tonic value.
+  ##
+  ## Parameters:
+  ##   text: string — the JSON text to decode
+  ##
+  ## Returns: the decoded value (map, list, string, integer, float, boolean, or nil)
+  def decode(text) do
+    host_call(:json_decode, text)
+  end
+
+  ## Encodes a Tonic value as a JSON string.
+  ##
+  ## Parameters:
+  ##   value: any — the value to encode
+  ##
+  ## Returns: string
+  def encode(value) do
+    host_call(:json_encode, value)
+  end
+
+  ## Encodes a Tonic value as a pretty-printed JSON string.
+  ##
+  ## Parameters:
+  ##   value: any — the value to encode
+  ##
+  ## Returns: string
+  def encode_pretty(value) do
+    host_call(:json_encode_pretty, value)
+  end
+
+  ## Extracts a top-level field from a JSON object string.
+  ##
+  ## Parameters:
+  ##   json_text: string — the JSON text
+  ##   key: string — the field name to extract
+  ##
+  ## Returns: the extracted value, or nil if not found
+  def extract_field(json_text, key) do
+    host_call(:json_extract_field, json_text, key)
+  end
+
+  ## Extracts a nested field using dot notation path.
+  ##
+  ## Parameters:
+  ##   json_text: string — the JSON text
+  ##   path: string — dot-separated path (e.g., "assistantMessageEvent.delta")
+  ##
+  ## Returns: the extracted value, or nil if any segment is missing
+  def extract_path(json_text, path) do
+    host_call(:json_extract_path, json_text, path)
+  end
+
+  ## Parses a JSON object string into a map.
+  ##
+  ## Parameters:
+  ##   text: string — the JSON text (must be an object)
+  ##
+  ## Returns: {:ok, map} | {:error, reason}
+  def parse_object(text) do
+    parse_typed(text, :map)
+  end
+
+  ## Parses a JSON array string into a list.
+  ##
+  ## Parameters:
+  ##   text: string — the JSON text (must be an array)
+  ##
+  ## Returns: {:ok, list} | {:error, reason}
+  def parse_array(text) do
+    parse_typed(text, :list)
+  end
+
+  ## Processes a list of JSON lines with a stateful handler.
+  ##
+  ## Parameters:
+  ##   lines: list of strings — each line is a JSON value
+  ##   initial_state: any — the starting accumulator
+  ##   handler: fn(parsed_value, state) -> state — called for each successfully decoded line
+  ##
+  ## Returns: the final state
+  def stream_parse(lines, initial_state, handler) do
+    stream_fold(lines, initial_state, handler)
+  end
+
+  defp parse_typed(text, expected_type) do
+    try do
+      decoded = host_call(:json_decode, text)
+      case expected_type do
+        :map ->
+          case is_map(decoded) do
+            true -> {:ok, decoded}
+            _ -> {:error, "expected JSON object, got different type"}
+          end
+        _ ->
+          case is_list(decoded) do
+            true -> {:ok, decoded}
+            _ -> {:error, "expected JSON array, got different type"}
+          end
+      end
+    rescue
+      e -> {:error, to_string(e)}
+    end
+  end
+
+  defp stream_fold([], state, _handler) do
+    state
+  end
+
+  defp stream_fold([line | rest], state, handler) do
+    new_state = try do
+      decoded = host_call(:json_decode, line)
+      handler.(decoded, state)
+    rescue
+      _e -> state
+    end
+    stream_fold(rest, new_state, handler)
+  end
+end
+"#;
