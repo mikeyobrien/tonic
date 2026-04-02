@@ -23,6 +23,7 @@ devenv.local.yaml
 .worktrees/
 .miniloop/
 .miniloops/
+.autoloop/
 progress.md
 
 # transient temp/scratch directories produced by tooling
