@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] - 2026-04-03
+
 ### Added
-- Alpha release readiness script and CI wiring for deterministic pre-tag validation.
+- GitHub release workflow and cross-platform install script.
+- Json module with streaming JSON parsing in stdlib.
+- Native `integer_parse` host dispatch for C backend parity.
+- Cargo profile tuning, feature-gated deps, and release optimization.
+- Install test coverage, test helpers, and gate hardening.
+
+### Changed
+- Removed LLVM backend from mainline.
+- Consolidated `emit_header` and deduplicated `parse_choices`.
+- Deduplicated `is_native_executable` into tests/common.
+
+### Fixed
+- C backend: expanded host parity, runtime for comprehensions, closure match bindings, list/tuple helpers, streamed stderr in `sys_run`, suppressed final value after stdout writes, restored builtin parity.
+- Native: `sys_run` timeout parity, boolean negation helpers, host-call diagnostic parity.
+- Cross-platform test corrections for macOS compatibility.
+- Loop artifact cleanup and clippy/runtime fixes.
 
 ## [0.1.0-alpha.1] - 2026-02-25
 
