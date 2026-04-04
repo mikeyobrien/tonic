@@ -65,6 +65,9 @@ pub(crate) fn compile_c_to_executable(
         cmd.arg(flag);
     }
     cmd.arg("-o").arg(exe_path).arg(c_path);
+    for flag in linker_flags(target) {
+        cmd.arg(flag);
+    }
 
     let output = cmd.output().map_err(|error| LinkerError {
         stage: LinkerStage::ToolNotFound,
@@ -161,6 +164,14 @@ pub(crate) fn find_c_compiler() -> Option<String> {
     None
 }
 
+fn linker_flags(target: &TargetTriple) -> &'static [&'static str] {
+    if target.as_str().contains("linux") {
+        &["-lm"]
+    } else {
+        &[]
+    }
+}
+
 fn which_exists(program: &str) -> bool {
     // Use `which` if available; otherwise walk PATH manually.
     if let Ok(output) = Command::new("which").arg(program).output() {
@@ -182,7 +193,7 @@ fn which_exists(program: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_c_compiler, resolve_compiler};
+    use super::{find_c_compiler, linker_flags, resolve_compiler};
     use crate::target::TargetTriple;
 
     #[test]
@@ -232,6 +243,22 @@ mod tests {
                 flags[1], triple,
                 "second clang flag must be triple for {triple}"
             );
+        }
+    }
+
+    #[test]
+    fn linker_flags_include_libm_on_linux_targets() {
+        for triple in ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"] {
+            let target = TargetTriple::parse(triple).unwrap();
+            assert_eq!(linker_flags(&target), &["-lm"]);
+        }
+    }
+
+    #[test]
+    fn linker_flags_are_empty_on_macos_targets() {
+        for triple in ["x86_64-apple-darwin", "aarch64-apple-darwin"] {
+            let target = TargetTriple::parse(triple).unwrap();
+            assert!(linker_flags(&target).is_empty());
         }
     }
 }

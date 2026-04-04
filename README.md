@@ -17,11 +17,11 @@ Tonic is opinionated about developer experience:
 If you like Elixir-style syntax and want to explore a Rust-based language/runtime that is honest about its current maturity, Tonic is built for that.
 
 ## Project status
-
-- **Version:** `0.1.0-alpha.1`
+- **Version:** `0.1.0-alpha.3`
 - **Stability:** alpha — behavior and interfaces are still evolving
-- **Scope today:** language syntax/runtime parity work, native backend iteration, and project tooling
-- **Native backend:** portable **C backend** used to produce native executables
+- **Scope:** language syntax/runtime parity work plus native backend iteration
+- **Primary backend:** portable C backend for production/native builds
+- **Current stdlib baseline:** workload-backed `String` + `System`, with `Path` available but secondary
 - **Self-hosting status:** partial — current milestone is parity-verified self-hosted lexer work, not full bootstrap closure
 - **Out of scope:** BEAM/OTP runtime semantics such as supervisors, distribution, and hot upgrades
 
